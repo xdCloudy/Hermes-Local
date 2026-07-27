@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "product": {
+    "name": "Hermes Launcher",
+    "version": "0.1.0-dev",
+    "status": "runtime-verified"
+  },
+  "sources": {
+    "hermesAgent": {
+      "repository": "https://github.com/NousResearch/hermes-agent.git",
+      "branch": "main",
+      "commit": "3be565fbdee3115ab5b9338551768b8e5e655c56",
+      "integrationBranch": "hermes-local-integration"
+    },
+    "llamaCpp": {
+      "repository": "https://github.com/ggml-org/llama.cpp.git",
+      "branch": "master",
+      "commit": "0e4a0362239713ea95a6864a17a8de4b0ad90d62",
+      "lagunaSupport": {
+        "pullRequest": 25165,
+        "mergedAt": "2026-07-22",
+        "selectionReason": "Official Laguna implementation is merged upstream; do not use the obsolete PR branch."
+      }
+    }
+  },
+  "model": {
+    "repository": "poolside/Laguna-XS-2.1-GGUF",
+    "revision": "1a37c0a5fb8c7a18e6106decb6be6327d1b63fa6",
+    "filename": "Laguna-XS-2.1-Q4_K_M.gguf",
+    "sizeBytes": 20274300032,
+    "sha256": "1ac7079101fca5a6df8c5a7523a3c30ea7d1c0e4b1258090e7d6d4039287f6cb",
+    "license": "OpenMDW-1.1"
+  },
+  "runtime": {
+    "python": "3.11",
+    "node": "24.18.0",
+    "cudaToolkit": "13.3",
+    "cudaArchitecture": "86",
+    "modelEndpoint": "http://127.0.0.1:8011/v1",
+    "modelAlias": "laguna-xs-2.1-q4km"
+  },
+  "recordedAt": "2026-07-27T21:46:00Z"
+}

@@ -1,0 +1,77 @@
+model:
+  provider: laguna-local
+  default: laguna-xs-2.1-q4km
+  base_url: http://127.0.0.1:8011/v1
+  context_length: 65536
+  max_tokens: 16384
+
+agent:
+  reasoning_effort: high
+  tool_use_enforcement: true
+  max_iterations: 500
+  verify_on_stop: false
+
+terminal:
+  backend: local
+  cwd: D:\Hermes-Local\data\user
+
+compression:
+  enabled: true
+  threshold: 0.72
+  target_ratio: 0.20
+  protect_first_n: 3
+  protect_last_n: 12
+  proactive_prune_tokens: 48000
+  proactive_prune_min_result_chars: 8000
+  proactive_prune_min_reclaim_tokens: 4096
+
+delegation:
+  max_concurrent_children: 1
+  max_spawn_depth: 1
+  orchestrator_enabled: false
+  subagent_auto_approve: false
+  inherit_mcp_toolsets: false
+
+approvals:
+  mode: manual
+  denial_breaker_threshold: 3
+  deny:
+    - "*Remove-Item*D:\\Hermes-Local*"
+    - "*rm *D:/Hermes-Local*"
+    - "*format *"
+    - "*diskpart*"
+
+security:
+  redact_secrets: true
+  blocked_domains: []
+
+memory:
+  provider: ''
+  write_approval: false
+
+skills:
+  write_approval: false
+
+display:
+  show_reasoning: true
+  tool_progress: all
+  reduced_motion: false
+
+logging:
+  level: INFO
+
+providers:
+  laguna-local:
+    api: http://127.0.0.1:8011/v1
+    name: laguna-local
+    key_env: HERMES_LOCAL_API_TOKEN
+    models:
+      laguna-xs-2.1-q4km:
+        context_length: 65536
+    default_model: laguna-xs-2.1-q4km
+    transport: chat_completions
+
+plugins:
+  enabled: []
+
+_config_version: 33

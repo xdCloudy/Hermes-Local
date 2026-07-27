@@ -1,0 +1,41 @@
+# Nested upstream checkout and large/runtime-managed state
+/source/hermes-agent/
+/runtimes/
+/models/*
+!/models/manifests/
+!/models/manifests/**
+/data/
+/logs/
+/cache/
+/backups/
+/build/
+/dist/
+/temp/
+
+# Generated analysis and benchmark data
+/benchmarks/results/
+/security/scans/
+/security/sbom/
+
+# Secrets and machine-local configuration
+*.dpapi
+*.credential
+*.secret
+.env
+.env.*
+!.env.example
+/config/hermes/config.yaml
+/config/launcher/state.json
+/config/launcher/user-settings.json
+
+# Package and editor output
+node_modules/
+release/
+coverage/
+*.log
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

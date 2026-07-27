@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "repository": "poolside/Laguna-XS-2.1-GGUF",
+  "revision": "1a37c0a5fb8c7a18e6106decb6be6327d1b63fa6",
+  "filename": "Laguna-XS-2.1-Q4_K_M.gguf",
+  "localPath": "D:\\Hermes-Local\\models\\Laguna-XS-2.1\\Laguna-XS-2.1-Q4_K_M.gguf",
+  "downloadedAt": "2026-07-27T21:25:00Z",
+  "sizeBytes": 20274300032,
+  "sha256": "1ac7079101fca5a6df8c5a7523a3c30ea7d1c0e4b1258090e7d6d4039287f6cb",
+  "license": "OpenMDW-1.1",
+  "source": "https://huggingface.co/poolside/Laguna-XS-2.1-GGUF/resolve/1a37c0a5fb8c7a18e6106decb6be6327d1b63fa6/Laguna-XS-2.1-Q4_K_M.gguf",
+  "metadata": {
+    "architecture": "Laguna XS 2.1",
+    "parametersTotal": 33000000000,
+    "parametersActivePerToken": 3000000000,
+    "layers": 40,
+    "globalAttentionLayers": 10,
+    "slidingWindowAttentionLayers": 30,
+    "slidingWindowTokens": 512,
+    "experts": 256,
+    "sharedExperts": 1,
+    "modelMaximumContextTokens": 262144,
+    "quantization": "Q4_K_M",
+    "reasoning": "interleaved",
+    "nativeToolCalling": true
+  },
+  "runtime": {
+    "implementation": "llama.cpp",
+    "repository": "https://github.com/ggml-org/llama.cpp.git",
+    "commit": "0e4a0362239713ea95a6864a17a8de4b0ad90d62",
+    "lagunaSupportPullRequest": 25165,
+    "lagunaSupportMerged": true,
+    "cudaArchitecture": 86,
+    "gpu": "NVIDIA GeForce RTX 3060 12 GiB"
+  },
+  "benchmarkProfile": "baseline-pending-benchmark",
+  "context": {
+    "selectedTokens": 65536,
+    "extendedTokens": 81920,
+    "experimentalMaximumTokens": 131072,
+    "kvKeyType": "q8_0",
+    "kvValueType": "q8_0"
+  }
+}
