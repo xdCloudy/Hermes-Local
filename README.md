@@ -5,10 +5,55 @@ official NousResearch Hermes Agent. It combines the Hermes CLI, TUI, Desktop
 and Web Dashboard with a CUDA-enabled llama.cpp server running
 Laguna XS 2.1 Q4_K_M. The packaged control centre is **Hermes Launcher**.
 
+> [!NOTE]
+> This is an independent Windows integration, not an official Nous Research
+> release. The upstream Hermes Agent remains the application core.
+
+![Hermes Launcher home screen](reports/acceptance/launcher-home.png)
+
 This installation is tuned for Windows 11 Pro, an Intel Core i5-14600K,
 64 GiB RAM and an NVIDIA RTX 3060 12 GiB. All substantial source, runtimes,
 model data, configuration, logs and build output live below
 `D:\Hermes-Local`. Docker, WSL and paid model APIs are not required.
+
+## Download
+
+The [latest GitHub release](https://github.com/xdCloudy/Hermes-Local/releases/latest)
+provides:
+
+- [Windows installer](https://github.com/xdCloudy/Hermes-Local/releases/download/v0.17.0/Hermes-Launcher-0.17.0-windows-x64-setup.exe)
+- [Portable launcher](https://github.com/xdCloudy/Hermes-Local/releases/download/v0.17.0/Hermes-Launcher-0.17.0-windows-x64-portable.exe)
+- [Update blockmap](https://github.com/xdCloudy/Hermes-Local/releases/download/v0.17.0/Hermes-Launcher-0.17.0-windows-x64-setup.exe.blockmap)
+
+The release binaries contain the control centre, not the 20 GB model or
+project-managed runtimes. Provision the workstation from source first, then
+use either launcher package. This keeps the download legal, inspectable and
+resumable.
+
+The locally built binaries are not Authenticode-signed. Windows may display a
+SmartScreen warning. Verify the SHA-256 values in the release notes and the
+[published packaging results](docs/ACCEPTANCE_RESULTS.md#packaging) before
+running them.
+
+## Install from source
+
+Open a normal, non-elevated PowerShell 7 window. The project intentionally
+uses the fixed `D:\Hermes-Local` root:
+
+```powershell
+Set-Location D:\
+git clone https://github.com/xdCloudy/Hermes-Local.git Hermes-Local
+Set-Location D:\Hermes-Local
+& '.\Setup-Hermes-Local.ps1' -NonInteractive
+```
+
+Setup downloads and verifies the pinned model, reconstructs the official
+Hermes integration from the committed patch series, prepares the local
+runtimes and builds the CUDA-enabled backend. An interrupted model download
+resumes when setup is rerun.
+
+See the [installation guide](docs/INSTALLATION.md) for prerequisites,
+storage requirements, installer behavior and first-run checks.
 
 ## Start here
 

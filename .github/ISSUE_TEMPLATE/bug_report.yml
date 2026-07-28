@@ -1,0 +1,60 @@
+name: Bug report
+description: Report a reproducible Hermes Local problem
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Hermes Local. Do not paste credentials,
+        tokens, conversations, private files, or unredacted logs.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I searched existing issues for this problem.
+          required: true
+        - label: I removed secrets and private data from this report.
+          required: true
+        - label: I am running Windows natively, not through WSL or Docker.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Hermes Local version or commit
+      placeholder: v0.17.0 or a full commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Windows version, CPU, RAM, GPU, driver and selected profile.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest reliable sequence.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics
+      description: Share only the relevant redacted excerpt or a safe bundle link.

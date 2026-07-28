@@ -15,8 +15,17 @@ substitute Docker paths.
 Open a normal, non-elevated PowerShell 7 window and run:
 
 ```powershell
+Set-Location D:\
+git clone https://github.com/xdCloudy/Hermes-Local.git Hermes-Local
+Set-Location D:\Hermes-Local
 & 'D:\Hermes-Local\Setup-Hermes-Local.ps1' -NonInteractive
 ```
+
+If the repository is already present, use `git pull --ff-only` only when its
+working tree is clean, then run setup again. The
+[GitHub release](https://github.com/xdCloudy/Hermes-Local/releases/latest)
+contains installer and portable launcher packages, but deliberately excludes
+the model, Python environment and CUDA runtime.
 
 Setup validates the OS, architecture, CPU, memory, free space, GPU and CUDA
 driver. It installs only missing official prerequisites, preserves the pinned
