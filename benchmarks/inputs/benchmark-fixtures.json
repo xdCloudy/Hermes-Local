@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "seed": 3407,
+  "inference": {
+    "shortChatTokens": 2048,
+    "contextTokens": [16384, 32768, 65536, 81920],
+    "sustainedDecodeTokens": 1000,
+    "cachePrompt": "Hermes Local prompt-cache repeatability fixture. Keep this exact text and seed stable between runs."
+  },
+  "qualityChecks": {
+    "deterministicReply": "Reply with exactly LAGUNA_OK and no other text.",
+    "nativeTool": "Use the supplied echo_value tool with value BENCHMARK_TOOL_OK."
+  },
+  "notes": [
+    "llama-bench synthesizes tokens for throughput tests; lengths and seed are the stable inputs.",
+    "The saved text fixtures are used by the authenticated live-server correctness and cache checks."
+  ]
+}

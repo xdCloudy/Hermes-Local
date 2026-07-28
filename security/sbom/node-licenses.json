@@ -1,0 +1,49 @@
+{
+  "@assistant-ui/core@0.2.19": {
+    "licenses": "MIT",
+    "repository": "https://github.com/assistant-ui/assistant-ui",
+    "publisher": "AgentbaseAI Inc.",
+    "path": "D:\\Hermes-Local\\source\\hermes-agent\\apps\\desktop\\node_modules\\@assistant-ui\\core",
+    "licenseFile": "D:\\Hermes-Local\\source\\hermes-agent\\apps\\desktop\\node_modules\\@assistant-ui\\core\\LICENSE"
+  },
+  "@assistant-ui/react-streamdown@0.3.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/assistant-ui/assistant-ui",
+    "publisher": "AgentbaseAI Inc.",
+    "path": "D:\\Hermes-Local\\source\\hermes-agent\\apps\\desktop\\node_modules\\@assistant-ui\\react-streamdown",
+    "licenseFile": "D:\\Hermes-Local\\source\\hermes-agent\\apps\\desktop\\node_modules\\@assistant-ui\\react-streamdown\\LICENSE"
+  },
+  "@assistant-ui/react@0.14.24": {
+    "licenses": "MIT",
+    "repository": "https://github.com/assistant-ui/assistant-ui",
+    "publisher": "AgentbaseAI Inc.",
+    "path": "D:\\Hermes-Local\\source\\hermes-agent\\apps\\desktop\\node_modules\\@assistant-ui\\react",
+    "licenseFile": "D:\\Hermes-Local\\source\\hermes-agent\\apps\\desktop\\node_modules\\@assistant-ui\\react\\LICENSE"
+  },
+  "@assistant-ui/store@0.2.19": {
+    "licenses": "MIT",
+    "repository": "https://github.com/assistant-ui/assistant-ui",
+    "publisher": "AgentbaseAI Inc.",
+    "path": "D:\\Hermes-Local\\source\\hermes-agent\\apps\\desktop\\node_modules\\@assistant-ui\\store",
+    "licenseFile": "D:\\Hermes-Local\\source\\hermes-agent\\apps\\desktop\\node_modules\\@assistant-ui\\store\\LICENSE"
+  },
+  "@assistant-ui/tap@0.9.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/assistant-ui/assistant-ui",
+    "publisher": "AgentbaseAI Inc.",
+    "path": "D:\\Hermes-Local\\source\\hermes-agent\\apps\\desktop\\node_modules\\@assistant-ui\\tap",
+    "licenseFile": "D:\\Hermes-Local\\source\\hermes-agent\\apps\\desktop\\node_modules\\@assistant-ui\\tap\\LICENSE"
+  },
+  "@nous-research/ui@0.13.2": {
+    "licenses": "MIT",
+    "path": "D:\\Hermes-Local\\source\\hermes-agent\\apps\\desktop\\node_modules\\@nous-research\\ui",
+    "licenseFile": "D:\\Hermes-Local\\source\\hermes-agent\\apps\\desktop\\node_modules\\@nous-research\\ui\\README.md"
+  },
+  "hermes-launcher@0.17.0": {
+    "licenses": "UNLICENSED",
+    "private": true,
+    "publisher": "Nous Research",
+    "path": "D:\\Hermes-Local\\source\\hermes-agent\\apps\\desktop",
+    "licenseFile": "D:\\Hermes-Local\\source\\hermes-agent\\apps\\desktop\\README.md"
+  }
+}

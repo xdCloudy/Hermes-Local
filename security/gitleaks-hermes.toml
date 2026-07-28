@@ -1,0 +1,41 @@
+title = "Hermes Local production-source secret scan"
+
+[extend]
+useDefault = true
+
+# Generated reference corpora, documentation examples, vendored headers, and
+# deliberately synthetic test credentials are outside the production-source
+# scan. They remain covered by normal review and are described in the report.
+[[allowlists]]
+description = "Non-production fixtures and reference corpora"
+paths = [
+  '''(^|[\\/])tests[\\/]''',
+  '''(^|[\\/])website[\\/](docs|i18n)[\\/]''',
+  '''(^|[\\/])native[\\/]fts5_cjk[\\/]vendor[\\/]''',
+  '''(^|[\\/])optional-skills[\\/]mlops[\\/]training[\\/]unsloth[\\/]references[\\/]llms-(full|txt)\.md$''',
+]
+
+# These identifiers are public OAuth application identifiers embedded by the
+# official providers, not confidential client secrets.
+[[allowlists]]
+description = "Public OAuth and catalogue identifiers"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+regexes = [
+  '''(?i)(?:_OAUTH_CLIENT_ID|VAPI_DEFAULT_VOICE_ID)\s*=''',
+]
+
+# The redactor intentionally contains a private-key marker pattern so that it
+# can remove private keys from logs. Require both the exact source path and
+# marker-like source line before suppressing the detector.
+[[allowlists]]
+description = "Private-key redaction pattern"
+targetRules = ["private-key"]
+condition = "AND"
+regexTarget = "line"
+paths = [
+  '''(^|[\\/])agent[\\/]redact\.py$''',
+]
+regexes = [
+  '''-----BEGIN(?: [A-Z0-9]+)? PRIVATE KEY-----''',
+]

@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-28T09:53:33.9267034Z",
+  "status": "pass-with-triaged-residuals",
+  "quick": false,
+  "evidenceDirectory": "D:\\Hermes-Local\\security\\scans\\20260728T095157Z",
+  "sourceCommit": "ee683263aaa7f3bca33f785630926350fa119c38",
+  "scanners": {
+    "npmProduction": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 2,
+      "critical": 0,
+      "total": 2,
+      "packages": [
+        "react-router",
+        "react-router-dom"
+      ]
+    },
+    "npmFull": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 18,
+      "critical": 0,
+      "total": 18,
+      "packages": [
+        "@electron/asar",
+        "@electron/universal",
+        "@eslint/config-array",
+        "@eslint/eslintrc",
+        "app-builder-lib",
+        "brace-expansion",
+        "dir-compare",
+        "dmg-builder",
+        "ejs",
+        "electron-builder",
+        "eslint",
+        "eslint-plugin-react",
+        "filelist",
+        "glob",
+        "jake",
+        "minimatch",
+        "react-router",
+        "react-router-dom"
+      ]
+    },
+    "pipAudit": {
+      "vulnerabilities": [],
+      "installedDependencies": 128
+    },
+    "osv": {
+      "vulnerablePackages": [
+        {
+          "source": "package-lock.json",
+          "name": "brace-expansion",
+          "version": "1.1.16",
+          "ids": [
+            "GHSA-mh99-v99m-4gvg"
+          ]
+        },
+        {
+          "source": "package-lock.json",
+          "name": "brace-expansion",
+          "version": "2.1.2",
+          "ids": [
+            "GHSA-mh99-v99m-4gvg"
+          ]
+        },
+        {
+          "source": "package-lock.json",
+          "name": "brace-expansion",
+          "version": "5.0.7",
+          "ids": [
+            "GHSA-mh99-v99m-4gvg"
+          ]
+        },
+        {
+          "source": "package-lock.json",
+          "name": "react-router",
+          "version": "7.18.1",
+          "ids": [
+            "GHSA-qwww-vcr4-c8h2"
+          ]
+        },
+        {
+          "source": "uv.lock",
+          "name": "pynacl",
+          "version": "1.5.0",
+          "ids": [
+            "GHSA-mrfv-m5wm-5w6w",
+            "PYSEC-2026-3002"
+          ]
+        }
+      ]
+    },
+    "gitleaks": {
+      "findings": 0,
+      "config": "D:\\Hermes-Local\\security\\gitleaks-hermes.toml"
+    },
+    "semgrep": {
+      "candidates": 133,
+      "errors": 26,
+      "warnings": 107,
+      "secretRuleCandidates": 0
+    },
+    "eslintWarnings": 51,
+    "defender": {
+      "clean": true,
+      "engine": "C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.26060.3008-0\\MpCmdRun.exe",
+      "exitCode": 0
+    }
+  },
+  "sbom": {
+    "node": {
+      "path": "D:\\Hermes-Local\\security\\sbom\\node-launcher.cdx.json",
+      "specVersion": "1.6",
+      "components": 616
+    },
+    "python": {
+      "path": "D:\\Hermes-Local\\security\\sbom\\python-runtime.cdx.json",
+      "specVersion": "1.6",
+      "components": 127
+    }
+  },
+  "commands": [
+    {
+      "name": "npm-audit-production",
+      "exitCode": 1,
+      "durationSeconds": 1.294
+    },
+    {
+      "name": "npm-audit-full",
+      "exitCode": 1,
+      "durationSeconds": 1.857
+    },
+    {
+      "name": "pip-audit",
+      "exitCode": 0,
+      "durationSeconds": 6.167
+    },
+    {
+      "name": "osv-lockfiles",
+      "exitCode": 1,
+      "durationSeconds": 1.898
+    },
+    {
+      "name": "gitleaks-production-source",
+      "exitCode": 0,
+      "durationSeconds": 4.122
+    },
+    {
+      "name": "ruff",
+      "exitCode": 0,
+      "durationSeconds": 0.204
+    },
+    {
+      "name": "typescript",
+      "exitCode": 0,
+      "durationSeconds": 14.306
+    },
+    {
+      "name": "eslint",
+      "exitCode": 0,
+      "durationSeconds": 13.463
+    },
+    {
+      "name": "semgrep",
+      "exitCode": 0,
+      "durationSeconds": 41.523
+    },
+    {
+      "name": "sbom-node",
+      "exitCode": 0,
+      "durationSeconds": 3.592
+    },
+    {
+      "name": "sbom-python",
+      "exitCode": 0,
+      "durationSeconds": 6.109
+    },
+    {
+      "name": "licenses-python",
+      "exitCode": 0,
+      "durationSeconds": 0.721
+    },
+    {
+      "name": "defender-dist",
+      "exitCode": 0,
+      "durationSeconds": 0.838
+    }
+  ],
+  "acceptedResiduals": [
+    "React Router RSC-mode advisory: renderer is a client-only Electron SPA and does not enable RSC actions.",
+    "brace-expansion advisory: transitive build/lint tooling only; no fixed release is available in the locked major lines.",
+    "PyNaCl 1.5.0 advisory: optional Discord voice lock entry, excluded from the installed workstation environment; discord.py 2.7.1 caps PyNaCl below 1.6."
+  ],
+  "failures": []
+}
