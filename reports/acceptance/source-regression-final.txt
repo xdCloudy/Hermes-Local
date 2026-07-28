@@ -1,0 +1,39 @@
+▶ no local venv — using Nix dev venv via HERMES_PYTHON: /d/Hermes-Local/runtimes/python/hermes/Scripts/python.exe
+▶ running per-file parallel test suite via run_tests_parallel.py
+  (TZ=UTC LANG=C.UTF-8 PYTHONHASHSEED=0; clean env)
+▶ pre-compiling bytecode cache
+▶ launching test runner
+Discovered 13 test files (~443 tests) under ['tests\\hermes_state\\test_session_md_export.py', 'tests\\tools\\test_browser_hardening.py', 'tests\\acp_adapter\\test_acp_commands.py', 'tests\\tools\\test_write_approval.py', 'tests\\run_agent\\test_streaming_tool_call_repair.py', 'tests\\tools\\test_read_extract.py', 'tests\\run_agent\\test_dropped_tool_call_recovery.py', 'tests\\tools\\test_browser_ssrf_local.py', 'tests\\tools\\test_cronjob_tools.py', 'tests\\tools\\test_interrupt.py', 'tests\\tools\\test_delegate.py', 'tests\\agent\\test_skill_commands.py', 'tests\\run_agent\\test_compression_persistence.py']; running with -j 40
+[  0.9% |     4/~443 | ✓4 | ✗0] ✓ tests\hermes_state\test_session_md_export.py (4✓, 3.5s)
+[  2.9% |    13/~443 | ✓13 | ✗ 0] ✓ tests\acp_adapter\test_acp_commands.py (9✓, 3.8s)
+[  9.5% |    42/~443 | ✓42 | ✗ 0] ✓ tests\tools\test_browser_hardening.py (29✓, 3.9s)
+[ 17.2% |    76/~443 | ✓76 | ✗ 0] ✓ tests\tools\test_write_approval.py (34✓, 4.3s)
+[ 19.9% |    88/~443 | ✓88 | ✗ 0] ✓ tests\run_agent\test_streaming_tool_call_repair.py (12✓, 4.3s)
+[ 24.2% |   107/~443 | ✓107 | ✗  0] ✓ tests\tools\test_read_extract.py (19✓, 5.2s)
+[ 25.5% |   113/~443 | ✓113 | ✗  0] ✓ tests\run_agent\test_dropped_tool_call_recovery.py (6✓, 5.4s)
+[ 39.7% |   176/~443 | ✓190 | ✗  0] ✓ tests\tools\test_cronjob_tools.py (77✓, 6.5s)
+[ 44.2% |   196/~443 | ✓218 | ✗  0] ✓ tests\tools\test_browser_ssrf_local.py (28✓, 6.6s)
+[ 57.6% |   255/~443 | ✓275 | ✗  0] ✓ tests\agent\test_skill_commands.py (57✓ 2s, 9.9s)
+[ 59.6% |   264/~443 | ✓284 | ✗  0] ✓ tests\tools\test_interrupt.py (9✓, 9.9s)
+[ 63.9% |   283/~443 | ✓303 | ✗  0] ✓ tests\run_agent\test_compression_persistence.py (19✓, 13.0s)
+[100.0% |   443/~443 | ✓463 | ✗  0] ✓ tests\tools\test_delegate.py (160✓, 13.3s)
+
+=== Summary: 13 files, 463 tests passed, 0 failed (100% complete) in 13.3s (40 workers) ===
+  Durations cached to test_durations.json (13 files)
+
+=== Per-file subprocess time distribution ===
+  Files:   13
+  Total subprocess CPU-wall: 89.5s  (runner wall: 13.3s, parallelism: 40x)
+  P50: 5.42s  P90: 13.03s  P95: 13.27s  P99: 13.27s  Max: 13.27s
+  <1s: 0 files (0%)  <2s: 0 files (0%)
+  Top 10 slowest:
+     13.27s  tests\tools\test_delegate.py
+     13.03s  tests\run_agent\test_compression_persistence.py
+      9.93s  tests\tools\test_interrupt.py
+      9.86s  tests\agent\test_skill_commands.py
+      6.61s  tests\tools\test_browser_ssrf_local.py
+      6.46s  tests\tools\test_cronjob_tools.py
+      5.42s  tests\run_agent\test_dropped_tool_call_recovery.py
+      5.19s  tests\tools\test_read_extract.py
+      4.28s  tests\run_agent\test_streaming_tool_call_repair.py
+      4.25s  tests\tools\test_write_approval.py

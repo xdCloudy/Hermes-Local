@@ -1,6 +1,6 @@
 # Hermes Local Task Ledger
 
-Last updated: 2026-07-27
+Last updated: 2026-07-28
 
 ## Evidence captured
 
@@ -37,7 +37,7 @@ Last updated: 2026-07-27
 
 ## Current phase
 
-- [ ] Finish diagnostics, update, backup/restore, benchmark, security, build,
+- [x] Finish diagnostics, update, backup/restore, benchmark, security, build,
   and package scripts.
 - [x] Clone and build pinned CUDA-enabled llama.cpp.
 - [x] Download, resume, and verify Laguna XS 2.1 Q4_K_M.
@@ -48,16 +48,30 @@ Last updated: 2026-07-27
 ## Product, tuning, security, and release gates
 
 - [x] Produce a complete dark/light launcher design concept and design spec.
-- [ ] Extend official Hermes Desktop into Hermes Launcher.
-- [ ] Implement Windows ConPTY TUI and real process supervisor.
-- [ ] Complete all required launcher navigation and operational surfaces.
-- [ ] Run context, KV, offload, thread, batch, cache, and speculation sweeps.
-- [ ] Select and publish measured named profiles.
-- [ ] Complete threat model and repository security scan phases.
-- [ ] Validate and remediate reachable findings with regression tests.
-- [ ] Generate dependency audits, licence inventory, Defender scan, and SBOM.
-- [ ] Complete unit, integration, agent, UI, packaging, update, rollback,
-  repair, backup, restore, reboot, offline, and uninstall acceptance tests.
-- [ ] Produce portable build, installer, Start Menu shortcut, optional desktop
+- [x] Extend official Hermes Desktop into Hermes Launcher.
+- [x] Implement Windows ConPTY TUI and real process supervisor.
+- [x] Complete all required launcher navigation and operational surfaces.
+- [x] Run context, KV, offload, thread, batch, cache, and speculation
+  applicability sweeps.
+- [x] Select and publish measured named profiles.
+- [x] Complete threat model and repository security scan phases.
+- [x] Validate and remediate reachable findings with regression tests.
+- [x] Generate dependency audits, licence inventory, Defender scan, and SBOM.
+- [x] Complete critical unit, integration, agent, UI, packaging, update,
+  rollback, repair, backup, restore, offline and uninstall acceptance tests.
+- [x] Produce portable build, installer, Start Menu shortcut, optional desktop
   shortcut, clean uninstaller, documentation, benchmark reports, and security
   reports.
+
+## Recorded exceptions
+
+- [ ] Perform one physical Windows reboot and confirm unattended launch-at-login.
+  The current-user login item was toggled/restored and cold/offline restarts
+  passed, but rebooting would terminate the active Codex build task.
+- [ ] Upstream full Desktop Vitest is not wholly portable: 3,332 tests pass,
+  21 fail and 3 skip, plus two POSIX package-test import errors. Nineteen
+  failures are POSIX-only SSH/path/mode/symlink fixtures; two are disabled
+  cloud-billing UI assertions. No failures are hidden. The Windows-critical
+  Hermes suite passes 463/463 applicable tests.
+- [ ] Authenticode-sign the locally built launcher if it will be distributed
+  beyond this workstation.

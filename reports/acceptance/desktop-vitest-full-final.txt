@@ -1,0 +1,2044 @@
+
+> hermes-launcher@0.17.0 test
+> vitest run --reporter=default
+
+
+ RUN  v4.1.9 D:/Hermes-Local/source/hermes-agent/apps/desktop
+
+ ❯ |electron| scripts/stage-native-deps.test.mjs (0 test)
+ ✓ |electron| electron/connection-config.test.ts (72 tests) 9ms
+ ✓ |electron| electron/remote-liveness.test.ts (20 tests) 10ms
+ ✓ |electron| electron/backend-health.test.ts (13 tests) 4ms
+ ✓ |electron| electron/windows-sandbox-fallback.test.ts (15 tests) 8ms
+ ✓ |electron| electron/desktop-uninstall.test.ts (19 tests) 6ms
+ ❯ |electron| electron/windows-hermes-path.test.ts (22 tests | 1 failed) 11ms
+   ✓ buildPathExtCandidates: Windows tries PATHEXT extensions before the empty extension 2ms
+   ✓ buildPathExtCandidates: defaults to .COM;.EXE;.BAT;.CMD when PATHEXT is unset on Windows 0ms
+   ✓ buildPathExtCandidates: respects a custom PATHEXT, still empty-last 0ms
+   ✓ buildPathExtCandidates: non-Windows only tries the bare name 0ms
+   ✓ chooseUpdaterArgs: gentle --update when a real-install signal is present 0ms
+   ✓ chooseUpdaterArgs: destructive --repair only when NO real-install signal is present 0ms
+   ✓ chooseUpdaterArgs: passes the branch through unchanged in both cases 0ms
+   ✓ resolveVenvHermesCommand: returns null off Windows 0ms
+   ✓ resolveVenvHermesCommand: returns null for a .cmd/.bat script command 0ms
+   ✓ resolveVenvHermesCommand: returns null when the basename is not hermes/hermes.exe 0ms
+   ✓ resolveVenvHermesCommand: returns null when the parent dir is not Scripts 0ms
+   ✓ resolveVenvHermesCommand: returns null when the venv python does not exist on disk 0ms
+   ✓ resolveVenvHermesCommand: probes the venv python before trusting it (returns null on failed probe) 0ms
+   ✓ resolveVenvHermesCommand: returns the resolved python backend descriptor when the probe passes 0ms
+   ✓ resolveVenvHermesCommand: is case-insensitive on hermes.exe and the Scripts dir name 0ms
+   ✓ getVenvSitePackagesEntries: returns Lib/site-packages on Windows when it exists 0ms
+   ✓ getVenvSitePackagesEntries: returns empty on Windows when site-packages does not exist 0ms
+   × getVenvSitePackagesEntries: reads pyvenv.cfg version on POSIX and resolves lib/pythonX.Y/site-packages 6ms
+   ✓ getVenvSitePackagesEntries: returns empty on POSIX when pyvenv.cfg is missing 0ms
+   ✓ getVenvSitePackagesEntries: returns empty on POSIX when pyvenv.cfg has no version_info 0ms
+   ✓ getVenvSitePackagesEntries: returns empty on POSIX when version is present but site-packages dir is absent 0ms
+   ✓ getVenvSitePackagesEntries: returns empty for a falsy venvRoot 0ms
+ ✓ |electron| electron/hardening.test.ts (12 tests) 33ms
+ ✓ |electron| electron/find-in-page.test.ts (20 tests) 6ms
+ ✓ |electron| electron/native-oauth.test.ts (16 tests) 6ms
+ ✓ |electron| electron/quick-entry.test.ts (23 tests) 10ms
+ ✓ |electron| electron/bootstrap-runner.test.ts (11 tests) 27ms
+ ✓ |electron| electron/session-windows.test.ts (15 tests) 6ms
+ ✓ |electron| electron/zoom.test.ts (15 tests) 7ms
+ ✓ |electron| electron/backend-ready.test.ts (17 tests) 188ms
+ ✓ |electron| electron/window-state.test.ts (15 tests) 8ms
+ ✓ |electron| electron/dashboard-token.test.ts (13 tests) 5ms
+ ✓ |electron| electron/native-auth-decisions.test.ts (14 tests) 5ms
+ ✓ |electron| electron/ssh-bootstrap-coordinator.test.ts (7 tests) 6ms
+ ✓ |electron| electron/spawn-helper-perms.test.ts (8 tests) 5ms
+ ✓ |electron| electron/backend-env.test.ts (7 tests) 4ms
+ ✓ |electron| electron/update-marker.test.ts (10 tests) 17ms
+ ✓ |electron| electron/native-oauth-login.test.ts (5 tests) 73ms
+ ✓ |electron| electron/gateway-ws-probe.test.ts (8 tests) 50ms
+Preparing worktree (new branch 'wt')
+ ✓ |electron| electron/windows-child-options.test.ts (12 tests) 4ms
+ ✓ |electron| electron/first-run-setup-gate.test.ts (8 tests) 28ms
+ ✓ |electron| electron/windows-remote-lifecycle.test.ts (6 tests) 5ms
+ ✓ |electron| electron/bootstrap-platform.test.ts (9 tests) 4ms
+ ✓ |electron| electron/wsl-clipboard-image.test.ts (10 tests) 6ms
+ ✓ |electron| electron/vscode-marketplace.test.ts (5 tests) 4ms
+ ✓ |electron| electron/desktop-electron-pin.test.ts (3 tests) 12ms
+ ✓ |electron| electron/update-remote.test.ts (6 tests) 4ms
+ ✓ |electron| electron/primary-backend-startup.test.ts (5 tests) 249ms
+ ↓ |electron| electron/windows-remote-live.test.ts (1 test | 1 skipped)
+ ❯ |electron| electron/desktop-installation.test.ts (7 tests | 1 failed) 24ms
+   ✓ parseInstallationId accepts only a version-4 UUID record 1ms
+   × loadOrCreateInstallationId persists and reuses one installation ID 9ms
+   ✓ loadOrCreateInstallationId tightens an existing identity file 3ms
+   ✓ loadOrCreateInstallationId replaces a malformed existing record 5ms
+   ✓ loadOrCreateInstallationId replaces an existing symlink 1ms
+   ✓ loadOrCreateInstallationId replaces a malformed destination without a repair lock 3ms
+   ✓ sshOwnershipId is stable, scoped, and does not disclose the UUID 1ms
+ ✓ |electron| electron/backend-probes.test.ts (10 tests) 146ms
+ ✓ |electron| electron/remote-lifecycle.test.ts (63 tests) 778ms
+   ✓ scrapeReadyPort times out and reports a dead spawn  761ms
+ ✓ |electron| electron/first-run-setup-main-process.test.ts (2 tests) 63ms
+ ✓ |electron| electron/profile-delete-routing.test.ts (14 tests) 5ms
+ ✓ |electron| electron/link-title-window.test.ts (9 tests) 5ms
+ ✓ |electron| electron/windows-user-env.test.ts (10 tests) 5ms
+ ✓ |electron| electron/update-count.test.ts (10 tests) 4ms
+ ❯ |electron| electron/ssh-config.test.ts (9 tests | 3 failed) 13ms
+   ✓ parseSshConfigHosts keeps literal aliases and drops wildcard/negated patterns 2ms
+   ✓ parseSshConfigHosts de-duplicates 0ms
+   ✓ parseSshConfigIncludes extracts include tokens 0ms
+   × collectSshConfigHosts follows Include directives (read-only) 7ms
+   ✓ collectSshConfigHosts tolerates a missing config file 0ms
+   × collectSshConfigHosts does not loop on a self-include cycle 1ms
+   × collectSshConfigHosts expands globbed includes via injected globSync 1ms
+   ✓ parseSshGOutput pulls hostname/user/port/identityfile 0ms
+   ✓ parseSshGOutput takes the FIRST identityfile and tolerates missing keys 0ms
+ ✓ |electron| electron/connection-apply.test.ts (7 tests) 8ms
+ ✓ |electron| electron/git-repo-scan.test.ts (5 tests) 26ms
+ ✓ |electron| electron/hermes-local-control.test.ts (5 tests) 11ms
+stderr | electron/git-review-ops.test.ts > gitFor accepts an internally resolved git binary path containing spaces
+Invalid value supplied for custom binary, restricted characters must be removed or supply the unsafe.allowUnsafeCustomBinary option
+
+ ✓ |electron| scripts/assert-dist-built.test.mjs (5 tests) 21ms
+ ✓ |electron| electron/windows-system-ca.test.ts (4 tests) 4ms
+ ✓ |electron| electron/media-permissions.test.ts (4 tests) 3ms
+ ✓ |electron| electron/backend-start-failure.test.ts (7 tests) 3ms
+ ✓ |electron| scripts/write-build-stamp.test.mjs (6 tests) 4ms
+ ✓ |electron| electron/active-runtime-state.test.ts (7 tests) 4ms
+ ✓ |electron| electron/titlebar-overlay-width.test.ts (8 tests) 3ms
+ ✓ |electron| electron/backend-connection-state.test.ts (4 tests) 3ms
+ ✓ |electron| electron/backend-command.test.ts (7 tests) 4ms
+ ✓ |electron| electron/crash-forensics.test.ts (5 tests) 6ms
+ ✓ |electron| electron/update-rebuild.test.ts (4 tests) 4ms
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+ ✓ |electron| electron/power-save.test.ts (3 tests) 6ms
+ ✓ |electron| electron/find-git-bash.test.ts (4 tests) 3ms
+ ✓ |electron| electron/main-window-lifecycle.test.ts (4 tests) 3ms
+ ✓ |electron| electron/updater-process.test.ts (2 tests) 3ms
+stderr | electron/git-review-ops.test.ts > gitFor runs git through a spaced binary path
+Invalid value supplied for custom binary, restricted characters must be removed or supply the unsafe.allowUnsafeCustomBinary option
+
+ ✓ |electron| electron/event-dedupe.test.ts (4 tests) 3ms
+ ✓ |electron| electron/git-root.test.ts (2 tests) 15ms
+ ✓ |electron| electron/workspace-cwd.test.ts (4 tests) 3ms
+ ✓ |electron| electron/profile-session-routing.test.ts (2 tests) 3ms
+ ✓ |electron| electron/oauth-net-request.test.ts (3 tests) 4ms
+ ✓ |electron| electron/profile-name.test.ts (4 tests) 4ms
+ ❯ |electron| scripts/before-pack.test.mjs (0 test)
+warning: in the working copy of 'tracked.txt', LF will be replaced by CRLF the next time Git touches it
+ ✓ |electron| electron/fs-read-dir.test.ts (12 tests | 1 skipped) 2070ms
+   ✓ readDirForIpc hides noisy directories and files from the project tree  2025ms
+ ❯ |electron| electron/ssh-connection.test.ts (58 tests | 11 failed) 2262ms
+   ✓ redactSecrets scrubs the spawn-time session token env var 1ms
+   ✓ redactSecrets scrubs ?token= and ?ticket= URL params 0ms
+   ✓ redactSecrets scrubs Authorization and X-Hermes-Session-Token headers 0ms
+   ✓ redactSecrets handles null/undefined and non-secret text untouched 0ms
+   × controlSocketPath is stable, short, and host-distinct 4ms
+   ✓ controlSocketPath default base stays under sun_path even with the temp-listener suffix 0ms
+   ✓ baseSshOptions carries the house ControlMaster/BatchMode/accept-new policy 0ms
+   ✓ hostArgs adds -p only for non-default port and -i only with a key 1ms
+   ✓ target builds user@host or bare host 0ms
+   ✓ buildExecArgs ends with host then the remote command 0ms
+   ✓ buildControlArgs places -O <op> first and never appends a remote command 0ms
+   ✓ buildMasterArgs requests a backgrounded master (-M -N -f) 0ms
+   ✓ forwardSpec binds the local end to 127.0.0.1 only 0ms
+   ✓ buildInteractiveSshArgs requests a PTY, reuses the control master, execs a login shell 0ms
+   ✓ buildInteractiveSshArgs cds into the remote cwd (best-effort) before the shell 0ms
+   ✓ buildInteractiveSshArgs single-quotes a cwd with quotes safely 0ms
+   ✓ classifySshError detects a changed host key (fail-closed) 0ms
+   ✓ classifySshError detects auth failure 0ms
+   ✓ classifySshError detects unreachable 0ms
+   ✓ sshErrorMessage gives actionable guidance for auth and host-key-change 0ms
+   × open() establishes the master when not already alive 4ms
+   × open() is a no-op when the master is already alive and execs verify 1ms
+   × open() evicts a wedged master (check passes, exec hangs) and dials fresh 123ms
+   × close() removes the control socket when -O exit fails 1ms
+   × open() creates the control-socket directory if it does not exist 1ms
+   ✓ open() surfaces a classified auth error 1ms
+   ✓ exec() returns stdout on success and rejects (classified) on failure 0ms
+   ✓ exec() treats a hung ssh as a timeout (half-open connection) 43ms
+   × forward() issues -O forward with a loopback-bound -L spec 1ms
+   × lifecycle logging passes through redaction 4ms
+   ✓ no-mux: ssh args carry no ControlMaster/ControlPath options 0ms
+   ✓ no-mux: open() verifies auth with a one-shot exec, no -M master 0ms
+   ✓ SSH probe never creates or closes a ControlMaster 0ms
+   ✓ no-mux: open() classifies auth failure 0ms
+   ✓ no-mux: forward spawns a persistent -N -L child; cancel + close kill it 20ms
+   ✓ no-mux: forward fails fast when the tunnel child dies (bad spec/auth)  2003ms
+   ✓ no-mux: an unrelated listener cannot mask a delayed bind failure 39ms
+   ✓ no-mux: tunnel death after readiness makes the connection unhealthy 3ms
+   ✓ validateSshTarget rejects a host starting with a dash (option injection) 1ms
+   ✓ validateSshTarget rejects control characters in host 0ms
+   ✓ validateSshTarget rejects control characters in user 0ms
+   ✓ validateSshTarget rejects ports outside 1-65535 0ms
+   ✓ validateSshTarget accepts valid targets 0ms
+   ✓ SshConnection constructor rejects hostile host/user/port 0ms
+   ✓ buildExecArgs inserts -- before the destination 0ms
+   ✓ buildMasterArgs inserts -- before the destination 0ms
+   ✓ buildControlArgs inserts -- before the destination 0ms
+   ✓ buildInteractiveSshArgs inserts -- before the destination 0ms
+   ✓ hostArgs rejects a keyPath with control characters 1ms
+   ✓ hostArgs rejects a keyPath starting with a dash 0ms
+   ✓ hostArgs accepts valid key paths 0ms
+   ✓ runSsh delivers stdinData to the child and does not log it 0ms
+   × open() rejects a control-dir that is a symlink 2ms
+   ✓ open() enforces 0700 on an existing control dir with lax permissions 0ms
+   ✓ control socket identity separates installation scope and key identity 0ms
+   × closing one scope addresses only that scope control master 0ms
+   × failed ControlMaster close disowns the master instead of retrying it 1ms
+   ✓ stopTunnelChild waits for process exit 0ms
+ ✓ |electron| electron/git-review-ops.test.ts (7 tests) 1296ms
+   ✓ gitFor runs git through a spaced binary path  484ms
+   ✓ repoStatus reports an untracked directory without recursively listing its contents  806ms
+Switched to a new branch 'rawr'
+ ✓ |electron| electron/wsl-path-bridge.test.ts (7 tests) 1775ms
+   ✓ wslPosixToWindowsAccessible maps an in-distro POSIX path to a UNC share  1771ms
+ ✓ |ui| src/lib/chat-messages.test.ts (50 tests) 25ms
+ ✓ |ui| src/app/chat/sidebar/projects/workspace-groups.test.ts (48 tests) 27ms
+ ✓ |ui| src/app/settings/billing/use-billing-state.test.ts (39 tests) 33ms
+ ✓ |ui| src/store/onboarding.test.ts (14 tests) 72ms
+ ✓ |ui| src/app/session/hooks/use-route-resume.test.tsx (12 tests) 58ms
+stderr | src/components/desktop-install-overlay.test.tsx > DesktopInstallOverlay first-run setup > keeps the local-start error when the first snapshot commits under the click
+An update to DesktopInstallOverlay inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ ✓ |ui| src/app/session/hooks/use-session-actions/utils.test.ts (42 tests) 18ms
+ ✓ |ui| src/components/find-bar.test.tsx (48 tests) 604ms
+Switched to a new branch 'rawr'
+ ✓ |ui| src/store/session.test.ts (34 tests) 17ms
+ ✓ |ui| src/app/session/hooks/use-session-state-cache.test.tsx (12 tests) 44ms
+ ✓ |ui| src/store/updates.test.ts (25 tests) 21ms
+stderr | src/app/session/hooks/use-prompt-actions/index.test.tsx > usePromptActions desktop slash pickers > marks a timed-out handoff as failed so the next attempt can retry
+You called act(async () => ...) without await. This could lead to unexpected testing behaviour, interleaving multiple act calls and mixing their scopes. You should - await act(async () => ...);
+
+stderr | src/app/session/hooks/use-prompt-actions/index.test.tsx > usePromptActions eager-upload races > joins an in-flight eager upload at submit instead of staging the file twice
+An update to Harness inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ ✓ |ui| src/app/session/hooks/use-session-actions.test.tsx (38 tests) 595ms
+stderr | src/app/session/hooks/use-prompt-actions/index.test.tsx > usePromptActions submit session-context isolation (#54527) > aborts submit when the user switches sessions during session.resume (no misroute)
+[submit-drift-abort] selection:stored-project-a->stored-project-b { phase: 'post-resume' }
+
+stderr | src/app/session/hooks/use-prompt-actions/index.test.tsx > usePromptActions submit session-context isolation (#54527) > aborts submit when the composer scope disagrees with the resolved target (#59305)
+[submit-drift-abort] composer:stored-project-b->stored-project-a { phase: 'post-attachments' }
+
+stderr | src/app/session/hooks/use-prompt-actions/index.test.tsx > usePromptActions submit session-context isolation (#54527) > aborts recovery submit when the user switches sessions during timeout resume
+[submit-drift-abort] selection:stored-project-a->stored-project-b { phase: 'post-resume-retry' }
+
+stderr | src/app/session/hooks/use-prompt-actions/index.test.tsx > usePromptActions new-chat first-send delivery (#63078) > aborts a new-session submit when sidebar navigation changes the route before its selected ref (#62562)
+[submit-drift-abort] route:stored-first-send->sidebar-target { phase: 'post-attachments' }
+
+ ❯ |electron| electron/update-relaunch.test.ts (16 tests | 3 failed) 7134ms
+   ✓ unpackedDirName maps platform to the electron-builder dir 1ms
+   × resolveUnpackedRelease returns the dir for a binary UNDER release/<plat>-unpacked 4ms
+   ✓ resolveUnpackedRelease is null for AppImage / .deb / .rpm / dev / unresolved paths 0ms
+   ✓ resolveUnpackedRelease is not fooled by a sibling prefix dir 0ms
+   ✓ decideRelaunchOutcome: only under-unpacked + sandbox-ok relaunches 0ms
+   ✓ sandboxPreflight: root-owned + setuid is launchable 0ms
+   ✓ sandboxPreflight: not root → not launchable 0ms
+   ✓ sandboxPreflight: missing setuid bit → not launchable 0ms
+   ✓ sandboxPreflight: neither root nor setuid (the fresh-rebuild trap) 0ms
+   ✓ sandboxPreflight: no chrome-sandbox helper present → ok (build does not use SUID sandbox) 0ms
+   ✓ sandboxFallbackFromEnv: ELECTRON_DISABLE_SANDBOX / --no-sandbox make a broken sandbox safe 0ms
+   ✓ collectRelaunchArgs drops Electron internals, keeps user/launcher args 1ms
+   ✓ collectRelaunchEnv preserves HERMES_HOME + HERMES_DESKTOP_* + sandbox opt-out only 0ms
+   ✓ shellQuote neutralizes single quotes and metacharacters 0ms
+   × buildRelaunchScript embeds pid/exec/args/env/cwd and is valid bash 6764ms
+   × buildRelaunchScript with no args/env still lints clean 361ms
+stderr | src/app/session/hooks/use-prompt-actions/index.test.tsx > usePromptActions new-chat first-send delivery (#63078) > still aborts when the user genuinely switches chats after create, during attachment sync (#62805)
+[submit-drift-abort] route:stored-first-send->stored-other-session { phase: 'post-attachments' }
+
+stderr | src/app/session/hooks/use-prompt-actions/index.test.tsx > usePromptActions busy-gateway churn tolerance (#64327) > still aborts when the user genuinely moves to a different chat mid-submit
+[submit-drift-abort] route:stored-busy-gw->stored-other-chat { phase: 'post-resume' }
+
+ ✓ |ui| src/app/settings/helpers.test.ts (30 tests) 16ms
+ ✓ |ui| src/components/assistant-ui/tool/fallback-model.test.ts (29 tests) 36ms
+ ✓ |ui| src/app/session/hooks/use-prompt-actions/index.test.tsx (93 tests) 1335ms
+ ✓ |ui| src/store/projects.test.ts (23 tests) 18ms
+ ✓ |ui| src/hermes.test.ts (19 tests) 19ms
+ ✓ |ui| src/store/review.test.ts (35 tests) 22ms
+ ✓ |ui| src/lib/desktop-slash-commands.test.ts (22 tests) 11ms
+ ✓ |ui| src/app/session/hooks/use-model-controls.test.tsx (13 tests) 46ms
+stderr | src/app/settings/billing/index.test.tsx > BillingSettings > locks out the other downgrade tiles and Back while a schedule is in flight
+An update to BillingPlansView inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to MemoryRouter inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+Cloning into 'C:\Users\<user>\AppData\Local\Temp\hermes-clone-2KxZDc'...
+done.
+stderr | src/app/settings/billing/index.test.tsx > BillingSettings > disables Undo while the resume is in flight
+An update to CurrentPlanCard inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+ ✓ |ui| src/components/assistant-ui/thread/streaming.test.tsx (15 tests) 724ms
+stderr | src/app/settings/model-settings.test.tsx > ModelSettings MoA preset editor > autosaves the selected preset when its enabled switch is toggled
+An update to ModelSettings inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ ✓ |ui| src/lib/inflight-turn-journal.test.ts (15 tests) 19ms
+stderr | src/app/settings/model-settings.test.tsx > ModelSettings MoA preset editor > saves a disabled reference model without removing it (per-slot enabled toggle)
+An update to ModelSettings inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ ✓ |ui| src/app/settings/model-settings.test.tsx (18 tests) 3847ms
+     ✓ loads the current main model and lists configured providers only  1186ms
+     ✓ saves once the model pick completes the slot  447ms
+fatal: no upstream configured for branch 'feature-branch'
+ ✓ |electron| electron/git-worktree-ops.test.ts (16 tests) 9158ms
+   ✓ ensureGitRepo: inits a plain dir with a root commit so worktrees branch  658ms
+   ✓ switchBranch: switches a normal checkout branch  612ms
+   ✓ listBranches: lists locals and flags the checked-out branch  758ms
+   ✓ listBranches: flags a free default branch as default, not checked out  772ms
+   ✓ listBranches: a branch claimed by a worktree is flagged checked out  1449ms
+   ✓ addWorktree: existingBranch checks the branch out without a new branch  1191ms
+   ✓ addWorktree: existing default branch switches the main checkout, not .worktrees/main  981ms
+   ✓ listBaseBranches: lists local branches and flags the default  728ms
+   ✓ addWorktree: base param branches off a specified local branch  777ms
+   ✓ addWorktree: base origin/main does not set up upstream tracking  1104ms
+ ✓ |ui| src/app/gateway/hooks/use-gateway-boot.test.tsx (6 tests) 42ms
+ ✓ |ui| src/components/desktop-install-overlay.test.tsx (13 tests) 4088ms
+     ✓ requires a successful token connection test before applying remote config  662ms
+     ✓ ignores a completed probe after the gateway URL becomes invalid  599ms
+     ✓ does not enable Apply when credentials change during a connection test  623ms
+     ✓ restores remote apply controls when applying the tested connection fails  660ms
+     ✓ signs in, tests, and applies a password-style remote gateway  633ms
+     ✓ offers remote connection from the unsupported packaged install screen  619ms
+ ✓ |ui| src/store/model-visibility.test.ts (18 tests) 9ms
+ ✓ |ui| src/app/session/hooks/use-message-stream/interim-sealing.test.tsx (14 tests) 225ms
+ ✓ |ui| src/lib/external-link.test.tsx (17 tests) 268ms
+ ✓ |ui| src/store/agent-notices.test.ts (20 tests) 12ms
+ ✓ |ui| src/components/assistant-ui/markdown-text.test.ts (35 tests) 150ms
+ ✓ |ui| src/lib/session-date-groups.test.ts (13 tests) 9ms
+ ✓ |ui| src/store/composer-queue.test.ts (22 tests) 13ms
+ ✓ |ui| src/app/right-sidebar/files/use-project-tree.test.ts (13 tests) 965ms
+ ✓ |ui| src/app/chat/hooks/use-composer-actions.test.ts (13 tests) 14ms
+ ✓ |ui| src/components/assistant-ui/clarify-tool.test.tsx (14 tests) 298ms
+ ✓ |ui| src/app/session/hooks/use-prompt-actions/utils.test.ts (31 tests) 25ms
+ ✓ |ui| src/app/shell/model-menu-panel.test.tsx (13 tests) 1441ms
+ ✓ |ui| src/app/session/hooks/use-session-list-actions.test.tsx (8 tests) 34ms
+ ✓ |ui| src/i18n/context.test.tsx (11 tests) 341ms
+ ✓ |ui| src/app/right-sidebar/terminal/persistent.test.tsx (5 tests) 57ms
+ ✓ |ui| src/store/subagents.test.ts (10 tests) 20ms
+ ✓ |ui| src/store/session-watchdog.test.ts (19 tests) 19ms
+ ✓ |ui| src/lib/desktop-fs.test.ts (9 tests) 13ms
+ ✓ |ui| src/app/chat/composer/undo-history.test.ts (19 tests) 25ms
+ ✓ |ui| src/app/settings/billing/api.test.ts (11 tests) 24ms
+ ✓ |ui| src/store/native-notifications.test.ts (18 tests) 14ms
+ ✓ |ui| src/store/quick-entry.test.ts (17 tests) 9ms
+ ✓ |ui| src/lib/media.remote.test.ts (16 tests) 16ms
+ ✓ |ui| src/app/chat/composer/enter-submit-dom-race.test.tsx (5 tests) 48ms
+ ✓ |ui| src/app/settings/providers-settings.test.tsx (6 tests) 1358ms
+     ✓ disconnects a connected provider account and refreshes the accounts list  1106ms
+ ✓ |ui| src/store/profile.test.ts (11 tests) 12ms
+ ✓ |ui| src/app/session/hooks/session-context-drift.test.ts (16 tests) 7ms
+ ✓ |ui| src/lib/chat-runtime.test.ts (26 tests) 12ms
+ ✓ |ui| src/components/assistant-ui/tool/approval-group.test.tsx (6 tests) 280ms
+ ✓ |ui| src/lib/keybinds/composer-focus-keys.test.ts (14 tests) 45ms
+ ✓ |ui| src/app/chat/composer/rich-editor.test.ts (12 tests) 47ms
+ ✓ |ui| src/components/boot-failure-reauth.test.ts (23 tests) 9ms
+ ✓ |ui| src/app/settings/billing/use-charge-poller.test.ts (8 tests) 28ms
+ ❯ |ui| src/app/settings/billing/index.test.tsx (29 tests | 2 failed) 9174ms
+     ✓ renders the deployed-today payload with buy controls hidden and usage rows visible  412ms
+     ✓ renders the post-train payload with enabled buy controls and card provenance 171ms
+     ✓ disables buy controls when no card is on file 175ms
+     ✓ saves enabled auto-refill edits and refreshes billing state 178ms
+     × rejects auto-refill amounts outside the billing bounds 143ms
+     ✓ renders the enabled auto-refill row without crashing when the card is null 124ms
+     ✓ requires inline confirmation before disabling auto-refill 170ms
+     ✓ opens auto-refill edit without a validation error even when the saved config is below the minimum 138ms
+     ✓ navigates to the in-app plans grid from the plan card and back 196ms
+     ✓ renders the current marker and an actionable downgrade when deep-linked to the plans grid 112ms
+     ✓ falls back to overview (no live Choose grid) when a team deep-links bview=plans 126ms
+     ✓ falls back to overview when a non-changer personal account deep-links bview=plans 115ms
+     ✓ runs an in-app downgrade: preview → confirm → schedule with the tier id → refetch → overview 181ms
+     ✓ surfaces the step-up affordance when scheduling a downgrade needs approval 195ms
+     ✓ undoes a scheduled downgrade from the plan card via resume 103ms
+     ✓ undoes a scheduled cancellation from the plan card via resume 108ms
+     ✓ locks out the other downgrade tiles and Back while a schedule is in flight 161ms
+     ✓ disables Undo while the resume is in flight 119ms
+     ✓ moves focus into the confirm panel (role=status) when a downgrade opens 77ms
+     ✓ keeps the auto-refill edit form mounted so the row height is reserved before editing 77ms
+     ✓ renders auto-refill mutation refusals and step-up affordance 168ms
+     ✓ keeps disabled auto-refill portal-only with no enable control 119ms
+     × disables buy controls while polling and renders the settled outcome 5122ms
+     ✓ renders logged-out as a connect card without normal account rows 88ms
+     ✓ renders danger value text for overdrawn subscription credits 92ms
+     ✓ renders an empty neutral usage track when a row has no bar data 135ms
+     ✓ shows a warn notice that names the no-card blocker with a portal link 133ms
+     ✓ does not show the no-card notice when a card is on file 111ms
+     ✓ polls billing on an interval without a manual refresh control 120ms
+stderr | src/app/settings/memory/provider-config-panel.test.tsx > ProviderConfigPanel > renders the declared inline fields generically
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ ✓ |ui| src/store/artifacts.test.ts (12 tests) 12ms
+stderr | src/app/settings/memory/provider-config-panel.test.tsx > ProviderConfigPanel > hides fields that are not marked inline
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ ✓ |ui| src/components/pane-shell/tree/reactive-unhide.test.ts (4 tests) 351ms
+stderr | src/app/settings/memory/provider-config-panel.test.tsx > ProviderConfigPanel > collapses and expands the fields
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ ✓ |ui| src/components/assistant-ui/tool/approval.test.tsx (12 tests) 617ms
+stderr | src/app/settings/memory/provider-config-panel.test.tsx > ProviderConfigPanel > autosaves a text field on blur as a one-key partial save
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/app/settings/memory/provider-config-panel.test.tsx > ProviderConfigPanel > does not save on blur when nothing changed
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/app/settings/memory/provider-config-panel.test.tsx > ProviderConfigPanel > autosaves a committed secret and clears the draft
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/app/settings/memory/provider-config-panel.test.tsx > ProviderConfigPanel > offers a full-config trigger when modal-only fields exist
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/app/settings/memory/provider-config-panel.test.tsx > ProviderConfigPanel > shows an inline error with retry when the load fails, then recovers
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/app/settings/memory/provider-config-panel.test.tsx > ProviderConfigPanel > renders nothing for a provider with no declared config surface
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ProviderConfigPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ ✓ |ui| src/app/settings/memory/provider-config-panel.test.tsx (9 tests) 1532ms
+     ✓ renders the declared inline fields generically  901ms
+ ✓ |ui| src/components/gateway-connecting-overlay.test.tsx (4 tests) 247ms
+ ✓ |ui| src/app/settings/billing/use-subscription-change.test.tsx (7 tests) 529ms
+ ✓ |ui| src/app/starmap/share-code.test.ts (10 tests) 27ms
+ ✓ |ui| src/app/chat/composer/hooks/use-composer-trigger.test.ts (9 tests) 56ms
+ ✓ |ui| src/app/routes.workspace-reveal.test.ts (22 tests) 11ms
+ ✓ |ui| src/components/pet/pet-sprite.test.tsx (4 tests) 41ms
+ ✓ |ui| src/app/chat/composer/hooks/use-composer-undo.test.tsx (7 tests) 47ms
+ ✓ |ui| src/app/settings/toolset-config-panel.test.tsx (28 tests) 12836ms
+     ✓ renders inline voice/model fields for a TTS provider row carrying tts_provider  2492ms
+     ✓ runs a provider post-setup install hook and tails its log  1247ms
+     ✓ does not poll when the spawn endpoint reports ok:false  1563ms
+     ✓ surfaces a non-zero exit code from the setup process  1271ms
+       ✓ drives the existing Nous OAuth device-code flow from the sign-in action and refetches  5081ms
+ ✓ |ui| src/app/chat/composer/slash-nav-dom-repro.test.tsx (1 test) 97ms
+ ✓ |ui| src/app/session/hooks/use-background-queue-drain.test.tsx (6 tests) 237ms
+ ✓ |ui| src/app/session/hooks/use-hermes-config.test.ts (5 tests) 30ms
+ ✓ |ui| src/components/ui/dialog.test.tsx (6 tests | 1 skipped) 504ms
+     ✓ renders the open dropdown inside the dialog DOM subtree, not document.body  315ms
+ ✓ |ui| src/lib/gateway-ws-url.test.ts (16 tests) 13ms
+ ✓ |ui| src/app/chat/composer/hooks/use-composer-submit.test.tsx (7 tests) 68ms
+ ✓ |ui| src/app/session/hooks/use-prompt-actions/resolve-target-session.test.ts (8 tests) 10ms
+ ✓ |ui| src/app/session/hooks/use-message-stream/session-info-side-effects.test.tsx (5 tests) 91ms
+ ✓ |ui| src/app/shell/hooks/use-status-snapshot.test.ts (5 tests) 34ms
+ ✓ |ui| src/components/assistant-ui/thread/timeline-idle.test.tsx (7 tests) 95ms
+ ✓ |ui| src/lib/time.test.ts (11 tests) 7ms
+ ✓ |ui| src/store/composer-status.test.ts (12 tests) 15ms
+ ✓ |ui| src/store/prompts.test.ts (11 tests) 9ms
+ ✓ |ui| src/store/coding-status.test.ts (8 tests) 13ms
+ ✓ |ui| src/components/assistant-ui/embeds/providers/detect.test.ts (23 tests) 12ms
+ ✓ |ui| src/lib/incremental-external-store-runtime.test.ts (7 tests) 12ms
+ ✓ |ui| src/components/assistant-ui/thread/user-message-edit.test.tsx (4 tests) 741ms
+ ✓ |ui| src/app/session/hooks/use-preview-routing.test.tsx (5 tests) 122ms
+ ✓ |ui| src/app/chat/sidebar/session-row.test.tsx (3 tests) 118ms
+ ✓ |ui| src/store/preview.test.ts (5 tests) 10ms
+ ✓ |ui| src/store/composer-input-history.test.ts (11 tests) 8ms
+ ✓ |ui| src/app/right-sidebar/terminal/terminals.test.ts (7 tests) 30ms
+ ✓ |ui| src/lib/embedded-images.test.ts (16 tests) 37ms
+stderr | src/app/chat/sidebar/session-actions-menu.test.tsx > SessionActionsMenu > still opens the dropdown on click with the trigger wrapped in a Tip (#67500)
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `div`. It was passed a child from SessionActionsMenu. See https://react.dev/link/warning-keys for more information.
+
+ ✓ |ui| src/store/windows.test.ts (16 tests) 10ms
+ ✓ |ui| src/app/chat/sidebar/session-actions-menu.test.tsx (2 tests) 318ms
+ ✓ |ui| src/components/pet/use-pet-roam.test.tsx (3 tests) 32ms
+ ✓ |ui| src/app/chat/sidebar/projects/project-menu.test.tsx (2 tests) 559ms
+     ✓ opens the appearance popover through the kebab trigger when anchorRef is absent  374ms
+ ✓ |ui| src/app/settings/terminal-backend-panel.test.tsx (6 tests) 1133ms
+     ✓ lists backends with status pills from the backends endpoint  730ms
+ ✓ |ui| src/app/contrib/latest-actions.test.ts (4 tests) 9ms
+ ✓ |ui| src/store/panes.test.ts (14 tests) 9ms
+ ✓ |ui| src/lib/artifact-detect.test.ts (15 tests) 12ms
+stderr | src/app/chat/sidebar/session-actions-menu.test.ts > renameSessionPreferringRpc > falls back to REST when the RPC fails (e.g. socket mid-reconnect)
+session.title RPC rename failed; falling back to REST Error: not connected
+    at D:/Hermes-Local/source/hermes-agent/apps/desktop/src/app/chat/sidebar/session-actions-menu.test.ts:73:35
+    at file:///D:/Hermes-Local/source/hermes-agent/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///D:/Hermes-Local/source/hermes-agent/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///D:/Hermes-Local/source/hermes-agent/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///D:/Hermes-Local/source/hermes-agent/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///D:/Hermes-Local/source/hermes-agent/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///D:/Hermes-Local/source/hermes-agent/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///D:/Hermes-Local/source/hermes-agent/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64
+
+ ✓ |ui| src/app/chat/sidebar/session-actions-menu.test.ts (5 tests) 12ms
+ ✓ |ui| src/app/session/hooks/use-message-stream/agent-init-error.test.tsx (2 tests) 30ms
+stdout | src/app/chat/composer/hooks/use-composer-draft.test.tsx > useComposerDraft — attachment scope stays coherent with the committed session on switch (#59305) > clears the outgoing session attachments by the layout phase right after switching sessions
+[composer-rehydrate] {
+  attachmentCount: 1,
+  attachmentKinds: [ 'url' ],
+  hasTextRefs: false,
+  scope: 'session-A'
+}
+
+ ✓ |ui| src/app/chat/composer/hooks/use-composer-draft.test.tsx (2 tests) 26ms
+ ✓ |ui| src/lib/summarize-command.test.ts (18 tests) 8ms
+ ✓ |ui| src/components/onboarding/index.test.tsx (5 tests) 365ms
+ ✓ |ui| src/app/chat/composer/hooks/use-composer-queue.test.tsx (4 tests) 47ms
+ ✓ |ui| src/app/settings/fallback-models-field.test.tsx (6 tests) 1426ms
+     ✓ renders each {provider, model} entry as its own row (never "[object Object]")  1053ms
+ ✓ |ui| src/app/chat/composer/text-utils.test.ts (13 tests) 10ms
+ ✓ |ui| src/lib/session-link-title.test.ts (10 tests) 9ms
+ ✓ |ui| src/hermes-parity.test.ts (11 tests) 13ms
+ ✓ |ui| src/app/session/hooks/use-message-stream/moa-progress-event.test.tsx (4 tests) 77ms
+ ✓ |ui| src/app/session/hooks/use-message-stream/clarify-hydration.test.tsx (3 tests) 59ms
+ ✓ |ui| src/store/clarify.test.ts (13 tests) 7ms
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+ ✓ |ui| src/app/skills/index.test.tsx (4 tests) 9161ms
+     ✓ renders a switch for each toolset and toggles it off  8869ms
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+ ✓ |ui| src/lib/commit-changelog.test.ts (11 tests) 9ms
+ ✓ |ui| src/app/shell/statusbar-visibility.test.tsx (5 tests) 425ms
+ ✓ |ui| src/app/chat/session-drag.test.ts (3 tests) 57ms
+ ✓ |ui| src/app/right-sidebar/terminal/revive-buffer.test.ts (17 tests) 8ms
+ ✓ |ui| src/app/chat/composer/ime-composition-dom-repro.test.tsx (2 tests) 39ms
+ ✓ |ui| src/app/session/hooks/use-message-stream/terminal-error-frame.test.tsx (3 tests) 55ms
+ ✓ |ui| src/app/shell/model-edit-submenu.test.tsx (3 tests) 457ms
+ ✓ |ui| src/components/assistant-ui/thread/block-direction.test.tsx (4 tests) 286ms
+ ✓ |ui| src/lib/session-refs.test.ts (18 tests) 12ms
+ ✓ |ui| src/app/chat/composer/model-pill.test.tsx (5 tests) 96ms
+ ✓ |ui| src/lib/ansi.test.ts (14 tests) 10ms
+ ✓ |ui| src/lib/model-options.test.ts (12 tests) 10ms
+ ✓ |ui| src/lib/markdown-blocks.test.ts (6 tests) 8789ms
+     ✓ matches a full lex at every random streaming cut (property)  337ms
+     ✓ matches a full lex at every char-level streaming cut over noisy markdown (property fuzz)  8417ms
+stderr | src/i18n/plugin-i18n.test.tsx > usePluginI18n > re-renders on a locale switch
+An update to Probe inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/i18n/plugin-i18n.test.tsx > usePluginI18n > picks up a bundle registered after mount
+An update to Probe inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ ✓ |ui| src/i18n/plugin-i18n.test.tsx (6 tests) 153ms
+ ✓ |ui| src/app/chat/composer/composer-text-guard.test.tsx (2 tests) 21ms
+ ✓ |ui| src/components/assistant-ui/thread-remount.test.tsx (1 test) 200ms
+ ✓ |ui| src/lib/generated-images.test.ts (8 tests) 8ms
+ ✓ |ui| src/app/settings/billing/use-step-up.test.tsx (1 test) 41ms
+ ✓ |ui| src/components/pet/roam-behavior.test.ts (11 tests) 144ms
+ ✓ |ui| src/app/session/hooks/use-message-stream/moa-reference-event.test.tsx (3 tests) 63ms
+ ✓ |ui| src/lib/runtime-readiness.test.ts (6 tests) 6ms
+ ✓ |ui| src/lib/gateway-events.test.ts (6 tests) 6ms
+ ✓ |ui| src/lib/desktop-git.test.ts (5 tests) 9ms
+ ✓ |ui| src/app/chat/session-view.test.ts (4 tests) 7ms
+ ✓ |ui| src/app/settings/memory/provider-config-modal.test.tsx (3 tests) 1104ms
+     ✓ renders every field grouped, including inline ones, with kind-specific controls  955ms
+ ✓ |ui| src/app/session/hooks/use-message-stream/delta-flush.test.tsx (2 tests) 27ms
+ ✓ |ui| src/app/cron/cron-job-model.test.ts (10 tests) 7ms
+ ✓ |ui| src/app/chat/composer/url-refs.test.ts (11 tests) 21ms
+ ✓ |ui| src/components/boot-failure-overlay.test.tsx (3 tests) 367ms
+ ✓ |ui| src/lib/keybinds/combo.test.ts (8 tests) 11ms
+ ✓ |ui| src/components/assistant-ui/directive-text.test.ts (11 tests) 9ms
+ ✓ |ui| src/components/assistant-ui/thread/list.test.ts (12 tests) 8ms
+ ✓ |ui| src/app/shell/approval-mode-menu.test.tsx (3 tests) 513ms
+     ✓ uses the shared statusbar menu trigger without a nested bespoke button  308ms
+ ✓ |ui| src/app/contrib/hooks/use-session-tile-delegate.test.ts (2 tests) 21ms
+ ✓ |ui| src/lib/model-status-label.test.ts (11 tests) 9ms
+ ✓ |ui| src/app/right-sidebar/files/ipc.test.ts (3 tests) 9ms
+ ✓ |ui| src/app/session/hooks/use-message-stream/stream-flush.test.tsx (1 test) 24ms
+stderr | src/components/ui/dialog-dismiss-repro.test.tsx > REPRO: dismissing an open Select inside a Dialog > closes only the select, not the dialog, when the press lands on the overlay
+An update to ForwardRef(PopperContent) inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ForwardRef(SelectContentImpl) inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to ForwardRef(SelectItem) inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ ✓ |ui| src/app/session/workspace-session-target.test.ts (5 tests) 8ms
+ ✓ |ui| src/components/ui/dialog-dismiss-repro.test.tsx (2 tests) 420ms
+     ✓ closes only the select, not the dialog, when the press lands on the overlay  348ms
+ ✓ |ui| src/app/session/hooks/use-message-stream/approval-mode-event.test.tsx (3 tests) 59ms
+ ✓ |ui| src/lib/tool-result-summary.test.ts (7 tests) 8ms
+ ✓ |ui| src/store/todos.test.ts (9 tests) 11ms
+ ✓ |ui| src/app/contrib/hooks/live-status-spinner.test.ts (4 tests) 11ms
+ ✓ |ui| src/app/settings/billing/types.test.ts (1 test) 4ms
+ ✓ |ui| src/app/session/hooks/use-message-stream/composer-model-event.test.tsx (2 tests) 47ms
+ ✓ |ui| src/app/chat/composer/composer-utils.test.ts (10 tests) 8ms
+ ✓ |ui| src/lib/session-branch-tree.test.ts (5 tests) 6ms
+ ✓ |ui| src/app/session/hooks/use-message-stream/todo-cleanup.test.tsx (3 tests) 51ms
+ ✓ |ui| src/app/shell/context-usage-panel.test.tsx (2 tests) 81ms
+ ✓ |ui| src/components/ui/pane-tab.test.tsx (6 tests) 65ms
+ ✓ |ui| src/app/contrib/hooks/live-status-reap.test.ts (4 tests) 9ms
+ ✓ |ui| src/app/session/hooks/use-message-stream/compaction-event.test.tsx (5 tests) 77ms
+ ✓ |ui| src/app/settings/voice-provider-fields.test.ts (7 tests) 9ms
+ ✓ |ui| src/app/artifacts/index.test.ts (3 tests) 11ms
+ ✓ |ui| src/lib/todos.test.ts (6 tests) 8ms
+ ✓ |ui| src/components/pane-shell/tree/focus-tab-hijack.test.ts (2 tests) 309ms
+ ✓ |ui| src/components/assistant-ui/thread/content.test.ts (13 tests) 8ms
+ ✓ |ui| src/components/assistant-ui/thread/assistant-message.test.tsx (2 tests) 320ms
+ ✓ |ui| src/app/cron/blueprints.test.ts (6 tests) 6ms
+ ✓ |ui| src/app/chat/sidebar/project-dialog.test.tsx (2 tests) 376ms
+ ✓ |ui| src/lib/session-search.test.ts (6 tests) 6ms
+ ✓ |ui| src/app/session/hooks/use-session-actions/resume-structural-parts.test.ts (2 tests) 8ms
+ ✓ |ui| src/i18n/runtime.test.ts (7 tests) 6ms
+ ✓ |ui| src/components/chat/expandable-block.test.tsx (2 tests) 182ms
+ ✓ |ui| src/components/ui/__tests__/no-native-title.test.ts (1 test) 36ms
+ ✓ |ui| src/components/assistant-ui/thread/timeline-data.test.ts (9 tests) 7ms
+ ✓ |ui| src/app/settings/billing/simulated-api.test.ts (4 tests) 1575ms
+     ✓ progresses the pending state through the whole loop: schedule sets it, resume clears it  638ms
+     ✓ previews a chargeless scheduled change for the chosen tier  311ms
+     ✓ undoes a scheduled cancellation too  312ms
+     ✓ does not mutate the shared fixture object  312ms
+ ✓ |ui| src/app/settings/billing/errors.test.ts (4 tests) 9ms
+ ✓ |ui| src/components/assistant-ui/markdown-text.artifacts.test.tsx (3 tests) 174ms
+ ✓ |ui| src/components/ui/input.test.tsx (6 tests) 221ms
+ ✓ |ui| src/lib/mcp-tool-filter.test.ts (12 tests) 7ms
+ ✓ |ui| src/hermes-cron-scope.test.ts (3 tests) 5ms
+ ✓ |ui| src/app/chat/sidebar/projects/workspace-header.test.tsx (5 tests) 232ms
+ ✓ |ui| src/app/session/hooks/use-cwd-actions.test.tsx (1 test) 28ms
+ ✓ |ui| src/app/chat/surface-vars.test.ts (4 tests) 14ms
+ ✓ |ui| src/app/gateway/hooks/gateway-hmr-survivor.test.ts (7 tests) 6ms
+ ✓ |ui| src/app/session/hooks/use-message-stream/utils.test.ts (6 tests) 8ms
+ ✓ |ui| src/themes/user-themes.test.ts (9 tests) 13ms
+ ✓ |ui| src/themes/context.test.tsx (3 tests) 55ms
+ ✓ |ui| src/themes/vscode.test.ts (12 tests) 11ms
+ ✓ |ui| src/app/chat/right-rail/preview-pane.test.tsx (2 tests) 61ms
+ ✓ |ui| src/themes/install.test.ts (7 tests) 9ms
+ ✓ |ui| src/store/composer.test.ts (10 tests) 9ms
+ ✓ |ui| src/app/chat/composer/attachments.test.tsx (4 tests) 154ms
+ ✓ |ui| src/themes/backend-sync.test.ts (11 tests) 9ms
+ ✓ |ui| src/app/chat/composer/status-stack/goal-indicator.test.tsx (5 tests) 82ms
+ ✓ |ui| src/store/approval-mode.test.ts (5 tests) 10ms
+ ✓ |ui| src/components/prompt-overlays.test.tsx (2 tests) 363ms
+     ✓ dismisses a stale sudo dialog when the gateway no longer has the password request  309ms
+ ✓ |ui| src/store/session-color.test.ts (8 tests) 9ms
+ ✓ |ui| src/store/billing-block.test.ts (8 tests) 7ms
+ ✓ |ui| src/store/pet.test.ts (8 tests) 7ms
+ ✓ |ui| src/store/session-pin-sync.test.ts (5 tests) 8ms
+ ✓ |ui| src/store/session-switcher.test.ts (7 tests) 9ms
+ ✓ |ui| src/store/goals.test.ts (5 tests) 10ms
+ ✓ |ui| src/store/session-states.test.ts (10 tests) 7ms
+ ✓ |ui| src/store/sidebar-collapse-persistence.test.ts (2 tests) 385ms
+     ✓ restores a hidden sidebar after a reload  348ms
+ ✓ |ui| src/lib/json-rpc-gateway-url-guard.test.ts (5 tests) 30ms
+ ✓ |ui| src/lib/mcp-dashboard-oauth.test.ts (2 tests) 6ms
+ ✓ |ui| src/app/chat/sidebar/order.test.ts (10 tests) 7ms
+ ✓ |ui| src/store/background-delegation.test.ts (6 tests) 6ms
+ ✓ |ui| src/app/contrib/hooks/use-background-sync.test.ts (3 tests) 9ms
+ ✓ |ui| src/app/chat/scroll-to-bottom-button.test.tsx (5 tests) 197ms
+ ✓ |ui| src/app/chat/session-tile-row.test.ts (5 tests) 7ms
+ ✓ |ui| src/components/assistant-ui/message-render-boundary.test.tsx (4 tests) 50ms
+ ✓ |ui| src/app/messaging/index.test.tsx (2 tests) 8142ms
+     ✓ hides the setup-guide button for a plugin platform with no docs URL  8082ms
+ ✓ |ui| src/app/chat/sidebar/projects/overview-row.test.tsx (3 tests) 226ms
+ ✓ |ui| src/store/model-presets.test.ts (5 tests) 7ms
+ ✓ |ui| src/app/chat/close-tab.test.ts (2 tests) 6ms
+ ✓ |ui| src/app/chat/composer/controls.test.tsx (3 tests) 351ms
+ ✓ |ui| src/app/settings/gateway-settings.test.tsx (1 test) 1103ms
+     ✓ labels local mode as default inheritance for a named profile  1100ms
+ ✓ |ui| src/themes/skin.test.ts (6 tests) 8ms
+ ✓ |ui| src/i18n/languages.test.ts (4 tests) 5ms
+ ✓ |ui| src/app/chat/sidebar/projects/model.test.ts (5 tests) 5ms
+ ✓ |ui| src/lib/provider-setup-errors.test.ts (5 tests) 6ms
+ ✓ |ui| src/lib/reasoning-effort.test.ts (5 tests) 7ms
+stderr | src/app/chat/sidebar/load-more-row.test.tsx > SidebarLoadMoreRow > still fires onClick (Tip does not intercept the trigger interaction)
+An update to Tooltip inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ ✓ |ui| src/app/chat/sidebar/load-more-row.test.tsx (4 tests) 260ms
+ ✓ |ui| src/webhooks-rest.test.ts (5 tests) 9ms
+ ✓ |ui| src/components/assistant-ui/tool/fallback.test.ts (8 tests) 6ms
+ ✓ |ui| src/store/gateway-switch.test.ts (1 test) 6ms
+ ✓ |ui| src/hermes-profile-scope.test.ts (3 tests) 6ms
+ ✓ |ui| src/components/assistant-ui/markdown-text.session.test.tsx (3 tests) 146ms
+ ✓ |ui| src/components/pet/roam-geometry.test.ts (6 tests) 6ms
+ ✓ |ui| src/app/chat/composer/contrib.test.ts (5 tests) 7ms
+ ✓ |ui| src/lib/session-ids.test.ts (5 tests) 5ms
+ ✓ |ui| src/app/settings/voice-field-visible.test.ts (5 tests) 5ms
+ ✓ |ui| src/lib/session-signatures.test.ts (7 tests) 7ms
+ ✓ |ui| src/app/right-sidebar/index.test.tsx (2 tests) 248ms
+ ✓ |ui| src/lib/desktop-remote-auth.test.ts (4 tests) 6ms
+ ✓ |ui| src/app/chat/profile-tag.test.tsx (3 tests) 251ms
+ ✓ |ui| src/lib/composer-input-sanitize.test.ts (8 tests) 6ms
+ ✓ |ui| src/app/chat/composer/hooks/use-composer-url-dialog.test.tsx (3 tests) 27ms
+ ✓ |ui| src/lib/query-client.test.ts (2 tests) 9ms
+ ✓ |ui| src/lib/escape-layers.test.ts (4 tests) 5ms
+ ✓ |ui| src/components/language-switcher.test.tsx (1 test) 362ms
+     ✓ persists language changes through display.language config  358ms
+ ✓ |ui| src/components/assistant-ui/thread/status.test.tsx (1 test) 55ms
+ ✓ |ui| src/lib/update-copy.test.ts (4 tests) 5ms
+ ✓ |ui| src/themes/presets.test.ts (11 tests) 6ms
+ ✓ |ui| src/store/tool-diffs.test.ts (4 tests) 6ms
+ ✓ |ui| src/store/compaction.test.ts (4 tests) 6ms
+ ✓ |ui| src/components/ui/tooltip.test.tsx (3 tests) 6ms
+ ✓ |ui| src/store/pane-focus.test.ts (3 tests) 6ms
+ ✓ |ui| src/themes/profile-theme.test.ts (8 tests) 7ms
+ ✓ |ui| src/app/right-sidebar/review/tree-data.test.ts (4 tests) 16ms
+ ✓ |ui| src/app/chat/composer/trigger-popover.test.tsx (3 tests) 43ms
+ ✓ |ui| src/store/preview-status.test.ts (3 tests) 7ms
+stderr | src/app/gateway/hooks/use-gateway-request.test.ts > useGatewayRequest > exposes the live gateway on the first render, before effects run
+An update to TestComponent inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/app/gateway/hooks/use-gateway-request.test.ts > useGatewayRequest > tracks the gateway when the active socket changes
+An update to TestComponent inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ ✓ |ui| src/app/gateway/hooks/use-gateway-request.test.ts (2 tests) 21ms
+ ✓ |ui| src/components/assistant-ui/thread/timestamp.test.ts (4 tests) 5ms
+ ✓ |ui| src/app/chat/composer/focus.test.ts (2 tests) 21ms
+ ✓ |ui| src/components/pane-shell/pane-visibility.test.ts (3 tests) 27ms
+ ✓ |ui| src/lib/preview-targets.test.ts (4 tests) 11ms
+ ✓ |ui| src/components/assistant-ui/thread/timeline.test.ts (3 tests) 30ms
+ ✓ |ui| src/store/working-ids-stored-id.test.ts (2 tests) 6ms
+ ✓ |ui| src/components/assistant-ui/embeds/alert.test.tsx (4 tests) 7ms
+ ✓ |ui| src/components/assistant-ui/markdown-text.media.test.tsx (1 test) 198ms
+ ✓ |ui| src/lib/gateway-rpc.test.ts (4 tests) 6ms
+ ✓ |ui| src/components/assistant-ui/session-ref-open.test.tsx (2 tests) 238ms
+ ✓ |ui| src/app/right-sidebar/terminal/rail.test.tsx (1 test) 267ms
+ ✓ |ui| src/app/routes.test.ts (5 tests) 5ms
+ ✓ |ui| src/app/settings/ssh-host-selection.test.ts (3 tests) 6ms
+ ✓ |ui| src/components/chat/shiki-highlighter.test.ts (6 tests) 8ms
+ ✓ |ui| src/app/chat/thread-loading.test.ts (3 tests) 4ms
+ ✓ |ui| src/app/chat/sidebar/session-row-state.test.ts (3 tests) 8ms
+ ✓ |ui| src/components/chat/activity-timer.test.tsx (1 test) 36ms
+ ✓ |ui| src/components/idle-mount.test.tsx (2 tests) 36ms
+ ✓ |ui| src/components/ui/row-button.test.tsx (3 tests) 42ms
+ ✓ |ui| src/components/pane-shell/tree/renderer/lone-header.test.ts (4 tests) 4ms
+ ✓ |ui| src/store/keep-awake.test.ts (1 test) 5ms
+ ✓ |ui| src/app/settings/with-active.test.ts (5 tests) 7ms
+ ✓ |ui| src/store/notifications.test.ts (2 tests) 5ms
+ ✓ |ui| src/lib/sanitize.test.ts (5 tests) 5ms
+ ✓ |ui| src/app/shell/titlebar.test.ts (4 tests) 4ms
+ ✓ |ui| src/app/settings/billing/tier-art.test.ts (3 tests) 5ms
+ ✓ |ui| src/components/ui/copy-button.test.tsx (1 test) 146ms
+ ✓ |ui| src/app/overlays/panel.test.tsx (1 test) 214ms
+ ✓ |ui| src/lib/storage.test.ts (2 tests) 3ms
+ ✓ |ui| src/app/chat/composer/status-stack/preview-row.test.tsx (1 test) 142ms
+ ✓ |ui| src/lib/markdown-code.test.ts (2 tests) 3ms
+ ✓ |ui| src/lib/pool.test.ts (2 tests) 105ms
+ ✓ |ui| src/lib/json-format.test.ts (3 tests) 3ms
+ ✓ |ui| src/app/starmap/share-controls.test.tsx (1 test) 148ms
+ ✓ |ui| src/app/settings/gateway-settings.test.ts (3 tests) 3ms
+ ✓ |ui| src/lib/desktop-toolsets.test.ts (2 tests) 3ms
+ ✓ |ui| src/app/session/hooks/use-prompt-actions/rewind.test.ts (2 tests) 3ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |electron| scripts/before-pack.test.mjs [ scripts/before-pack.test.mjs ]
+ FAIL  |electron| scripts/stage-native-deps.test.mjs [ scripts/stage-native-deps.test.mjs ]
+SyntaxError: Invalid or unexpected token
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/23]⎯
+
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 21 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |electron| electron/desktop-installation.test.ts > loadOrCreateInstallationId persists and reuses one installation ID
+AssertionError: Expected values to be strictly equal:
+
+438 !== 384
+
+
+- Expected
++ Received
+
+- 384
++ 438
+
+ ❯ electron/desktop-installation.test.ts:41:12
+     39|       ID_A
+     40|     )
+     41|     assert.equal(fs.statSync(filePath).mode & 0o777, 0o600)
+       |            ^
+     42|   }))
+     43|
+ ❯ withTempDir electron/desktop-installation.test.ts:17:12
+ ❯ electron/desktop-installation.test.ts:31:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/23]⎯
+
+ FAIL  |electron| electron/ssh-config.test.ts > collectSshConfigHosts follows Include directives (read-only)
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+-   'deep',
+-   'home-abs',
+    'main',
+-   'work-box'
+  ]
+
+
+- Expected
++ Received
+
+  [
+-   "deep",
+-   "home-abs",
+    "main",
+-   "work-box",
+  ]
+
+ ❯ electron/ssh-config.test.ts:42:10
+     40|   })
+     41|
+     42|   assert.deepEqual(hosts.sort(), ['deep', 'home-abs', 'main', 'work-bo…
+       |          ^
+     43| })
+     44|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/23]⎯
+
+ FAIL  |electron| electron/ssh-config.test.ts > collectSshConfigHosts does not loop on a self-include cycle
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    'a',
+-   'b'
+  ]
+
+
+- Expected
++ Received
+
+  [
+    "a",
+-   "b",
+  ]
+
+ ❯ electron/ssh-config.test.ts:60:10
+     58|   })
+     59|
+     60|   assert.deepEqual(hosts.sort(), ['a', 'b'])
+       |          ^
+     61| })
+     62|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/23]⎯
+
+ FAIL  |electron| electron/ssh-config.test.ts > collectSshConfigHosts expands globbed includes via injected globSync
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+-   'home',
+    'root',
+-   'work'
+  ]
+
+
+- Expected
++ Received
+
+  [
+-   "home",
+    "root",
+-   "work",
+  ]
+
+ ❯ electron/ssh-config.test.ts:77:10
+     75|   })
+     76|
+     77|   assert.deepEqual(hosts.sort(), ['home', 'root', 'work'].sort())
+       |          ^
+     78| })
+     79|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/23]⎯
+
+ FAIL  |electron| electron/ssh-connection.test.ts > controlSocketPath is stable, short, and host-distinct
+AssertionError: The input did not match the regular expression /\/[0-9a-f]{16}\.sock$/. Input:
+
+'\\tmp\\d\\7d8fab2028b2913f.sock'
+
+
+- Expected:
+/\/[0-9a-f]{16}\.sock$/
+
++ Received:
+"\\tmp\\d\\7d8fab2028b2913f.sock"
+
+ ❯ electron/ssh-connection.test.ts:66:10
+     64|   assert.notEqual(a, b, 'different host → different socket')
+     65|   // 16 hex chars + .sock keeps the basename short for sun_path 104-by…
+     66|   assert.match(a, /\/[0-9a-f]{16}\.sock$/)
+       |          ^
+     67| })
+     68|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/23]⎯
+
+ FAIL  |electron| electron/ssh-connection.test.ts > open() establishes the master when not already alive
+AssertionError: probes liveness first, then opens the master
++ actual - expected
+
+  [
++   'other'
+-   'check',
+-   'master'
+  ]
+
+
+- Expected
++ Received
+
+  [
+-   "check",
+-   "master",
++   "other",
+  ]
+
+ ❯ electron/ssh-connection.test.ts:260:10
+    258|   const conn = new SshConnection({ host: 'box', user: 'me' }, { spawnF…
+    259|   await conn.open()
+    260|   assert.deepEqual(ops, ['check', 'master'], 'probes liveness first, t…
+       |          ^
+    261| })
+    262|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/23]⎯
+
+ FAIL  |electron| electron/ssh-connection.test.ts > open() is a no-op when the master is already alive and execs verify
+AssertionError: alive master is exec-verified, then trusted without reopening
++ actual - expected
+
+  [
+-   'check',
+    'verify'
+  ]
+
+
+- Expected
++ Received
+
+  [
+-   "check",
+    "verify",
+  ]
+
+ ❯ electron/ssh-connection.test.ts:274:10
+    272|   const conn = new SshConnection({ host: 'box', user: 'me' }, { spawnF…
+    273|   await conn.open()
+    274|   assert.deepEqual(ops, ['check', 'verify'], 'alive master is exec-ver…
+       |          ^
+    275| })
+    276|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/23]⎯
+
+ FAIL  |electron| electron/ssh-connection.test.ts > open() evicts a wedged master (check passes, exec hangs) and dials fresh
+Error: SSH operation to me@box timed out. The connection may be half-open (e.g. after sleep); reconnecting.
+ ❯ SshConnection._fail electron/ssh-connection.ts:520:24
+    518|   _fail(stderrOrErr, fallbackKind = SSH_ERROR.UNKNOWN) {
+    519|     if (stderrOrErr && stderrOrErr.kind === SSH_ERROR.TIMEOUT) {
+    520|       const err: any = new Error(sshErrorMessage(SSH_ERROR.TIMEOUT, th…
+       |                        ^
+    521|       err.kind = SSH_ERROR.TIMEOUT
+    522|
+ ❯ SshConnection.open electron/ssh-connection.ts:563:20
+ ❯ electron/ssh-connection.test.ts:309:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/23]⎯
+
+ FAIL  |electron| electron/ssh-connection.test.ts > close() removes the control socket when -O exit fails
+Error: SSH error connecting to me@box: mux: master gone
+ ❯ SshConnection._fail electron/ssh-connection.ts:528:22
+    526|     const stderr = typeof stderrOrErr === 'string' ? stderrOrErr : std…
+    527|     const kind = stderr ? classifySshError(stderr) : fallbackKind
+    528|     const err: any = new Error(sshErrorMessage(kind, this, stderr))
+       |                      ^
+    529|     err.kind = kind
+    530|
+ ❯ SshConnection.open electron/ssh-connection.ts:567:20
+ ❯ electron/ssh-connection.test.ts:334:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/23]⎯
+
+ FAIL  |electron| electron/ssh-connection.test.ts > open() creates the control-socket directory if it does not exist
+AssertionError: open() created the control-socket directory before spawning ssh
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ electron/ssh-connection.test.ts:349:12
+    347|   try {
+    348|     await conn.open()
+    349|     assert.ok(fs.existsSync(dir), 'open() created the control-socket d…
+       |            ^
+    350|   } finally {
+    351|     try {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/23]⎯
+
+ FAIL  |electron| electron/ssh-connection.test.ts > forward() issues -O forward with a loopback-bound -L spec
+Error: SSH error connecting to me@box: SSH tunnel termination was refused.
+ ❯ SshConnection._fail electron/ssh-connection.ts:528:22
+    526|     const stderr = typeof stderrOrErr === 'string' ? stderrOrErr : std…
+    527|     const kind = stderr ? classifySshError(stderr) : fallbackKind
+    528|     const err: any = new Error(sshErrorMessage(kind, this, stderr))
+       |                      ^
+    529|     err.kind = kind
+    530|
+ ❯ SshConnection.forward electron/ssh-connection.ts:778:22
+ ❯ electron/ssh-connection.test.ts:413:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/23]⎯
+
+ FAIL  |electron| electron/ssh-connection.test.ts > lifecycle logging passes through redaction
+AssertionError: The expression evaluated to a falsy value:
+
+  ok(logs.some((l) => l.includes("[ssh]")))
+
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ electron/ssh-connection.test.ts:436:10
+    434|   }
+    435|
+    436|   assert.ok(logs.some(l => l.includes('[ssh]')))
+       |          ^
+    437| })
+    438|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/23]⎯
+
+ FAIL  |electron| electron/ssh-connection.test.ts > open() rejects a control-dir that is a symlink
+Error: EPERM: operation not permitted, symlink 'C:\Users\<user>\AppData\Local\Temp\ssh-test-mzGeTB\real' -> 'C:\Users\<user>\AppData\Local\Temp\ssh-test-mzGeTB\link'
+ ❯ electron/ssh-connection.test.ts:725:6
+    723|   const link = path.join(tmp, 'link')
+    724|   fs.mkdirSync(real, { mode: 0o700 })
+    725|   fs.symlinkSync(real, link)
+       |      ^
+    726|   const spawnFn = scriptedSpawn(args => (args.includes('check') ? { co…
+    727|   const conn = new SshConnection({ host: 'box', user: 'me' }, { spawnF…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/23]⎯
+
+ FAIL  |electron| electron/ssh-connection.test.ts > closing one scope addresses only that scope control master
+AssertionError: Expected "actual" to be strictly unequal to: ''
+ ❯ electron/ssh-connection.test.ts:825:10
+    823|   second._opened = true
+    824|   await first.close()
+    825|   assert.notEqual(first.controlPath, second.controlPath)
+       |          ^
+    826|   assert.ok(firstSpawn.calls[0].includes(`ControlPath=${first.controlP…
+    827|   assert.ok(!firstSpawn.calls[0].includes(`ControlPath=${second.contro…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/23]⎯
+
+ FAIL  |electron| electron/ssh-connection.test.ts > failed ControlMaster close disowns the master instead of retrying it
+AssertionError: Expected values to be strictly equal:
+
+0 !== 1
+
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ electron/ssh-connection.test.ts:841:10
+    839|   await conn.close()
+    840|   assert.equal(conn._opened, false)
+    841|   assert.equal(spawnFn.calls.length, 1)
+       |          ^
+    842| })
+    843|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/23]⎯
+
+ FAIL  |electron| electron/update-relaunch.test.ts > resolveUnpackedRelease returns the dir for a binary UNDER release/<plat>-unpacked
+AssertionError: Expected values to be strictly equal:
++ actual - expected
+
++ null
+- '\\home\\u\\.hermes\\hermes-agent\\apps\\desktop\\release\\linux-unpacked'
+
+
+- Expected:
+"\\home\\u\\.hermes\\hermes-agent\\apps\\desktop\\release\\linux-unpacked"
+
++ Received:
+null
+
+ ❯ electron/update-relaunch.test.ts:54:10
+     52| test('resolveUnpackedRelease returns the dir for a binary UNDER releas…
+     53|   const exec = path.join(UNPACKED, 'hermes')
+     54|   assert.equal(resolveUnpackedRelease(exec, ROOT, 'linux'), UNPACKED)
+       |          ^
+     55|   // The unpacked dir itself also counts.
+     56|   assert.equal(resolveUnpackedRelease(UNPACKED, ROOT, 'linux'), UNPACK…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/23]⎯
+
+ FAIL  |electron| electron/update-relaunch.test.ts > buildRelaunchScript embeds pid/exec/args/env/cwd and is valid bash
+Error: Command failed: bash -n C:\Users\<user>\AppData\Local\Temp\hermes-relaunch-test-1785232752751.sh
+/bin/bash: C:Users<user>AppDataLocalTemphermes-relaunch-test-1785232752751.sh: No such file or directory
+
+ ❯ electron/update-relaunch.test.ts:218:5
+    216|
+    217|   try {
+    218|     execFileSync('bash', ['-n', tmp], { stdio: 'pipe' })
+       |     ^
+    219|   } finally {
+    220|     fs.rmSync(tmp, { force: true })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/23]⎯
+
+ FAIL  |electron| electron/update-relaunch.test.ts > buildRelaunchScript with no args/env still lints clean
+Error: Command failed: bash -n C:\Users\<user>\AppData\Local\Temp\hermes-relaunch-test2-1785232759514.sh
+/bin/bash: C:Users<user>AppDataLocalTemphermes-relaunch-test2-1785232759514.sh: No such file or directory
+
+ ❯ electron/update-relaunch.test.ts:237:5
+    235|
+    236|   try {
+    237|     execFileSync('bash', ['-n', tmp], { stdio: 'pipe' })
+       |     ^
+    238|   } finally {
+    239|     fs.rmSync(tmp, { force: true })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/23]⎯
+
+ FAIL  |electron| electron/windows-hermes-path.test.ts > getVenvSitePackagesEntries: reads pyvenv.cfg version on POSIX and resolves lib/pythonX.Y/site-packages
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
++ []
+- [
+-   '/venv/lib/python3.12/site-packages'
+- ]
+
+
+- Expected
++ Received
+
+- [
+-   "/venv/lib/python3.12/site-packages",
+- ]
++ []
+
+ ❯ electron/windows-hermes-path.test.ts:177:10
+    175|   })
+    176|
+    177|   assert.deepEqual(result, ['/venv/lib/python3.12/site-packages'])
+       |          ^
+    178| })
+    179|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/23]⎯
+
+ FAIL  |ui| src/app/settings/billing/index.test.tsx > BillingSettings > rejects auto-refill amounts outside the billing bounds
+TestingLibraryElementError: Unable to find an element with the text: Threshold: minimum is $10.. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+<body>
+  <div>
+    <section
+      class="min-h-0 overflow-hidden"
+    >
+      <div
+        class="h-full min-h-0 overflow-y-auto pb-20 px-[clamp(1.25rem,4vw,4rem)]"
+      >
+        <div
+          class="mb-2.5 flex items-center justify-between gap-3 pt-2 text-[length:var(--conversation-text-font-size)] font-medium"
+        >
+          <div
+            class="flex min-w-0 items-center gap-2"
+          >
+            <svg
+              class="tabler-icon tabler-icon-chart-bar size-4 shrink-0 text-muted-foreground"
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M3 13a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -6"
+              />
+              <path
+                d="M15 9a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v10a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -10"
+              />
+              <path
+                d="M9 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -14"
+              />
+              <path
+                d="M4 20h14"
+              />
+            </svg>
+            <span>
+              Billing
+            </span>
+          </div>
+          <div
+            class="flex items-center gap-1.5 text-(--ui-text-tertiary)"
+          >
+            <svg
+              class="tabler-icon tabler-icon-tool size-3.5 shrink-0"
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M7 10h3v-3l-3.5 -3.5a6 6 0 0 1 8 8l6 6a2 2 0 0 1 -3 3l-6 -6a6 6 0 0 1 -8 -8l3.5 3.5"
+              />
+            </svg>
+            <span
+              class="text-xs font-normal"
+            >
+              preview
+            </span>
+            <button
+              aria-autocomplete="none"
+              aria-expanded="false"
+              aria-label="Billing preview fixture (dev only)"
+              class="desktop-input-chrome min-w-0 rounded-[2.5px] border outline-none placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 py-1 flex items-center justify-between gap-2 whitespace-nowrap data-placeholder:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 h-7 w-36 border-dashed border-(--ui-stroke-secondary) bg-transparent px-2 text-xs font-normal text-(--ui-text-tertiary) shadow-none hover:bg-(--ui-bg-tertiary) focus-visible:ring-0 focus-visible:ring-offset-0 data-[state=open]:bg-(--ui-bg-tertiary)"
+              data-slot="select-trigger"
+              data-state="closed"
+              dir="ltr"
+              role="combobox"
+              type="button"
+            >
+              <span
+                data-slot="select-value"
+                style="pointer-events: none;"
+              >
+                live
+              </span>
+              <i
+                aria-hidden="true"
+                class="codicon codicon-chevron-down opacity-60"
+                style="font-size: 1rem;"
+              />
+            </button>
+          </div>
+        </div>
+        <div
+          class="@container mb-6"
+        >
+          <div
+            class="grid gap-3 @2xl:grid-cols-3"
+          >
+            <div
+              class="min-w-0"
+            >
+              <div
+                class="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)"
+              >
+                Balance
+              </div>
+              <div
+                class="mt-1 min-w-0 truncate text-lg font-semibold tabular-nums text-foreground"
+              >
+                $996.47
+              </div>
+            </div>
+            <div
+              class="min-w-0"
+            >
+              <div
+                class="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)"
+              >
+                Plan
+              </div>
+              <div
+                class="mt-1 min-w-0 truncate text-lg font-semibold tabular-nums text-foreground"
+              >
+                Ultra · $200/mo
+              </div>
+            </div>
+            <div
+              class="min-w-0"
+            >
+              <div
+                class="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)"
+              >
+                Auto-refill
+              </div>
+              <div
+                class="mt-1 min-w-0 truncate text-lg font-semibold tabular-nums text-(--ui-green)"
+              >
+                Enabled
+              </div>
+            </div>
+          </div>
+        </div>
+        <section
+          class[...
+ ❯ Object.getElementError ../../node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ ../../node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ ../../node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ ../../node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/app/settings/billing/index.test.tsx:171:19
+    169|     })
+    170|
+    171|     expect(screen.getByText('Threshold: minimum is $10.')).toBeTruthy()
+       |                   ^
+    172|     expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('…
+    173|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/23]⎯
+
+ FAIL  |ui| src/app/settings/billing/index.test.tsx > BillingSettings > disables buy controls while polling and renders the settled outcome
+TestingLibraryElementError: Unable to find an element with the text: $25 added. Balance is refreshing.. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+<body>
+  <div>
+    <section
+      class="min-h-0 overflow-hidden"
+    >
+      <div
+        class="h-full min-h-0 overflow-y-auto pb-20 px-[clamp(1.25rem,4vw,4rem)]"
+      >
+        <div
+          class="mb-2.5 flex items-center justify-between gap-3 pt-2 text-[length:var(--conversation-text-font-size)] font-medium"
+        >
+          <div
+            class="flex min-w-0 items-center gap-2"
+          >
+            <svg
+              class="tabler-icon tabler-icon-chart-bar size-4 shrink-0 text-muted-foreground"
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M3 13a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -6"
+              />
+              <path
+                d="M15 9a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v10a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -10"
+              />
+              <path
+                d="M9 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -14"
+              />
+              <path
+                d="M4 20h14"
+              />
+            </svg>
+            <span>
+              Billing
+            </span>
+          </div>
+          <div
+            class="flex items-center gap-1.5 text-(--ui-text-tertiary)"
+          >
+            <svg
+              class="tabler-icon tabler-icon-tool size-3.5 shrink-0"
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M7 10h3v-3l-3.5 -3.5a6 6 0 0 1 8 8l6 6a2 2 0 0 1 -3 3l-6 -6a6 6 0 0 1 -8 -8l3.5 3.5"
+              />
+            </svg>
+            <span
+              class="text-xs font-normal"
+            >
+              preview
+            </span>
+            <button
+              aria-autocomplete="none"
+              aria-expanded="false"
+              aria-label="Billing preview fixture (dev only)"
+              class="desktop-input-chrome min-w-0 rounded-[2.5px] border outline-none placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 py-1 flex items-center justify-between gap-2 whitespace-nowrap data-placeholder:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 h-7 w-36 border-dashed border-(--ui-stroke-secondary) bg-transparent px-2 text-xs font-normal text-(--ui-text-tertiary) shadow-none hover:bg-(--ui-bg-tertiary) focus-visible:ring-0 focus-visible:ring-offset-0 data-[state=open]:bg-(--ui-bg-tertiary)"
+              data-slot="select-trigger"
+              data-state="closed"
+              dir="ltr"
+              role="combobox"
+              type="button"
+            >
+              <span
+                data-slot="select-value"
+                style="pointer-events: none;"
+              >
+                live
+              </span>
+              <i
+                aria-hidden="true"
+                class="codicon codicon-chevron-down opacity-60"
+                style="font-size: 1rem;"
+              />
+            </button>
+          </div>
+        </div>
+        <div
+          class="@container mb-6"
+        >
+          <div
+            class="grid gap-3 @2xl:grid-cols-3"
+          >
+            <div
+              class="min-w-0"
+            >
+              <div
+                class="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)"
+              >
+                Balance
+              </div>
+              <div
+                class="mt-1 min-w-0 truncate text-lg font-semibold tabular-nums text-foreground"
+              >
+                $142.50
+              </div>
+            </div>
+            <div
+              class="min-w-0"
+            >
+              <div
+                class="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)"
+              >
+                Plan
+              </div>
+              <div
+                class="mt-1 min-w-0 truncate text-lg font-semibold tabular-nums text-foreground"
+              >
+                Pro · $20/mo
+              </div>
+            </div>
+            <div
+              class="min-w-0"
+            >
+              <div
+                class="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)"
+              >
+                Auto-refill
+              </div>
+              <div
+                class="mt-1 min-w-0 truncate text-lg font-semibold tabular-nums text-(--ui-text-tertiary)"
+              >
+                Off
+              </div>
+            </div>
+          </div>
+        </div>
+        <section
+          class...
+
+Ignored nodes: comments, script, style
+<html>
+  <head />
+  <body>
+    <div>
+      <section
+        class="min-h-0 overflow-hidden"
+      >
+        <div
+          class="h-full min-h-0 overflow-y-auto pb-20 px-[clamp(1.25rem,4vw,4rem)]"
+        >
+          <div
+            class="mb-2.5 flex items-center justify-between gap-3 pt-2 text-[length:var(--conversation-text-font-size)] font-medium"
+          >
+            <div
+              class="flex min-w-0 items-center gap-2"
+            >
+              <svg
+                class="tabler-icon tabler-icon-chart-bar size-4 shrink-0 text-muted-foreground"
+                fill="none"
+                height="24"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+                width="24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M3 13a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -6"
+                />
+                <path
+                  d="M15 9a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v10a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -10"
+                />
+                <path
+                  d="M9 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -14"
+                />
+                <path
+                  d="M4 20h14"
+                />
+              </svg>
+              <span>
+                Billing
+              </span>
+            </div>
+            <div
+              class="flex items-center gap-1.5 text-(--ui-text-tertiary)"
+            >
+              <svg
+                class="tabler-icon tabler-icon-tool size-3.5 shrink-0"
+                fill="none"
+                height="24"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+                width="24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M7 10h3v-3l-3.5 -3.5a6 6 0 0 1 8 8l6 6a2 2 0 0 1 -3 3l-6 -6a6 6 0 0 1 -8 -8l3.5 3.5"
+                />
+              </svg>
+              <span
+                class="text-xs font-normal"
+              >
+                preview
+              </span>
+              <button
+                aria-autocomplete="none"
+                aria-expanded="false"
+                aria-label="Billing preview fixture (dev only)"
+                class="desktop-input-chrome min-w-0 rounded-[2.5px] border outline-none placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 py-1 flex items-center justify-between gap-2 whitespace-nowrap data-placeholder:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 h-7 w-36 border-dashed border-(--ui-stroke-secondary) bg-transparent px-2 text-xs font-normal text-(--ui-text-tertiary) shadow-none hover:bg-(--ui-bg-tertiary) focus-visible:ring-0 focus-visible:ring-offset-0 data-[state=open]:bg-(--ui-bg-tertiary)"
+                data-slot="select-trigger"
+                data-state="closed"
+                dir="ltr"
+                role="combobox"
+                type="button"
+              >
+                <span
+                  data-slot="select-value"
+                  style="pointer-events: none;"
+                >
+                  live
+                </span>
+                <i
+                  aria-hidden="true"
+                  class="codicon codicon-chevron-down opacity-60"
+                  style="font-size: 1rem;"
+                />
+              </button>
+            </div>
+          </div>
+          <div
+            class="@container mb-6"
+          >
+            <div
+              class="grid gap-3 @2xl:grid-cols-3"
+            >
+              <div
+                class="min-w-0"
+              >
+                <div
+                  class="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)"
+                >
+                  Balance
+                </div>
+                <div
+                  class="mt-1 min-w-0 truncate text-lg font-semibold tabular-nums text-foreground"
+                >
+                  $142.50
+                </div>
+              </div>
+              <div
+                class="min-w-0"
+              >
+                <div
+                  class="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)"
+                >
+                  Plan
+                </div>
+                <div
+                  class="mt-1 min-w-0 truncate text-lg font-semibold tabular-nums text-foreground"
+                >
+                  Pro · $20/mo
+                </div>
+              </div>
+              <div
+                class="min-w-0"
+              >
+                <div
+                  class="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)"
+                >
+                  Auto-refill
+                </div>
+                <div
+                  class...
+ ❯ Proxy.waitForWrapper ../../node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ src/app/settings/billing/index.test.tsx:595:11
+    593|     })
+    594|
+    595|     await waitFor(() => expect(screen.getByText('$25 added. Balance is…
+       |           ^
+    596|   })
+    597|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/23]⎯
+
+
+ Test Files  8 failed | 363 passed | 1 skipped (372)
+      Tests  21 failed | 3332 passed | 3 skipped (3356)
+   Start at  10:59:12
+   Duration  53.63s (transform 17.40s, setup 91.02s, import 164.08s, tests 116.62s, environment 525.11s)
+
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path D:\Hermes-Local\source\hermes-agent\apps\desktop
+npm error workspace hermes-launcher@0.17.0
+npm error location D:\Hermes-Local\source\hermes-agent\apps\desktop
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c vitest run --reporter=default
