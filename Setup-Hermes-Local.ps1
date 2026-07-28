@@ -4,6 +4,7 @@ param(
     [switch] $SkipLlamaBuild,
     [switch] $SkipHermesDependencies,
     [switch] $SkipLauncherBuild,
+    [switch] $ReinstallDependencies,
     [switch] $NonInteractive
 )
 
@@ -63,7 +64,10 @@ function Initialize-SourceCheckout {
         [Parameter(Mandatory)]
         [string] $Commit,
         [Parameter(Mandatory)]
-        [string] $IntegrationBranch
+        [string] $IntegrationBranch,
+        [string] $IntegrationCommit,
+        [string] $IntegrationTree,
+        [string] $PatchDirectory
     )
 
     if (-not (Test-Path -LiteralPath (Join-Path $Path '.git'))) {
@@ -73,14 +77,15 @@ function Initialize-SourceCheckout {
         ) -LogComponent setup
     }
 
+    $currentCommit = (& git -C $Path rev-parse HEAD).Trim()
+    $currentTree = (& git -C $Path rev-parse 'HEAD^{tree}').Trim()
     $status = (& git -C $Path status --porcelain) -join [Environment]::NewLine
     if ($LASTEXITCODE -ne 0) {
         throw "Unable to inspect Git checkout: $Path"
     }
     if ($status) {
-        $currentCommit = (& git -C $Path rev-parse HEAD).Trim()
-        if ($currentCommit -ne $Commit) {
-            throw "Checkout has local changes and is not at the pinned commit: $Path"
+        if ($IntegrationTree -and $currentTree -ne $IntegrationTree) {
+            throw "Checkout has local changes outside the recorded Hermes Local integration tree: $Path"
         }
         Write-HermesLog -Component setup -Level WARN -Message "Preserving local changes in $Path."
         return
@@ -92,6 +97,20 @@ function Initialize-SourceCheckout {
             '-C', $Path, 'remote', 'add', 'upstream', $Repository
         ) -LogComponent setup
     }
+
+    if ($IntegrationTree -and $currentTree -eq $IntegrationTree) {
+        $branch = (& git -C $Path branch --show-current).Trim()
+        if ($branch -ne $IntegrationBranch) {
+            Invoke-HermesProcess -FilePath git -ArgumentList @(
+                '-C', $Path, 'switch', '-C', $IntegrationBranch
+            ) -LogComponent setup
+        }
+        Write-HermesLog -Component setup -Message (
+            "Preserved verified Hermes Local integration at $currentCommit (tree $currentTree)."
+        )
+        return
+    }
+
     Invoke-HermesProcess -FilePath git -ArgumentList @(
         '-C', $Path, 'fetch', 'upstream', $Branch, '--tags'
     ) -LogComponent setup
@@ -112,6 +131,40 @@ function Initialize-SourceCheckout {
     Invoke-HermesProcess -FilePath git -ArgumentList @(
         '-C', $Path, 'switch', $IntegrationBranch
     ) -LogComponent setup
+
+    if ($IntegrationTree) {
+        if (-not $PatchDirectory -or -not (Test-Path -LiteralPath $PatchDirectory -PathType Container)) {
+            throw 'The Hermes Local integration patch series is missing.'
+        }
+        $patches = @(
+            Get-ChildItem -LiteralPath $PatchDirectory -Filter '*.patch' -File |
+                Sort-Object Name
+        )
+        if ($patches.Count -eq 0) {
+            throw 'The Hermes Local integration patch series is empty.'
+        }
+
+        try {
+            Invoke-HermesProcess -FilePath git -ArgumentList @(
+                '-C', $Path, 'am', '--committer-date-is-author-date',
+                @($patches | ForEach-Object FullName)
+            ) -LogComponent setup
+        } catch {
+            & git -C $Path am --abort 2>$null
+            throw
+        }
+
+        $appliedCommit = (& git -C $Path rev-parse HEAD).Trim()
+        $appliedTree = (& git -C $Path rev-parse 'HEAD^{tree}').Trim()
+        if ($appliedTree -ne $IntegrationTree) {
+            throw "Hermes Local patch series produced tree $appliedTree; expected $IntegrationTree."
+        }
+        if ($IntegrationCommit -and $appliedCommit -ne $IntegrationCommit) {
+            Write-HermesLog -Component setup -Level WARN -Message (
+                "Patch tree is exact, but local Git committer identity produced commit $appliedCommit instead of $IntegrationCommit."
+            )
+        }
+    }
 }
 
 function Build-LlamaCpp {
@@ -182,23 +235,49 @@ function Install-HermesDependencies {
         [Parameter(Mandatory)]
         [string] $Source,
         [Parameter(Mandatory)]
-        [string] $Runtime
+        [string] $Runtime,
+        [switch] $Reinstall
     )
+
+    $managedRoot = Resolve-HermesPath 'runtimes\python\managed'
+    Invoke-HermesProcess -FilePath uv -ArgumentList @(
+        'python', 'install', '3.13',
+        '--install-dir', $managedRoot,
+        '--no-registry',
+        '--compile-bytecode'
+    ) -LogComponent setup
+
+    $managedPython = Get-ChildItem -LiteralPath $managedRoot -Recurse -Filter python.exe -File |
+        Where-Object FullName -Match 'cpython-3\.13\.' |
+        Sort-Object FullName -Descending |
+        Select-Object -First 1
+    if (-not $managedPython) {
+        throw 'The project-managed Python 3.13 interpreter was not installed.'
+    }
 
     $pythonExe = Join-Path $Runtime 'Scripts\python.exe'
     if (-not (Test-Path -LiteralPath $pythonExe)) {
         Invoke-HermesProcess -FilePath uv -ArgumentList @(
-            'venv', $Runtime, '--python', '3.11', '--seed'
+            'venv', $Runtime, '--python', $managedPython.FullName, '--seed'
         ) -LogComponent setup
+    } else {
+        $runtimeVersion = (& $pythonExe -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")').Trim()
+        if ($runtimeVersion -ne '3.13') {
+            throw "The existing Hermes runtime uses Python $runtimeVersion. Preserve it as a rollback copy and rebuild the venv with project-managed Python 3.13."
+        }
     }
 
-    Invoke-HermesProcess -FilePath uv -ArgumentList @(
+    $syncArguments = @(
         'sync', '--project', $Source, '--locked', '--active',
         '--extra', 'all',
         '--extra', 'dev',
         '--extra', 'voice',
         '--extra', 'edge-tts'
-    ) -Environment @{
+    )
+    if ($Reinstall) {
+        $syncArguments += '--reinstall'
+    }
+    Invoke-HermesProcess -FilePath uv -ArgumentList $syncArguments -Environment @{
         VIRTUAL_ENV = $Runtime
         UV_PROJECT_ENVIRONMENT = $Runtime
         UV_CACHE_DIR = (Resolve-HermesPath 'cache\uv')
@@ -207,6 +286,15 @@ function Install-HermesDependencies {
     Invoke-HermesProcess -FilePath npm.cmd -ArgumentList @(
         'ci', '--cache', (Resolve-HermesPath 'cache\npm'), '--no-audit'
     ) -WorkingDirectory $Source -LogComponent setup
+
+    $playwright = Join-Path $Source 'apps\desktop\node_modules\.bin\playwright.cmd'
+    if (Test-Path -LiteralPath $playwright -PathType Leaf) {
+        Invoke-HermesProcess -FilePath $playwright -ArgumentList @(
+            'install', 'chromium'
+        ) -WorkingDirectory (Join-Path $Source 'apps\desktop') -Environment @{
+            PLAYWRIGHT_BROWSERS_PATH = (Resolve-HermesPath 'runtimes\tools\playwright')
+        } -LogComponent setup
+    }
 }
 
 function Install-LagunaModel {
@@ -297,7 +385,10 @@ try {
         -Repository $manifest.sources.hermesAgent.repository `
         -Branch $manifest.sources.hermesAgent.branch `
         -Commit $manifest.sources.hermesAgent.commit `
-        -IntegrationBranch $manifest.sources.hermesAgent.integrationBranch
+        -IntegrationBranch $manifest.sources.hermesAgent.integrationBranch `
+        -IntegrationCommit $manifest.sources.hermesAgent.integrationCommit `
+        -IntegrationTree $manifest.sources.hermesAgent.integrationTree `
+        -PatchDirectory (Resolve-HermesPath 'source\hermes-launcher\patches')
 
     $llamaSource = Resolve-HermesPath 'runtimes\llama.cpp\source'
     Initialize-SourceCheckout `
@@ -311,7 +402,10 @@ try {
         Build-LlamaCpp -Source $llamaSource -Build (Resolve-HermesPath 'runtimes\llama.cpp\build')
     }
     if (-not $SkipHermesDependencies) {
-        Install-HermesDependencies -Source $hermesSource -Runtime (Resolve-HermesPath 'runtimes\python\hermes')
+        Install-HermesDependencies `
+            -Source $hermesSource `
+            -Runtime (Resolve-HermesPath 'runtimes\python\hermes') `
+            -Reinstall:$ReinstallDependencies
     }
     if (-not $SkipModel) {
         Install-LagunaModel -Manifest $manifest

@@ -53,6 +53,12 @@ function Write-SupervisorState {
             healthy = $HermesHealthy
             url = $hermesBase
         }
+        dashboard = [ordered]@{
+            pid = if ($hermesProcess -and -not $hermesProcess.HasExited) { $hermesProcess.Id } else { $null }
+            healthy = $HermesHealthy
+            url = $hermesBase
+            sharedWithHermesBackend = $true
+        }
         startedAt = $startedAt.ToString('o')
         updatedAt = (Get-Date).ToUniversalTime().ToString('o')
         restartCount = $restartTimes.Count
@@ -212,7 +218,9 @@ function Get-LlamaArguments {
         [Parameter(Mandatory)]
         [pscustomobject] $SelectedProfile,
         [Parameter(Mandatory)]
-        [string] $ModelPath
+        [string] $ModelPath,
+        [Parameter(Mandatory)]
+        [string] $ApiKeyFile
     )
 
     $layers = [string]$SelectedProfile.gpu.layers
@@ -238,6 +246,7 @@ function Get-LlamaArguments {
         '--metrics',
         '--no-ui',
         '--no-cors-credentials',
+        '--api-key-file', $ApiKeyFile,
         '--log-file', (Resolve-HermesPath 'logs\model-server\llama-server.log'),
         '--log-prefix'
     )) {
@@ -268,27 +277,49 @@ function Start-Stack {
         throw "Expected one llama-server.exe; found $($llamaServer.Count)."
     }
     $hermesExecutable = Resolve-HermesPath 'runtimes\python\hermes\Scripts\hermes.exe'
+    $apiKeyFile = Join-Path $runtimeDirectory "llama-api-key-$PID.txt"
     Assert-PortAvailable -Port $modelPort
     Assert-PortAvailable -Port $hermesPort
 
     Write-SupervisorState -Phase 'starting-model' -Message 'Validating and loading Laguna XS 2.1.'
     Write-HermesLog -Component supervisor -Message "Starting model server with profile '$Profile'."
-    $script:modelProcess = Start-ManagedProcess `
-        -FilePath $llamaServer[0].FullName `
-        -ArgumentList (Get-LlamaArguments -SelectedProfile $selectedProfile -ModelPath $modelPath) `
-        -WorkingDirectory (Resolve-HermesPath 'data\user') `
-        -Environment @{ LLAMA_API_KEY = $Token } `
-        -RedirectInput
-    $authHeaders = @{ Authorization = "Bearer $Token" }
-    Wait-Endpoint -Name 'llama-server' -Uri "$modelBase/health" -Process $modelProcess -TimeoutSeconds 900
+    [System.IO.File]::WriteAllText($apiKeyFile, $Token + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+    $acl = Get-Acl -LiteralPath $apiKeyFile
+    $currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+    $acl.SetAccessRuleProtection($true, $false)
+    foreach ($rule in @($acl.Access)) {
+        [void]$acl.RemoveAccessRuleAll($rule)
+    }
+    $accessRule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+        $currentSid,
+        [System.Security.AccessControl.FileSystemRights]::FullControl,
+        [System.Security.AccessControl.AccessControlType]::Allow
+    )
+    $acl.SetOwner($currentSid)
+    $acl.SetAccessRule($accessRule)
+    Set-Acl -LiteralPath $apiKeyFile -AclObject $acl
+    try {
+        $script:modelProcess = Start-ManagedProcess `
+            -FilePath $llamaServer[0].FullName `
+            -ArgumentList (Get-LlamaArguments -SelectedProfile $selectedProfile -ModelPath $modelPath -ApiKeyFile $apiKeyFile) `
+            -WorkingDirectory (Resolve-HermesPath 'data\user') `
+            -RedirectInput
+        $authHeaders = @{ Authorization = "Bearer $Token" }
+        Wait-Endpoint -Name 'llama-server' -Uri "$modelBase/health" -Process $modelProcess -TimeoutSeconds 900
+    } finally {
+        if (Test-Path -LiteralPath $apiKeyFile) {
+            Remove-Item -LiteralPath $apiKeyFile -Force
+        }
+    }
     if (-not (Test-Endpoint -Uri "$modelBase/v1/models" -Headers $authHeaders -TimeoutSeconds 10)) {
         throw 'llama-server health passed but /v1/models did not.'
     }
 
     Write-SupervisorState -Phase 'starting-hermes' -Message 'Model ready; starting Hermes backend.' -ModelHealthy $true
-    Write-HermesLog -Component supervisor -Message 'Model server is healthy; starting Hermes serve.'
+    Write-HermesLog -Component supervisor -Message 'Model server is healthy; starting the unified Hermes backend and dashboard.'
     $hermesEnvironment = @{
         HERMES_HOME = (Resolve-HermesPath 'data\hermes')
+        HERMES_DASHBOARD_SESSION_TOKEN = $Token
         HERMES_LOCAL_API_TOKEN = $Token
         LLAMA_API_KEY = $Token
         UV_CACHE_DIR = (Resolve-HermesPath 'cache\uv')
@@ -298,17 +329,17 @@ function Start-Stack {
     }
     $script:hermesProcess = Start-ManagedProcess `
         -FilePath $hermesExecutable `
-        -ArgumentList @('serve', '--host', '127.0.0.1', '--port', [string]$hermesPort) `
-        -WorkingDirectory (Resolve-HermesPath 'data\user') `
+        -ArgumentList @('dashboard', '--host', '127.0.0.1', '--port', [string]$hermesPort, '--skip-build', '--no-open') `
+        -WorkingDirectory (Resolve-HermesPath 'source\hermes-agent') `
         -Environment $hermesEnvironment
-    Wait-Endpoint -Name 'Hermes serve' -Uri "$hermesBase/api/health" -Process $hermesProcess -TimeoutSeconds 120
+    Wait-Endpoint -Name 'Hermes backend/dashboard' -Uri "$hermesBase/api/health" -Process $hermesProcess -TimeoutSeconds 120
     Write-SupervisorState -Phase 'running' -Message 'Hermes Local is ready.' -ModelHealthy $true -HermesHealthy $true
     Write-HermesLog -Component supervisor -Message "Stack ready. Model PID $($modelProcess.Id); Hermes PID $($hermesProcess.Id)."
 }
 
 function Stop-Stack {
     Write-SupervisorState -Phase 'stopping' -Message 'Stopping services in reverse order.'
-    Stop-ManagedProcess -Process $hermesProcess -Name 'Hermes serve' -GraceSeconds 8
+    Stop-ManagedProcess -Process $hermesProcess -Name 'Hermes backend/dashboard' -GraceSeconds 8
     Stop-ManagedProcess -Process $modelProcess -Name 'llama-server' -GraceSeconds 20 -CloseInput
     $script:hermesProcess = $null
     $script:modelProcess = $null

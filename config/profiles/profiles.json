@@ -2,16 +2,28 @@
   "$schema": "./profiles.schema.json",
   "schemaVersion": 1,
   "selected": "Daily",
-  "selectionStatus": "baseline-pending-benchmark",
+  "selectionStatus": "measured-2026-07-28",
   "profiles": [
     {
       "name": "Daily",
-      "description": "Quality-first interactive baseline; final values require measured tuning.",
+      "description": "Measured quality-first 64K interactive baseline.",
       "contextTokens": 65536,
-      "kvCache": { "keyType": "q8_0", "valueType": "q8_0" },
-      "threads": { "generation": 8, "batch": 14 },
-      "batch": { "logical": 1024, "physical": 256 },
-      "gpu": { "layers": "auto", "vramReserveMiB": 1536 },
+      "kvCache": {
+        "keyType": "q8_0",
+        "valueType": "q8_0"
+      },
+      "threads": {
+        "generation": 8,
+        "batch": 14
+      },
+      "batch": {
+        "logical": 1024,
+        "physical": 256
+      },
+      "gpu": {
+        "layers": "auto",
+        "vramReserveMiB": 1536
+      },
       "flashAttention": true,
       "promptCache": true,
       "speculativeDecoding": false
@@ -20,10 +32,22 @@
       "name": "Research",
       "description": "Stable 64K research profile with prompt-cache reuse.",
       "contextTokens": 65536,
-      "kvCache": { "keyType": "q8_0", "valueType": "q8_0" },
-      "threads": { "generation": 8, "batch": 14 },
-      "batch": { "logical": 1024, "physical": 256 },
-      "gpu": { "layers": "auto", "vramReserveMiB": 1536 },
+      "kvCache": {
+        "keyType": "q8_0",
+        "valueType": "q8_0"
+      },
+      "threads": {
+        "generation": 8,
+        "batch": 14
+      },
+      "batch": {
+        "logical": 1024,
+        "physical": 256
+      },
+      "gpu": {
+        "layers": "auto",
+        "vramReserveMiB": 1536
+      },
       "flashAttention": true,
       "promptCache": true,
       "speculativeDecoding": false
@@ -32,10 +56,22 @@
       "name": "Deep Research",
       "description": "Extended 80K working context with extra memory headroom.",
       "contextTokens": 81920,
-      "kvCache": { "keyType": "q8_0", "valueType": "q8_0" },
-      "threads": { "generation": 8, "batch": 14 },
-      "batch": { "logical": 768, "physical": 192 },
-      "gpu": { "layers": "auto", "vramReserveMiB": 2048 },
+      "kvCache": {
+        "keyType": "q8_0",
+        "valueType": "q8_0"
+      },
+      "threads": {
+        "generation": 8,
+        "batch": 14
+      },
+      "batch": {
+        "logical": 768,
+        "physical": 192
+      },
+      "gpu": {
+        "layers": "auto",
+        "vramReserveMiB": 2048
+      },
       "flashAttention": true,
       "promptCache": true,
       "speculativeDecoding": false
@@ -44,10 +80,22 @@
       "name": "Coding",
       "description": "Responsive tool-heavy coding with a moderate context budget.",
       "contextTokens": 49152,
-      "kvCache": { "keyType": "q8_0", "valueType": "q8_0" },
-      "threads": { "generation": 8, "batch": 14 },
-      "batch": { "logical": 1024, "physical": 256 },
-      "gpu": { "layers": "auto", "vramReserveMiB": 1536 },
+      "kvCache": {
+        "keyType": "q8_0",
+        "valueType": "q8_0"
+      },
+      "threads": {
+        "generation": 8,
+        "batch": 14
+      },
+      "batch": {
+        "logical": 1024,
+        "physical": 256
+      },
+      "gpu": {
+        "layers": "auto",
+        "vramReserveMiB": 1536
+      },
       "flashAttention": true,
       "promptCache": true,
       "speculativeDecoding": false
@@ -56,10 +104,22 @@
       "name": "Maximum Context",
       "description": "Experimental 128K context; never selected automatically.",
       "contextTokens": 131072,
-      "kvCache": { "keyType": "q8_0", "valueType": "q8_0" },
-      "threads": { "generation": 8, "batch": 14 },
-      "batch": { "logical": 512, "physical": 128 },
-      "gpu": { "layers": "auto", "vramReserveMiB": 2048 },
+      "kvCache": {
+        "keyType": "q8_0",
+        "valueType": "q8_0"
+      },
+      "threads": {
+        "generation": 8,
+        "batch": 14
+      },
+      "batch": {
+        "logical": 512,
+        "physical": 128
+      },
+      "gpu": {
+        "layers": "auto",
+        "vramReserveMiB": 2048
+      },
       "flashAttention": true,
       "promptCache": true,
       "speculativeDecoding": false,
@@ -69,10 +129,22 @@
       "name": "Benchmark",
       "description": "Deterministic benchmark harness profile.",
       "contextTokens": 32768,
-      "kvCache": { "keyType": "q8_0", "valueType": "q8_0" },
-      "threads": { "generation": 8, "batch": 14 },
-      "batch": { "logical": 1024, "physical": 256 },
-      "gpu": { "layers": "auto", "vramReserveMiB": 1024 },
+      "kvCache": {
+        "keyType": "q8_0",
+        "valueType": "q8_0"
+      },
+      "threads": {
+        "generation": 8,
+        "batch": 14
+      },
+      "batch": {
+        "logical": 1024,
+        "physical": 256
+      },
+      "gpu": {
+        "layers": "auto",
+        "vramReserveMiB": 1024
+      },
       "flashAttention": true,
       "promptCache": false,
       "speculativeDecoding": false,
@@ -82,14 +154,25 @@
       "name": "Safe Recovery",
       "description": "Conservative recovery profile for diagnosing startup and memory failures.",
       "contextTokens": 8192,
-      "kvCache": { "keyType": "f16", "valueType": "f16" },
-      "threads": { "generation": 6, "batch": 8 },
-      "batch": { "logical": 256, "physical": 64 },
-      "gpu": { "layers": 0, "vramReserveMiB": 2048 },
+      "kvCache": {
+        "keyType": "f16",
+        "valueType": "f16"
+      },
+      "threads": {
+        "generation": 6,
+        "batch": 8
+      },
+      "batch": {
+        "logical": 256,
+        "physical": 64
+      },
+      "gpu": {
+        "layers": 0,
+        "vramReserveMiB": 2048
+      },
       "flashAttention": false,
       "promptCache": false,
       "speculativeDecoding": false
     }
   ]
 }
-

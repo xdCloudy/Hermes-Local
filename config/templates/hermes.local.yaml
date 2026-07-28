@@ -47,10 +47,10 @@ security:
 
 memory:
   provider: ''
-  write_approval: false
+  write_approval: true
 
 skills:
-  write_approval: false
+  write_approval: true
 
 display:
   show_reasoning: true

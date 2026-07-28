@@ -2,15 +2,18 @@
   "schemaVersion": 1,
   "product": {
     "name": "Hermes Launcher",
-    "version": "0.1.0-dev",
-    "status": "runtime-verified"
+    "version": "0.17.0",
+    "status": "accepted-with-documented-limitations"
   },
   "sources": {
     "hermesAgent": {
       "repository": "https://github.com/NousResearch/hermes-agent.git",
       "branch": "main",
       "commit": "3be565fbdee3115ab5b9338551768b8e5e655c56",
-      "integrationBranch": "hermes-local-integration"
+      "integrationBranch": "hermes-local-integration",
+      "integrationCommit": "ee683263aaa7f3bca33f785630926350fa119c38",
+      "integrationTree": "67e4ce9137866dbb7febc3cc8b4072ffda816542",
+      "patchSeries": "source/hermes-launcher/patches"
     },
     "llamaCpp": {
       "repository": "https://github.com/ggml-org/llama.cpp.git",
@@ -32,12 +35,13 @@
     "license": "OpenMDW-1.1"
   },
   "runtime": {
-    "python": "3.11",
+    "python": "3.13.14",
+    "sqlite": "3.53.1",
     "node": "24.18.0",
     "cudaToolkit": "13.3",
     "cudaArchitecture": "86",
     "modelEndpoint": "http://127.0.0.1:8011/v1",
     "modelAlias": "laguna-xs-2.1-q4km"
   },
-  "recordedAt": "2026-07-27T21:46:00Z"
+  "recordedAt": "2026-07-28T10:05:37.2767656Z"
 }

@@ -24,11 +24,17 @@ try {
     }
     if ($existingPid -and (Get-Process -Id $existingPid -ErrorAction SilentlyContinue)) {
         $status = if (Test-Path -LiteralPath $statusPath) {
-            Get-Content -Raw -LiteralPath $statusPath | ConvertFrom-Json
+            try {
+                Get-Content -Raw -LiteralPath $statusPath | ConvertFrom-Json
+            } catch {
+                $null
+            }
         } else {
             $null
         }
-        if ($status -and $status.phase -eq 'running') {
+        if ($status -and
+            $status.PSObject.Properties.Name -contains 'phase' -and
+            $status.phase -eq 'running') {
             Write-Host "Hermes Local is already running with profile '$($status.profile)' (supervisor PID $existingPid)."
             exit 0
         }
@@ -41,8 +47,12 @@ try {
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $pwsh
     $startInfo.WorkingDirectory = Get-HermesRoot
-    $startInfo.UseShellExecute = $false
+    # Shell execution prevents the long-lived supervisor from inheriting the
+    # caller's redirected stdout/stderr pipes. Without this, noninteractive
+    # callers wait forever for EOF even after this short launcher exits.
+    $startInfo.UseShellExecute = $true
     $startInfo.CreateNoWindow = $true
+    $startInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
     foreach ($argument in @(
         '-NoLogo', '-NoProfile', '-NonInteractive',
         '-ExecutionPolicy', 'Bypass',
@@ -72,6 +82,11 @@ try {
         if (Test-Path -LiteralPath $statusPath) {
             try {
                 $status = Get-Content -Raw -LiteralPath $statusPath | ConvertFrom-Json
+                if (-not $status -or $status.PSObject.Properties.Name -notcontains 'phase') {
+                    Write-Verbose 'Waiting for a complete atomic supervisor status update.'
+                    Start-Sleep -Milliseconds 250
+                    continue
+                }
                 if ($status.phase -ne $lastPhase) {
                     Write-Verbose "Hermes Local phase: $($status.phase) — $($status.message)"
                     $lastPhase = $status.phase
@@ -83,8 +98,6 @@ try {
                 if ($status.phase -eq 'failed') {
                     throw "Hermes Local startup failed: $($status.message)"
                 }
-            } catch [System.Management.Automation.RuntimeException] {
-                throw
             } catch {
                 Write-Verbose "Waiting for an atomic status update: $($_.Exception.Message)"
             }

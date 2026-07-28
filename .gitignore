@@ -14,8 +14,9 @@
 
 # Generated analysis and benchmark data
 /benchmarks/results/
+/security/raw/
+/security/reports/raw/
 /security/scans/
-/security/sbom/
 
 # Secrets and machine-local configuration
 *.dpapi
