@@ -1,5 +1,17 @@
 # Hermes Local changelog
 
+## Unreleased
+
+- Added a transactional Hermes Agent updater that stages upstream source away
+  from the active installation and applies the ordered Hermes Local patch series
+  with three-way merge support.
+- Added automatic source, Python environment, launcher and source-pin rollback
+  when dependency rebuilds or runtime health checks fail.
+- Added a machine-local source pin override consumed by setup, repair,
+  diagnostics and future update checks without modifying tracked defaults.
+- Added a double-click Windows updater and documented why the upstream in-chat
+  `/update` command must not be used for a patched Hermes Local checkout.
+
 ## 0.18.1 — 2026-07-28
 
 - Fixed fresh launcher startup so the Electron connection gate starts and
