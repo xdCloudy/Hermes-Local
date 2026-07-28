@@ -50,7 +50,24 @@ function Get-HermesVersionManifest {
     if (-not (Test-Path -LiteralPath $manifestPath)) {
         throw "Version manifest is missing: $manifestPath"
     }
-    return Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json -Depth 32
+    $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json -Depth 32
+    $overridePath = Resolve-HermesPath 'config\launcher\source-overrides.json'
+    if (-not (Test-Path -LiteralPath $overridePath -PathType Leaf)) {
+        return $manifest
+    }
+
+    $override = Get-Content -Raw -LiteralPath $overridePath | ConvertFrom-Json -Depth 16
+    if ([int]$override.schemaVersion -ne 1 -or -not $override.sources.hermesAgent) {
+        throw "Hermes source override is invalid: $overridePath"
+    }
+    foreach ($name in @('commit', 'integrationCommit', 'integrationTree')) {
+        $value = [string]$override.sources.hermesAgent.$name
+        if ($value -notmatch '^[0-9a-fA-F]{40}$') {
+            throw "Hermes source override field '$name' is not a 40-character Git identity: $overridePath"
+        }
+        $manifest.sources.hermesAgent.$name = $value.ToLowerInvariant()
+    }
+    return $manifest
 }
 
 function Protect-HermesLogText {
