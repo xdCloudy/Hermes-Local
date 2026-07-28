@@ -27,7 +27,8 @@ try {
         throw "Packaged launcher executable was not produced: $executable"
     }
     $destination = Resolve-HermesPath 'dist'
-    if ([System.IO.Path]::GetFullPath($destination) -ne 'D:\Hermes-Local\dist') {
+    $expectedDestination = [System.IO.Path]::GetFullPath((Join-Path (Get-HermesRoot) 'dist'))
+    if ([System.IO.Path]::GetFullPath($destination) -ne $expectedDestination) {
         throw "Refusing to replace unexpected launcher destination: $destination"
     }
     Get-ChildItem -LiteralPath $destination -Force |

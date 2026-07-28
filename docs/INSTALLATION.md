@@ -1,118 +1,151 @@
 # Installation
 
-## Supported machine
+## Supported systems
 
-This release is built and measured for Windows 11 Pro x64, PowerShell 7,
-Intel Core i5-14600K, 64 GiB RAM and NVIDIA RTX 3060 12 GiB. It requires a
-CUDA-capable NVIDIA driver and approximately 30 GiB of fast local storage for
-the model, source, runtimes, browser and build products.
+Hermes Local supports 64-bit Windows 10 and Windows 11. It runs natively and
+should not be installed inside WSL or a Docker filesystem.
 
-The implementation is Windows-native. Do not install it inside WSL and do not
-substitute Docker paths.
+Required:
 
-## Full setup
+- PowerShell 7
+- Git, Node.js, uv and CMake (setup can install missing official packages with
+  `winget`)
+- Visual Studio 2022 C++ build tools
+- at least 16 GiB free before adding model weights
 
-Open a normal, non-elevated PowerShell 7 window and run:
+Optional:
+
+- an NVIDIA GPU, current driver and CUDA Toolkit for CUDA acceleration
+
+CPU-only inference is supported. Performance and memory requirements depend
+mostly on the selected GGUF, context length and cache type.
+
+## Clone anywhere
+
+Use a normal, non-elevated PowerShell 7 window:
 
 ```powershell
-Set-Location D:\
-git clone https://github.com/xdCloudy/Hermes-Local.git Hermes-Local
-Set-Location D:\Hermes-Local
-& 'D:\Hermes-Local\Setup-Hermes-Local.ps1' -NonInteractive
+git clone https://github.com/xdCloudy/Hermes-Local.git
+Set-Location .\Hermes-Local
+& '.\Setup-Hermes-Local.ps1' -NonInteractive
 ```
 
-If the repository is already present, use `git pull --ff-only` only when its
-working tree is clean, then run setup again. The
-[GitHub release](https://github.com/xdCloudy/Hermes-Local/releases/latest)
-contains installer and portable launcher packages, but deliberately excludes
-the model, Python environment and CUDA runtime.
+The project root is derived from the scripts themselves. A drive root or a
+directory missing the Hermes Local markers is rejected as a safety boundary.
 
-Setup validates the OS, architecture, CPU, memory, free space, GPU and CUDA
-driver. It installs only missing official prerequisites, preserves the pinned
-source integration, restores locked Python/Node dependencies, builds
-llama.cpp when requested, verifies the 20,274,300,032-byte model, builds the
-launcher and runs bootstrap diagnostics.
+## Acceleration selection
 
-Large model downloads use `curl.exe --continue-at -`; rerunning setup resumes
-an interrupted partial file. The final file must match SHA-256
-`1ac7079101fca5a6df8c5a7523a3c30ea7d1c0e4b1258090e7d6d4039287f6cb`.
+The tracked default is `auto`:
 
-Setup is idempotent. It does not reset a verified Hermes Local integration
-tree, replace user configuration or re-download a verified model.
+- CUDA is used when both `nvidia-smi` and `nvcc` are available;
+- otherwise llama.cpp is built for CPU inference.
+
+To force a mode before setup, create
+`config\launcher\user-settings.json` from this minimal example:
+
+```json
+{
+  "schemaVersion": 1,
+  "runtime": {
+    "acceleration": "cpu"
+  }
+}
+```
+
+Use `"cuda"` to require CUDA. CUDA architecture is discovered from
+`nvidia-smi`; build parallelism is based on the logical CPU count. Both can be
+overridden in the same runtime object using `cudaArchitecture` and
+`buildParallelism`.
+
+After the launcher is built, these choices are available under **Models →
+Runtime and network**.
+
+## Models
+
+The starter manifest downloads Laguna XS 2.1 Q4_K_M with resumable `curl` and
+verifies its published size and SHA-256.
+
+To use an existing model before setup, add it to the ignored user settings:
+
+```json
+{
+  "schemaVersion": 1,
+  "selectedModelId": "my-model",
+  "models": [
+    {
+      "id": "my-model",
+      "displayName": "My model",
+      "alias": "my-model",
+      "filename": "my-model.gguf",
+      "localPath": "E:\\Models\\my-model.gguf",
+      "metadata": {
+        "modelMaximumContextTokens": 32768
+      },
+      "server": {
+        "jinja": true,
+        "extraArguments": []
+      }
+    }
+  ]
+}
+```
+
+Only `localPath`, `id`, `displayName`, `alias` and `filename` are required.
+Add `sizeBytes` and `sha256` when integrity metadata is available. Relative
+paths resolve under the clone; absolute paths allow a shared model library.
+
+After first launch, use **Models → Register GGUF** instead of editing JSON.
+Registration does not copy or delete the selected weights.
+
+## What setup does
+
+Setup is idempotent. It:
+
+1. validates the project root, Windows architecture and available storage;
+2. reads the per-user model, profile, port and acceleration selection;
+3. reconstructs the pinned official Hermes integration;
+4. builds llama.cpp for CPU or the detected CUDA architecture;
+5. installs the configured Python runtime and locked Hermes dependencies;
+6. downloads the selected model only when it is missing and has a source URL;
+7. merges the selected provider/model/context into the user's Hermes YAML
+   while preserving unrelated settings;
+8. builds the launcher and runs schema/bootstrap checks.
 
 ## First start
 
 ```powershell
-& 'D:\Hermes-Local\Start-Hermes-Local.ps1' -Profile Daily -NonInteractive
-& 'D:\Hermes-Local\Test-Hermes-Local.ps1' -NonInteractive
-& 'D:\Hermes-Local\dist\Hermes Launcher.exe'
+& '.\Start-Hermes-Local.ps1' -NonInteractive
+& '.\Test-Hermes-Local.ps1' -NonInteractive
+& '.\dist\Hermes Launcher.exe'
 ```
 
-Model startup normally takes about six seconds, with additional time on the
-first Windows launch. The test must report nine passed checks, including
-authenticated inventory, loopback binding, a native tool-call schema and a
-real Hermes terminal tool call.
+The start script uses the selected model and profile from the ignored user
+settings. Service URLs in the launcher and tests come from the same network
+configuration.
 
-## Installer and portable application
+## Installer and portable launcher
 
-The assisted per-user installer is:
+The release installer and portable executable contain only the control
+centre. They do not bundle model weights, the source checkout or the native
+runtime. Provision the clone first.
 
-```text
-D:\Hermes-Local\dist\Hermes-Launcher-0.17.0-windows-x64-setup.exe
-```
-
-It supports changing the installation directory, creates Start Menu and
-optional Desktop shortcuts, does not require machine-wide installation and
-provides a clean uninstaller. The uninstaller removes application files and
-shortcuts; it does not remove `D:\Hermes-Local` user data, model or runtime.
-
-The portable build is:
-
-```text
-D:\Hermes-Local\dist\Hermes-Launcher-0.17.0-windows-x64-portable.exe
-```
-
-`D:\Hermes-Local\dist\Hermes Launcher.exe` is an identical convenience copy
-of that portable artifact.
-
-## Launch at login
-
-Open About in Hermes Launcher and enable **Launch at login**. This uses the
-current-user Electron login item; it does not create a scheduled task or
-request elevation. Disable the same switch to remove the entry. The setting
-was acceptance-tested by toggling and restoring it.
-
-## Offline use
-
-Once installed, Daily startup does not need the internet. The launcher uses
-bundled/system fonts; the model and browser binaries are local. Browser
-research and network-backed optional tools naturally require connectivity.
-An offline-equivalent restart through a dead outbound proxy passed the local
-health suite.
-
-## Repair
-
-If a dependency is missing or damaged:
+When the root cannot be discovered by walking upward from the portable
+executable, set it for that launch:
 
 ```powershell
-& 'D:\Hermes-Local\Repair-Hermes-Local.ps1' -NonInteractive
+$env:HERMES_LOCAL_ROOT = (Get-Location).Path
+& '.\path\to\Hermes Launcher.exe'
 ```
 
-Repair stops a running stack, creates a pre-repair backup, force-reinstalls
-locked dependencies, preserves the exact integration tree, runs bootstrap
-diagnostics and restarts the prior profile. It does not overwrite user data.
+You can also pass `--hermes-local-root=C:\path\to\Hermes-Local`.
 
-## Removal
-
-To remove only packaged application files, use **Uninstall Hermes Launcher**
-from Windows Settings or the installation folder.
-
-To stop services and remove generated machine-local launcher state while
-preserving user data by default:
+## Repair and removal
 
 ```powershell
-& 'D:\Hermes-Local\Uninstall-Hermes-Local.ps1' -NonInteractive
+& '.\Repair-Hermes-Local.ps1' -NonInteractive
+& '.\Uninstall-Hermes-Local.ps1' -NonInteractive
 ```
 
-Read the script help before requesting any broader data removal. The model,
-sessions, memory and skills are valuable data and should be backed up first.
+Repair creates a backup, reinstalls locked dependencies and restarts the prior
+profile. Uninstall preserves user data and models unless a broader,
+explicitly documented removal mode is chosen.

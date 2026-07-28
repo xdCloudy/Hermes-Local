@@ -11,6 +11,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Configuration.psm1') -Force
 
 function Require-Command {
     param(
@@ -172,54 +173,70 @@ function Build-LlamaCpp {
         [Parameter(Mandatory)]
         [string] $Source,
         [Parameter(Mandatory)]
-        [string] $Build
+        [string] $Build,
+        [Parameter(Mandatory)]
+        [pscustomobject] $Configuration
     )
 
-    $nvccCommand = Get-Command nvcc -ErrorAction SilentlyContinue | Select-Object -First 1
-    $nvccPath = if ($nvccCommand) {
-        $nvccCommand.Source
-    } else {
-        Get-ChildItem -LiteralPath (Join-Path $env:ProgramFiles 'NVIDIA GPU Computing Toolkit\CUDA') `
-            -Recurse -Filter nvcc.exe -File -ErrorAction SilentlyContinue |
-            Sort-Object FullName -Descending |
-            Select-Object -First 1 -ExpandProperty FullName
-    }
-    if (-not $nvccPath) {
-        throw 'nvcc was not found after CUDA Toolkit installation.'
-    }
-    $cudaRoot = [System.IO.Directory]::GetParent(
-        [System.IO.Directory]::GetParent($nvccPath).FullName
-    ).FullName
-    $cudaEnvironment = @{
-        CUDAToolkit_ROOT = $cudaRoot
-        CudaToolkitDir = "$cudaRoot\"
-        CUDA_PATH = $cudaRoot
-        CUDA_PATH_V13_3 = $cudaRoot
-        PATH = "$cudaRoot\bin;$env:PATH"
-    }
-
-    [System.IO.Directory]::CreateDirectory($Build) | Out-Null
-    Invoke-HermesProcess -FilePath cmake -ArgumentList @(
+    $acceleration = Get-HermesEffectiveAcceleration -Configuration $Configuration
+    $buildEnvironment = @{}
+    $configureArguments = [System.Collections.Generic.List[string]]::new()
+    foreach ($argument in @(
         '--fresh',
         '-S', $Source,
         '-B', $Build,
         '-G', 'Visual Studio 17 2022',
         '-A', 'x64',
-        '-DGGML_CUDA=ON',
-        "-DCMAKE_CUDA_COMPILER=$nvccPath",
-        '-DCMAKE_CUDA_ARCHITECTURES=86',
-        "-DCMAKE_VS_GLOBALS=CudaToolkitDir=$cudaRoot",
         '-DGGML_NATIVE=ON',
         '-DGGML_CCACHE=OFF',
         '-DLLAMA_BUILD_TESTS=OFF',
         '-DLLAMA_BUILD_EXAMPLES=ON'
-    ) -Environment $cudaEnvironment -LogComponent setup
+    )) {
+        $configureArguments.Add([string]$argument)
+    }
+    if ($acceleration -eq 'cuda') {
+        $nvccCommand = Get-Command nvcc -ErrorAction SilentlyContinue | Select-Object -First 1
+        $nvccPath = if ($nvccCommand) {
+            $nvccCommand.Source
+        } else {
+            Get-ChildItem -LiteralPath (Join-Path $env:ProgramFiles 'NVIDIA GPU Computing Toolkit\CUDA') `
+                -Recurse -Filter nvcc.exe -File -ErrorAction SilentlyContinue |
+                Sort-Object FullName -Descending |
+                Select-Object -First 1 -ExpandProperty FullName
+        }
+        if (-not $nvccPath) {
+            throw 'CUDA acceleration was selected, but nvcc was not found.'
+        }
+        $cudaRoot = [System.IO.Directory]::GetParent(
+            [System.IO.Directory]::GetParent($nvccPath).FullName
+        ).FullName
+        $cudaArchitecture = Get-HermesCudaArchitecture -Configuration $Configuration
+        $buildEnvironment = @{
+            CUDAToolkit_ROOT = $cudaRoot
+            CudaToolkitDir = "$cudaRoot\"
+            CUDA_PATH = $cudaRoot
+            PATH = "$cudaRoot\bin;$env:PATH"
+        }
+        foreach ($argument in @(
+            '-DGGML_CUDA=ON',
+            "-DCMAKE_CUDA_COMPILER=$nvccPath",
+            "-DCMAKE_CUDA_ARCHITECTURES=$cudaArchitecture",
+            "-DCMAKE_VS_GLOBALS=CudaToolkitDir=$cudaRoot"
+        )) {
+            $configureArguments.Add($argument)
+        }
+    } else {
+        $configureArguments.Add('-DGGML_CUDA=OFF')
+    }
+    [System.IO.Directory]::CreateDirectory($Build) | Out-Null
+    Invoke-HermesProcess -FilePath cmake -ArgumentList $configureArguments.ToArray() `
+        -Environment $buildEnvironment -LogComponent setup
     Invoke-HermesProcess -FilePath cmake -ArgumentList @(
         '--build', $Build,
         '--config', 'Release',
         '--target', 'llama-server', 'llama-cli', 'llama-bench',
-        '--parallel', '14'
-    ) -Environment $cudaEnvironment -LogComponent setup
+        '--parallel', [string](Get-HermesBuildParallelism -Configuration $Configuration)
+    ) -Environment $buildEnvironment -LogComponent setup
 
     $expected = @('llama-server.exe', 'llama-cli.exe', 'llama-bench.exe')
     foreach ($name in $expected) {
@@ -236,23 +253,26 @@ function Install-HermesDependencies {
         [string] $Source,
         [Parameter(Mandatory)]
         [string] $Runtime,
-        [switch] $Reinstall
+        [switch] $Reinstall,
+        [Parameter(Mandatory)]
+        [pscustomobject] $Configuration
     )
 
+    $pythonVersion = [string]$Configuration.runtime.pythonVersion
     $managedRoot = Resolve-HermesPath 'runtimes\python\managed'
     Invoke-HermesProcess -FilePath uv -ArgumentList @(
-        'python', 'install', '3.13',
+        'python', 'install', $pythonVersion,
         '--install-dir', $managedRoot,
         '--no-registry',
         '--compile-bytecode'
     ) -LogComponent setup
 
     $managedPython = Get-ChildItem -LiteralPath $managedRoot -Recurse -Filter python.exe -File |
-        Where-Object FullName -Match 'cpython-3\.13\.' |
+        Where-Object FullName -Match "cpython-$([regex]::Escape($pythonVersion))\." |
         Sort-Object FullName -Descending |
         Select-Object -First 1
     if (-not $managedPython) {
-        throw 'The project-managed Python 3.13 interpreter was not installed.'
+        throw "The project-managed Python $pythonVersion interpreter was not installed."
     }
 
     $pythonExe = Join-Path $Runtime 'Scripts\python.exe'
@@ -262,8 +282,8 @@ function Install-HermesDependencies {
         ) -LogComponent setup
     } else {
         $runtimeVersion = (& $pythonExe -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")').Trim()
-        if ($runtimeVersion -ne '3.13') {
-            throw "The existing Hermes runtime uses Python $runtimeVersion. Preserve it as a rollback copy and rebuild the venv with project-managed Python 3.13."
+        if ($runtimeVersion -ne $pythonVersion) {
+            throw "The existing Hermes runtime uses Python $runtimeVersion. Preserve it as a rollback copy and rebuild the venv with project-managed Python $pythonVersion."
         }
     }
 
@@ -297,20 +317,25 @@ function Install-HermesDependencies {
     }
 }
 
-function Install-LagunaModel {
+function Install-SelectedModel {
     param(
         [Parameter(Mandatory)]
-        [pscustomobject] $Manifest
+        [pscustomobject] $Configuration
     )
 
-    $model = $Manifest.model
-    $destination = Resolve-HermesPath "models\Laguna-XS-2.1\$($model.filename)"
-    if (Test-HermesFile -Path $destination -ExpectedSize $model.sizeBytes -ExpectedSha256 $model.sha256) {
-        Write-HermesLog -Component setup -Message 'Laguna model is already present and verified.'
+    $model = $Configuration.selectedModel
+    $destination = [string]$model.resolvedPath
+    $verifyHash = [bool]$Configuration.runtime.verifyModelOnStart
+    if (Test-HermesSelectedModel -Model $model -Hash:$verifyHash) {
+        Write-HermesLog -Component setup -Message "Model '$($model.displayName)' is already present and valid."
         return
     }
 
-    $url = "https://huggingface.co/$($model.repository)/resolve/$($model.revision)/$($model.filename)"
+    $url = [string]$model.source
+    if (-not $url) {
+        throw "Model '$($model.displayName)' is not installed and has no download source. Register an existing GGUF path or add a source URL."
+    }
+    [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($destination)) | Out-Null
     Invoke-HermesProcess -FilePath curl.exe -ArgumentList @(
         '--location',
         '--fail',
@@ -322,45 +347,14 @@ function Install-LagunaModel {
         $url
     ) -LogComponent setup
 
-    if (-not (Test-HermesFile -Path $destination -ExpectedSize $model.sizeBytes -ExpectedSha256 $model.sha256)) {
-        throw 'Laguna model verification failed after download.'
+    $refreshed = Get-HermesConfiguration
+    if (-not (Test-HermesSelectedModel -Model $refreshed.selectedModel -Hash:$verifyHash)) {
+        throw "Model '$($model.displayName)' verification failed after download."
     }
-
-    $file = Get-Item -LiteralPath $destination
-    $modelManifest = [ordered]@{
-        schemaVersion = 1
-        repository = $model.repository
-        revision = $model.revision
-        filename = $model.filename
-        localPath = $destination
-        downloadedAt = (Get-Date).ToUniversalTime().ToString('o')
-        sizeBytes = $file.Length
-        sha256 = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant()
-        license = $model.license
-        source = $url
-        runtime = [ordered]@{
-            implementation = 'llama.cpp'
-            llamaCommit = $Manifest.sources.llamaCpp.commit
-            cudaArchitecture = $Manifest.runtime.cudaArchitecture
-        }
-        benchmarkProfile = 'baseline-pending-benchmark'
-        context = [ordered]@{
-            selectedTokens = 65536
-            modelMaximumTokens = 262144
-            kvKeyType = 'q8_0'
-            kvValueType = 'q8_0'
-        }
-    }
-    $manifestJson = $modelManifest | ConvertTo-Json -Depth 12
-    Write-HermesAtomicText -Path (Resolve-HermesPath 'models\manifests\Laguna-XS-2.1-Q4_K_M.json') -Content ($manifestJson + [Environment]::NewLine)
 }
 
 function Initialize-HermesConfiguration {
-    $template = Resolve-HermesPath 'config\templates\hermes.local.yaml'
-    $runtimeConfig = Resolve-HermesPath 'data\hermes\config.yaml'
-    if (-not (Test-Path -LiteralPath $runtimeConfig)) {
-        Write-HermesAtomicText -Path $runtimeConfig -Content (Get-Content -Raw -LiteralPath $template)
-    }
+    Sync-HermesRuntimeConfiguration -Configuration (Get-HermesConfiguration)
     [void](Get-OrCreateHermesApiToken)
 }
 
@@ -369,15 +363,20 @@ try {
     Assert-HermesRoot
     Initialize-HermesLayout
     Set-HermesProcessEnvironment
-    $hardware = Assert-HermesMachine
+    $configuration = Get-HermesConfiguration
+    $effectiveAcceleration = Get-HermesEffectiveAcceleration -Configuration $configuration
+    $hardware = Assert-HermesMachine -Acceleration $effectiveAcceleration
     $manifest = Get-HermesVersionManifest
-    Write-HermesLog -Component setup -Message "Hardware validated: $($hardware.Cpu), $($hardware.Nvidia.Name), $([math]::Round($hardware.MemoryBytes / 1GB, 1)) GiB RAM."
+    $acceleratorName = if ($hardware.Nvidia) { $hardware.Nvidia.Name } else { 'CPU inference' }
+    Write-HermesLog -Component setup -Message "Hardware validated: $($hardware.Cpu), $acceleratorName, $([math]::Round($hardware.MemoryBytes / 1GB, 1)) GiB RAM; acceleration=$effectiveAcceleration."
 
     Require-Command -Name git -WingetId Git.Git
     Require-Command -Name uv -WingetId astral-sh.uv
     Require-Command -Name node -WingetId OpenJS.NodeJS.LTS
     Require-Command -Name cmake -WingetId Kitware.CMake
-    Require-Command -Name nvcc -WingetId Nvidia.CUDA
+    if ($effectiveAcceleration -eq 'cuda') {
+        Require-Command -Name nvcc -WingetId Nvidia.CUDA
+    }
 
     $hermesSource = Resolve-HermesPath 'source\hermes-agent'
     Initialize-SourceCheckout `
@@ -396,19 +395,20 @@ try {
         -Repository $manifest.sources.llamaCpp.repository `
         -Branch $manifest.sources.llamaCpp.branch `
         -Commit $manifest.sources.llamaCpp.commit `
-        -IntegrationBranch 'hermes-local-laguna'
+        -IntegrationBranch 'hermes-local-runtime'
 
     if (-not $SkipLlamaBuild) {
-        Build-LlamaCpp -Source $llamaSource -Build (Resolve-HermesPath 'runtimes\llama.cpp\build')
+        Build-LlamaCpp -Source $llamaSource -Build (Resolve-HermesPath 'runtimes\llama.cpp\build') -Configuration $configuration
     }
     if (-not $SkipHermesDependencies) {
         Install-HermesDependencies `
             -Source $hermesSource `
             -Runtime (Resolve-HermesPath 'runtimes\python\hermes') `
+            -Configuration $configuration `
             -Reinstall:$ReinstallDependencies
     }
     if (-not $SkipModel) {
-        Install-LagunaModel -Manifest $manifest
+        Install-SelectedModel -Configuration $configuration
     }
     Initialize-HermesConfiguration
 
@@ -436,6 +436,6 @@ try {
     exit 0
 } catch {
     Write-HermesLog -Component setup -Level ERROR -Message $_.Exception.ToString()
-    Write-Host 'Hermes Local setup failed. See D:\Hermes-Local\logs\setup\setup.log.' -ForegroundColor Red
+    Write-Host "Hermes Local setup failed. See $(Resolve-HermesPath 'logs\setup\setup.log')." -ForegroundColor Red
     exit 1
 }

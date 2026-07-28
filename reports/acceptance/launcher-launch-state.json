@@ -1,15 +1,15 @@
 {
   "environment": {
-    "appName": "Hermes Launcher Acceptance hermes-local-acceptance-ieLUuj",
+    "appName": "Hermes Launcher Acceptance <sandbox-id>",
     "hidden": "1",
-    "localRoot": "D:\\Hermes-Local",
-    "userData": "C:\\Users\\<user>\\AppData\\Local\\Temp\\hermes-local-acceptance-ieLUuj\\user-data"
+    "localRoot": "<project-root>",
+    "userData": "<sandbox>\\user-data"
   },
   "isPackaged": true,
   "isReady": true,
   "paths": {
-    "appData": "C:\\Users\\<user>\\AppData\\Roaming",
-    "userData": "C:\\Users\\<user>\\AppData\\Local\\Temp\\hermes-local-acceptance-ieLUuj\\user-data"
+    "appData": "<user-home>\\AppData\\Roaming",
+    "userData": "<sandbox>\\user-data"
   },
   "windows": [
     {

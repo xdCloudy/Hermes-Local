@@ -1,5 +1,20 @@
 # Hermes Local changelog
 
+## 0.18.0 — 2026-07-28
+
+- Replaced the fixed drive, model, profile, port, CUDA architecture and build
+  parallelism assumptions with versioned portable defaults and ignored
+  current-user settings.
+- Added arbitrary GGUF registration/selection, profile create/edit/delete,
+  loopback port selection and Auto/CUDA/CPU controls to Hermes Launcher.
+- Added hardware-resolved starter tuning, CPU fallback, detected CUDA
+  architecture, dynamic Hermes provider generation and configuration schemas.
+- Updated setup, supervisor, test, benchmark, update, backup, diagnostics and
+  recovery workflows to use one selected configuration.
+- Generalised installation, operation, model-tuning, architecture, security
+  and troubleshooting documentation while preserving reference reports as
+  explicitly historical evidence.
+
 ## 0.17.0-local.1 — 2026-07-28
 
 - Added the packaged **Hermes Launcher** workstation with live Home, Services,

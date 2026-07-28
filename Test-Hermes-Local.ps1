@@ -9,6 +9,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Configuration.psm1') -Force
 
 $results = [System.Collections.Generic.List[object]]::new()
 
@@ -35,18 +36,19 @@ try {
     Assert-HermesRoot
     Initialize-HermesLayout
     Set-HermesProcessEnvironment
-    $manifest = Get-Content -Raw -LiteralPath (Resolve-HermesPath 'models\manifests\Laguna-XS-2.1-Q4_K_M.json') |
-        ConvertFrom-Json
-    $modelPath = [System.IO.Path]::GetFullPath([string]$manifest.localPath)
+    $configuration = Get-HermesConfiguration
+    $selectedModel = $configuration.selectedModel
+    $modelPath = [string]$selectedModel.resolvedPath
+    $modelBase = "http://$($configuration.network.host):$($configuration.network.modelPort)"
+    $hermesBase = "http://$($configuration.network.host):$($configuration.network.hermesPort)"
+    $modelAlias = [string]$selectedModel.alias
 
     if ($BootstrapOnly) {
         $modelItem = Get-Item -LiteralPath $modelPath -ErrorAction Stop
-        Add-TestResult -Name 'Model file' -Passed (
-            $modelItem.Length -eq [int64]$manifest.sizeBytes
-        ) -Detail "$($modelItem.Length) bytes"
-        Add-TestResult -Name 'CUDA llama-server' -Passed (
-            Test-Path -LiteralPath (Resolve-HermesPath 'runtimes\llama.cpp\build\bin\Release\llama-server.exe') -PathType Leaf
-        ) -Detail 'Pinned native model server is installed.'
+        $sizeMatches = -not $selectedModel.sizeBytes -or $modelItem.Length -eq [int64]$selectedModel.sizeBytes
+        Add-TestResult -Name 'Model file' -Passed $sizeMatches -Detail "$($modelItem.Length) bytes"
+        $llamaServers = @(Get-ChildItem -LiteralPath (Resolve-HermesPath 'runtimes\llama.cpp\build') -Recurse -Filter llama-server.exe -File)
+        Add-TestResult -Name 'llama-server' -Passed ($llamaServers.Count -eq 1) -Detail 'Native model server is installed.'
         Add-TestResult -Name 'Hermes runtime' -Passed (
             Test-Path -LiteralPath (Resolve-HermesPath 'runtimes\python\hermes\Scripts\hermes.exe') -PathType Leaf
         ) -Detail 'Project-managed Hermes entry point is installed.'
@@ -56,6 +58,19 @@ try {
         Add-TestResult -Name 'Runtime configuration' -Passed (
             Test-Path -LiteralPath (Resolve-HermesPath 'data\hermes\config.yaml') -PathType Leaf
         ) -Detail 'Local Hermes configuration is present.'
+        $configurationValidation = @(
+            Invoke-HermesProcess `
+                -FilePath (Resolve-HermesPath 'runtimes\python\hermes\Scripts\python.exe') `
+                -ArgumentList @(
+                    (Resolve-HermesPath 'scripts\validate_configuration.py'),
+                    (Get-HermesRoot)
+                ) `
+                -LogComponent diagnostics `
+                -PassThruOutput
+        ) -join [Environment]::NewLine
+        Add-TestResult -Name 'Portable configuration schemas' -Passed (
+            $configurationValidation -match 'configuration is valid'
+        ) -Detail 'Defaults, profiles, model manifests, and current-user settings satisfy their schemas.'
 
         $bootstrapReport = [ordered]@{
             schemaVersion = 1
@@ -77,11 +92,12 @@ try {
 
     if ($Quick) {
         $item = Get-Item -LiteralPath $modelPath -ErrorAction Stop
-        Add-TestResult -Name 'Model size' -Passed ($item.Length -eq [int64]$manifest.sizeBytes) -Detail "$($item.Length) bytes"
+        $sizeMatches = -not $selectedModel.sizeBytes -or $item.Length -eq [int64]$selectedModel.sizeBytes
+        Add-TestResult -Name 'Model size' -Passed $sizeMatches -Detail "$($item.Length) bytes"
     } else {
         Add-TestResult -Name 'Model SHA-256' -Passed (
-            Test-HermesFile -Path $modelPath -ExpectedSize $manifest.sizeBytes -ExpectedSha256 $manifest.sha256
-        ) -Detail 'Exact size and SHA-256 match the pinned manifest.'
+            Test-HermesSelectedModel -Model $selectedModel -Hash:([bool]$selectedModel.sha256)
+        ) -Detail 'The selected model matches all integrity metadata supplied by its registration.'
     }
 
     $statusPath = Resolve-HermesPath 'data\runtime\status.json'
@@ -93,45 +109,74 @@ try {
     if (-not $running) {
         $null = Invoke-HermesProcess -FilePath 'pwsh.exe' -ArgumentList @(
             '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-            '-File', (Resolve-HermesPath 'Start-Hermes-Local.ps1'),
-            '-Profile', 'Daily', '-NonInteractive'
+            '-File', (Resolve-HermesPath 'Start-Hermes-Local.ps1'), '-NonInteractive'
         ) -LogComponent diagnostics
     }
 
     $token = Get-OrCreateHermesApiToken
     $headers = @{ Authorization = "Bearer $token" }
-    $modelHealth = Invoke-RestMethod -Uri 'http://127.0.0.1:8011/health' -TimeoutSec 5
+    $modelHealth = Invoke-RestMethod -Uri "$modelBase/health" -TimeoutSec 5
     Add-TestResult -Name 'Model health' -Passed ($modelHealth.status -eq 'ok') -Detail 'Structured model health returned ok.'
-    $models = Invoke-RestMethod -Uri 'http://127.0.0.1:8011/v1/models' -Headers $headers -TimeoutSec 10
+    $models = Invoke-RestMethod -Uri "$modelBase/v1/models" -Headers $headers -TimeoutSec 10
     Add-TestResult -Name 'Authenticated model inventory' -Passed (
-        @($models.data | Where-Object id -eq 'laguna-xs-2.1-q4km').Count -eq 1
-    ) -Detail 'Pinned model alias is available.'
+        @($models.data | Where-Object id -eq $modelAlias).Count -eq 1
+    ) -Detail "Selected model alias '$modelAlias' is available."
     $unauthenticatedDenied = $false
     try {
-        Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8011/v1/chat/completions' `
+        $unauthenticatedRequest = @{
+            model = $modelAlias
+            messages = @(@{ role = 'user'; content = 'authentication probe' })
+            max_tokens = 1
+        } | ConvertTo-Json -Depth 8 -Compress
+        Invoke-RestMethod -Method Post -Uri "$modelBase/v1/chat/completions" `
             -ContentType 'application/json' `
-            -Body '{"model":"laguna-xs-2.1-q4km","messages":[{"role":"user","content":"authentication probe"}],"max_tokens":1}' `
+            -Body $unauthenticatedRequest `
             -TimeoutSec 5 | Out-Null
     } catch {
         $unauthenticatedDenied = $_.Exception.Response.StatusCode.value__ -in @(401, 403)
     }
     Add-TestResult -Name 'Model authentication' -Passed $unauthenticatedDenied -Detail 'Unauthenticated inference request was denied.'
 
-    $hermesHealth = Invoke-RestMethod -Uri 'http://127.0.0.1:9119/api/health' -TimeoutSec 5
+    $hermesHealth = Invoke-RestMethod -Uri "$hermesBase/api/health" -TimeoutSec 5
     Add-TestResult -Name 'Hermes health' -Passed ([bool]$hermesHealth.ok) -Detail "Hermes $($hermesHealth.version)"
-    $dashboard = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:9119/' -TimeoutSec 10
+    $dashboard = Invoke-WebRequest -UseBasicParsing -Uri "$hermesBase/" -TimeoutSec 10
     Add-TestResult -Name 'Web dashboard' -Passed (
         $dashboard.StatusCode -eq 200 -and $dashboard.Headers.'Content-Type' -match 'text/html'
     ) -Detail 'Official dashboard HTML is served from loopback.'
 
-    $listeners = @(Get-NetTCPConnection -State Listen -LocalPort 8011, 9119 -ErrorAction Stop)
+    $configuredPorts = @([int]$configuration.network.modelPort, [int]$configuration.network.hermesPort)
+    $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $configuredPorts -ErrorAction Stop)
     $nonLoopback = @($listeners | Where-Object {
         $_.LocalAddress -notin @('127.0.0.1', '::1')
     })
-    Add-TestResult -Name 'Loopback binding' -Passed ($nonLoopback.Count -eq 0) -Detail 'Ports 8011 and 9119 listen only on loopback.'
+    Add-TestResult -Name 'Loopback binding' -Passed ($nonLoopback.Count -eq 0) -Detail "Configured ports $($configuredPorts -join ', ') listen only on loopback."
 
-    $request = [ordered]@{
-        model = 'laguna-xs-2.1-q4km'
+    $completionRequest = [ordered]@{
+        model = $modelAlias
+        messages = @([ordered]@{ role = 'user'; content = 'Reply with exactly HERMES_MODEL_OK' })
+        temperature = 0
+        max_tokens = 128
+    }
+    $completionResponse = Invoke-RestMethod -Method Post -Uri "$modelBase/v1/chat/completions" `
+        -Headers $headers -ContentType 'application/json' -Body ($completionRequest | ConvertTo-Json -Depth 8 -Compress) `
+        -TimeoutSec 180
+    $completionMessage = $completionResponse.choices[0].message
+    $completionText = @(
+        [string]$completionMessage.content,
+        $(if ($completionMessage.PSObject.Properties.Name -contains 'reasoning_content') {
+            [string]$completionMessage.reasoning_content
+        })
+    ) -join ''
+    Add-TestResult -Name 'Model completion' -Passed (
+        @($completionResponse.choices).Count -ge 1 -and -not [string]::IsNullOrWhiteSpace($completionText)
+    ) -Detail "The selected model '$($selectedModel.displayName)' returned generated content."
+
+    $supportsNativeTools = $selectedModel.metadata -and
+        $selectedModel.metadata.PSObject.Properties.Name -contains 'nativeToolCalling' -and
+        [bool]$selectedModel.metadata.nativeToolCalling
+    if ($supportsNativeTools) {
+      $request = [ordered]@{
+        model = $modelAlias
         messages = @(
             [ordered]@{ role = 'user'; content = 'Call get_timezone exactly once for London. Do not answer in prose.' }
         )
@@ -160,14 +205,15 @@ try {
         seed = 3407
         max_tokens = 96
     }
-    $toolResponse = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8011/v1/chat/completions' `
+      $toolResponse = Invoke-RestMethod -Method Post -Uri "$modelBase/v1/chat/completions" `
         -Headers $headers -ContentType 'application/json' -Body ($request | ConvertTo-Json -Depth 16 -Compress) `
         -TimeoutSec 180
     $call = @($toolResponse.choices[0].message.tool_calls)[0]
     $arguments = $call.function.arguments | ConvertFrom-Json
-    Add-TestResult -Name 'Native tool-call schema' -Passed (
+      Add-TestResult -Name 'Native tool-call schema' -Passed (
         $call.function.name -eq 'get_timezone' -and $arguments.timezone -eq 'Europe/London'
-    ) -Detail 'Laguna returned one schema-valid native function call.'
+      ) -Detail "$($selectedModel.displayName) returned one schema-valid native function call."
+    }
 
     if (-not $SkipAgentTool) {
         $probe = Resolve-HermesPath "temp\agent-tool-$([guid]::NewGuid().ToString('N')).txt"
@@ -179,8 +225,8 @@ try {
                 Invoke-HermesProcess -FilePath $hermes -ArgumentList @(
                     '--oneshot', $prompt,
                     '--usage-file', $usage,
-                    '--provider', 'laguna-local',
-                    '--model', 'laguna-xs-2.1-q4km',
+                    '--provider', 'local-llama',
+                    '--model', $modelAlias,
                     '--toolsets', 'terminal'
                 ) -WorkingDirectory (Resolve-HermesPath 'data\user') -Environment @{
                     HERMES_HOME = (Resolve-HermesPath 'data\hermes')

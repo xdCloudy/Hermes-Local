@@ -7,7 +7,7 @@ remote pointed at `https://github.com/NousResearch/hermes-agent.git`.
 
 ## Non-negotiable boundaries
 
-- Keep all substantial project state beneath `D:\Hermes-Local`.
+- Keep all substantial project state beneath the resolved project root.
 - Never introduce Docker or WSL as a build or runtime prerequisite.
 - Bind local HTTP and WebSocket services to `127.0.0.1` by default.
 - Treat renderer, Electron main, Hermes backend, model server, and local files
@@ -49,4 +49,3 @@ remote pointed at `https://github.com/NousResearch/hermes-agent.git`.
 - A build is not complete until the packaged executable, installer, local model
   endpoint, real Hermes tool call, security report, SBOM, benchmarks, update
   rollback, and data-preserving uninstall have been verified.
-

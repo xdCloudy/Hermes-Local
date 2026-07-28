@@ -7,9 +7,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Configuration.psm1') -Force
 
 $wasRunning = $false
-$profile = 'Daily'
+$profile = [string](Get-HermesConfiguration).selectedProfile
 $staging = $null
 
 try {
@@ -67,7 +68,7 @@ try {
         schemaVersion = 1
         product = 'Hermes Local'
         createdAt = (Get-Date).ToUniversalTime().ToString('o')
-        sourceRoot = 'D:\Hermes-Local'
+        sourceRoot = Get-HermesRoot
         profile = $profile
         version = Get-HermesVersionManifest
     }
@@ -94,7 +95,8 @@ try {
 } finally {
     if ($staging -and (Test-Path -LiteralPath $staging)) {
         $resolvedStaging = [System.IO.Path]::GetFullPath($staging)
-        if ($resolvedStaging.StartsWith('D:\Hermes-Local\temp\backup-', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $stagingPrefix = Resolve-HermesPath 'temp\backup-'
+        if ($resolvedStaging.StartsWith($stagingPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
             Remove-Item -LiteralPath $resolvedStaging -Recurse -Force
         }
     }

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.hermes.invalid/schemas/model.schema.json",
+  "title": "Hermes Local model registration",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["id", "displayName", "alias", "filename", "localPath"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" },
+    "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "alias": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+    "filename": { "type": "string", "minLength": 1 },
+    "localPath": { "type": "string", "minLength": 1 },
+    "source": { "type": "string", "format": "uri" },
+    "repository": { "type": "string" },
+    "revision": { "type": "string" },
+    "license": { "type": "string" },
+    "sizeBytes": { "type": "integer", "minimum": 1 },
+    "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "architecture": { "type": "string" },
+        "modelMaximumContextTokens": { "type": "integer", "minimum": 1 },
+        "nativeToolCalling": { "type": "boolean" },
+        "quantization": { "type": "string" },
+        "reasoning": { "type": "string" }
+      }
+    },
+    "server": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "jinja": { "type": "boolean" },
+        "chatTemplate": { "type": "string" },
+        "extraArguments": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "type": "string", "maxLength": 1024 }
+        }
+      }
+    }
+  }
+}

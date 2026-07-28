@@ -9,11 +9,11 @@ still depend on the active surface and a health check.
 
 | Feature | Classification | Notes |
 |---|---|---|
-| Hermes CLI | Enabled by default | Managed Python runtime; local Laguna provider |
+| Hermes CLI | Enabled by default | Managed Python runtime; selected local llama.cpp provider |
 | Hermes TUI | Enabled by default | Standalone and real ConPTY/xterm.js launcher surface |
 | Hermes Desktop / Chat | Enabled by default | Packaged official Electron/React application |
-| Hermes Web Dashboard | Enabled by default | Unified backend at loopback port 9119 |
-| Local API/model server | Enabled by default | Authenticated llama.cpp at loopback port 8011 |
+| Hermes Web Dashboard | Enabled by default | Unified backend at the configured loopback port |
+| Local API/model server | Enabled by default | Authenticated llama.cpp at the configured loopback port |
 | Sessions and SQLite state | Enabled by default | Persistent under `data\hermes`; FTS/session search available |
 | Local memory | Enabled by default / security-sensitive | Built-in provider; writes require approval |
 | Skills | Enabled by default / security-sensitive | List/view/manage available; writes require approval |
@@ -47,7 +47,7 @@ still depend on the active surface and a health check.
 | Desktop project/open-preview/read-terminal | Enabled by default on Desktop | Hidden on incompatible surfaces |
 | Kanban/orchestrator | Installed but disabled | Not needed with one delegated child |
 | Computer use | Installed but disabled / security-sensitive | Requires the optional local driver and deliberate enablement |
-| Vision analysis | Installed but disabled | Selected Laguna text/tool deployment is not a vision model |
+| Vision analysis | Model-dependent | Enable only when the selected GGUF/runtime supports vision inputs |
 | Image generation | Requires user credentials | External provider-backed in this configuration |
 | Video analysis/generation | Requires user credentials | External provider-backed; disabled |
 | X search | Requires user credentials | xAI/X credentials; disabled |
@@ -59,7 +59,7 @@ still depend on the active surface and a health check.
 
 | Feature | Classification | Notes |
 |---|---|---|
-| Local speech-to-text | Installed but disabled | faster-whisper-capable dependency set; keep unloaded to protect Laguna VRAM |
+| Local speech-to-text | Installed but disabled | faster-whisper-capable dependency set; enable only with sufficient accelerator memory |
 | Local Piper/Kitten/NeuTTS | Installed but disabled | Optional local engines; no voice model is auto-downloaded |
 | Edge TTS | Installed but disabled | Free but network-backed; clearly not offline |
 | Premium/cloud TTS and STT | Requires user credentials / paid service | ElevenLabs, OpenAI, xAI, Mistral, Gemini, DeepInfra and similar are disabled |
@@ -68,7 +68,7 @@ still depend on the active surface and a health check.
 
 | Provider family | Classification | Notes |
 |---|---|---|
-| `laguna-local` custom OpenAI-compatible provider | Enabled by default | No external credential or paid inference |
+| `local-llama` custom OpenAI-compatible provider | Enabled by default | Dynamically selects the registered GGUF; no paid inference required |
 | Other local OpenAI-compatible endpoints | Installed but disabled | User may add a reviewed local server |
 | Ollama local / LM Studio style endpoints | Installed but disabled | Not needed for the selected llama.cpp runtime |
 | OpenRouter | Requires user credentials / typically paid | Disabled |
@@ -101,8 +101,8 @@ still depend on the active surface and a health check.
 | Feature | Classification | Notes |
 |---|---|---|
 | Prompt cache/prefix reuse | Enabled by default | 287.31x two-pass wall-clock ratio measured |
-| Flash Attention | Enabled by default | Daily/Research/Deep Research/Coding |
+| Flash Attention | Profile-controlled | Enabled in the relevant starter profiles and editable per user |
 | Q8_0 KV cache | Enabled by default | Capacity-tested at 64K and 80K |
 | Speculative decoding / DFlash | Installed but disabled | No compatible trustworthy draft model passed promotion criteria |
 | Maximum 128K context | Installed but disabled by default | Experimental and never auto-selected |
-| Extra large model downloads | Installed but disabled | Future model entry only; no automatic Laguna S or other download |
+| Additional model downloads | User-controlled | Register an existing GGUF or add a manifest/source; no unselected download |

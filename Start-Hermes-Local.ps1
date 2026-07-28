@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^[A-Za-z][A-Za-z0-9 ]{0,31}$')]
-    [string] $Profile = 'Daily',
+    [string] $Profile,
     [ValidateRange(30, 1200)]
     [int] $TimeoutSeconds = 960,
     [switch] $NonInteractive
@@ -10,10 +10,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Configuration.psm1') -Force
 
 try {
     Assert-HermesRoot
     Initialize-HermesLayout
+    if (-not $Profile) {
+        $Profile = [string](Get-HermesConfiguration).selectedProfile
+    }
     $runtimeDirectory = Resolve-HermesPath 'data\runtime'
     $statusPath = Join-Path $runtimeDirectory 'status.json'
     $pidPath = Join-Path $runtimeDirectory 'supervisor.pid'

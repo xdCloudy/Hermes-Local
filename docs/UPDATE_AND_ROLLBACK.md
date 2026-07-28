@@ -7,7 +7,9 @@ components. Updates are never applied automatically.
 ## Check
 
 ```powershell
-& 'D:\Hermes-Local\Update-Hermes-Local.ps1' -Mode Check -Component All -NonInteractive
+Set-Location 'C:\path\to\Hermes-Local'
+$HermesRoot = (Get-Location).Path
+& (Join-Path $HermesRoot 'Update-Hermes-Local.ps1') -Mode Check -Component All -NonInteractive
 ```
 
 The check records current, pinned and candidate revisions and links to source
@@ -22,7 +24,7 @@ Valid component names are `All`, `HermesAgent`, `Launcher`, `LlamaCpp`,
 Apply only a reviewed component:
 
 ```powershell
-& 'D:\Hermes-Local\Update-Hermes-Local.ps1' -Mode Apply -Component Launcher -NonInteractive -Confirm:$false
+& (Join-Path $HermesRoot 'Update-Hermes-Local.ps1') -Mode Apply -Component Launcher -NonInteractive -Confirm:$false
 ```
 
 The workflow:
@@ -38,14 +40,14 @@ The workflow:
 9. retains the prior build for rollback;
 10. preserves model, sessions, memory, skills and user files.
 
-Hermes Agent patch conflicts are not auto-resolved. Rebase the six ordered
+Hermes Agent patch conflicts are not auto-resolved. Rebase the ordered
 patches in `source\hermes-launcher\patches`, rerun source/UI/package/security
 gates, then update `VERSION.json`.
 
 ## Rollback
 
 ```powershell
-& 'D:\Hermes-Local\Update-Hermes-Local.ps1' -Mode Rollback -Component Launcher -NonInteractive -Confirm:$false
+& (Join-Path $HermesRoot 'Update-Hermes-Local.ps1') -Mode Rollback -Component Launcher -NonInteractive -Confirm:$false
 ```
 
 Rollback restores the last known-good replaceable artifact. It does not roll
@@ -61,18 +63,19 @@ runtime and user marker hashes remained unchanged.
 Create a named backup before manual changes:
 
 ```powershell
-& 'D:\Hermes-Local\Backup-Hermes-Local.ps1' -Name before-upgrade -NonInteractive
+& (Join-Path $HermesRoot 'Backup-Hermes-Local.ps1') -Name before-upgrade -NonInteractive
 ```
 
-Backups and `.sha256` sidecars are under `D:\Hermes-Local\backups`. A backup
+Backups and `.sha256` sidecars are under `$HermesRoot\backups`. A backup
 stops a running stack for a consistent snapshot and restarts the prior
 profile.
 
 Restore only an archive from the managed backup directory:
 
 ```powershell
-& 'D:\Hermes-Local\Restore-Hermes-Local.ps1' `
-  -BackupPath 'D:\Hermes-Local\backups\Hermes-Local-<timestamp>-before-upgrade.zip' `
+$backup = Join-Path $HermesRoot 'backups\Hermes-Local-<timestamp>-before-upgrade.zip'
+& (Join-Path $HermesRoot 'Restore-Hermes-Local.ps1') `
+  -BackupPath $backup `
   -NonInteractive -Confirm:$false
 ```
 

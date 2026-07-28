@@ -9,7 +9,7 @@ flowchart LR
   E --> P["Process supervisor<br/>PowerShell + Windows Job Object"]
   E --> T["ConPTY / node-pty<br/>real Hermes TUI"]
   E --> D["Embedded official Web Dashboard"]
-  P --> L["llama-server<br/>Laguna XS 2.1 Q4_K_M"]
+  P --> L["llama-server<br/>selected GGUF model"]
   P --> H["Hermes serve/dashboard"]
   T --> H
   D --> H
@@ -33,17 +33,17 @@ flowchart LR
   A named Windows Job Object kills descendants if the supervisor exits.
 - **Hermes backend/dashboard:** one managed Hermes process provides the local
   backend and official web dashboard.
-- **llama-server:** pinned CUDA llama.cpp build 10154 serves the verified
-  Laguna GGUF.
+- **llama-server:** the pinned llama.cpp build uses the selected CPU/CUDA
+  acceleration mode to serve the selected registered GGUF.
 - **Data layer:** Hermes state, sessions, memory, skills, cron, user workspace
-  and runtime state remain beneath `D:\Hermes-Local\data`.
+  and runtime state remain beneath `<project-root>\data`.
 
 ## Ports and authentication
 
 | Port | Owner | Binding | Authentication |
 |---:|---|---|---|
-| 8011 | llama-server | `127.0.0.1` only | Per-user bearer token read from an ACL-restricted transient file |
-| 9119 | Hermes backend/dashboard | `127.0.0.1` only | Generated Hermes dashboard/session token |
+| Configured model port (default 8011) | llama-server | IPv4/IPv6 loopback only | Per-user bearer token read from an ACL-restricted transient file |
+| Configured Hermes port (default 9119) | Hermes backend/dashboard | IPv4/IPv6 loopback only | Generated Hermes dashboard/session token |
 
 The persistent token is encrypted with DPAPI for the current Windows user.
 During model startup, the supervisor writes a short-lived, user-only token

@@ -6,6 +6,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Configuration.psm1') -Force
 
 $staging = $null
 
@@ -39,21 +40,18 @@ try {
     [System.IO.Directory]::CreateDirectory($staging) | Out-Null
 
     $statusPath = Resolve-HermesPath 'data\runtime\status.json'
-    $profilesPath = Resolve-HermesPath 'config\profiles\profiles.json'
+    $configuration = Get-HermesConfiguration
     $status = if (Test-Path -LiteralPath $statusPath) {
         Get-Content -Raw -LiteralPath $statusPath | ConvertFrom-Json
     } else {
         $null
     }
-    $profiles = if (Test-Path -LiteralPath $profilesPath) {
-        Get-Content -Raw -LiteralPath $profilesPath | ConvertFrom-Json
-    } else {
-        $null
-    }
-
     $listeners = @(
         Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
-            Where-Object LocalPort -In @(8011, 9119) |
+            Where-Object LocalPort -In @(
+                [int]$configuration.network.modelPort,
+                [int]$configuration.network.hermesPort
+            ) |
             Select-Object LocalAddress, LocalPort, OwningProcess
     )
     $firewall = @(
@@ -89,14 +87,18 @@ try {
         hardware = Get-HermesHardwareSnapshot
         tools = Get-HermesToolSnapshot
         runtime = $status
-        profiles = if ($profiles) {
-            [ordered]@{
-                schemaVersion = $profiles.schemaVersion
-                selected = $profiles.selected
-                names = @($profiles.profiles | ForEach-Object name)
-            }
-        } else {
-            $null
+        profiles = [ordered]@{
+            schemaVersion = $configuration.schemaVersion
+            selected = $configuration.selectedProfile
+            names = @($configuration.profiles | ForEach-Object name)
+        }
+        selection = [ordered]@{
+            modelId = $configuration.selectedModelId
+            modelName = $configuration.selectedModel.displayName
+            acceleration = $configuration.runtime.acceleration
+            configuredHost = $configuration.network.host
+            modelPort = $configuration.network.modelPort
+            hermesPort = $configuration.network.hermesPort
         }
         network = [ordered]@{
             listeners = $listeners
@@ -172,7 +174,8 @@ try {
 } finally {
     if ($staging -and (Test-Path -LiteralPath $staging)) {
         $resolved = [System.IO.Path]::GetFullPath($staging)
-        if ($resolved.StartsWith('D:\Hermes-Local\temp\diagnostics-', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $diagnosticPrefix = Resolve-HermesPath 'temp\diagnostics-'
+        if ($resolved.StartsWith($diagnosticPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
             Remove-Item -LiteralPath $resolved -Recurse -Force
         }
     }

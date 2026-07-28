@@ -1,5 +1,8 @@
 # Hermes Local Task Ledger
 
+> Historical ledger for the original reference build. Hardware and model
+> entries below are acceptance evidence, not current installation requirements.
+
 Last updated: 2026-07-28
 
 ## Evidence captured

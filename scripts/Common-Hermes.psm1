@@ -16,11 +16,14 @@ function Assert-HermesRoot {
     param()
 
     $resolved = [System.IO.Path]::GetFullPath($script:HermesRoot)
-    if ($resolved -ne 'D:\Hermes-Local') {
-        throw "Refusing to operate outside D:\Hermes-Local. Resolved root: $resolved"
+    $rootPath = [System.IO.Path]::GetPathRoot($resolved)
+    if (-not $rootPath -or $resolved.TrimEnd('\') -eq $rootPath.TrimEnd('\')) {
+        throw "Refusing to use a filesystem root as the Hermes Local project: $resolved"
     }
-    if (-not (Test-Path -LiteralPath 'D:\')) {
-        throw 'The D: drive is not available.'
+    foreach ($marker in @('VERSION.json', 'scripts\Common-Hermes.psm1')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $resolved $marker))) {
+            throw "The selected directory is not a Hermes Local project (missing $marker): $resolved"
+        }
     }
 }
 
@@ -149,7 +152,7 @@ function Initialize-HermesLayout {
     $directories = @(
         'config\hermes', 'config\llama', 'config\launcher', 'config\profiles', 'config\templates',
         'data\sessions', 'data\memory', 'data\skills', 'data\cron', 'data\databases', 'data\user', 'data\hermes',
-        'models\Laguna-XS-2.1', 'models\draft', 'models\manifests',
+        'models', 'models\draft', 'models\manifests',
         'runtimes\llama.cpp', 'runtimes\python', 'runtimes\node', 'runtimes\git', 'runtimes\tools',
         'source\hermes-launcher', 'source\native-helpers',
         'scripts\setup', 'scripts\build', 'scripts\launch', 'scripts\update',
@@ -247,26 +250,26 @@ function Get-HermesHardwareSnapshot {
 function Assert-HermesMachine {
     [CmdletBinding()]
     param(
-        [int64] $RequiredFreeBytes = 64GB
+        [int64] $RequiredFreeBytes = 16GB,
+        [ValidateSet('auto', 'cpu', 'cuda')]
+        [string] $Acceleration = 'auto'
     )
 
     $snapshot = Get-HermesHardwareSnapshot
-    if (-not $snapshot.OperatingSystem.Contains('Windows 11')) {
-        throw "Windows 11 is required. Detected: $($snapshot.OperatingSystem)"
+    if ($snapshot.OperatingSystem -notmatch 'Windows (10|11)') {
+        throw "Windows 10 or newer is required. Detected: $($snapshot.OperatingSystem)"
     }
     if ($snapshot.Architecture -notmatch '64') {
         throw "A 64-bit OS is required. Detected: $($snapshot.Architecture)"
     }
-    if (-not $snapshot.Nvidia) {
-        throw 'A CUDA-capable NVIDIA GPU was not detected by nvidia-smi.'
-    }
-    if ($snapshot.Nvidia.ComputeCapability -ne '8.6') {
-        Write-HermesLog -Component setup -Level WARN -Message "Expected compute capability 8.6; detected $($snapshot.Nvidia.ComputeCapability)."
+    if ($Acceleration -eq 'cuda' -and -not $snapshot.Nvidia) {
+        throw 'CUDA acceleration was requested, but an NVIDIA GPU was not detected by nvidia-smi.'
     }
 
-    $drive = Get-PSDrive -Name D -PSProvider FileSystem
+    $driveName = [System.IO.Path]::GetPathRoot($script:HermesRoot).TrimEnd('\').TrimEnd(':')
+    $drive = Get-PSDrive -Name $driveName -PSProvider FileSystem
     if ($drive.Free -lt $RequiredFreeBytes) {
-        throw "D: needs at least $RequiredFreeBytes free bytes; detected $($drive.Free)."
+        throw "$($drive.Name): needs at least $RequiredFreeBytes free bytes; detected $($drive.Free)."
     }
     return $snapshot
 }

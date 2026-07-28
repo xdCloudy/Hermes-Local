@@ -1,6 +1,6 @@
 model:
-  provider: laguna-local
-  default: laguna-xs-2.1-q4km
+  provider: local-llama
+  default: local-model
   base_url: http://127.0.0.1:8011/v1
   context_length: 65536
   max_tokens: 16384
@@ -13,7 +13,7 @@ agent:
 
 terminal:
   backend: local
-  cwd: D:\Hermes-Local\data\user
+  cwd: .
 
 compression:
   enabled: true
@@ -36,8 +36,6 @@ approvals:
   mode: manual
   denial_breaker_threshold: 3
   deny:
-    - "*Remove-Item*D:\\Hermes-Local*"
-    - "*rm *D:/Hermes-Local*"
     - "*format *"
     - "*diskpart*"
 
@@ -61,14 +59,14 @@ logging:
   level: INFO
 
 providers:
-  laguna-local:
+  local-llama:
     api: http://127.0.0.1:8011/v1
-    name: laguna-local
+    name: local-llama
     key_env: HERMES_LOCAL_API_TOKEN
     models:
-      laguna-xs-2.1-q4km:
+      local-model:
         context_length: 65536
-    default_model: laguna-xs-2.1-q4km
+    default_model: local-model
     transport: chat_completions
 
 plugins:

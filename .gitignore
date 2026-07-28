@@ -17,6 +17,7 @@
 /security/raw/
 /security/reports/raw/
 /security/scans/
+/reports/acceptance/launcher-configuration-*.png
 
 # Secrets and machine-local configuration
 *.dpapi
@@ -28,11 +29,14 @@
 /config/hermes/config.yaml
 /config/launcher/state.json
 /config/launcher/user-settings.json
+/config/launcher/user-settings.json.*
 
 # Package and editor output
 node_modules/
 release/
 coverage/
+__pycache__/
+*.py[cod]
 *.log
 *.tmp
 *.bak

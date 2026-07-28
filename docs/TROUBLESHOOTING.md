@@ -2,134 +2,114 @@
 
 ## Begin with the health test
 
-```powershell
-& 'D:\Hermes-Local\Test-Hermes-Local.ps1' -NonInteractive
-```
-
-For a faster service-only check:
+From the project directory:
 
 ```powershell
-& 'D:\Hermes-Local\Test-Hermes-Local.ps1' -Quick -NonInteractive
+& '.\Test-Hermes-Local.ps1' -Quick -NonInteractive
+& '.\Export-Hermes-Diagnostics.ps1' -NonInteractive
 ```
 
-Inspect `D:\Hermes-Local\logs\diagnostics\latest-test.json` and the Logs
-surface. Never paste the DPAPI token store or raw session database into a bug
-report.
+Inspect `logs\diagnostics\latest-test.json` and the launcher Logs surface.
+Never publish the DPAPI token store or a raw session database.
 
 ## Stack will not start
 
-1. Check `D:\Hermes-Local\data\runtime\status.json`.
+1. Check `data\runtime\status.json`.
 2. Inspect `logs\supervisor`, `logs\model-server` and `logs\hermes`.
-3. Confirm ports are not owned by unrelated processes:
+3. Open Models and confirm the selected GGUF says **On disk**.
+4. Confirm the configured ports are not owned by unrelated processes:
 
 ```powershell
+$settings = Get-Content '.\config\defaults\workstation.json' | ConvertFrom-Json
+$user = if (Test-Path '.\config\launcher\user-settings.json') {
+  Get-Content '.\config\launcher\user-settings.json' | ConvertFrom-Json
+}
+$ports = @(
+  $(if ($user.network.modelPort) { $user.network.modelPort } else { $settings.network.modelPort }),
+  $(if ($user.network.hermesPort) { $user.network.hermesPort } else { $settings.network.hermesPort })
+)
 Get-NetTCPConnection -State Listen |
-  Where-Object LocalPort -In 8011, 9119 |
+  Where-Object LocalPort -In $ports |
   Select-Object LocalAddress, LocalPort, OwningProcess
 ```
 
-Both addresses must be `127.0.0.1`. Do not kill an unrelated owner blindly.
-Resolve its executable first.
+Only loopback addresses are supported. Resolve an unrelated port owner before
+stopping it, or choose different ports in the launcher.
 
-Use:
+Use the conservative CPU profile to separate accelerator/context problems:
 
 ```powershell
-& 'D:\Hermes-Local\Restart-Hermes-Local.ps1' -Profile Safe Recovery -NonInteractive
+& '.\Restart-Hermes-Local.ps1' -Profile 'Safe Recovery' -NonInteractive
 ```
 
-Safe Recovery uses an 8K CPU profile to separate GPU/context problems from
-general configuration problems.
+## Accelerator out of memory
 
-## CUDA OOM or unstable long context
+Reduce context, logical/micro-batch size or GPU layers; increase the VRAM
+reserve; close accelerator-heavy applications; or switch acceleration to CPU.
+Do not assume settings measured for another model or GPU will fit yours.
 
-Switch from Maximum Context or Deep Research to Daily. Close GPU-heavy
-applications. Confirm the selected JSON profile has the recorded VRAM reserve.
-Do not reduce the model below Q4_K_M just to force a larger context.
-
-If Daily still fails, use Safe Recovery and rerun diagnostics. Rebuild
-llama.cpp only from the pinned source:
+After editing a profile, restart and run the quick test. Rebuild llama.cpp for
+a changed acceleration mode with:
 
 ```powershell
-& 'D:\Hermes-Local\Setup-Hermes-Local.ps1' `
+& '.\Setup-Hermes-Local.ps1' `
   -SkipHermesDependencies -SkipModel -SkipLauncherBuild -NonInteractive
 ```
 
 ## Model integrity failure
 
-Run the full test. If the size or SHA does not match, do not launch the file.
-Move the suspect partial file to a quarantine location beneath `temp` and
-rerun setup. The downloader resumes a valid partial file and validates the
-final 20,274,300,032-byte SHA.
+The selected registration may declare `sizeBytes` and `sha256`. If either
+check fails, do not launch the file. Quarantine the suspect file and rerun
+setup when the model has a trusted `source`, or register a known-good GGUF.
 
-## Missing or damaged Python/Node dependency
+A custom model without integrity metadata is checked for existence but cannot
+receive cryptographic verification until you add its SHA-256.
+
+## CPU/CUDA mismatch
+
+Open Models → Runtime and network:
+
+- **Auto** selects CUDA only when the NVIDIA driver and compiler are present.
+- **CUDA** fails clearly when the toolchain or GPU is unavailable.
+- **CPU** forces zero GPU layers.
+
+Changing this setting requires rebuilding llama.cpp with setup and restarting
+the stack.
+
+## Missing or damaged dependencies
 
 ```powershell
-& 'D:\Hermes-Local\Repair-Hermes-Local.ps1' -NonInteractive
+& '.\Repair-Hermes-Local.ps1' -NonInteractive
 ```
 
-Repair force-reinstalls locked dependencies. This is stronger than a normal
-`uv sync`, which can consider a damaged package present without restoring a
-missing individual file.
+Repair creates a safety backup, reinstalls locked dependencies and restarts
+the previously active profile.
 
-## Launcher does not attach
+## Launcher cannot find the project
 
-Make sure the stack itself passes the quick test. The portable executable is a
-self-extractor, so Playwright/Electron development harnesses must attach to
-`apps\desktop\release\win-unpacked\Hermes Launcher.exe`, not launch the
-portable wrapper through `_electron.launch`.
+The portable launcher walks upward for `VERSION.json` and
+`scripts\Common-Hermes.psm1`. If the executable lives elsewhere:
 
-For normal use, `dist\Hermes Launcher.exe` is correct.
+```powershell
+$env:HERMES_LOCAL_ROOT = (Resolve-Path '.').Path
+& 'C:\path\to\Hermes Launcher.exe'
+```
 
-If the packaged application shows a Windows reputation warning, verify its
-SHA against `dist\package-manifest.json`. This local build is not
-Authenticode-signed.
+The same root can be passed as
+`--hermes-local-root=C:\path\to\Hermes-Local`.
 
 ## TUI disconnected
 
-Open TUI and use its restart control. If it exits repeatedly, inspect launcher
-and Hermes logs, then launch the managed CLI directly:
+Use its restart control, then inspect launcher and Hermes logs. Launch the
+managed CLI directly:
 
 ```powershell
-$env:HERMES_HOME = 'D:\Hermes-Local\data\hermes'
-& 'D:\Hermes-Local\runtimes\python\hermes\Scripts\hermes.exe'
+$env:HERMES_HOME = (Resolve-Path '.\data\hermes').Path
+& '.\runtimes\python\hermes\Scripts\hermes.exe'
 ```
-
-The launcher never grants the renderer an arbitrary shell command.
-
-## Browser tools unavailable
-
-Confirm the local Chromium runtime exists and run Repair. Browser-driven
-search/navigation is enabled, but the zero-key `web_search` API tool is not
-promoted. Paid search keys are intentionally absent.
-
-Browser failures against loopback, link-local or private destinations can be
-the SSRF guard working as intended.
-
-## Memory or skill write rejected
-
-Both writes require approval. Approve the exact operation in Chat/TUI. A
-denial is not a dependency failure. Do not change `write_approval` to false to
-silence the prompt.
-
-## Offline restart
-
-Core inference is offline-capable. If it tries to reach the network, verify
-that no external provider, network voice engine, remote MCP or messaging
-plugin was enabled. Built-in themes contain no Google Font dependency.
 
 ## Backup or restore failure
 
-Do not edit a backup ZIP in place. Verify the `.sha256` sidecar and ensure the
-archive resides under `D:\Hermes-Local\backups`. Restore rejects unsafe
-absolute or `..` entries. If a restore stops after creating its safety backup,
-preserve both archives and inspect `logs\backup`.
-
-## Export diagnostics
-
-```powershell
-& 'D:\Hermes-Local\Export-Hermes-Diagnostics.ps1' -NonInteractive
-```
-
-The archive is safe for technical review only after the included privacy
-manifest says tokens, environment values, conversations and private files
-were omitted.
+Do not edit a backup ZIP in place. Verify its `.sha256` sidecar and keep the
+archive under the current clone's `backups` directory. Restore rejects
+absolute and parent-traversal entries and creates a pre-restore backup.

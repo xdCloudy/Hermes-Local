@@ -1,8 +1,8 @@
 # Hermes Local threat model
 
 Status: reviewed 2026-07-28  
-Scope: `D:\Hermes-Local` and NousResearch/hermes-agent revision `3be565fb...` plus the `hermes-local-integration` patch series  
-Default deployment: one Windows user, native Windows processes, loopback-only services, local Laguna XS 2.1 model
+Scope: the resolved Hermes Local project root and NousResearch/hermes-agent revision `3be565fb...` plus the `hermes-local-integration` patch series
+Default deployment: one Windows user, native Windows processes, loopback-only services, one selected local GGUF model
 
 ## Security objectives
 
@@ -21,7 +21,7 @@ Default deployment: one Windows user, native Windows processes, loopback-only se
 | Provider/integration credentials | Critical | Per-user DPAPI / Hermes secret store |
 | Sessions, memory, cron, skills | High | `data\hermes`, `data\sessions`, `data\memory`, `data\cron` |
 | Projects and terminal workspace | High | `data\user` and user-selected project directories |
-| Model weights | Integrity-critical | `models\Laguna-XS-2.1` |
+| Model weights | Integrity-critical | registered relative or absolute GGUF paths |
 | Runtime and source | Integrity-critical | `runtimes`, `source\hermes-agent` |
 | Launcher and installers | Integrity-critical | `dist` |
 | Logs, diagnostics, benchmarks | Medium; may contain prompt metadata | `logs`, `reports`, `benchmarks` |
@@ -32,9 +32,9 @@ Default deployment: one Windows user, native Windows processes, loopback-only se
 flowchart LR
     U["Windows user"] --> R["Sandboxed Electron renderer"]
     R -->|"narrow, typed preload API"| M["Electron main process"]
-    R -->|"authenticated HTTP / WebSocket"| H["Hermes serve :9119"]
+    R -->|"authenticated HTTP / WebSocket"| H["Hermes serve :configured port"]
     M -->|"validated argv and paths"| P["Supervisor / PowerShell scripts"]
-    H -->|"Bearer token, OpenAI-compatible API"| L["llama-server :8011"]
+    H -->|"Bearer token, OpenAI-compatible API"| L["llama-server :configured port"]
     H -->|"approval-aware tool calls"| T["Local terminal / PTY"]
     T --> F["User projects and data"]
     P --> D["DPAPI secret + versioned config"]
@@ -90,7 +90,7 @@ A remote webview asks Chromium for audio capture. Default-session permission han
 
 ### Local API theft
 
-Another local process connects to ports 8011/9119. The model endpoint rejects unauthenticated inference; Hermes REST/WebSockets use a generated session token, constant-time checks, Host/Origin controls, and loopback peer checks. The long-lived model token is stored only as DPAPI ciphertext for the current user.
+Another local process connects to the configured loopback ports. The model endpoint rejects unauthenticated inference; Hermes REST/WebSockets use a generated session token, constant-time checks, Host/Origin controls, and loopback peer checks. The long-lived model token is stored only as DPAPI ciphertext for the current user.
 
 ### Prompt-induced destructive command
 

@@ -4,18 +4,20 @@
   "title": "Hermes Local inference profiles",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "selected", "selectionStatus", "profiles"],
+  "required": ["schemaVersion", "selected", "profiles"],
   "properties": {
     "$schema": { "type": "string" },
     "schemaVersion": { "type": "integer", "minimum": 1 },
     "selected": { "type": "string", "minLength": 1 },
-    "selectionStatus": {
-      "enum": ["baseline-pending-benchmark", "measured"]
-    },
+    "selectionStatus": { "type": "string" },
     "profiles": {
       "type": "array",
-      "minItems": 7,
-      "items": {
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/profile" }
+    }
+  },
+  "$defs": {
+    "profile": {
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -48,8 +50,18 @@
             "additionalProperties": false,
             "required": ["generation", "batch"],
             "properties": {
-              "generation": { "type": "integer", "minimum": 1, "maximum": 20 },
-              "batch": { "type": "integer", "minimum": 1, "maximum": 20 }
+              "generation": {
+                "oneOf": [
+                  { "const": "auto" },
+                  { "type": "integer", "minimum": 1, "maximum": 512 }
+                ]
+              },
+              "batch": {
+                "oneOf": [
+                  { "const": "auto" },
+                  { "type": "integer", "minimum": 1, "maximum": 512 }
+                ]
+              }
             }
           },
           "batch": {
@@ -72,7 +84,12 @@
                   { "type": "integer", "minimum": 0, "maximum": 999 }
                 ]
               },
-              "vramReserveMiB": { "type": "integer", "minimum": 512, "maximum": 4096 }
+              "vramReserveMiB": {
+                "oneOf": [
+                  { "const": "auto" },
+                  { "type": "integer", "minimum": 0, "maximum": 131072 }
+                ]
+              }
             }
           },
           "flashAttention": { "type": "boolean" },
@@ -81,7 +98,6 @@
           "experimental": { "type": "boolean" },
           "seed": { "type": "integer" }
         }
-      }
     }
   }
 }

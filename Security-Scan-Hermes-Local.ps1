@@ -397,7 +397,7 @@ try {
         generatedAt = (Get-Date).ToUniversalTime().ToString('o')
         status = if ($gateFailures.Count -eq 0) { 'pass-with-triaged-residuals' } else { 'failed' }
         quick = [bool]$Quick
-        evidenceDirectory = $script:RunDirectory
+        evidenceDirectory = [System.IO.Path]::GetRelativePath($root, $script:RunDirectory).Replace('\', '/')
         sourceCommit = (& git -C $source rev-parse HEAD).Trim()
         scanners = [ordered]@{
             npmProduction = $productionSummary

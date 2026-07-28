@@ -15,24 +15,31 @@ try {
     $desktop = Join-Path $source 'apps\desktop'
     $release = Join-Path $desktop 'release'
     $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
+    $version = [string](Get-HermesVersionManifest).product.version
 
     $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @('run', 'build', '--workspace', 'apps/desktop') -WorkingDirectory $source -LogComponent launcher
     $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @(
         'run', 'builder', '--workspace', 'apps/desktop', '--', '--win', 'nsis', 'portable', '--x64'
     ) -WorkingDirectory $source -LogComponent launcher
 
-    $artifacts = @(Get-ChildItem -LiteralPath $release -File |
-        Where-Object { $_.Extension -in @('.exe', '.yml', '.blockmap') })
-    if (-not ($artifacts | Where-Object Name -Match 'nsis|setup')) {
-        throw 'The NSIS installer artifact was not produced.'
-    }
-    if (-not ($artifacts | Where-Object Name -Match 'portable')) {
-        throw 'The portable launcher artifact was not produced.'
-    }
+    $expectedNames = @(
+        "Hermes-Launcher-$version-windows-x64-setup.exe",
+        "Hermes-Launcher-$version-windows-x64-setup.exe.blockmap",
+        "Hermes-Launcher-$version-windows-x64-portable.exe"
+    )
+    $artifacts = @(
+        foreach ($name in $expectedNames) {
+            $artifact = Join-Path $release $name
+            if (-not (Test-Path -LiteralPath $artifact -PathType Leaf)) {
+                throw "Expected release artifact was not produced: $artifact"
+            }
+            Get-Item -LiteralPath $artifact
+        }
+    )
     foreach ($artifact in $artifacts) {
         Copy-Item -LiteralPath $artifact.FullName -Destination (Resolve-HermesPath 'dist') -Force
     }
-    $portable = $artifacts | Where-Object Name -Match 'portable' | Select-Object -First 1
+    $portable = $artifacts | Where-Object Name -EQ "Hermes-Launcher-$version-windows-x64-portable.exe"
     Copy-Item -LiteralPath $portable.FullName -Destination (Resolve-HermesPath 'dist\Hermes Launcher.exe') -Force
     $manifest = [ordered]@{
         schemaVersion = 1

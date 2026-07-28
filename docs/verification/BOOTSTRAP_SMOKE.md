@@ -1,5 +1,8 @@
 # Bootstrap and Runtime Smoke Verification
 
+> Historical reference run. The recorded hardware, model and endpoint values
+> are evidence for that run, not requirements enforced by current setup.
+
 Verified on 27 July 2026 on the target Windows 11 Pro workstation.
 
 ## Pinned inputs

@@ -2,154 +2,146 @@
 
 ## Start and stop
 
-Start the default workstation:
+From the project directory:
 
 ```powershell
-& 'D:\Hermes-Local\Start-Hermes-Local.ps1' -Profile Daily -NonInteractive
-& 'D:\Hermes-Local\dist\Hermes Launcher.exe'
+& '.\Start-Hermes-Local.ps1' -NonInteractive
+& '.\dist\Hermes Launcher.exe'
 ```
 
-Use **Start all**, **Stop all**, **Restart all** or **Recovery mode** from
-Home, or use the PowerShell scripts. Startup validates configuration and model
-integrity, starts the model server, waits for its structured health and model
-inventory, then starts Hermes and its dashboard. Shutdown is the reverse.
+Use Home or Services to start, stop, restart, repair, test and diagnose the
+stack. Startup validates the selected configuration and model, starts the
+model API, waits for structured health, then starts Hermes and its dashboard.
 
-## Home and Services
+## Models
 
-Home shows the actual supervisor state, active profile, context limit, service
-PIDs, resource metrics, benchmark summary and recent errors. Services adds
-executable, working directory, port, uptime, health, exit and restart details.
-An open port alone is not considered healthy.
+The Models page is the authority for local inference:
 
-If a managed process crashes three consecutive health polls, the supervisor
-stops the stack and restarts it with exponential backoff. A bounded restart
-window prevents a permanent crash loop.
+- **Register GGUF** adds an existing file without copying it.
+- **Select** makes a registered model active for the next stack start.
+- A user registration can be removed without deleting its weights.
+- Built-in catalog manifests remain read-only unless you edit your fork.
 
-## Chat
+The selected model card shows its alias, file, size, optional context limit,
+quantization and integrity metadata. Models without native tool support still
+receive a basic completion test; tool-call validation runs only when the
+manifest declares that capability.
 
-Chat is the official Hermes Desktop conversation surface using the local
-Laguna endpoint. It supports streaming, tool activity, reasoning display,
-sessions, attachments and previews where supported, interrupt/stop, approval
-prompts and the active model profile.
+## Runtime and network
 
-The local model is intentionally configured with native tool-call enforcement.
-Do not disable enforcement to work around a malformed request; use Safe
-Recovery, capture the error and retest the template instead.
+On Models, choose:
 
-## TUI and CLI
+- **Auto detect** to use CUDA when the toolchain is installed and CPU
+  otherwise;
+- **NVIDIA CUDA** to require CUDA;
+- **CPU only** to disable GPU offload;
+- IPv4 or IPv6 loopback;
+- separate model API and Hermes/dashboard ports from 1024 to 65535;
+- automatic or explicit build workers and CUDA architecture;
+- the project-managed Python major/minor line;
+- whether startup re-hashes the selected model.
 
-TUI opens the real Hermes TUI inside a Windows pseudo-terminal. The connection
-indicator includes the child PID. Resize, ANSI colours, keyboard input,
-copy/paste and scrollback are supported. If the TUI exits, use **Restart TUI**.
-
-A standalone CLI/TUI can be opened with the managed executable:
-
-```powershell
-$env:HERMES_HOME = 'D:\Hermes-Local\data\hermes'
-& 'D:\Hermes-Local\runtimes\python\hermes\Scripts\hermes.exe'
-```
-
-The default terminal working directory is `D:\Hermes-Local\data\user`, not the
-installation source.
-
-## Web Dashboard
-
-The unified Hermes backend serves the official dashboard at
-`http://127.0.0.1:9119`. Use Web Dashboard in the launcher to embed it or open
-it in the default browser. The launcher validates the exact loopback URL and
-will not navigate a privileged view to an arbitrary remote page.
+LAN and wildcard binding are intentionally unsupported. Restart the stack
+after changing a model, profile, port or acceleration mode.
 
 ## Profiles
 
-Profiles are structured in `config\profiles\profiles.json` and validated
-against `profiles.schema.json`.
+Profiles control context, KV cache, generation/batch threads, logical and
+micro-batch sizes, GPU layers, VRAM reserve, Flash Attention, prompt caching
+and speculative decoding.
 
-| Profile | Use |
-|---|---|
-| Daily | Measured 64K quality-first default |
-| Research | Stable 64K research with prompt-cache reuse |
-| Deep Research | Measured 80K context with extra VRAM reserve |
-| Coding | Responsive 48K tool-heavy work |
-| Maximum Context | Experimental 128K; never selected automatically |
-| Benchmark | Deterministic 32K measurement with seed 3407 |
-| Safe Recovery | Conservative 8K CPU diagnostic mode |
+Tracked starter profiles use machine-resolved values for thread counts and
+VRAM reserve. Use **New profile** to copy the current settings, edit it, then
+save. At least one profile is always retained.
 
-Switching profile restarts the model so the context, KV, batch and placement
-settings actually take effect. Export or back up the JSON before substantial
-manual edits.
+Launcher changes are stored in ignored
+`config\launcher\user-settings.json`; tracked
+`config\profiles\profiles.json` remains a portable starter catalog.
 
-## Research and coding
+CLI starts use the selected profile by default:
 
-Use Research for normal dossiers and multi-source analysis. Use Deep Research
-only when the larger live context is worth its extra prefill cost. Keep a
-source ledger in the project and ask Hermes to distinguish sourced facts,
-conflicts and inferences.
+```powershell
+& '.\Restart-Hermes-Local.ps1' -NonInteractive
+```
 
-Coding provides a smaller context budget for fast tool loops. File and terminal
-writes remain approval-gated. Commands display their working directory and run
-locally; elevation is not hidden.
+For a one-off choice:
 
-## Tasks, cron and delegation
+```powershell
+& '.\Start-Hermes-Local.ps1' -Profile 'Safe Recovery' -NonInteractive
+```
 
-Tasks shows the local release/task ledger and provides entry points into the
-official structured task surfaces. Cron jobs can be created, listed, run,
-paused, resumed, edited and removed through the Hermes cron tool/UI. Schedules
-and outcomes remain in `D:\Hermes-Local\data`.
+## Chat, TUI and dashboard
 
-Delegation is limited to one child and one spawn level. Subagents are not
-auto-approved and do not inherit arbitrary MCP toolsets.
+Chat is the official Hermes Desktop conversation surface. TUI opens the real
+Hermes terminal UI in a Windows pseudo-terminal. The Web Dashboard button
+opens the configured loopback URL.
 
-## Skills and memory
+A standalone TUI can be started with:
 
-Skills are local documents and supporting files. Skill writes require
-approval. On Windows, inline skill shell expansion explicitly selects native
-Git Bash and rejects the WSL launcher; supporting file references remain
-portable while executable paths remain native.
+```powershell
+$env:HERMES_HOME = (Resolve-Path '.\data\hermes').Path
+& '.\runtimes\python\hermes\Scripts\hermes.exe'
+```
 
-Built-in local memory and session search are installed. Memory writes require
-approval. External memory providers are disabled unless the user deliberately
-configures an account-backed plugin.
+The default working directory is `data\user`, resolved below the current clone.
+
+## Settings file
+
+The user file is versioned JSON and supports:
+
+```json
+{
+  "schemaVersion": 1,
+  "selectedModelId": "model-id",
+  "selectedProfile": "Profile name",
+  "network": {
+    "host": "127.0.0.1",
+    "modelPort": 8011,
+    "hermesPort": 9119
+  },
+  "runtime": {
+    "acceleration": "auto",
+    "buildParallelism": "auto",
+    "cudaArchitecture": "auto",
+    "pythonVersion": "3.13",
+    "verifyModelOnStart": true
+  },
+  "models": [],
+  "profiles": []
+}
+```
+
+All fields except `schemaVersion` are optional and layer over tracked defaults.
+The launcher validates IDs, ranges, GGUF paths, loopback binding and reserved
+llama-server arguments before writing atomically.
 
 ## Logs and diagnostics
 
-Logs provides redacted, bounded views of supervisor, model, Hermes, dashboard,
-security and launcher output. Raw files are under `D:\Hermes-Local\logs`.
-
-Export a privacy-preserving diagnostic archive with:
+Logs are under `logs` and the Hermes data directory. Export a redacted bundle:
 
 ```powershell
-& 'D:\Hermes-Local\Export-Hermes-Diagnostics.ps1' -NonInteractive
+& '.\Export-Hermes-Diagnostics.ps1' -NonInteractive
 ```
 
-Tokens, passwords, cookies, complete environment values, conversations and
-private file contents are excluded.
+Diagnostics report the configured model/profile/ports without including API
+tokens, passwords, cookies, conversations or private file contents.
+
+## Backup and restore
+
+```powershell
+& '.\Backup-Hermes-Local.ps1' -Name before-change -NonInteractive
+& '.\Restore-Hermes-Local.ps1' -BackupPath '.\backups\<archive>.zip' -NonInteractive
+```
+
+Backups include per-user settings and local Hermes data. Restore creates a
+pre-restore safety backup and restarts the prior profile.
 
 ## Security
 
-Security shows scan currency, accepted residuals, loopback status, Electron
-hardening, SBOM/report paths and the scan action. To re-run:
+Both services are restricted to loopback. The model API requires the
+DPAPI-protected bearer token. Electron uses a sandboxed renderer, context
+isolation and a narrow typed IPC bridge. File and terminal operations keep the
+normal Hermes approval controls.
 
-```powershell
-& 'D:\Hermes-Local\Security-Scan-Hermes-Local.ps1' -NonInteractive
-```
-
-Never publish ports 8011 or 9119 through router forwarding, a reverse proxy or
-a permissive firewall rule. There is no supported LAN mode in this release.
-
-## Backup, update and recovery
-
-Create a backup:
-
-```powershell
-& 'D:\Hermes-Local\Backup-Hermes-Local.ps1' -Name before-change -NonInteractive
-```
-
-Restore a selected archive only after reading its contents:
-
-```powershell
-& 'D:\Hermes-Local\Restore-Hermes-Local.ps1' -BackupPath 'D:\Hermes-Local\backups\<archive>.zip' -NonInteractive
-```
-
-Restore automatically creates a pre-restore safety backup and restarts the
-stack. See [UPDATE_AND_ROLLBACK.md](UPDATE_AND_ROLLBACK.md) for component
-updates and [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for recovery cases.
+Do not expose the configured ports through router forwarding, a reverse proxy
+or a permissive firewall rule.

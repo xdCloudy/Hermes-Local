@@ -1,0 +1,2787 @@
+From 8c49c779dc422a5de14a22ba6387418d9c76bedf Mon Sep 17 00:00:00 2001
+From: xdCloudy <connerabery@gmail.com>
+Date: Tue, 28 Jul 2026 12:36:08 +0100
+Subject: [PATCH] feat(desktop): make local workstation configuration portable
+
+---
+ .../e2e/hermes-local-configuration.spec.ts    | 182 +++++
+ .../desktop/e2e/hermes-local-portable.spec.ts |  13 +-
+ .../e2e/hermes-local-workstation.spec.ts      |  76 +-
+ .../electron/hermes-local-control.test.ts     |  22 +-
+ apps/desktop/electron/hermes-local-control.ts | 247 +++---
+ .../electron/hermes-local-settings.test.ts    | 169 +++++
+ .../desktop/electron/hermes-local-settings.ts | 551 ++++++++++++++
+ apps/desktop/electron/preload.ts              |   5 +
+ apps/desktop/package.json                     |   2 +-
+ .../src/app/local-workstation/index.tsx       | 710 +++++++++++++++---
+ .../src/app/local-workstation/types.ts        |  81 +-
+ apps/desktop/src/global.d.ts                  |   7 +
+ package-lock.json                             |   2 +-
+ 13 files changed, 1758 insertions(+), 309 deletions(-)
+ create mode 100644 apps/desktop/e2e/hermes-local-configuration.spec.ts
+ create mode 100644 apps/desktop/electron/hermes-local-settings.test.ts
+ create mode 100644 apps/desktop/electron/hermes-local-settings.ts
+
+diff --git a/apps/desktop/e2e/hermes-local-configuration.spec.ts b/apps/desktop/e2e/hermes-local-configuration.spec.ts
+new file mode 100644
+index 000000000..2f26f1ade
+--- /dev/null
++++ b/apps/desktop/e2e/hermes-local-configuration.spec.ts
+@@ -0,0 +1,182 @@
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++
++import { _electron, expect, test } from '@playwright/test'
++
++const ROOT = process.env.HERMES_LOCAL_ROOT || path.resolve(import.meta.dirname, '../../../../..')
++const LAUNCHER = process.env.HERMES_LOCAL_LAUNCHER_PATH || path.join(ROOT, 'dist', 'Hermes Launcher.exe')
++const ENABLED = process.env.HERMES_LOCAL_ACCEPTANCE === '1'
++
++test.describe('Hermes Local portable configuration UI', () => {
++  test.skip(!ENABLED, 'Set HERMES_LOCAL_ACCEPTANCE=1 to exercise the packaged configuration UI.')
++
++  test('persists model, runtime, and profile choices and restores the installed settings', async () => {
++    test.setTimeout(180_000)
++
++    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-local-configuration-'))
++    const userData = path.join(sandbox, 'user-data')
++    const evidence = path.join(ROOT, 'reports', 'acceptance')
++    const settingsPath = path.join(ROOT, 'config', 'launcher', 'user-settings.json')
++    const originalSettings = fs.existsSync(settingsPath) ? fs.readFileSync(settingsPath) : null
++    const thirdPath = path.join(sandbox, 'third-anywhere.gguf')
++    const rendererErrors: string[] = []
++    const env = Object.fromEntries(
++      Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string')
++    )
++
++    fs.mkdirSync(userData, { recursive: true })
++    fs.mkdirSync(evidence, { recursive: true })
++    fs.writeFileSync(thirdPath, 'portable arbitrary GGUF fixture')
++    delete env.HERMES_DESKTOP_BOOT_FAKE
++    delete env.HERMES_DESKTOP_REMOTE_TOKEN
++    delete env.HERMES_DESKTOP_REMOTE_URL
++    for (const name of ['ALLUSERSPROFILE', 'ProgramData']) {
++      if (env[name]?.includes('%SystemDrive%')) {
++        env[name] = env[name].replaceAll('%SystemDrive%', env.SystemDrive || 'C:')
++      }
++    }
++    Object.assign(env, {
++      HERMES_DESKTOP_APP_NAME: `Hermes Launcher Configuration ${path.basename(sandbox)}`,
++      HERMES_DESKTOP_TEST_HIDDEN: '1',
++      HERMES_DESKTOP_USER_DATA_DIR: userData,
++      HERMES_LOCAL_ROOT: ROOT
++    })
++
++    const app = await _electron.launch({
++      args: ['--disable-gpu'],
++      executablePath: LAUNCHER,
++      env
++    })
++
++    try {
++      const page = await app.firstWindow({ timeout: 120_000 })
++
++      page.on('console', message => {
++        if (message.type() === 'error') {
++          rendererErrors.push(`console: ${message.text()}`)
++        }
++      })
++      page.on('pageerror', error => rendererErrors.push(`pageerror: ${error.message}`))
++
++      const workstationNav = page.locator('[data-sidebar="menu"]').first()
++
++      await workstationNav.getByRole('button', { exact: true, name: 'Home' }).click()
++      await expect(page.getByRole('heading', { name: 'Local AI workstation' })).toBeVisible({ timeout: 60_000 })
++      await workstationNav.getByRole('button', { exact: true, name: 'Models' }).click()
++      await expect(page.getByRole('heading', { exact: true, name: 'Models' })).toBeVisible()
++
++      await page.evaluate(async localPath => {
++        const desktop = (
++          window as unknown as {
++            hermesDesktop: {
++              localWorkstation: {
++                registerModel: (model: { localPath: string }) => Promise<{ id: string }>
++                selectModel: (id: string) => Promise<unknown>
++              }
++            }
++          }
++        ).hermesDesktop
++        const registered = await desktop.localWorkstation.registerModel({ localPath })
++
++        await desktop.localWorkstation.selectModel(registered.id)
++      }, thirdPath)
++      await page.getByRole('button', { exact: true, name: 'Refresh workstation' }).click()
++      await expect(page.getByRole('heading', { exact: true, name: 'third-anywhere' })).toBeVisible()
++      await expect(page.getByText('Selected', { exact: true })).toBeVisible()
++      await page.screenshot({ fullPage: true, path: path.join(evidence, 'launcher-configuration-models.png') })
++      await page.getByRole('button', { exact: true, name: 'Remove third-anywhere' }).click()
++      await expect(page.getByRole('heading', { exact: true, name: 'third-anywhere' })).toHaveCount(0)
++
++      await page.getByLabel('Acceleration').selectOption('cpu')
++      await page.getByLabel('Model API port').fill('18211')
++      await page.getByLabel('Hermes/dashboard port').fill('19211')
++      await page.getByLabel('Build workers').fill('6')
++      await page.getByLabel('CUDA architecture').fill('89')
++      await page.getByLabel('Python version').fill('3.12')
++      await page.getByRole('button', { exact: true, name: 'Verify model on start' }).click()
++      await page.getByRole('button', { exact: true, name: 'Save settings' }).click()
++      await expect
++        .poll(() => {
++          const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
++
++          return settings.runtime
++        })
++        .toEqual({
++          acceleration: 'cpu',
++          buildParallelism: 6,
++          cudaArchitecture: '89',
++          pythonVersion: '3.12',
++          verifyModelOnStart: false
++        })
++      await page.screenshot({ fullPage: true, path: path.join(evidence, 'launcher-configuration-runtime.png') })
++
++      await workstationNav.getByRole('button', { exact: true, name: 'Profiles' }).click()
++      await expect(page.getByRole('heading', { exact: true, name: 'Profiles' })).toBeVisible()
++      const settingsBeforeProfiles = fs.existsSync(settingsPath)
++        ? JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
++        : {}
++      const profileSource = Array.isArray(settingsBeforeProfiles.profiles)
++        ? settingsBeforeProfiles.profiles
++        : JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'profiles', 'profiles.json'), 'utf8')).profiles
++      const profilesBefore = profileSource.map((profile: { name: string }) => profile.name)
++
++      await page.getByRole('main').getByText('New profile', { exact: true }).click()
++      await expect
++        .poll(() => {
++          const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
++
++          return settings.profiles.some((profile: { name: string }) => !profilesBefore.includes(profile.name))
++        })
++        .toBe(true)
++      const settingsAfterCreate = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
++      const customProfileName = settingsAfterCreate.profiles.find(
++        (profile: { name: string }) => !profilesBefore.includes(profile.name)
++      ).name
++
++      await page.getByRole('button', { exact: true, name: customProfileName }).click()
++      await expect(page.getByLabel('Profile name')).toHaveValue(customProfileName)
++      await page.getByLabel('Context tokens').fill('65536')
++      await expect(page.getByLabel('Context tokens')).toHaveValue('65536')
++      await page.getByLabel('GPU layers').fill('32')
++      await expect(page.getByLabel('GPU layers')).toHaveValue('32')
++      await page.getByLabel('KV cache values').selectOption('q4_0')
++      await expect(page.getByLabel('KV cache values')).toHaveValue('q4_0')
++      const saveProfileButton = page.getByRole('button', { exact: true, name: 'Save profile' })
++
++      await saveProfileButton.click()
++      await expect(saveProfileButton).toBeEnabled()
++      await expect
++        .poll(() => {
++          const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
++          const profile = settings.profiles.find((entry: { name: string }) => entry.name === customProfileName)
++
++          return {
++            contextTokens: profile?.contextTokens,
++            gpuLayers: profile?.gpu?.layers,
++            kvValueType: profile?.kvCache?.valueType,
++            selectedProfile: settings.selectedProfile
++          }
++        })
++        .toEqual({
++          contextTokens: 65_536,
++          gpuLayers: 32,
++          kvValueType: 'q4_0',
++          selectedProfile: customProfileName
++        })
++      await page.screenshot({ fullPage: true, path: path.join(evidence, 'launcher-configuration-profiles.png') })
++      await page.getByRole('button', { exact: true, name: 'Delete' }).click()
++
++      expect(rendererErrors, rendererErrors.join('\n')).toEqual([])
++    } finally {
++      await app.close().catch(() => undefined)
++      if (originalSettings) {
++        fs.mkdirSync(path.dirname(settingsPath), { recursive: true })
++        fs.writeFileSync(settingsPath, originalSettings)
++      } else {
++        fs.rmSync(settingsPath, { force: true })
++      }
++      fs.rmSync(sandbox, { force: true, maxRetries: 10, recursive: true, retryDelay: 250 })
++    }
++  })
++})
+diff --git a/apps/desktop/e2e/hermes-local-portable.spec.ts b/apps/desktop/e2e/hermes-local-portable.spec.ts
+index 27f3a870c..1d9349672 100644
+--- a/apps/desktop/e2e/hermes-local-portable.spec.ts
++++ b/apps/desktop/e2e/hermes-local-portable.spec.ts
+@@ -6,10 +6,13 @@ import path from 'node:path'
+ 
+ import { chromium, expect, test } from '@playwright/test'
+ 
+-const ROOT = process.env.HERMES_LOCAL_ROOT || 'D:\\Hermes-Local'
++const ROOT = process.env.HERMES_LOCAL_ROOT || path.resolve(import.meta.dirname, '../../../../..')
++const DESKTOP_VERSION = JSON.parse(
++  fs.readFileSync(path.join(ROOT, 'source', 'hermes-agent', 'apps', 'desktop', 'package.json'), 'utf8')
++).version
+ const PORTABLE =
+   process.env.HERMES_LOCAL_PORTABLE_PATH ||
+-  path.join(ROOT, 'dist', 'Hermes-Launcher-0.17.0-windows-x64-portable.exe')
++  path.join(ROOT, 'dist', `Hermes-Launcher-${DESKTOP_VERSION}-windows-x64-portable.exe`)
+ const ENABLED = process.env.HERMES_LOCAL_ACCEPTANCE === '1'
+ 
+ async function reserveLoopbackPort(): Promise<number> {
+@@ -105,11 +108,7 @@ test.describe('Hermes Local portable workstation', () => {
+ 
+     const child = spawn(
+       PORTABLE,
+-      [
+-        '--disable-gpu',
+-        '--remote-debugging-address=127.0.0.1',
+-        `--remote-debugging-port=${port}`
+-      ],
++      ['--disable-gpu', '--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${port}`],
+       {
+         env,
+         shell: false,
+diff --git a/apps/desktop/e2e/hermes-local-workstation.spec.ts b/apps/desktop/e2e/hermes-local-workstation.spec.ts
+index 4544a3831..1cf838bd7 100644
+--- a/apps/desktop/e2e/hermes-local-workstation.spec.ts
++++ b/apps/desktop/e2e/hermes-local-workstation.spec.ts
+@@ -4,7 +4,7 @@ import path from 'node:path'
+ 
+ import { _electron, expect, type Page, test } from '@playwright/test'
+ 
+-const ROOT = process.env.HERMES_LOCAL_ROOT || 'D:\\Hermes-Local'
++const ROOT = process.env.HERMES_LOCAL_ROOT || path.resolve(import.meta.dirname, '../../../../..')
+ const LAUNCHER = process.env.HERMES_LOCAL_LAUNCHER_PATH || path.join(ROOT, 'dist', 'Hermes Launcher.exe')
+ const ENABLED = process.env.HERMES_LOCAL_ACCEPTANCE === '1'
+ 
+@@ -25,9 +25,7 @@ interface LoginItemWindow {
+ }
+ 
+ async function assertRendererCsp(page: Page) {
+-  const policy = await page
+-    .locator('meta[http-equiv="Content-Security-Policy"]')
+-    .getAttribute('content')
++  const policy = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content')
+ 
+   expect(policy).toContain("script-src 'self'")
+   expect(policy).toContain("object-src 'none'")
+@@ -51,7 +49,7 @@ async function assertRendererCsp(page: Page) {
+           script.remove()
+           resolve(!executed)
+         }, 0)
+-      }),
++      })
+   )
+ 
+   expect(inlineScriptBlocked).toBe(true)
+@@ -66,6 +64,10 @@ test.describe('Hermes Local packaged workstation', () => {
+     const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-local-acceptance-'))
+     const userData = path.join(sandbox, 'user-data')
+     const evidence = path.join(ROOT, 'reports', 'acceptance')
++    const defaults = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'defaults', 'workstation.json'), 'utf8'))
++    const settingsPath = path.join(ROOT, 'config', 'launcher', 'user-settings.json')
++    const userSettings = fs.existsSync(settingsPath) ? JSON.parse(fs.readFileSync(settingsPath, 'utf8')) : {}
++    const expectedNetwork = { ...defaults.network, ...(userSettings.network || {}) }
+     const mainLogs: string[] = []
+     const rendererErrors: string[] = []
+ 
+@@ -73,24 +75,29 @@ test.describe('Hermes Local packaged workstation', () => {
+     fs.mkdirSync(evidence, { recursive: true })
+ 
+     const env = Object.fromEntries(
+-      Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
++      Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+     )
+ 
+     delete env.HERMES_DESKTOP_BOOT_FAKE
+     delete env.HERMES_DESKTOP_REMOTE_TOKEN
+     delete env.HERMES_DESKTOP_REMOTE_URL
++    for (const name of ['ALLUSERSPROFILE', 'ProgramData']) {
++      if (env[name]?.includes('%SystemDrive%')) {
++        env[name] = env[name].replaceAll('%SystemDrive%', env.SystemDrive || 'C:')
++      }
++    }
+ 
+     Object.assign(env, {
+       HERMES_DESKTOP_APP_NAME: `Hermes Launcher Acceptance ${path.basename(sandbox)}`,
+       HERMES_DESKTOP_TEST_HIDDEN: '1',
+       HERMES_DESKTOP_USER_DATA_DIR: userData,
+-      HERMES_LOCAL_ROOT: ROOT,
++      HERMES_LOCAL_ROOT: ROOT
+     })
+ 
+     const app = await _electron.launch({
+       args: ['--disable-gpu'],
+       executablePath: LAUNCHER,
+-      env,
++      env
+     })
+ 
+     app.on('console', message => mainLogs.push(`${message.type()}: ${message.text()}`))
+@@ -101,40 +108,65 @@ test.describe('Hermes Local packaged workstation', () => {
+           appName: process.env.HERMES_DESKTOP_APP_NAME,
+           hidden: process.env.HERMES_DESKTOP_TEST_HIDDEN,
+           localRoot: process.env.HERMES_LOCAL_ROOT,
+-          userData: process.env.HERMES_DESKTOP_USER_DATA_DIR,
++          userData: process.env.HERMES_DESKTOP_USER_DATA_DIR
+         },
+         isPackaged: app.isPackaged,
+         isReady: app.isReady(),
+         paths: {
+           appData: app.getPath('appData'),
+-          userData: app.getPath('userData'),
++          userData: app.getPath('userData')
+         },
+         windows: BrowserWindow.getAllWindows().map(window => ({
+           destroyed: window.isDestroyed(),
+           title: window.getTitle(),
+-          visible: window.isVisible(),
+-        })),
++          visible: window.isVisible()
++        }))
+       }))
+ 
+-      fs.writeFileSync(
+-        path.join(evidence, 'launcher-launch-state.json'),
+-        JSON.stringify(launchState, null, 2),
+-        'utf8',
++      const launchStateEvidence = JSON.stringify(
++        launchState,
++        (_key, value) =>
++          typeof value === 'string'
++            ? value
++                .replaceAll(sandbox, '<sandbox>')
++                .replaceAll(path.basename(sandbox), '<sandbox-id>')
++                .replaceAll(ROOT, '<project-root>')
++                .replaceAll(os.homedir(), '<user-home>')
++            : value,
++        2
+       )
+ 
++      fs.writeFileSync(path.join(evidence, 'launcher-launch-state.json'), launchStateEvidence, 'utf8')
++
+       const page = await app.firstWindow({ timeout: 120_000 })
++      const workstationState = await page.evaluate(() =>
++        (
++          window as unknown as {
++            hermesDesktop: {
++              localWorkstation: {
++                snapshot: () => Promise<{ settings: { network: unknown } }>
++              }
++            }
++          }
++        ).hermesDesktop.localWorkstation.snapshot()
++      )
++
++      expect(workstationState.settings.network).toEqual({
++        ...expectedNetwork,
++        host: expectedNetwork.host === 'localhost' ? '127.0.0.1' : expectedNetwork.host
++      })
+ 
+       // Perform the intentional blocked-inline-script probe before collecting
+       // unexpected console errors; Chromium logs the expected CSP violation.
+       await assertRendererCsp(page)
+ 
+       const originalLoginItem = await page.evaluate(() =>
+-        (window as unknown as LoginItemWindow).hermesDesktop.localWorkstation.loginItem.get(),
++        (window as unknown as LoginItemWindow).hermesDesktop.localWorkstation.loginItem.get()
+       )
+ 
+       const toggledLoginItem = await page.evaluate(
+         enabled => (window as unknown as LoginItemWindow).hermesDesktop.localWorkstation.loginItem.set(enabled),
+-        !originalLoginItem.enabled,
++        !originalLoginItem.enabled
+       )
+ 
+       try {
+@@ -143,7 +175,7 @@ test.describe('Hermes Local packaged workstation', () => {
+       } finally {
+         const restoredLoginItem = await page.evaluate(
+           enabled => (window as unknown as LoginItemWindow).hermesDesktop.localWorkstation.loginItem.set(enabled),
+-          originalLoginItem.enabled,
++          originalLoginItem.enabled
+         )
+ 
+         expect(restoredLoginItem.enabled).toBe(originalLoginItem.enabled)
+@@ -161,8 +193,8 @@ test.describe('Hermes Local packaged workstation', () => {
+       await workstationNav.getByRole('button', { name: 'Home', exact: true }).click()
+       await page.getByRole('heading', { name: 'Local AI workstation' }).waitFor({ timeout: 60_000 })
+       await expect(page.getByText('Ready for local inference')).toBeVisible()
+-      await expect(page.getByText('Laguna and Hermes are online')).toBeVisible()
+-      await expect(page.getByText('Laguna model server')).toBeVisible()
++      await expect(page.getByText(/and Hermes are online/)).toBeVisible()
++      await expect(page.getByText(/server$/).first()).toBeVisible()
+       await expect(page.getByText('Hermes serve')).toBeVisible()
+       await expect(page.getByRole('main').getByText('Web Dashboard')).toBeVisible()
+       await page.screenshot({ fullPage: true, path: path.join(evidence, 'launcher-home.png') })
+@@ -191,7 +223,7 @@ test.describe('Hermes Local packaged workstation', () => {
+       await page.waitForFunction(
+         () => (document.querySelector('.xterm-rows')?.textContent?.trim().length || 0) > 10,
+         undefined,
+-        { timeout: 60_000 },
++        { timeout: 60_000 }
+       )
+       await page.screenshot({ fullPage: true, path: path.join(evidence, 'launcher-tui.png') })
+ 
+diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
+index c4f5e0daf..983346bc1 100644
+--- a/apps/desktop/electron/hermes-local-control.test.ts
++++ b/apps/desktop/electron/hermes-local-control.test.ts
+@@ -1,3 +1,6 @@
++import os from 'node:os'
++import path from 'node:path'
++
+ import { app } from 'electron'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ 
+@@ -16,6 +19,7 @@ vi.mock('electron', () => ({
+ import { hermesLocalControlTest } from './hermes-local-control'
+ 
+ const originalRoot = process.env.HERMES_LOCAL_ROOT
++const testRoot = path.resolve(os.tmpdir(), 'hermes-local-control-test')
+ 
+ function validProfile() {
+   return {
+@@ -34,7 +38,7 @@ function validProfile() {
+ 
+ describe('Hermes Local Electron boundary', () => {
+   beforeEach(() => {
+-    process.env.HERMES_LOCAL_ROOT = 'D:\\Hermes-Local'
++    process.env.HERMES_LOCAL_ROOT = testRoot
+   })
+ 
+   afterEach(() => {
+@@ -49,10 +53,10 @@ describe('Hermes Local Electron boundary', () => {
+     process.env.HERMES_LOCAL_ROOT = 'relative-root'
+     expect(() => hermesLocalControlTest.localRoot()).toThrow(/must be absolute/i)
+ 
+-    process.env.HERMES_LOCAL_ROOT = 'D:\\Hermes-Local'
++    process.env.HERMES_LOCAL_ROOT = testRoot
+     expect(() => hermesLocalControlTest.resolveUnderRoot('..\\outside.txt')).toThrow(/escapes/i)
+     expect(hermesLocalControlTest.resolveUnderRoot('logs\\launcher\\launcher.log')).toBe(
+-      'D:\\Hermes-Local\\logs\\launcher\\launcher.log'
++      path.join(testRoot, 'logs', 'launcher', 'launcher.log')
+     )
+   })
+ 
+@@ -84,12 +88,12 @@ describe('Hermes Local Electron boundary', () => {
+   })
+ 
+   it('rejects unsafe names and out-of-range resource settings', () => {
+-    expect(() =>
+-      hermesLocalControlTest.sanitizeEditableProfile({ ...validProfile(), name: '..\\escape' })
+-    ).toThrow(/invalid profile name/i)
+-    expect(() =>
+-      hermesLocalControlTest.sanitizeEditableProfile({ ...validProfile(), contextTokens: 1024 })
+-    ).toThrow(/context must be an integer/i)
++    expect(() => hermesLocalControlTest.sanitizeEditableProfile({ ...validProfile(), name: '..\\escape' })).toThrow(
++      /invalid profile name/i
++    )
++    expect(() => hermesLocalControlTest.sanitizeEditableProfile({ ...validProfile(), contextTokens: 1024 })).toThrow(
++      /context must be an integer/i
++    )
+   })
+ 
+   it('uses a current-user Windows login item and rejects renderer type confusion', () => {
+diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
+index 642f45cdd..428c6e8e4 100644
+--- a/apps/desktop/electron/hermes-local-control.ts
++++ b/apps/desktop/electron/hermes-local-control.ts
+@@ -7,11 +7,22 @@ import { promisify } from 'node:util'
+ 
+ import { app, ipcMain, shell } from 'electron'
+ 
++import {
++  deleteProfile,
++  readLocalConfiguration,
++  registerModel,
++  removeModel,
++  sanitizeEditableProfile,
++  saveProfile,
++  saveWorkstationSettings,
++  selectModel,
++  selectProfile,
++  validProfileName
++} from './hermes-local-settings'
++
+ const execFileAsync = promisify(execFile)
+-const DEFAULT_ROOT = 'D:\\Hermes-Local'
+ const MAX_TASK_OUTPUT = 128 * 1024
+ const MAX_LOG_BYTES = 512 * 1024
+-const PROFILE_NAME = /^[A-Za-z][A-Za-z0-9 ]{0,31}$/
+ const LOGIN_ITEM_ARGUMENTS = ['--hermes-local-autostart']
+ 
+ const ACTION_SCRIPTS = {
+@@ -88,13 +99,59 @@ function powershellExecutable(): string {
+ }
+ 
+ function localRoot(): string {
+-  const configured = String(process.env.HERMES_LOCAL_ROOT || DEFAULT_ROOT).trim()
++  const configured = String(process.env.HERMES_LOCAL_ROOT || '').trim()
+ 
+-  if (!path.isAbsolute(configured)) {
++  if (configured && !path.isAbsolute(configured)) {
+     throw new Error('HERMES_LOCAL_ROOT must be absolute')
+   }
+ 
+-  return path.resolve(configured)
++  if (configured) {
++    return path.resolve(configured)
++  }
++
++  const commandLineRoot = process.argv
++    .find(argument => argument.startsWith('--hermes-local-root='))
++    ?.slice('--hermes-local-root='.length)
++
++  if (commandLineRoot) {
++    if (!path.isAbsolute(commandLineRoot)) {
++      throw new Error('--hermes-local-root must be absolute')
++    }
++
++    return path.resolve(commandLineRoot)
++  }
++
++  const candidates = [
++    process.env.PORTABLE_EXECUTABLE_DIR,
++    path.dirname(process.execPath),
++    typeof app.getAppPath === 'function' ? app.getAppPath() : null,
++    process.cwd()
++  ].filter((candidate): candidate is string => Boolean(candidate && path.isAbsolute(candidate)))
++
++  for (const start of candidates) {
++    let current = path.resolve(start)
++
++    for (let depth = 0; depth < 8; depth += 1) {
++      if (
++        fs.existsSync(path.join(current, 'VERSION.json')) &&
++        fs.existsSync(path.join(current, 'scripts', 'Common-Hermes.psm1'))
++      ) {
++        return current
++      }
++
++      const parent = path.dirname(current)
++
++      if (parent === current) {
++        break
++      }
++
++      current = parent
++    }
++  }
++
++  throw new Error(
++    'Hermes Local project root was not found. Set HERMES_LOCAL_ROOT or launch the portable app from the project.'
++  )
+ }
+ 
+ function resolveUnderRoot(relativePath: string): string {
+@@ -147,16 +204,6 @@ function publicTask(task: ActionTask) {
+   }
+ }
+ 
+-function validProfileName(value: unknown): string {
+-  const profile = String(value || 'Daily').trim()
+-
+-  if (!PROFILE_NAME.test(profile)) {
+-    throw new Error('Invalid profile name')
+-  }
+-
+-  return profile
+-}
+-
+ function startActionTask(actionValue: unknown, input: unknown) {
+   const action = String(actionValue || '') as ActionName
+   const scriptRelative = ACTION_SCRIPTS[action]
+@@ -183,7 +230,9 @@ function startActionTask(actionValue: unknown, input: unknown) {
+   const payload = input && typeof input === 'object' ? (input as Record<string, unknown>) : {}
+ 
+   if (action === 'start' || action === 'restart') {
+-    args.push('-Profile', validProfileName(payload.profile))
++    const configuredProfile = readLocalConfiguration(localRoot(), os.cpus().length).selectedProfile
++
++    args.push('-Profile', validProfileName(payload.profile || configuredProfile))
+   }
+ 
+   if (action === 'update') {
+@@ -359,15 +408,16 @@ function setLoginItem(enabledValue: unknown) {
+ 
+ async function workstationSnapshot() {
+   const state = readJson<Record<string, any>>('data\\runtime\\status.json')
+-  const profiles = readJson<Record<string, any>>('config\\profiles\\profiles.json')
+-  const model = readJson<Record<string, any>>('models\\manifests\\Laguna-XS-2.1-Q4_K_M.json')
+   const version = readJson<Record<string, any>>('VERSION.json')
+-
+-  const [modelHealthy, hermesHealthy, dashboardHealthy, gpu] = await Promise.all([
+-    health('http://127.0.0.1:8011/health'),
+-    health('http://127.0.0.1:9119/api/health'),
+-    health('http://127.0.0.1:9119/api/health'),
+-    gpuSnapshot()
++  const gpu = await gpuSnapshot()
++  const configuration = readLocalConfiguration(localRoot(), os.cpus().length, gpu?.memoryTotalMiB || 0)
++  const modelBase = `http://${configuration.network.host}:${configuration.network.modelPort}`
++  const hermesBase = `http://${configuration.network.host}:${configuration.network.hermesPort}`
++
++  const [modelHealthy, hermesHealthy, dashboardHealthy] = await Promise.all([
++    health(`${modelBase}/health`),
++    health(`${hermesBase}/api/health`),
++    health(`${hermesBase}/api/health`)
+   ])
+ 
+   const actions = Object.fromEntries(
+@@ -388,8 +438,13 @@ async function workstationSnapshot() {
+       hermes: hermesHealthy,
+       model: modelHealthy
+     },
+-    model,
+-    profiles,
++    model: configuration.selectedModel,
++    models: configuration.models,
++    profiles: {
++      profiles: configuration.profiles,
++      schemaVersion: 1,
++      selected: configuration.selectedProfile
++    },
+     reports: {
+       benchmark: fs.existsSync(resolveUnderRoot('benchmarks\\reports\\LATEST.md')),
+       security: fs.existsSync(resolveUnderRoot('security\\reports\\SECURITY_REPORT.md'))
+@@ -397,13 +452,21 @@ async function workstationSnapshot() {
+     root: localRoot(),
+     storage: {
+       memoryFiles: fs.existsSync(resolveUnderRoot('data\\memory'))
+-        ? fs.readdirSync(resolveUnderRoot('data\\memory'), { withFileTypes: true }).filter(entry => entry.isFile()).length
++        ? fs.readdirSync(resolveUnderRoot('data\\memory'), { withFileTypes: true }).filter(entry => entry.isFile())
++            .length
+         : 0,
+       stateDatabaseBytes: fs.existsSync(resolveUnderRoot('data\\hermes\\state.db'))
+         ? fs.statSync(resolveUnderRoot('data\\hermes\\state.db')).size
+         : 0
+     },
+     startup: loginItemStatus(),
++    settings: {
++      autoTuning: configuration.autoTuning,
++      network: configuration.network,
++      runtime: configuration.runtime,
++      selectedModelId: configuration.selectedModelId,
++      selectedProfile: configuration.selectedProfile
++    },
+     taskLedger: fs.existsSync(resolveUnderRoot('TASKS.md'))
+       ? fs.readFileSync(resolveUnderRoot('TASKS.md'), 'utf8').slice(0, 128 * 1024)
+       : '',
+@@ -449,119 +512,6 @@ function readLog(nameValue: unknown, requestedLines: unknown) {
+   return { content, name, path: filePath }
+ }
+ 
+-function sanitizeEditableProfile(value: unknown) {
+-  if (!value || typeof value !== 'object') {
+-    throw new Error('Profile must be an object')
+-  }
+-
+-  const candidate = structuredClone(value as Record<string, unknown>)
+-  const name = validProfileName(candidate.name)
+-
+-  const integer = (candidate: unknown, minimum: number, maximum: number, label: string) => {
+-    const parsed = Number(candidate)
+-
+-    if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+-      throw new Error(`${label} must be an integer from ${minimum} to ${maximum}`)
+-    }
+-
+-    return parsed
+-  }
+-
+-  const batch = candidate.batch && typeof candidate.batch === 'object' ? candidate.batch as Record<string, unknown> : {}
+-  const gpu = candidate.gpu && typeof candidate.gpu === 'object' ? candidate.gpu as Record<string, unknown> : {}
+-  const kvCache = candidate.kvCache && typeof candidate.kvCache === 'object' ? candidate.kvCache as Record<string, unknown> : {}
+-  const threads = candidate.threads && typeof candidate.threads === 'object' ? candidate.threads as Record<string, unknown> : {}
+-  const description = String(candidate.description || '').trim().slice(0, 240)
+-
+-  const keyType = typeof kvCache.keyType === 'string' && ['f16', 'q8_0', 'q4_0'].includes(kvCache.keyType)
+-    ? kvCache.keyType
+-    : 'q8_0'
+-
+-  const valueType = typeof kvCache.valueType === 'string' && ['f16', 'q8_0', 'q4_0'].includes(kvCache.valueType)
+-    ? kvCache.valueType
+-    : 'q8_0'
+-
+-  const profile: Record<string, unknown> = {
+-    batch: {
+-      logical: integer(batch.logical, 32, 4096, 'Batch size'),
+-      physical: integer(batch.physical, 16, 1024, 'Micro-batch size')
+-    },
+-    contextTokens: integer(candidate.contextTokens, 4096, 262144, 'Context'),
+-    description,
+-    flashAttention: Boolean(candidate.flashAttention),
+-    gpu: {
+-      layers:
+-        gpu.layers === 'auto'
+-        ? 'auto'
+-        : integer(gpu.layers, 0, 999, 'GPU layers'),
+-      vramReserveMiB: integer(gpu.vramReserveMiB, 512, 8192, 'VRAM reserve')
+-    },
+-    kvCache: { keyType, valueType },
+-    name,
+-    promptCache: Boolean(candidate.promptCache),
+-    speculativeDecoding: Boolean(candidate.speculativeDecoding),
+-    threads: {
+-      batch: integer(threads.batch, 1, 20, 'Batch threads'),
+-      generation: integer(threads.generation, 1, 20, 'Generation threads')
+-    }
+-  }
+-
+-  if (candidate.experimental === true) {
+-    profile.experimental = true
+-  }
+-
+-  if (candidate.seed !== undefined) {
+-    profile.seed = integer(candidate.seed, 0, 2_147_483_647, 'Seed')
+-  }
+-
+-  return profile
+-}
+-
+-function saveProfile(value: unknown) {
+-  const profile = sanitizeEditableProfile(value)
+-  const profilesPath = resolveUnderRoot('config\\profiles\\profiles.json')
+-  const document = readJson<Record<string, any>>('config\\profiles\\profiles.json')
+-
+-  if (!document || !Array.isArray(document.profiles)) {
+-    throw new Error('Profiles configuration is unavailable')
+-  }
+-
+-  const index = document.profiles.findIndex((entry: Record<string, unknown>) => entry?.name === profile.name)
+-
+-  if (index < 0) {
+-    throw new Error('Only existing profiles can be edited')
+-  }
+-
+-  document.profiles[index] = profile
+-  const temporary = `${profilesPath}.${process.pid}.${Date.now()}.tmp`
+-  fs.writeFileSync(temporary, `${JSON.stringify(document, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' })
+-  fs.renameSync(temporary, profilesPath)
+-
+-  return profile
+-}
+-
+-function selectProfile(nameValue: unknown) {
+-  const name = validProfileName(nameValue)
+-  const profilesPath = resolveUnderRoot('config\\profiles\\profiles.json')
+-  const document = readJson<Record<string, any>>('config\\profiles\\profiles.json')
+-
+-  if (!document || !Array.isArray(document.profiles)) {
+-    throw new Error('Profiles configuration is unavailable')
+-  }
+-
+-  if (!document.profiles.some((profile: Record<string, unknown>) => profile?.name === name)) {
+-    throw new Error('Profile does not exist')
+-  }
+-
+-  document.selected = name
+-  document.selectionStatus = 'user-selected'
+-  const temporary = `${profilesPath}.${process.pid}.${Date.now()}.tmp`
+-  fs.writeFileSync(temporary, `${JSON.stringify(document, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' })
+-  fs.renameSync(temporary, profilesPath)
+-
+-  return { name }
+-}
+-
+ export function hermesLocalTuiLaunch() {
+   const root = localRoot()
+   const scriptPath = resolveUnderRoot('scripts\\launch\\Start-Hermes-Tui.ps1')
+@@ -605,6 +555,7 @@ export function configureHermesLocalDesktopEnvironment(): boolean {
+   process.env.HERMES_DESKTOP_HERMES_ROOT = sourceRoot
+ 
+   if (!process.env.HERMES_DESKTOP_REMOTE_URL) {
++    const configuration = readLocalConfiguration(root, os.cpus().length)
+     const pwsh = powershellExecutable()
+ 
+     const token = execFileSync(
+@@ -623,7 +574,7 @@ export function configureHermesLocalDesktopEnvironment(): boolean {
+     }
+ 
+     process.env.HERMES_DESKTOP_REMOTE_TOKEN = token
+-    process.env.HERMES_DESKTOP_REMOTE_URL = 'http://127.0.0.1:9119'
++    process.env.HERMES_DESKTOP_REMOTE_URL = `http://${configuration.network.host}:${configuration.network.hermesPort}`
+   }
+ 
+   return true
+@@ -636,10 +587,18 @@ export function registerHermesLocalControlIpc(): void {
+   ipcMain.handle('hermes:local:logs', (_event, name, lines) => readLog(name, lines))
+   ipcMain.handle('hermes:local:login-item:get', loginItemStatus)
+   ipcMain.handle('hermes:local:login-item:set', (_event, enabled) => setLoginItem(enabled))
+-  ipcMain.handle('hermes:local:profile:save', (_event, profile) => saveProfile(profile))
+-  ipcMain.handle('hermes:local:profile:select', (_event, name) => selectProfile(name))
++  ipcMain.handle('hermes:local:profile:save', (_event, profile) => saveProfile(localRoot(), profile, os.cpus().length))
++  ipcMain.handle('hermes:local:profile:delete', (_event, name) => deleteProfile(localRoot(), name, os.cpus().length))
++  ipcMain.handle('hermes:local:profile:select', (_event, name) => selectProfile(localRoot(), name, os.cpus().length))
++  ipcMain.handle('hermes:local:model:register', (_event, model) => registerModel(localRoot(), model))
++  ipcMain.handle('hermes:local:model:remove', (_event, id) => removeModel(localRoot(), id, os.cpus().length))
++  ipcMain.handle('hermes:local:model:select', (_event, id) => selectModel(localRoot(), id, os.cpus().length))
++  ipcMain.handle('hermes:local:settings:save', (_event, settings) =>
++    saveWorkstationSettings(localRoot(), settings, os.cpus().length)
++  )
+   ipcMain.handle('hermes:local:dashboard:open', async () => {
+-    const url = 'http://127.0.0.1:9119'
++    const configuration = readLocalConfiguration(localRoot(), os.cpus().length)
++    const url = `http://${configuration.network.host}:${configuration.network.hermesPort}`
+ 
+     await shell.openExternal(url)
+ 
+diff --git a/apps/desktop/electron/hermes-local-settings.test.ts b/apps/desktop/electron/hermes-local-settings.test.ts
+new file mode 100644
+index 000000000..eed8315c7
+--- /dev/null
++++ b/apps/desktop/electron/hermes-local-settings.test.ts
+@@ -0,0 +1,169 @@
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++
++import { afterEach, beforeEach, describe, expect, it } from 'vitest'
++
++import {
++  deleteProfile,
++  readLocalConfiguration,
++  registerModel,
++  removeModel,
++  saveProfile,
++  saveWorkstationSettings,
++  selectModel,
++  selectProfile
++} from './hermes-local-settings'
++
++let root = ''
++
++function writeJson(relativePath: string, value: unknown) {
++  const filePath = path.join(root, relativePath)
++
++  fs.mkdirSync(path.dirname(filePath), { recursive: true })
++  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`)
++}
++
++function profile(name = 'Balanced') {
++  return {
++    batch: { logical: 512, physical: 128 },
++    contextTokens: 32_768,
++    description: 'Portable starter',
++    flashAttention: true,
++    gpu: { layers: 'auto', vramReserveMiB: 'auto' },
++    kvCache: { keyType: 'q8_0', valueType: 'q8_0' },
++    name,
++    promptCache: true,
++    speculativeDecoding: false,
++    threads: { batch: 'auto', generation: 'auto' }
++  }
++}
++
++beforeEach(() => {
++  root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-local-settings-'))
++  writeJson('config/defaults/workstation.json', {
++    schemaVersion: 1,
++    network: { host: '127.0.0.1', modelPort: 8011, hermesPort: 9119 },
++    runtime: {
++      acceleration: 'auto',
++      buildParallelism: 'auto',
++      cudaArchitecture: 'auto',
++      pythonVersion: '3.13',
++      verifyModelOnStart: true
++    },
++    selectedModelId: 'starter',
++    selectedProfile: 'Balanced',
++    models: []
++  })
++  writeJson('config/profiles/profiles.json', { schemaVersion: 1, selected: 'Balanced', profiles: [profile()] })
++  writeJson('models/manifests/starter.json', {
++    alias: 'starter',
++    displayName: 'Starter model',
++    filename: 'starter.gguf',
++    id: 'starter',
++    localPath: 'models/starter.gguf',
++    metadata: {},
++    server: { jinja: true }
++  })
++  fs.mkdirSync(path.join(root, 'models'), { recursive: true })
++  fs.writeFileSync(path.join(root, 'models', 'starter.gguf'), 'fixture')
++})
++
++afterEach(() => {
++  fs.rmSync(root, { force: true, recursive: true })
++})
++
++describe('Hermes Local portable settings', () => {
++  it('resolves auto-tuned profile values from the current machine inputs', () => {
++    const small = readLocalConfiguration(root, 4, 4096)
++    const large = readLocalConfiguration(root, 32, 24_576)
++
++    expect(small.profiles[0].threads).toEqual({ batch: 3, generation: 2 })
++    expect(large.profiles[0].threads).toEqual({ batch: 24, generation: 8 })
++    expect(small.profiles[0].gpu.vramReserveMiB).toBe(640)
++    expect(large.profiles[0].gpu.vramReserveMiB).toBe(3712)
++  })
++
++  it('registers and selects an arbitrary GGUF without changing the tracked catalog', () => {
++    const customPath = path.join(root, 'outside-model.gguf')
++
++    fs.writeFileSync(customPath, 'custom fixture')
++
++    const registered = registerModel(root, {
++      displayName: 'My Custom Model',
++      localPath: customPath,
++      metadata: { modelMaximumContextTokens: 65_536 }
++    })
++
++    selectModel(root, registered.id, 8)
++
++    const configuration = readLocalConfiguration(root, 8)
++    const catalog = JSON.parse(fs.readFileSync(path.join(root, 'models', 'manifests', 'starter.json'), 'utf8'))
++
++    expect(configuration.selectedModelId).toBe('my-custom-model')
++    expect(configuration.selectedModel.resolvedPath).toBe(customPath)
++    expect(catalog.id).toBe('starter')
++
++    removeModel(root, registered.id, 8)
++    expect(readLocalConfiguration(root, 8).selectedModelId).toBe('starter')
++  })
++
++  it('creates, selects, edits, and deletes user profiles without mutating defaults', () => {
++    const custom = {
++      ...readLocalConfiguration(root, 8).profiles[0],
++      contextTokens: 65_536,
++      name: 'Long context'
++    }
++
++    saveProfile(root, custom, 8)
++    selectProfile(root, 'Long context', 8)
++    expect(readLocalConfiguration(root, 8).selectedProfile).toBe('Long context')
++
++    deleteProfile(root, 'Long context', 8)
++    expect(readLocalConfiguration(root, 8).selectedProfile).toBe('Balanced')
++    expect(
++      JSON.parse(fs.readFileSync(path.join(root, 'config', 'profiles', 'profiles.json'), 'utf8')).profiles
++    ).toHaveLength(1)
++  })
++
++  it('persists configurable loopback ports and rejects unsafe network settings', () => {
++    saveWorkstationSettings(
++      root,
++      {
++        network: { host: '::1', modelPort: 18_011, hermesPort: 19_119 },
++        runtime: {
++          acceleration: 'cpu',
++          buildParallelism: 12,
++          cudaArchitecture: '89',
++          pythonVersion: '3.12',
++          verifyModelOnStart: false
++        }
++      },
++      8
++    )
++
++    const saved = readLocalConfiguration(root, 8)
++
++    expect(saved.network).toEqual({
++      hermesPort: 19_119,
++      host: '::1',
++      modelPort: 18_011
++    })
++    expect(saved.runtime).toEqual({
++      acceleration: 'cpu',
++      buildParallelism: 12,
++      cudaArchitecture: '89',
++      pythonVersion: '3.12',
++      verifyModelOnStart: false
++    })
++    expect(() =>
++      saveWorkstationSettings(
++        root,
++        {
++          network: { host: '0.0.0.0', modelPort: 8011, hermesPort: 8011 }
++        },
++        8
++      )
++    ).toThrow(/loopback|different ports/i)
++  })
++})
+diff --git a/apps/desktop/electron/hermes-local-settings.ts b/apps/desktop/electron/hermes-local-settings.ts
+new file mode 100644
+index 000000000..03f128922
+--- /dev/null
++++ b/apps/desktop/electron/hermes-local-settings.ts
+@@ -0,0 +1,551 @@
++import fs from 'node:fs'
++import path from 'node:path'
++
++const MODEL_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/
++const MODEL_ALIAS = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
++const PROFILE_NAME = /^[A-Za-z][A-Za-z0-9 _-]{0,63}$/
++
++type JsonObject = Record<string, any>
++
++function readJson<T>(filePath: string, optional = false): T | null {
++  try {
++    return JSON.parse(fs.readFileSync(filePath, 'utf8')) as T
++  } catch (error) {
++    if (optional && (error as NodeJS.ErrnoException).code === 'ENOENT') {
++      return null
++    }
++
++    throw error
++  }
++}
++
++function clone<T>(value: T): T {
++  return structuredClone(value)
++}
++
++function resolveModelPath(root: string, modelPath: string): string {
++  const expanded = modelPath.replace(/%([^%]+)%/g, (_match, name: string) => process.env[name] || `%${name}%`)
++
++  return path.resolve(path.isAbsolute(expanded) ? expanded : path.join(root, expanded))
++}
++
++function atomicWrite(filePath: string, value: unknown): void {
++  fs.mkdirSync(path.dirname(filePath), { recursive: true })
++  const temporary = `${filePath}.${process.pid}.${Date.now()}.tmp`
++
++  fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' })
++  fs.renameSync(temporary, filePath)
++}
++
++function userSettingsPath(root: string): string {
++  return path.join(root, 'config', 'launcher', 'user-settings.json')
++}
++
++function readUserSettings(root: string): JsonObject {
++  const value = readJson<JsonObject>(userSettingsPath(root), true) || { schemaVersion: 1 }
++
++  if (value.schemaVersion !== 1) {
++    throw new Error(`Unsupported user settings schema version: ${String(value.schemaVersion)}`)
++  }
++
++  return value
++}
++
++function saveUserSettings(root: string, settings: JsonObject): void {
++  atomicWrite(userSettingsPath(root), { ...settings, schemaVersion: 1 })
++}
++
++function autoTuning(logicalProcessors: number, vramMiB: number) {
++  const processors = Math.max(1, Math.floor(logicalProcessors))
++  const generationThreads = Math.max(1, Math.min(8, Math.floor(processors / 2)))
++  const batchThreads = Math.max(generationThreads, Math.min(processors, Math.floor(processors * 0.75)))
++  const vramReserveMiB = vramMiB > 0 ? Math.max(512, Math.min(4096, Math.round((vramMiB * 0.15) / 128) * 128)) : 1024
++
++  return { batchThreads, generationThreads, logicalProcessors: processors, vramMiB, vramReserveMiB }
++}
++
++function resolvedProfile(profileValue: unknown, tuning: ReturnType<typeof autoTuning>) {
++  const profile = clone(profileValue as JsonObject)
++
++  if (profile.threads?.generation === 'auto') {
++    profile.threads.generation = tuning.generationThreads
++  }
++
++  if (profile.threads?.batch === 'auto') {
++    profile.threads.batch = tuning.batchThreads
++  }
++
++  if (profile.gpu?.vramReserveMiB === 'auto') {
++    profile.gpu.vramReserveMiB = tuning.vramReserveMiB
++  }
++
++  return sanitizeEditableProfile(profile)
++}
++
++export function validProfileName(value: unknown): string {
++  const profile = String(value || '').trim()
++
++  if (!PROFILE_NAME.test(profile)) {
++    throw new Error('Invalid profile name')
++  }
++
++  return profile
++}
++
++export function sanitizeEditableProfile(value: unknown) {
++  if (!value || typeof value !== 'object') {
++    throw new Error('Profile must be an object')
++  }
++
++  const candidate = clone(value as JsonObject)
++  const name = validProfileName(candidate.name)
++
++  const integer = (input: unknown, minimum: number, maximum: number, label: string) => {
++    const parsed = Number(input)
++
++    if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
++      throw new Error(`${label} must be an integer from ${minimum} to ${maximum}`)
++    }
++
++    return parsed
++  }
++
++  const batch = candidate.batch && typeof candidate.batch === 'object' ? candidate.batch : {}
++  const gpu = candidate.gpu && typeof candidate.gpu === 'object' ? candidate.gpu : {}
++  const kvCache = candidate.kvCache && typeof candidate.kvCache === 'object' ? candidate.kvCache : {}
++  const threads = candidate.threads && typeof candidate.threads === 'object' ? candidate.threads : {}
++
++  const description = String(candidate.description || '')
++    .trim()
++    .slice(0, 240)
++
++  const keyType =
++    typeof kvCache.keyType === 'string' && ['f16', 'q8_0', 'q4_0'].includes(kvCache.keyType) ? kvCache.keyType : 'q8_0'
++
++  const valueType =
++    typeof kvCache.valueType === 'string' && ['f16', 'q8_0', 'q4_0'].includes(kvCache.valueType)
++      ? kvCache.valueType
++      : 'q8_0'
++
++  const profile: JsonObject = {
++    batch: {
++      logical: integer(batch.logical, 32, 65_536, 'Batch size'),
++      physical: integer(batch.physical, 16, 16_384, 'Micro-batch size')
++    },
++    contextTokens: integer(candidate.contextTokens, 2_048, 4_194_304, 'Context'),
++    description,
++    flashAttention: Boolean(candidate.flashAttention),
++    gpu: {
++      layers: gpu.layers === 'auto' ? 'auto' : integer(gpu.layers, 0, 9_999, 'GPU layers'),
++      vramReserveMiB: integer(gpu.vramReserveMiB, 0, 131_072, 'VRAM reserve')
++    },
++    kvCache: { keyType, valueType },
++    name,
++    promptCache: Boolean(candidate.promptCache),
++    speculativeDecoding: Boolean(candidate.speculativeDecoding),
++    threads: {
++      batch: integer(threads.batch, 1, 512, 'Batch threads'),
++      generation: integer(threads.generation, 1, 512, 'Generation threads')
++    }
++  }
++
++  if (candidate.experimental === true) {
++    profile.experimental = true
++  }
++
++  if (candidate.seed !== undefined) {
++    profile.seed = integer(candidate.seed, 0, 2_147_483_647, 'Seed')
++  }
++
++  return profile
++}
++
++function modelCatalog(root: string, user: JsonObject) {
++  const byId = new Map<string, JsonObject>()
++  const userModelIds = new Set<string>()
++  const manifestDirectory = path.join(root, 'models', 'manifests')
++
++  if (fs.existsSync(manifestDirectory)) {
++    for (const entry of fs.readdirSync(manifestDirectory, { withFileTypes: true })) {
++      if (!entry.isFile() || path.extname(entry.name).toLocaleLowerCase() !== '.json') {
++        continue
++      }
++
++      const model = readJson<JsonObject>(path.join(manifestDirectory, entry.name))
++
++      if (model) {
++        byId.set(String(model.id), model)
++      }
++    }
++  }
++
++  for (const model of Array.isArray(user.models) ? user.models : []) {
++    byId.set(String(model.id), model)
++    userModelIds.add(String(model.id))
++  }
++
++  return [...byId.values()].map(value => {
++    const model = sanitizeModel(value, root, false)
++    const resolvedPath = resolveModelPath(root, model.localPath)
++    const installed = fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isFile()
++
++    return {
++      ...model,
++      actualSizeBytes: installed ? fs.statSync(resolvedPath).size : null,
++      installed,
++      resolvedPath,
++      userManaged: userModelIds.has(model.id)
++    }
++  })
++}
++
++function sanitizeModel(value: unknown, root: string, requireInstalled: boolean) {
++  if (!value || typeof value !== 'object') {
++    throw new Error('Model registration must be an object')
++  }
++
++  const candidate = clone(value as JsonObject)
++  const localPath = String(candidate.localPath || '').trim()
++  const filename = String(candidate.filename || path.basename(localPath)).trim()
++
++  const displayName = String(candidate.displayName || path.basename(filename, path.extname(filename)))
++    .trim()
++    .slice(0, 120)
++
++  const generatedId = displayName
++    .toLocaleLowerCase()
++    .replace(/[^a-z0-9._-]+/g, '-')
++    .replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '')
++    .slice(0, 64)
++
++  const id = String(candidate.id || generatedId).trim()
++  const alias = String(candidate.alias || id).trim()
++
++  if (!MODEL_ID.test(id)) {
++    throw new Error('Model id must contain lowercase letters, numbers, dots, underscores, or hyphens')
++  }
++
++  if (!MODEL_ALIAS.test(alias)) {
++    throw new Error('Model alias contains unsupported characters')
++  }
++
++  if (!localPath || path.extname(localPath).toLocaleLowerCase() !== '.gguf') {
++    throw new Error('Select a GGUF model file')
++  }
++
++  const resolvedPath = resolveModelPath(root, localPath)
++
++  if (requireInstalled && (!fs.existsSync(resolvedPath) || !fs.statSync(resolvedPath).isFile())) {
++    throw new Error('The selected GGUF model file does not exist')
++  }
++
++  const sha256 = candidate.sha256 ? String(candidate.sha256).trim().toLocaleLowerCase() : null
++
++  if (sha256 && !/^[a-f0-9]{64}$/.test(sha256)) {
++    throw new Error('Model SHA-256 must contain exactly 64 hexadecimal characters')
++  }
++
++  const extraArguments = Array.isArray(candidate.server?.extraArguments)
++    ? candidate.server.extraArguments.map((argument: unknown) => String(argument))
++    : []
++
++  const reserved = /^(?:-m|--model|--host|--port|--api-key|--api-key-file|--log-file)(?:=|$)/
++
++  if (extraArguments.some((argument: string) => reserved.test(argument))) {
++    throw new Error('Custom model arguments cannot override model, network, authentication, or log ownership')
++  }
++
++  return {
++    alias,
++    displayName,
++    filename,
++    id,
++    license: candidate.license ? String(candidate.license) : null,
++    localPath,
++    metadata: candidate.metadata && typeof candidate.metadata === 'object' ? candidate.metadata : {},
++    repository: candidate.repository ? String(candidate.repository) : null,
++    revision: candidate.revision ? String(candidate.revision) : null,
++    server: {
++      chatTemplate: candidate.server?.chatTemplate ? String(candidate.server.chatTemplate) : null,
++      extraArguments,
++      jinja: candidate.server?.jinja !== false
++    },
++    sha256,
++    sizeBytes: candidate.sizeBytes ? Number(candidate.sizeBytes) : null,
++    source: candidate.source ? String(candidate.source) : null
++  }
++}
++
++export function readLocalConfiguration(root: string, logicalProcessors: number, vramMiB = 0) {
++  const defaults = readJson<JsonObject>(path.join(root, 'config', 'defaults', 'workstation.json'))
++  const profileDocument = readJson<JsonObject>(path.join(root, 'config', 'profiles', 'profiles.json'))
++  const user = readUserSettings(root)
++
++  if (!defaults || !profileDocument) {
++    throw new Error('Hermes Local portable defaults are missing')
++  }
++
++  const network = { ...defaults.network, ...(user.network || {}) }
++  const runtime = { ...defaults.runtime, ...(user.runtime || {}) }
++  const tuning = autoTuning(logicalProcessors, vramMiB)
++  const profileSource = Array.isArray(user.profiles) && user.profiles.length ? user.profiles : profileDocument.profiles
++  const profiles = profileSource.map((profile: unknown) => resolvedProfile(profile, tuning))
++  const models = modelCatalog(root, user)
++  const selectedModelId = String(user.selectedModelId || defaults.selectedModelId)
++  const selectedProfile = String(user.selectedProfile || defaults.selectedProfile)
++  const selectedModel = models.find(model => model.id === selectedModelId)
++
++  if (!['127.0.0.1', '::1', 'localhost'].includes(String(network.host))) {
++    throw new Error('Hermes Local services must bind to loopback')
++  }
++
++  for (const [name, value] of Object.entries({ hermesPort: network.hermesPort, modelPort: network.modelPort })) {
++    if (!Number.isSafeInteger(Number(value)) || Number(value) < 1024 || Number(value) > 65_535) {
++      throw new Error(`${name} must be an integer from 1024 to 65535`)
++    }
++  }
++
++  if (Number(network.hermesPort) === Number(network.modelPort)) {
++    throw new Error('The model and Hermes services must use different ports')
++  }
++
++  if (!['auto', 'cpu', 'cuda'].includes(String(runtime.acceleration))) {
++    throw new Error('Unsupported acceleration setting')
++  }
++
++  if (!selectedModel) {
++    throw new Error(`Selected model '${selectedModelId}' is not registered`)
++  }
++
++  if (!profiles.some((profile: JsonObject) => profile.name === selectedProfile)) {
++    throw new Error(`Selected profile '${selectedProfile}' does not exist`)
++  }
++
++  return {
++    autoTuning: tuning,
++    models,
++    network: {
++      hermesPort: Number(network.hermesPort),
++      host: network.host === 'localhost' ? '127.0.0.1' : String(network.host),
++      modelPort: Number(network.modelPort)
++    },
++    profiles,
++    runtime,
++    selectedModel,
++    selectedModelId,
++    selectedProfile
++  }
++}
++
++export function saveProfile(root: string, value: unknown, logicalProcessors: number, vramMiB = 0) {
++  const profile = sanitizeEditableProfile(value)
++  const settings = readUserSettings(root)
++  const configuration = readLocalConfiguration(root, logicalProcessors, vramMiB)
++  const profiles = configuration.profiles.map((entry: JsonObject) => clone(entry))
++  const index = profiles.findIndex((entry: JsonObject) => entry.name === profile.name)
++
++  if (index >= 0) {
++    profiles[index] = profile
++  } else {
++    profiles.push(profile)
++  }
++
++  settings.profiles = profiles
++  settings.selectedProfile ||= configuration.selectedProfile
++  saveUserSettings(root, settings)
++
++  return profile
++}
++
++export function deleteProfile(root: string, nameValue: unknown, logicalProcessors: number, vramMiB = 0) {
++  const name = validProfileName(nameValue)
++  const settings = readUserSettings(root)
++  const configuration = readLocalConfiguration(root, logicalProcessors, vramMiB)
++  const profiles = configuration.profiles.filter((profile: JsonObject) => profile.name !== name)
++
++  if (profiles.length === configuration.profiles.length) {
++    throw new Error('Profile does not exist')
++  }
++
++  if (!profiles.length) {
++    throw new Error('At least one profile is required')
++  }
++
++  settings.profiles = profiles
++
++  if (configuration.selectedProfile === name) {
++    settings.selectedProfile = profiles[0].name
++  }
++
++  saveUserSettings(root, settings)
++
++  return { name, selected: settings.selectedProfile || configuration.selectedProfile }
++}
++
++export function selectProfile(root: string, nameValue: unknown, logicalProcessors: number, vramMiB = 0) {
++  const name = validProfileName(nameValue)
++  const configuration = readLocalConfiguration(root, logicalProcessors, vramMiB)
++
++  if (!configuration.profiles.some((profile: JsonObject) => profile.name === name)) {
++    throw new Error('Profile does not exist')
++  }
++
++  const settings = readUserSettings(root)
++
++  settings.selectedProfile = name
++  saveUserSettings(root, settings)
++
++  return { name }
++}
++
++export function registerModel(root: string, value: unknown) {
++  const model = sanitizeModel(value, root, true)
++  const settings = readUserSettings(root)
++  const models = Array.isArray(settings.models) ? settings.models : []
++  const index = models.findIndex((entry: JsonObject) => entry.id === model.id)
++
++  if (index >= 0) {
++    models[index] = model
++  } else {
++    models.push(model)
++  }
++
++  settings.models = models
++  settings.selectedModelId ||= model.id
++  saveUserSettings(root, settings)
++
++  return model
++}
++
++export function selectModel(root: string, idValue: unknown, logicalProcessors: number) {
++  const id = String(idValue || '').trim()
++
++  if (!MODEL_ID.test(id)) {
++    throw new Error('Invalid model id')
++  }
++
++  const configuration = readLocalConfiguration(root, logicalProcessors)
++
++  if (!configuration.models.some(model => model.id === id)) {
++    throw new Error('Model is not registered')
++  }
++
++  const settings = readUserSettings(root)
++
++  settings.selectedModelId = id
++  saveUserSettings(root, settings)
++
++  return { id }
++}
++
++export function removeModel(root: string, idValue: unknown, logicalProcessors: number) {
++  const id = String(idValue || '').trim()
++  const settings = readUserSettings(root)
++  const models = Array.isArray(settings.models) ? settings.models : []
++  const next = models.filter((model: JsonObject) => model.id !== id)
++
++  if (next.length === models.length) {
++    throw new Error(
++      'Built-in catalog models cannot be removed; select another model or remove the manifest from your fork'
++    )
++  }
++
++  settings.models = next
++
++  if (settings.selectedModelId === id) {
++    const configuration = readLocalConfiguration(root, logicalProcessors)
++    const fallback = configuration.models.find(model => model.id !== id)
++
++    if (!fallback) {
++      throw new Error('At least one model registration is required')
++    }
++
++    settings.selectedModelId = fallback.id
++  }
++
++  saveUserSettings(root, settings)
++
++  return { id, selected: settings.selectedModelId }
++}
++
++export function saveWorkstationSettings(root: string, value: unknown, logicalProcessors: number) {
++  if (!value || typeof value !== 'object') {
++    throw new Error('Workstation settings must be an object')
++  }
++
++  const candidate = value as JsonObject
++  const current = readLocalConfiguration(root, logicalProcessors)
++
++  const network = {
++    hermesPort: Number(candidate.network?.hermesPort ?? current.network.hermesPort),
++    host: String(candidate.network?.host ?? current.network.host),
++    modelPort: Number(candidate.network?.modelPort ?? current.network.modelPort)
++  }
++
++  const acceleration = String(candidate.runtime?.acceleration ?? current.runtime.acceleration)
++  const buildParallelismValue = candidate.runtime?.buildParallelism ?? current.runtime.buildParallelism
++  const buildParallelism = buildParallelismValue === 'auto' ? 'auto' : Number(buildParallelismValue)
++  const cudaArchitecture = String(candidate.runtime?.cudaArchitecture ?? current.runtime.cudaArchitecture).trim()
++  const pythonVersion = String(candidate.runtime?.pythonVersion ?? current.runtime.pythonVersion).trim()
++  const verifyModelOnStart = candidate.runtime?.verifyModelOnStart ?? current.runtime.verifyModelOnStart
++
++  if (!['127.0.0.1', '::1', 'localhost'].includes(network.host)) {
++    throw new Error('Services must bind to loopback')
++  }
++
++  if (
++    !Number.isSafeInteger(network.modelPort) ||
++    !Number.isSafeInteger(network.hermesPort) ||
++    network.modelPort < 1024 ||
++    network.modelPort > 65_535 ||
++    network.hermesPort < 1024 ||
++    network.hermesPort > 65_535 ||
++    network.modelPort === network.hermesPort
++  ) {
++    throw new Error('Choose two different ports from 1024 to 65535')
++  }
++
++  if (!['auto', 'cpu', 'cuda'].includes(acceleration)) {
++    throw new Error('Unsupported acceleration setting')
++  }
++
++  if (
++    buildParallelism !== 'auto' &&
++    (!Number.isSafeInteger(buildParallelism) || buildParallelism < 1 || buildParallelism > 512)
++  ) {
++    throw new Error('Build parallelism must be auto or an integer from 1 to 512')
++  }
++
++  if (cudaArchitecture !== 'auto' && !/^[0-9]{2,3}$/.test(cudaArchitecture)) {
++    throw new Error('CUDA architecture must be auto or a two/three-digit CMake architecture')
++  }
++
++  if (!/^[0-9]+\.[0-9]+$/.test(pythonVersion)) {
++    throw new Error('Python version must contain a major and minor version, such as 3.13')
++  }
++
++  if (typeof verifyModelOnStart !== 'boolean') {
++    throw new Error('Model verification setting must be a boolean')
++  }
++
++  const settings = readUserSettings(root)
++
++  settings.network = network
++  settings.runtime = {
++    acceleration,
++    buildParallelism,
++    cudaArchitecture,
++    pythonVersion,
++    verifyModelOnStart
++  }
++  saveUserSettings(root, settings)
++
++  return { network, runtime: settings.runtime }
++}
++
++export const hermesLocalSettingsTest = {
++  autoTuning,
++  readUserSettings,
++  resolveModelPath,
++  sanitizeModel
++}
+diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
+index 564795986..19e9ca29f 100644
+--- a/apps/desktop/electron/preload.ts
++++ b/apps/desktop/electron/preload.ts
+@@ -104,7 +104,12 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
+     actionStatus: taskId => ipcRenderer.invoke('hermes:local:action:status', taskId),
+     logs: (name, lines) => ipcRenderer.invoke('hermes:local:logs', name, lines),
+     saveProfile: profile => ipcRenderer.invoke('hermes:local:profile:save', profile),
++    deleteProfile: name => ipcRenderer.invoke('hermes:local:profile:delete', name),
+     selectProfile: name => ipcRenderer.invoke('hermes:local:profile:select', name),
++    registerModel: model => ipcRenderer.invoke('hermes:local:model:register', model),
++    removeModel: id => ipcRenderer.invoke('hermes:local:model:remove', id),
++    selectModel: id => ipcRenderer.invoke('hermes:local:model:select', id),
++    saveSettings: settings => ipcRenderer.invoke('hermes:local:settings:save', settings),
+     openDashboard: () => ipcRenderer.invoke('hermes:local:dashboard:open'),
+     openRoot: () => ipcRenderer.invoke('hermes:local:root:open')
+   },
+diff --git a/apps/desktop/package.json b/apps/desktop/package.json
+index 7c2ce73c2..883884371 100644
+--- a/apps/desktop/package.json
++++ b/apps/desktop/package.json
+@@ -2,7 +2,7 @@
+   "name": "hermes-launcher",
+   "productName": "Hermes Launcher",
+   "private": true,
+-  "version": "0.17.0",
++  "version": "0.18.0",
+   "description": "Native desktop shell for Hermes Agent.",
+   "author": "Nous Research",
+   "type": "module",
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index 54028e50d..d60f54fff 100644
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -15,6 +15,7 @@ import {
+   IconKey,
+   IconLoader2,
+   IconPlayerPlay,
++  IconPlus,
+   IconRefresh,
+   IconRestore,
+   IconRocket,
+@@ -23,6 +24,7 @@ import {
+   IconSquare,
+   IconTerminal2,
+   IconTool,
++  IconTrash,
+   IconX
+ } from '@tabler/icons-react'
+ import { type ComponentType, type ReactNode, useCallback, useEffect, useState } from 'react'
+@@ -36,6 +38,8 @@ import type {
+   LocalActionTask,
+   LocalInferenceProfile,
+   LocalLog,
++  LocalModel,
++  LocalWorkstationSettings,
+   LocalWorkstationSnapshot
+ } from './types'
+ 
+@@ -91,15 +95,7 @@ function StatusPill({ label, ok }: { label: string; ok: boolean }) {
+   )
+ }
+ 
+-function Surface({
+-  children,
+-  className,
+-  title
+-}: {
+-  children: ReactNode
+-  className?: string
+-  title?: string
+-}) {
++function Surface({ children, className, title }: { children: ReactNode; className?: string; title?: string }) {
+   return (
+     <section
+       className={cn(
+@@ -213,11 +209,15 @@ function ServiceRow({
+ }
+ 
+ function ProfileEditor({
++  onCreate,
++  onDelete,
+   onSave,
+   onSelect,
+   selected,
+   snapshot
+ }: {
++  onCreate: (profile: LocalInferenceProfile) => Promise<void>
++  onDelete: (name: string) => Promise<void>
+   onSave: (profile: LocalInferenceProfile) => Promise<void>
+   onSelect: (name: string) => Promise<void>
+   selected: string
+@@ -226,10 +226,14 @@ function ProfileEditor({
+   const profile = snapshot.profiles?.profiles.find(item => item.name === selected) ?? snapshot.profiles?.profiles[0]
+   const [draft, setDraft] = useState<LocalInferenceProfile | null>(profile ? structuredClone(profile) : null)
+   const [saving, setSaving] = useState(false)
++  const [sourceProfileName, setSourceProfileName] = useState(profile?.name || '')
+ 
+   useEffect(() => {
+-    setDraft(profile ? structuredClone(profile) : null)
+-  }, [profile])
++    if ((profile?.name || '') !== sourceProfileName) {
++      setSourceProfileName(profile?.name || '')
++      setDraft(profile ? structuredClone(profile) : null)
++    }
++  }, [profile, sourceProfileName])
+ 
+   if (!draft || !snapshot.profiles) {
+     return <p className="p-5 text-sm text-(--ui-text-tertiary)">Profiles are unavailable.</p>
+@@ -257,9 +261,60 @@ function ProfileEditor({
+     </label>
+   )
+ 
++  const automaticNumber = (
++    label: string,
++    value: 'auto' | number,
++    update: (next: 'auto' | number) => void,
++    maximum: number
++  ) => (
++    <label className="space-y-1.5 text-xs">
++      <span className="font-medium text-(--ui-text-secondary)">{label}</span>
++      <input
++        className="h-8 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 font-mono outline-none focus:border-(--ui-accent)"
++        onChange={event => {
++          const next = event.currentTarget.value.trim().toLocaleLowerCase()
++          const parsed = Number(next)
++
++          update(
++            next === '' || next === 'auto' || !Number.isSafeInteger(parsed)
++              ? 'auto'
++              : Math.min(maximum, Math.max(0, parsed))
++          )
++        }}
++        placeholder="auto"
++        type="text"
++        value={value}
++      />
++    </label>
++  )
++
+   return (
+     <div className="grid gap-0 lg:grid-cols-[14rem_1fr]">
+       <div className="border-b border-(--ui-stroke-secondary) p-3 lg:border-r lg:border-b-0">
++        <Button
++          className="mb-2 h-8 w-full gap-1.5 text-xs"
++          onClick={() => {
++            const baseName = 'Custom profile'
++            let name = baseName
++            let suffix = 2
++
++            while (snapshot.profiles?.profiles.some(item => item.name === name)) {
++              name = `${baseName} ${suffix}`
++              suffix += 1
++            }
++
++            void onCreate({
++              ...structuredClone(draft),
++              description: 'Custom inference profile.',
++              name
++            })
++          }}
++          size="sm"
++          variant="outline"
++        >
++          <IconPlus className="size-3.5" />
++          New profile
++        </Button>
+         <div className="space-y-1">
+           {snapshot.profiles.profiles.map(item => (
+             <button
+@@ -280,31 +335,52 @@ function ProfileEditor({
+       </div>
+       <div className="p-4">
+         <div className="mb-4">
+-          <h3 className="text-sm font-semibold">{draft.name}</h3>
+-          <p className="mt-1 text-xs text-(--ui-text-tertiary)">{draft.description}</p>
++          <label className="space-y-1.5 text-xs">
++            <span className="font-medium text-(--ui-text-secondary)">Profile name</span>
++            <input
++              className="h-8 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 outline-none focus:border-(--ui-accent)"
++              onChange={event => setDraft({ ...draft, name: event.currentTarget.value })}
++              value={draft.name}
++            />
++          </label>
++          <label className="mt-3 block space-y-1.5 text-xs">
++            <span className="font-medium text-(--ui-text-secondary)">Description</span>
++            <input
++              className="h-8 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 outline-none focus:border-(--ui-accent)"
++              onChange={event => setDraft({ ...draft, description: event.currentTarget.value })}
++              value={draft.description}
++            />
++          </label>
+         </div>
+         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+-          {numeric('Context tokens', draft.contextTokens, value => setDraft({ ...draft, contextTokens: value }), 4096, 262144, 4096)}
++          {numeric(
++            'Context tokens',
++            draft.contextTokens,
++            value => setDraft({ ...draft, contextTokens: value }),
++            2048,
++            4_194_304,
++            1024
++          )}
+           {numeric(
+             'Generation threads',
+             draft.threads.generation,
+             value => setDraft({ ...draft, threads: { ...draft.threads, generation: value } }),
+             1,
+-            20
++            512
+           )}
+           {numeric(
+             'Batch threads',
+             draft.threads.batch,
+             value => setDraft({ ...draft, threads: { ...draft.threads, batch: value } }),
+             1,
+-            20
++            512
+           )}
+           {numeric(
+             'Logical batch',
+             draft.batch.logical,
+             value => setDraft({ ...draft, batch: { ...draft.batch, logical: value } }),
+             32,
+-            4096,
++            65_536,
+             32
+           )}
+           {numeric(
+@@ -312,17 +388,50 @@ function ProfileEditor({
+             draft.batch.physical,
+             value => setDraft({ ...draft, batch: { ...draft.batch, physical: value } }),
+             16,
+-            1024,
++            16_384,
+             16
+           )}
+           {numeric(
+             'VRAM reserve MiB',
+             draft.gpu.vramReserveMiB,
+             value => setDraft({ ...draft, gpu: { ...draft.gpu, vramReserveMiB: value } }),
+-            512,
+-            8192,
++            0,
++            131_072,
+             128
+           )}
++          {automaticNumber(
++            'GPU layers',
++            draft.gpu.layers,
++            value => setDraft({ ...draft, gpu: { ...draft.gpu, layers: value } }),
++            9_999
++          )}
++          {(
++            [
++              ['KV cache keys', 'keyType'],
++              ['KV cache values', 'valueType']
++            ] as const
++          ).map(([label, key]) => (
++            <label className="space-y-1.5 text-xs" key={key}>
++              <span className="font-medium text-(--ui-text-secondary)">{label}</span>
++              <select
++                className="h-8 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 font-mono outline-none focus:border-(--ui-accent)"
++                onChange={event =>
++                  setDraft({
++                    ...draft,
++                    kvCache: {
++                      ...draft.kvCache,
++                      [key]: event.currentTarget.value as 'f16' | 'q4_0' | 'q8_0'
++                    }
++                  })
++                }
++                value={draft.kvCache[key]}
++              >
++                <option value="q8_0">q8_0</option>
++                <option value="q4_0">q4_0</option>
++                <option value="f16">f16</option>
++              </select>
++            </label>
++          ))}
+         </div>
+         <div className="mt-4 flex flex-wrap gap-2">
+           {(
+@@ -349,6 +458,16 @@ function ProfileEditor({
+           ))}
+         </div>
+         <div className="mt-5 flex items-center justify-end gap-2 border-t border-(--ui-stroke-secondary) pt-4">
++          <Button
++            className="mr-auto h-8 gap-1.5 text-xs"
++            disabled={saving || snapshot.profiles.profiles.length <= 1}
++            onClick={() => void onDelete(selected)}
++            size="sm"
++            variant="destructive"
++          >
++            <IconTrash className="size-3.5" />
++            Delete
++          </Button>
+           <Button
+             className="h-8 gap-1.5 text-xs"
+             disabled={saving}
+@@ -367,6 +486,252 @@ function ProfileEditor({
+   )
+ }
+ 
++function ModelManager({
++  onRegister,
++  onRemove,
++  onSelect,
++  snapshot
++}: {
++  onRegister: (model: Partial<LocalModel> & { localPath: string }) => Promise<void>
++  onRemove: (id: string) => Promise<void>
++  onSelect: (id: string) => Promise<void>
++  snapshot: LocalWorkstationSnapshot
++}) {
++  const importModel = async () => {
++    const [localPath] = await window.hermesDesktop.selectPaths({
++      filters: [{ extensions: ['gguf'], name: 'GGUF models' }],
++      multiple: false,
++      title: 'Register a local GGUF model'
++    })
++
++    if (localPath) {
++      await onRegister({ localPath })
++    }
++  }
++
++  return (
++    <Surface className="overflow-hidden" title="Registered models">
++      <div className="divide-y divide-(--ui-stroke-secondary)">
++        {snapshot.models.map(model => (
++          <div className="flex flex-wrap items-center gap-3 px-4 py-3" key={model.id}>
++            <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-(--ui-accent)/10 text-(--ui-accent)">
++              <IconBrain className="size-4.5" stroke={1.7} />
++            </div>
++            <div className="min-w-0 flex-1">
++              <p className="truncate text-sm font-semibold">{model.displayName}</p>
++              <p className="truncate font-mono text-[0.6875rem] text-(--ui-text-tertiary)">
++                {model.alias} ·{' '}
++                {model.installed ? bytes(model.actualSizeBytes || model.sizeBytes || 0) : 'file missing'}
++              </p>
++            </div>
++            {model.id === snapshot.settings.selectedModelId ? (
++              <StatusPill
++                label={
++                  snapshot.health.model && snapshot.runtime.selectedModelId === model.id
++                    ? 'Selected · loaded'
++                    : 'Selected'
++                }
++                ok={model.installed}
++              />
++            ) : (
++              <Button
++                className="h-8 text-xs"
++                disabled={!model.installed}
++                onClick={() => void onSelect(model.id)}
++                size="sm"
++                variant="outline"
++              >
++                Select
++              </Button>
++            )}
++            {model.userManaged && (
++              <Button className="size-8 p-0" onClick={() => void onRemove(model.id)} size="sm" variant="ghost">
++                <IconTrash className="size-3.5" />
++                <span className="sr-only">Remove {model.displayName}</span>
++              </Button>
++            )}
++          </div>
++        ))}
++      </div>
++      <div className="border-t border-(--ui-stroke-secondary) p-3">
++        <Button className="h-8 gap-1.5 text-xs" onClick={() => void importModel()} size="sm" variant="outline">
++          <IconPlus className="size-3.5" />
++          Register GGUF
++        </Button>
++        <p className="mt-2 text-[0.6875rem] text-(--ui-text-tertiary)">
++          Registration never copies or deletes weights. The selected file can live anywhere you control.
++        </p>
++      </div>
++    </Surface>
++  )
++}
++
++function RuntimeSettings({
++  onSave,
++  snapshot
++}: {
++  onSave: (settings: Partial<LocalWorkstationSettings>) => Promise<void>
++  snapshot: LocalWorkstationSnapshot
++}) {
++  const [draft, setDraft] = useState(() => structuredClone(snapshot.settings))
++  const [dirty, setDirty] = useState(false)
++  const [saving, setSaving] = useState(false)
++
++  useEffect(() => {
++    if (!dirty) {
++      setDraft(structuredClone(snapshot.settings))
++    }
++  }, [dirty, snapshot.settings])
++
++  const updateDraft = (next: LocalWorkstationSettings) => {
++    setDraft(next)
++    setDirty(true)
++  }
++
++  return (
++    <Surface title="Runtime and network">
++      <div className="grid gap-3 p-4 sm:grid-cols-2">
++        <label className="space-y-1.5 text-xs">
++          <span className="font-medium text-(--ui-text-secondary)">Acceleration</span>
++          <select
++            className="h-8 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 outline-none focus:border-(--ui-accent)"
++            onChange={event =>
++              updateDraft({
++                ...draft,
++                runtime: { ...draft.runtime, acceleration: event.currentTarget.value as 'auto' | 'cpu' | 'cuda' }
++              })
++            }
++            value={draft.runtime.acceleration}
++          >
++            <option value="auto">Auto detect</option>
++            <option value="cuda">NVIDIA CUDA</option>
++            <option value="cpu">CPU only</option>
++          </select>
++        </label>
++        <label className="space-y-1.5 text-xs">
++          <span className="font-medium text-(--ui-text-secondary)">Listen address</span>
++          <select
++            className="h-8 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 font-mono outline-none focus:border-(--ui-accent)"
++            onChange={event =>
++              updateDraft({ ...draft, network: { ...draft.network, host: event.currentTarget.value } })
++            }
++            value={draft.network.host}
++          >
++            <option value="127.0.0.1">127.0.0.1 (IPv4 loopback)</option>
++            <option value="::1">::1 (IPv6 loopback)</option>
++          </select>
++        </label>
++        {(
++          [
++            ['Model API port', 'modelPort'],
++            ['Hermes/dashboard port', 'hermesPort']
++          ] as const
++        ).map(([label, key]) => (
++          <label className="space-y-1.5 text-xs" key={key}>
++            <span className="font-medium text-(--ui-text-secondary)">{label}</span>
++            <input
++              className="h-8 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 font-mono outline-none focus:border-(--ui-accent)"
++              max={65535}
++              min={1024}
++              onChange={event =>
++                updateDraft({ ...draft, network: { ...draft.network, [key]: Number(event.currentTarget.value) } })
++              }
++              type="number"
++              value={draft.network[key]}
++            />
++          </label>
++        ))}
++        <label className="space-y-1.5 text-xs">
++          <span className="font-medium text-(--ui-text-secondary)">Build workers</span>
++          <input
++            className="h-8 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 font-mono outline-none focus:border-(--ui-accent)"
++            onChange={event => {
++              const value = event.currentTarget.value.trim().toLocaleLowerCase()
++
++              updateDraft({
++                ...draft,
++                runtime: {
++                  ...draft.runtime,
++                  buildParallelism: value === '' || value === 'auto' ? 'auto' : Number(value)
++                }
++              })
++            }}
++            placeholder="auto"
++            value={draft.runtime.buildParallelism}
++          />
++        </label>
++        <label className="space-y-1.5 text-xs">
++          <span className="font-medium text-(--ui-text-secondary)">CUDA architecture</span>
++          <input
++            className="h-8 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 font-mono outline-none focus:border-(--ui-accent)"
++            onChange={event =>
++              updateDraft({
++                ...draft,
++                runtime: { ...draft.runtime, cudaArchitecture: event.currentTarget.value.trim() || 'auto' }
++              })
++            }
++            placeholder="auto"
++            value={draft.runtime.cudaArchitecture}
++          />
++        </label>
++        <label className="space-y-1.5 text-xs">
++          <span className="font-medium text-(--ui-text-secondary)">Python version</span>
++          <input
++            className="h-8 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 font-mono outline-none focus:border-(--ui-accent)"
++            onChange={event =>
++              updateDraft({ ...draft, runtime: { ...draft.runtime, pythonVersion: event.currentTarget.value } })
++            }
++            placeholder="3.13"
++            value={draft.runtime.pythonVersion}
++          />
++        </label>
++      </div>
++      <div className="flex flex-wrap items-center gap-3 border-t border-(--ui-stroke-secondary) px-4 py-3">
++        <button
++          aria-pressed={draft.runtime.verifyModelOnStart}
++          className={cn(
++            'rounded-full border px-2.5 py-1 text-[0.6875rem] font-medium',
++            draft.runtime.verifyModelOnStart
++              ? 'border-(--ui-accent)/40 bg-(--ui-accent)/10 text-(--ui-accent)'
++              : 'border-(--ui-stroke-secondary) text-(--ui-text-tertiary)'
++          )}
++          onClick={() =>
++            updateDraft({
++              ...draft,
++              runtime: { ...draft.runtime, verifyModelOnStart: !draft.runtime.verifyModelOnStart }
++            })
++          }
++          type="button"
++        >
++          Verify model on start
++        </button>
++        <p className="min-w-0 flex-1 text-[0.6875rem] text-(--ui-text-tertiary)">
++          Auto detected {snapshot.settings.autoTuning.logicalProcessors} logical CPUs
++          {snapshot.settings.autoTuning.vramMiB
++            ? ` and ${snapshot.settings.autoTuning.vramMiB.toLocaleString()} MiB VRAM`
++            : ''}
++          . Restart the stack after changing these settings.
++        </p>
++        <Button
++          className="h-8 gap-1.5 text-xs"
++          disabled={saving}
++          onClick={() => {
++            setSaving(true)
++            void onSave(draft).finally(() => {
++              setDirty(false)
++              setSaving(false)
++            })
++          }}
++          size="sm"
++        >
++          {saving && <IconLoader2 className="size-3.5 animate-spin" />}
++          Save settings
++        </Button>
++      </div>
++    </Surface>
++  )
++}
++
+ function LogViewer() {
+   const [name, setName] = useState<LocalLog>('supervisor')
+   const [content, setContent] = useState('')
+@@ -401,9 +766,7 @@ function LogViewer() {
+             </option>
+           ))}
+         </select>
+-        <span className="min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-(--ui-text-tertiary)">
+-          {filePath}
+-        </span>
++        <span className="min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-(--ui-text-tertiary)">{filePath}</span>
+         <Button className="size-8 p-0" onClick={() => void refresh()} size="sm" variant="ghost">
+           <IconRefresh className="size-3.5" />
+           <span className="sr-only">Refresh logs</span>
+@@ -445,7 +808,7 @@ function HomeContent({
+               </span>
+             </div>
+             <h2 className="text-xl font-semibold tracking-[-0.02em]">
+-              {running ? 'Laguna and Hermes are online' : 'Start the local workstation'}
++              {running ? `${snapshot.model.displayName} and Hermes are online` : 'Start the local workstation'}
+             </h2>
+             <p className="mt-1 max-w-2xl text-sm leading-6 text-(--ui-text-secondary)">
+               {running
+@@ -456,12 +819,7 @@ function HomeContent({
+           <div className="flex flex-wrap gap-2 md:justify-end">
+             {running ? (
+               <>
+-                <ActionButton
+-                  action="restart"
+-                  available={snapshot.actions.restart}
+-                  onRun={onRun}
+-                  task={task}
+-                >
++                <ActionButton action="restart" available={snapshot.actions.restart} onRun={onRun} task={task}>
+                   <IconRefresh className="size-3.5" />
+                   Restart
+                 </ActionButton>
+@@ -495,19 +853,19 @@ function HomeContent({
+       <div className="grid gap-4 xl:grid-cols-[1.35fr_1fr]">
+         <Surface title="Services">
+           <ServiceRow
+-            detail="OpenAI-compatible · 127.0.0.1:8011"
++            detail={`OpenAI-compatible · ${snapshot.settings.network.host}:${snapshot.settings.network.modelPort}`}
+             healthy={snapshot.health.model}
+-            name="Laguna model server"
++            name={`${snapshot.model.displayName} server`}
+             pid={snapshot.runtime.model?.pid}
+           />
+           <ServiceRow
+-            detail="JSON-RPC / WebSocket · 127.0.0.1:9119"
++            detail={`JSON-RPC / WebSocket · ${snapshot.settings.network.host}:${snapshot.settings.network.hermesPort}`}
+             healthy={snapshot.health.hermes}
+             name="Hermes serve"
+             pid={snapshot.runtime.hermes?.pid}
+           />
+           <ServiceRow
+-            detail="Unified Hermes web management surface · 127.0.0.1:9119"
++            detail={`Unified Hermes web management surface · ${snapshot.settings.network.host}:${snapshot.settings.network.hermesPort}`}
+             healthy={snapshot.health.dashboard}
+             name="Web Dashboard"
+           />
+@@ -527,7 +885,7 @@ function HomeContent({
+               note={
+                 snapshot.gpu
+                   ? `${snapshot.gpu.memoryFreeMiB.toLocaleString()} MiB free · ${snapshot.gpu.temperatureCelsius}°C`
+-                  : 'NVIDIA telemetry unavailable'
++                  : 'Accelerator telemetry unavailable'
+               }
+               percent={gpuPercent}
+               value={snapshot.gpu ? `${snapshot.gpu.memoryUsedMiB.toLocaleString()} MiB` : '—'}
+@@ -539,7 +897,7 @@ function HomeContent({
+       <div className="grid gap-4 md:grid-cols-3">
+         {[
+           {
+-            detail: 'Chat with the pinned Laguna model through Hermes.',
++            detail: `Chat with ${snapshot.model.displayName} through Hermes.`,
+             icon: IconRocket,
+             label: 'Open Chat',
+             path: '/'
+@@ -595,20 +953,32 @@ function HomeContent({
+ }
+ 
+ function SectionContent({
++  onCreateProfile,
++  onDeleteProfile,
+   onNavigate,
++  onRegisterModel,
++  onRemoveModel,
+   onRun,
+   onSaveProfile,
++  onSaveSettings,
+   onSetLaunchAtLogin,
++  onSelectModel,
+   onSelectProfile,
+   section,
+   selectedProfile,
+   snapshot,
+   task
+ }: {
++  onCreateProfile: (profile: LocalInferenceProfile) => Promise<void>
++  onDeleteProfile: (name: string) => Promise<void>
+   onNavigate: (path: string) => void
++  onRegisterModel: (model: Partial<LocalModel> & { localPath: string }) => Promise<void>
++  onRemoveModel: (id: string) => Promise<void>
+   onRun: (action: LocalAction) => void
+   onSaveProfile: (profile: LocalInferenceProfile) => Promise<void>
++  onSaveSettings: (settings: Partial<LocalWorkstationSettings>) => Promise<void>
+   onSetLaunchAtLogin: (enabled: boolean) => Promise<void>
++  onSelectModel: (id: string) => Promise<void>
+   onSelectProfile: (name: string) => Promise<void>
+   section: Section
+   selectedProfile: string
+@@ -627,7 +997,11 @@ function SectionContent({
+         <Surface>
+           <div className="p-5">
+             <div className="grid size-10 place-items-center rounded-xl bg-(--ui-accent)/10 text-(--ui-accent)">
+-              {isSessions ? <IconDatabase className="size-5" stroke={1.7} /> : <IconFolder className="size-5" stroke={1.7} />}
++              {isSessions ? (
++                <IconDatabase className="size-5" stroke={1.7} />
++              ) : (
++                <IconFolder className="size-5" stroke={1.7} />
++              )}
+             </div>
+             <h3 className="mt-4 text-base font-semibold">
+               {isSessions ? 'Persistent local sessions' : 'Local project workspaces'}
+@@ -664,13 +1038,13 @@ function SectionContent({
+       <div className="space-y-4">
+         <Surface>
+           <ServiceRow
+-            detail="Authenticated OpenAI-compatible inference · 127.0.0.1:8011"
++            detail={`Authenticated OpenAI-compatible inference · ${snapshot.settings.network.host}:${snapshot.settings.network.modelPort}`}
+             healthy={snapshot.health.model}
+-            name="Laguna model server"
++            name={`${snapshot.model.displayName} server`}
+             pid={snapshot.runtime.model?.pid}
+           />
+           <ServiceRow
+-            detail="Desktop JSON-RPC and WebSocket backend · 127.0.0.1:9119"
++            detail={`Desktop JSON-RPC and WebSocket backend · ${snapshot.settings.network.host}:${snapshot.settings.network.hermesPort}`}
+             healthy={snapshot.health.hermes}
+             name="Hermes serve"
+             pid={snapshot.runtime.hermes?.pid}
+@@ -736,58 +1110,90 @@ function SectionContent({
+     const model = snapshot.model
+ 
+     return (
+-      <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
+-        <Surface title="Installed model">
+-          <div className="p-5">
+-            <div className="flex items-start gap-3">
+-              <div className="grid size-10 place-items-center rounded-xl bg-(--ui-accent)/10 text-(--ui-accent)">
+-                <IconBrain className="size-5" stroke={1.7} />
+-              </div>
+-              <div className="min-w-0">
+-                <h3 className="text-base font-semibold">{model?.metadata.architecture || 'Laguna XS 2.1'}</h3>
+-                <p className="mt-0.5 text-xs text-(--ui-text-tertiary)">
+-                  {model?.metadata.quantization || 'Q4_K_M'} · native tools · interleaved reasoning
+-                </p>
+-              </div>
+-              <div className="ml-auto">
+-                <StatusPill label={snapshot.health.model ? 'Loaded' : 'Verified on disk'} ok={Boolean(model)} />
++      <div className="space-y-4">
++        <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
++          <Surface title="Selected model">
++            <div className="p-5">
++              <div className="flex items-start gap-3">
++                <div className="grid size-10 place-items-center rounded-xl bg-(--ui-accent)/10 text-(--ui-accent)">
++                  <IconBrain className="size-5" stroke={1.7} />
++                </div>
++                <div className="min-w-0">
++                  <h3 className="text-base font-semibold">{model.displayName}</h3>
++                  <p className="mt-0.5 text-xs text-(--ui-text-tertiary)">
++                    {model.metadata.quantization || 'GGUF'} ·{' '}
++                    {model.metadata.nativeToolCalling ? 'native tools' : 'chat'}
++                    {model.metadata.reasoning ? ` · ${model.metadata.reasoning} reasoning` : ''}
++                  </p>
++                </div>
++                <div className="ml-auto">
++                  <StatusPill
++                    label={
++                      snapshot.health.model && snapshot.runtime.selectedModelId === model.id
++                        ? 'Loaded'
++                        : model.installed
++                          ? 'On disk'
++                          : 'File missing'
++                    }
++                    ok={model.installed}
++                  />
++                </div>
+               </div>
++              <dl className="mt-5 grid gap-x-5 gap-y-4 sm:grid-cols-2">
++                {[
++                  ['File', model.filename],
++                  ['Size', bytes(model.actualSizeBytes || model.sizeBytes || 0)],
++                  [
++                    'Selected context',
++                    `${snapshot.profiles?.profiles.find(profile => profile.name === snapshot.settings.selectedProfile)?.contextTokens.toLocaleString() || '—'} tokens`
++                  ],
++                  [
++                    'Model maximum',
++                    model.metadata.modelMaximumContextTokens
++                      ? `${model.metadata.modelMaximumContextTokens.toLocaleString()} tokens`
++                      : 'Not declared'
++                  ],
++                  ['Alias', model.alias],
++                  ['Revision', model.revision ? shortCommit(model.revision) : null]
++                ].map(([label, value]) => (
++                  <div key={label}>
++                    <dt className="text-[0.6875rem] font-medium text-(--ui-text-tertiary)">{label}</dt>
++                    <dd className="mt-1 truncate font-mono text-xs">{value || 'Unavailable'}</dd>
++                  </div>
++                ))}
++              </dl>
+             </div>
+-            <dl className="mt-5 grid gap-x-5 gap-y-4 sm:grid-cols-2">
++          </Surface>
++          <Surface title="Runtime">
++            <div className="divide-y divide-(--ui-stroke-secondary)">
+               {[
+-                ['File', model?.filename],
+-                ['Size', model ? bytes(model.sizeBytes) : null],
+-                ['Selected context', model ? `${model.context.selectedTokens.toLocaleString()} tokens` : null],
+-                ['Model maximum', model ? `${model.metadata.modelMaximumContextTokens.toLocaleString()} tokens` : null],
+-                ['KV cache', model ? `${model.context.kvKeyType} / ${model.context.kvValueType}` : null],
+-                ['Revision', model?.revision ? shortCommit(model.revision) : null]
+-              ].map(([label, value]) => (
+-                <div key={label}>
+-                  <dt className="text-[0.6875rem] font-medium text-(--ui-text-tertiary)">{label}</dt>
+-                  <dd className="mt-1 truncate font-mono text-xs">{value || 'Unavailable'}</dd>
++                ['Acceleration', snapshot.settings.runtime.acceleration, IconGauge],
++                ['CPU', snapshot.hardware.cpu, IconCpu],
++                ['Authentication', 'Bearer token · DPAPI protected', IconKey],
++                [
++                  'Endpoint',
++                  `http://${snapshot.settings.network.host}:${snapshot.settings.network.modelPort}/v1`,
++                  IconServer2
++                ]
++              ].map(([label, value, Icon]) => (
++                <div className="flex items-center gap-3 px-4 py-3" key={String(label)}>
++                  <Icon className="size-4 text-(--ui-accent)" stroke={1.7} />
++                  <span className="text-xs font-medium">{label as string}</span>
++                  <span className="ml-auto max-w-[65%] truncate text-right text-xs text-(--ui-text-tertiary)">
++                    {value as string}
++                  </span>
+                 </div>
+               ))}
+-            </dl>
+-          </div>
+-        </Surface>
+-        <Surface title="Runtime">
+-          <div className="divide-y divide-(--ui-stroke-secondary)">
+-            {[
+-              ['GPU', snapshot.gpu?.name || 'NVIDIA telemetry unavailable', IconGauge],
+-              ['CPU', snapshot.hardware.cpu, IconCpu],
+-              ['Authentication', 'Bearer token · DPAPI protected', IconKey],
+-              ['Endpoint', 'http://127.0.0.1:8011/v1', IconServer2]
+-            ].map(([label, value, Icon]) => (
+-              <div className="flex items-center gap-3 px-4 py-3" key={String(label)}>
+-                <Icon className="size-4 text-(--ui-accent)" stroke={1.7} />
+-                <span className="text-xs font-medium">{label as string}</span>
+-                <span className="ml-auto max-w-[65%] truncate text-right text-xs text-(--ui-text-tertiary)">
+-                  {value as string}
+-                </span>
+-              </div>
+-            ))}
+-          </div>
+-        </Surface>
++            </div>
++          </Surface>
++        </div>
++        <ModelManager
++          onRegister={onRegisterModel}
++          onRemove={onRemoveModel}
++          onSelect={onSelectModel}
++          snapshot={snapshot}
++        />
++        <RuntimeSettings onSave={onSaveSettings} snapshot={snapshot} />
+       </div>
+     )
+   }
+@@ -796,6 +1202,8 @@ function SectionContent({
+     return (
+       <Surface className="overflow-hidden">
+         <ProfileEditor
++          onCreate={onCreateProfile}
++          onDelete={onDeleteProfile}
+           onSave={onSaveProfile}
+           onSelect={onSelectProfile}
+           selected={selectedProfile}
+@@ -815,12 +1223,15 @@ function SectionContent({
+         <div className="grid gap-5 p-5 md:grid-cols-[1fr_auto] md:items-center">
+           <div>
+             <div className="mb-3">
+-              <StatusPill label={snapshot.health.dashboard ? 'Dashboard online' : 'Dashboard offline'} ok={snapshot.health.dashboard} />
++              <StatusPill
++                label={snapshot.health.dashboard ? 'Dashboard online' : 'Dashboard offline'}
++                ok={snapshot.health.dashboard}
++              />
+             </div>
+             <h3 className="text-base font-semibold">Hermes Web Dashboard</h3>
+             <p className="mt-1 max-w-2xl text-sm leading-6 text-(--ui-text-secondary)">
+-              The official browser management surface and Hermes API share one hardened process on loopback port
+-              9119. This avoids competing state owners and never binds to the LAN by default.
++              The official browser management surface and Hermes API share one hardened process on loopback port{' '}
++              {snapshot.settings.network.hermesPort}. This avoids competing state owners and never binds to the LAN.
+             </p>
+           </div>
+           <Button
+@@ -837,9 +1248,7 @@ function SectionContent({
+   }
+ 
+   if (section === 'tasks') {
+-    const rows = snapshot.taskLedger
+-      .split(/\r?\n/)
+-      .filter(line => /^- \[[ x]\]/i.test(line.trim()))
++    const rows = snapshot.taskLedger.split(/\r?\n/).filter(line => /^- \[[ x]\]/i.test(line.trim()))
+ 
+     return (
+       <Surface title="Implementation ledger">
+@@ -886,7 +1295,9 @@ function SectionContent({
+             >
+               {isSecurity ? <IconShieldCheck className="size-5" /> : <IconGauge className="size-5" />}
+             </div>
+-            <h3 className="text-base font-semibold">{isSecurity ? 'Repository security workflow' : 'Inference tuning harness'}</h3>
++            <h3 className="text-base font-semibold">
++              {isSecurity ? 'Repository security workflow' : 'Inference tuning harness'}
++            </h3>
+             <p className="mt-1 text-sm leading-6 text-(--ui-text-secondary)">
+               {isSecurity
+                 ? 'Threat modelling, dependency audits and validated source findings are recorded as durable reports.'
+@@ -954,8 +1365,8 @@ function SectionContent({
+             <IconBrain className="size-6 text-(--ui-accent)" stroke={1.6} />
+             <h3 className="mt-3 text-sm font-semibold">Memory stays explicit</h3>
+             <p className="mt-1 text-xs leading-5 text-(--ui-text-secondary)">
+-              External memory is disabled. Hermes keeps session state locally and requires approval before durable memory
+-              writes, matching the workstation configuration.
++              External memory is disabled. Hermes keeps session state locally and requires approval before durable
++              memory writes, matching the workstation configuration.
+             </p>
+           </div>
+         </Surface>
+@@ -967,7 +1378,12 @@ function SectionContent({
+     return (
+       <div className="grid gap-4 md:grid-cols-3">
+         {[
+-          ['Terminal and process tools', 'Run local commands with exact working-directory visibility.', IconTerminal2, '/tui'],
++          [
++            'Terminal and process tools',
++            'Run local commands with exact working-directory visibility.',
++            IconTerminal2,
++            '/tui'
++          ],
+           ['Capabilities and skills', 'Inspect installed skills and local toolsets.', IconTool, '/skills'],
+           ['Desktop chat', 'Use file, browser, memory and agent tools through Hermes.', IconRocket, '/']
+         ].map(([label, detail, Icon, path]) => (
+@@ -996,7 +1412,8 @@ function SectionContent({
+               <h3 className="text-base font-semibold">{snapshot.version?.product.name || 'Hermes Launcher'}</h3>
+             </div>
+             <p className="mt-2 text-sm leading-6 text-(--ui-text-secondary)">
+-              Windows-native local AI workstation built on the official Hermes Agent Desktop and pinned llama.cpp runtime.
++              Windows-native local AI workstation built on the official Hermes Agent Desktop and pinned llama.cpp
++              runtime.
+             </p>
+             <dl className="mt-4 grid gap-3 text-xs sm:grid-cols-2">
+               <div>
+@@ -1009,7 +1426,11 @@ function SectionContent({
+               </div>
+             </dl>
+           </div>
+-          <Button className="gap-2" onClick={() => void window.hermesDesktop.localWorkstation.openRoot()} variant="outline">
++          <Button
++            className="gap-2"
++            onClick={() => void window.hermesDesktop.localWorkstation.openRoot()}
++            variant="outline"
++          >
+             <IconFolder className="size-4" />
+             Open project
+           </Button>
+@@ -1048,7 +1469,7 @@ export function LocalWorkstationView() {
+   const [snapshot, setSnapshot] = useState<LocalWorkstationSnapshot | null>(null)
+   const [error, setError] = useState('')
+   const [task, setTask] = useState<LocalActionTask | null>(null)
+-  const [profileView, setProfileView] = useState('Daily')
++  const [profileView, setProfileView] = useState('')
+   const [refreshing, setRefreshing] = useState(false)
+ 
+   const refresh = useCallback(async () => {
+@@ -1056,7 +1477,9 @@ export function LocalWorkstationView() {
+       const next = await window.hermesDesktop.localWorkstation.snapshot()
+ 
+       setSnapshot(next)
+-      setProfileView(current => (next.profiles?.profiles.some(profile => profile.name === current) ? current : next.profiles?.selected || 'Daily'))
++      setProfileView(current =>
++        next.profiles?.profiles.some(profile => profile.name === current) ? current : next.profiles?.selected || ''
++      )
+       setError('')
+     } catch (nextError) {
+       setError(nextError instanceof Error ? nextError.message : String(nextError))
+@@ -1078,7 +1501,7 @@ export function LocalWorkstationView() {
+ 
+       try {
+         let next = await window.hermesDesktop.localWorkstation.startAction(action, {
+-          profile: snapshot.profiles?.selected || 'Daily'
++          profile: snapshot.profiles?.selected
+         })
+ 
+         setTask(next)
+@@ -1105,6 +1528,33 @@ export function LocalWorkstationView() {
+     [refresh]
+   )
+ 
++  const createProfile = useCallback(
++    async (profile: LocalInferenceProfile) => {
++      try {
++        await window.hermesDesktop.localWorkstation.saveProfile(profile)
++        setProfileView(profile.name)
++        await refresh()
++      } catch (nextError) {
++        setError(nextError instanceof Error ? nextError.message : String(nextError))
++      }
++    },
++    [refresh]
++  )
++
++  const deleteProfile = useCallback(
++    async (name: string) => {
++      try {
++        const result = await window.hermesDesktop.localWorkstation.deleteProfile(name)
++
++        setProfileView(result.selected)
++        await refresh()
++      } catch (nextError) {
++        setError(nextError instanceof Error ? nextError.message : String(nextError))
++      }
++    },
++    [refresh]
++  )
++
+   const selectProfile = useCallback(
+     async (name: string) => {
+       setProfileView(name)
+@@ -1114,6 +1564,56 @@ export function LocalWorkstationView() {
+     [refresh]
+   )
+ 
++  const registerModel = useCallback(
++    async (model: Partial<LocalModel> & { localPath: string }) => {
++      try {
++        const registered = await window.hermesDesktop.localWorkstation.registerModel(model)
++
++        await window.hermesDesktop.localWorkstation.selectModel(registered.id)
++        await refresh()
++      } catch (nextError) {
++        setError(nextError instanceof Error ? nextError.message : String(nextError))
++      }
++    },
++    [refresh]
++  )
++
++  const selectModel = useCallback(
++    async (id: string) => {
++      try {
++        await window.hermesDesktop.localWorkstation.selectModel(id)
++        await refresh()
++      } catch (nextError) {
++        setError(nextError instanceof Error ? nextError.message : String(nextError))
++      }
++    },
++    [refresh]
++  )
++
++  const removeModel = useCallback(
++    async (id: string) => {
++      try {
++        await window.hermesDesktop.localWorkstation.removeModel(id)
++        await refresh()
++      } catch (nextError) {
++        setError(nextError instanceof Error ? nextError.message : String(nextError))
++      }
++    },
++    [refresh]
++  )
++
++  const saveSettings = useCallback(
++    async (settings: Partial<LocalWorkstationSettings>) => {
++      try {
++        await window.hermesDesktop.localWorkstation.saveSettings(settings)
++        await refresh()
++      } catch (nextError) {
++        setError(nextError instanceof Error ? nextError.message : String(nextError))
++      }
++    },
++    [refresh]
++  )
++
+   const setLaunchAtLogin = useCallback(
+     async (enabled: boolean) => {
+       try {
+@@ -1191,9 +1691,15 @@ export function LocalWorkstationView() {
+       <div className="min-h-0 flex-1 overflow-y-auto">
+         <div className="mx-auto max-w-[92rem] p-5">
+           <SectionContent
++            onCreateProfile={createProfile}
++            onDeleteProfile={deleteProfile}
+             onNavigate={navigate}
++            onRegisterModel={registerModel}
++            onRemoveModel={removeModel}
+             onRun={action => void run(action)}
+             onSaveProfile={saveProfile}
++            onSaveSettings={saveSettings}
++            onSelectModel={selectModel}
+             onSelectProfile={selectProfile}
+             onSetLaunchAtLogin={setLaunchAtLogin}
+             section={section}
+diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
+index 7e1ced1f0..6e93daa20 100644
+--- a/apps/desktop/src/app/local-workstation/types.ts
++++ b/apps/desktop/src/app/local-workstation/types.ts
+@@ -55,6 +55,60 @@ export interface LocalInferenceProfile {
+   }
+ }
+ 
++export interface LocalModel {
++  actualSizeBytes: null | number
++  alias: string
++  displayName: string
++  filename: string
++  id: string
++  installed: boolean
++  license: null | string
++  localPath: string
++  metadata: {
++    architecture?: string
++    modelMaximumContextTokens?: number
++    nativeToolCalling?: boolean
++    quantization?: string
++    reasoning?: string
++  }
++  repository: null | string
++  resolvedPath: string
++  revision: null | string
++  server: {
++    chatTemplate: null | string
++    extraArguments: string[]
++    jinja: boolean
++  }
++  sha256: null | string
++  sizeBytes: null | number
++  source: null | string
++  userManaged: boolean
++}
++
++export interface LocalWorkstationSettings {
++  autoTuning: {
++    batchThreads: number
++    generationThreads: number
++    logicalProcessors: number
++    vramMiB: number
++    vramReserveMiB: number
++  }
++  network: {
++    hermesPort: number
++    host: string
++    modelPort: number
++  }
++  runtime: {
++    acceleration: 'auto' | 'cpu' | 'cuda'
++    buildParallelism: 'auto' | number
++    cudaArchitecture: 'auto' | string
++    pythonVersion: string
++    verifyModelOnStart: boolean
++  }
++  selectedModelId: string
++  selectedProfile: string
++}
++
+ export interface LocalWorkstationSnapshot {
+   actions: Record<LocalAction, boolean>
+   generatedAt: string
+@@ -78,33 +132,12 @@ export interface LocalWorkstationSnapshot {
+     hermes: boolean
+     model: boolean
+   }
+-  model: null | {
+-    benchmarkProfile: string
+-    context: {
+-      experimentalMaximumTokens: number
+-      extendedTokens: number
+-      kvKeyType: string
+-      kvValueType: string
+-      selectedTokens: number
+-    }
+-    filename: string
+-    localPath: string
+-    metadata: {
+-      architecture: string
+-      modelMaximumContextTokens: number
+-      nativeToolCalling: boolean
+-      quantization: string
+-      reasoning: string
+-    }
+-    revision: string
+-    sha256: string
+-    sizeBytes: number
+-  }
++  model: LocalModel
++  models: LocalModel[]
+   profiles: null | {
+     profiles: LocalInferenceProfile[]
+     schemaVersion: number
+     selected: string
+-    selectionStatus: string
+   }
+   reports: {
+     benchmark: boolean
+@@ -116,6 +149,7 @@ export interface LocalWorkstationSnapshot {
+     stateDatabaseBytes: number
+   }
+   startup: LocalLoginItemStatus
++  settings: LocalWorkstationSettings
+   taskLedger: string
+   runtime: {
+     controllerAlive: boolean
+@@ -136,6 +170,7 @@ export interface LocalWorkstationSnapshot {
+     phase?: string
+     profile?: string
+     restartCount?: number
++    selectedModelId?: string
+     startedAt?: string
+     updatedAt?: string
+   }
+diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
+index 2a38acae5..975ec7ec9 100644
+--- a/apps/desktop/src/global.d.ts
++++ b/apps/desktop/src/global.d.ts
+@@ -6,6 +6,8 @@ import type {
+   LocalInferenceProfile,
+   LocalLog,
+   LocalLogResult,
++  LocalModel,
++  LocalWorkstationSettings,
+   LocalWorkstationSnapshot
+ } from './app/local-workstation/types'
+ import type {
+@@ -125,9 +127,14 @@ declare global {
+           set: (enabled: boolean) => Promise<LocalLoginItemStatus>
+         }
+         logs: (name: LocalLog, lines?: number) => Promise<LocalLogResult>
++        deleteProfile: (name: string) => Promise<{ name: string; selected: string }>
+         openDashboard: () => Promise<{ url: string }>
+         openRoot: () => Promise<{ error: string; ok: boolean }>
++        registerModel: (model: Partial<LocalModel> & { localPath: string }) => Promise<LocalModel>
++        removeModel: (id: string) => Promise<{ id: string; selected: string }>
+         saveProfile: (profile: LocalInferenceProfile) => Promise<LocalInferenceProfile>
++        saveSettings: (settings: Partial<LocalWorkstationSettings>) => Promise<unknown>
++        selectModel: (id: string) => Promise<{ id: string }>
+         selectProfile: (name: string) => Promise<{ name: string }>
+         snapshot: () => Promise<LocalWorkstationSnapshot>
+         startAction: (action: LocalAction, input?: { profile?: string }) => Promise<LocalActionTask>
+diff --git a/package-lock.json b/package-lock.json
+index 89d98ab9d..e1706ea33 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -81,7 +81,7 @@
+     },
+     "apps/desktop": {
+       "name": "hermes-launcher",
+-      "version": "0.17.0",
++      "version": "0.18.0",
+       "dependencies": {
+         "@assistant-ui/react": "^0.14.23",
+         "@assistant-ui/react-streamdown": "^0.3.4",
+-- 
+2.55.0.windows.3
+

@@ -7,9 +7,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Configuration.psm1') -Force
 
 $wasRunning = $false
-$profile = 'Daily'
+$profile = [string](Get-HermesConfiguration).selectedProfile
 
 try {
     Assert-HermesRoot

@@ -2,19 +2,18 @@
   "$schema": "./profiles.schema.json",
   "schemaVersion": 1,
   "selected": "Daily",
-  "selectionStatus": "measured-2026-07-28",
   "profiles": [
     {
       "name": "Daily",
-      "description": "Measured quality-first 64K interactive baseline.",
+      "description": "Quality-first interactive starter profile. Tune it for the selected model and available memory.",
       "contextTokens": 65536,
       "kvCache": {
         "keyType": "q8_0",
         "valueType": "q8_0"
       },
       "threads": {
-        "generation": 8,
-        "batch": 14
+        "generation": "auto",
+        "batch": "auto"
       },
       "batch": {
         "logical": 1024,
@@ -22,7 +21,7 @@
       },
       "gpu": {
         "layers": "auto",
-        "vramReserveMiB": 1536
+        "vramReserveMiB": "auto"
       },
       "flashAttention": true,
       "promptCache": true,
@@ -30,15 +29,15 @@
     },
     {
       "name": "Research",
-      "description": "Stable 64K research profile with prompt-cache reuse.",
+      "description": "Long-form research starter profile with prompt-cache reuse.",
       "contextTokens": 65536,
       "kvCache": {
         "keyType": "q8_0",
         "valueType": "q8_0"
       },
       "threads": {
-        "generation": 8,
-        "batch": 14
+        "generation": "auto",
+        "batch": "auto"
       },
       "batch": {
         "logical": 1024,
@@ -46,7 +45,7 @@
       },
       "gpu": {
         "layers": "auto",
-        "vramReserveMiB": 1536
+        "vramReserveMiB": "auto"
       },
       "flashAttention": true,
       "promptCache": true,
@@ -54,15 +53,15 @@
     },
     {
       "name": "Deep Research",
-      "description": "Extended 80K working context with extra memory headroom.",
+      "description": "Extended-context starter profile with additional accelerator memory headroom.",
       "contextTokens": 81920,
       "kvCache": {
         "keyType": "q8_0",
         "valueType": "q8_0"
       },
       "threads": {
-        "generation": 8,
-        "batch": 14
+        "generation": "auto",
+        "batch": "auto"
       },
       "batch": {
         "logical": 768,
@@ -70,7 +69,7 @@
       },
       "gpu": {
         "layers": "auto",
-        "vramReserveMiB": 2048
+        "vramReserveMiB": "auto"
       },
       "flashAttention": true,
       "promptCache": true,
@@ -85,8 +84,8 @@
         "valueType": "q8_0"
       },
       "threads": {
-        "generation": 8,
-        "batch": 14
+        "generation": "auto",
+        "batch": "auto"
       },
       "batch": {
         "logical": 1024,
@@ -94,7 +93,7 @@
       },
       "gpu": {
         "layers": "auto",
-        "vramReserveMiB": 1536
+        "vramReserveMiB": "auto"
       },
       "flashAttention": true,
       "promptCache": true,
@@ -109,8 +108,8 @@
         "valueType": "q8_0"
       },
       "threads": {
-        "generation": 8,
-        "batch": 14
+        "generation": "auto",
+        "batch": "auto"
       },
       "batch": {
         "logical": 512,
@@ -118,7 +117,7 @@
       },
       "gpu": {
         "layers": "auto",
-        "vramReserveMiB": 2048
+        "vramReserveMiB": "auto"
       },
       "flashAttention": true,
       "promptCache": true,
@@ -134,8 +133,8 @@
         "valueType": "q8_0"
       },
       "threads": {
-        "generation": 8,
-        "batch": 14
+        "generation": "auto",
+        "batch": "auto"
       },
       "batch": {
         "logical": 1024,
@@ -143,7 +142,7 @@
       },
       "gpu": {
         "layers": "auto",
-        "vramReserveMiB": 1024
+        "vramReserveMiB": "auto"
       },
       "flashAttention": true,
       "promptCache": false,
@@ -159,8 +158,8 @@
         "valueType": "f16"
       },
       "threads": {
-        "generation": 6,
-        "batch": 8
+        "generation": "auto",
+        "batch": "auto"
       },
       "batch": {
         "logical": 256,
@@ -168,7 +167,7 @@
       },
       "gpu": {
         "layers": 0,
-        "vramReserveMiB": 2048
+        "vramReserveMiB": "auto"
       },
       "flashAttention": false,
       "promptCache": false,

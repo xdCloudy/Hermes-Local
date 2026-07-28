@@ -1,25 +1,29 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^[A-Za-z][A-Za-z0-9 ]{0,31}$')]
-    [string] $Profile = 'Daily'
+    [string] $Profile
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 Import-Module (Join-Path $root 'scripts\Common-Hermes.psm1') -Force
+Import-Module (Join-Path $root 'scripts\Hermes-Configuration.psm1') -Force
 . (Join-Path $PSScriptRoot 'Hermes-Job.ps1')
 
+$configuration = Get-HermesConfiguration
+if (-not $Profile) {
+    $Profile = [string]$configuration.selectedProfile
+}
 $runtimeDirectory = Resolve-HermesPath 'data\runtime'
 $statusPath = Join-Path $runtimeDirectory 'status.json'
 $controllerPidPath = Join-Path $runtimeDirectory 'supervisor.pid'
 $stopRequestPath = Join-Path $runtimeDirectory 'stop.request'
-$profilesPath = Resolve-HermesPath 'config\profiles\profiles.json'
-$modelManifestPath = Resolve-HermesPath 'models\manifests\Laguna-XS-2.1-Q4_K_M.json'
-$modelPort = 8011
-$hermesPort = 9119
-$modelBase = "http://127.0.0.1:$modelPort"
-$hermesBase = "http://127.0.0.1:$hermesPort"
+$modelPort = [int]$configuration.network.modelPort
+$hermesPort = [int]$configuration.network.hermesPort
+$listenHost = [string]$configuration.network.host
+$modelBase = "http://$listenHost`:$modelPort"
+$hermesBase = "http://$listenHost`:$hermesPort"
 $modelProcess = $null
 $hermesProcess = $null
 $job = $null
@@ -42,11 +46,14 @@ function Write-SupervisorState {
         phase = $Phase
         message = $Message
         profile = $Profile
+        selectedModelId = [string]$configuration.selectedModelId
         controllerPid = $PID
         model = [ordered]@{
             pid = if ($modelProcess -and -not $modelProcess.HasExited) { $modelProcess.Id } else { $null }
             healthy = $ModelHealthy
             url = $modelBase
+            name = [string]$configuration.selectedModel.displayName
+            alias = [string]$configuration.selectedModel.alias
         }
         hermes = [ordered]@{
             pid = if ($hermesProcess -and -not $hermesProcess.HasExited) { $hermesProcess.Id } else { $null }
@@ -202,11 +209,7 @@ function Stop-ManagedProcess {
 }
 
 function Get-SelectedProfile {
-    $document = Get-Content -Raw -LiteralPath $profilesPath | ConvertFrom-Json
-    if ($document.schemaVersion -ne 1) {
-        throw "Unsupported profiles schema version: $($document.schemaVersion)"
-    }
-    $matches = @($document.profiles | Where-Object name -eq $Profile)
+    $matches = @($configuration.profiles | Where-Object name -eq $Profile)
     if ($matches.Count -ne 1) {
         throw "Profile '$Profile' was not found exactly once."
     }
@@ -223,12 +226,13 @@ function Get-LlamaArguments {
         [string] $ApiKeyFile
     )
 
-    $layers = [string]$SelectedProfile.gpu.layers
+    $acceleration = Get-HermesEffectiveAcceleration -Configuration $configuration
+    $layers = $(if ($acceleration -eq 'cpu') { '0' } else { [string]$SelectedProfile.gpu.layers })
     $arguments = [System.Collections.Generic.List[string]]::new()
     foreach ($value in @(
         '-m', $ModelPath,
-        '--alias', 'laguna-xs-2.1-q4km',
-        '--host', '127.0.0.1',
+        '--alias', [string]$configuration.selectedModel.alias,
+        '--host', $listenHost,
         '--port', [string]$modelPort,
         '-c', [string]$SelectedProfile.contextTokens,
         '-ctk', [string]$SelectedProfile.kvCache.keyType,
@@ -238,11 +242,8 @@ function Get-LlamaArguments {
         '-b', [string]$SelectedProfile.batch.logical,
         '-ub', [string]$SelectedProfile.batch.physical,
         '-ngl', $layers,
-        '-fit', 'on',
-        '-fitt', [string]$SelectedProfile.gpu.vramReserveMiB,
         '-fa', $(if ($SelectedProfile.flashAttention) { 'on' } else { 'off' }),
         $(if ($SelectedProfile.promptCache) { '--cache-prompt' } else { '--no-cache-prompt' }),
-        '--jinja',
         '--metrics',
         '--no-ui',
         '--no-cors-credentials',
@@ -251,6 +252,26 @@ function Get-LlamaArguments {
         '--log-prefix'
     )) {
         $arguments.Add([string]$value)
+    }
+    if ($acceleration -ne 'cpu') {
+        $arguments.Add('-fit')
+        $arguments.Add('on')
+        $arguments.Add('-fitt')
+        $arguments.Add([string]$SelectedProfile.gpu.vramReserveMiB)
+    }
+    if (-not $configuration.selectedModel.server -or $configuration.selectedModel.server.jinja -ne $false) {
+        $arguments.Add('--jinja')
+    } else {
+        $arguments.Add('--no-jinja')
+    }
+    if ($configuration.selectedModel.server -and $configuration.selectedModel.server.chatTemplate) {
+        $arguments.Add('--chat-template')
+        $arguments.Add([string]$configuration.selectedModel.server.chatTemplate)
+    }
+    if ($configuration.selectedModel.server -and $configuration.selectedModel.server.extraArguments) {
+        foreach ($argument in @($configuration.selectedModel.server.extraArguments)) {
+            $arguments.Add([string]$argument)
+        }
     }
     if ($SelectedProfile.PSObject.Properties.Name -contains 'seed') {
         $arguments.Add('--seed')
@@ -266,9 +287,10 @@ function Start-Stack {
     )
 
     $selectedProfile = Get-SelectedProfile
-    $modelManifest = Get-Content -Raw -LiteralPath $modelManifestPath | ConvertFrom-Json
-    $modelPath = [System.IO.Path]::GetFullPath([string]$modelManifest.localPath)
-    if (-not (Test-HermesFile -Path $modelPath -ExpectedSize $modelManifest.sizeBytes -ExpectedSha256 $modelManifest.sha256)) {
+    $selectedModel = $configuration.selectedModel
+    $modelPath = [string]$selectedModel.resolvedPath
+    $verifyHash = [bool]$configuration.runtime.verifyModelOnStart
+    if (-not (Test-HermesSelectedModel -Model $selectedModel -Hash:$verifyHash)) {
         throw "Model integrity validation failed: $modelPath"
     }
 
@@ -281,8 +303,9 @@ function Start-Stack {
     Assert-PortAvailable -Port $modelPort
     Assert-PortAvailable -Port $hermesPort
 
-    Write-SupervisorState -Phase 'starting-model' -Message 'Validating and loading Laguna XS 2.1.'
-    Write-HermesLog -Component supervisor -Message "Starting model server with profile '$Profile'."
+    Sync-HermesRuntimeConfiguration -Configuration $configuration
+    Write-SupervisorState -Phase 'starting-model' -Message "Validating and loading $($selectedModel.displayName)."
+    Write-HermesLog -Component supervisor -Message "Starting '$($selectedModel.displayName)' with profile '$Profile'."
     [System.IO.File]::WriteAllText($apiKeyFile, $Token + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
     $acl = Get-Acl -LiteralPath $apiKeyFile
     $currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
@@ -329,7 +352,7 @@ function Start-Stack {
     }
     $script:hermesProcess = Start-ManagedProcess `
         -FilePath $hermesExecutable `
-        -ArgumentList @('dashboard', '--host', '127.0.0.1', '--port', [string]$hermesPort, '--skip-build', '--no-open') `
+        -ArgumentList @('dashboard', '--host', $listenHost, '--port', [string]$hermesPort, '--skip-build', '--no-open') `
         -WorkingDirectory (Resolve-HermesPath 'source\hermes-agent') `
         -Environment $hermesEnvironment
     Wait-Endpoint -Name 'Hermes backend/dashboard' -Uri "$hermesBase/api/health" -Process $hermesProcess -TimeoutSeconds 120
@@ -350,7 +373,12 @@ try {
     Initialize-HermesLayout
     Set-HermesProcessEnvironment
     [System.IO.Directory]::CreateDirectory($runtimeDirectory) | Out-Null
-    $mutex = [System.Threading.Mutex]::new($true, 'Local\HermesLocalSupervisor', [ref]$createdNew)
+    $rootHash = [Convert]::ToHexString(
+        [System.Security.Cryptography.SHA256]::HashData(
+            [System.Text.Encoding]::UTF8.GetBytes((Get-HermesRoot).ToLowerInvariant())
+        )
+    ).Substring(0, 12)
+    $mutex = [System.Threading.Mutex]::new($true, "Local\HermesLocalSupervisor-$rootHash", [ref]$createdNew)
     if (-not $createdNew) {
         Write-HermesLog -Component supervisor -Level WARN -Message 'A Hermes Local supervisor is already running.'
         exit 16
@@ -359,7 +387,7 @@ try {
         Remove-Item -LiteralPath $stopRequestPath -Force
     }
     Write-HermesAtomicText -Path $controllerPidPath -Content ("$PID" + [Environment]::NewLine)
-    $job = [Hermes.Local.WindowsJob]::new("HermesLocal-$PID")
+    $job = [Hermes.Local.WindowsJob]::new("HermesLocal-$rootHash-$PID")
     $token = Get-OrCreateHermesApiToken
     Start-Stack -Token $token
 

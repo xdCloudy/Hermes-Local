@@ -8,9 +8,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Configuration.psm1') -Force
 
 $wasRunning = $false
-$restartProfile = 'Daily'
+$configuration = Get-HermesConfiguration
+$restartProfile = [string]$configuration.selectedProfile
 $stackRestarted = $false
 $temporaryFiles = [System.Collections.Generic.List[string]]::new()
 
@@ -256,7 +258,7 @@ function Invoke-PromptCacheCheck {
     $fixture = ('Hermes Local cache fixture. ' * 1800)
     $headers = @{ Authorization = "Bearer $token" }
     $body = [ordered]@{
-        model = 'laguna-xs-2.1-q4km'
+        model = [string]$configuration.selectedModel.alias
         messages = @([ordered]@{ role = 'user'; content = $fixture })
         max_tokens = 1
         temperature = 0
@@ -268,7 +270,7 @@ function Invoke-PromptCacheCheck {
     foreach ($pass in 1..2) {
         $watch = [System.Diagnostics.Stopwatch]::StartNew()
         $response = Invoke-RestMethod `
-            -Uri 'http://127.0.0.1:8011/v1/chat/completions' `
+            -Uri "http://$($configuration.network.host):$($configuration.network.modelPort)/v1/chat/completions" `
             -Method Post `
             -Headers $headers `
             -ContentType 'application/json' `
@@ -356,19 +358,17 @@ function Write-BenchmarkReport {
     $selectedProfileName = if ($selectedProfile -and $selectedProfile.name) {
         [string]$selectedProfile.name
     } else {
-        'Daily'
+        'the selected profile'
     }
     $selectedContext = if ($selectedProfile -and $selectedProfile.contextTokens) {
         [int]$selectedProfile.contextTokens
     } else {
-        65536
+        32768
     }
-    $profileDecision = if ($maxContext -ge 81920 -and $selectedContext -eq 65536) {
-        "$selectedProfileName is the 64K quality-first default; Research mirrors that stable configuration and Deep Research exposes measured 80K operation with additional VRAM reserve."
-    } elseif ($maxContext -ge 65536) {
-        "$selectedProfileName is the measured 64K quality-first default; 80K is not promoted."
+    $profileDecision = if ($maxContext -ge $selectedContext) {
+        "$selectedProfileName remains selected; its configured $([math]::Round($selectedContext / 1024))K context completed the benchmark gate."
     } else {
-        "$selectedProfileName remains conservative until the 64K context gate passes."
+        "$selectedProfileName remains configured, but its full context did not complete; reduce its context or memory settings before promotion."
     }
     $shortSummary = if ($short) { "$($short.averageTokensPerSecond) tok/s mean" } else { 'not included in this run' }
     $decodeSummary = if ($decode) {
@@ -377,7 +377,7 @@ function Write-BenchmarkReport {
         'not included in this run'
     }
     $suiteSummary = if ($Document.mode -eq 'full') {
-        'Cold/warm, 2K/16K/32K/64K/80K, long prefill, 1,000-token decode, cache reuse, CPU-MoE, thread, batch, KV and reserve sweeps are included.'
+        'Cold/warm, adaptive context, long prefill, 1,000-token decode, cache reuse, CPU-MoE, thread, batch, KV and accelerator-reserve sweeps are included when supported.'
     } else {
         'This quick validation includes 2K short generation, 1,000-token sustained decode, live prompt-cache reuse and the authenticated correctness gate. Run without `-Quick` for the full tuning suite.'
     }
@@ -484,7 +484,11 @@ function Write-BenchmarkReport {
         '',
         "- Generated: $($Document.generatedAt); run duration: $runDuration.",
         "- Host: $($Document.machine.Cpu), $($Document.machine.PhysicalCores) cores / $($Document.machine.LogicalProcessors) logical processors, $([math]::Round([double]$Document.machine.MemoryBytes / 1GB, 1)) GiB RAM.",
-        "- GPU: $($Document.machine.Nvidia.Name), $($Document.machine.Nvidia.MemoryMiB) MiB, driver $($Document.machine.Nvidia.DriverVersion), compute capability $($Document.machine.Nvidia.ComputeCapability).",
+        $(if ($Document.machine.Nvidia) {
+            "- Accelerator: $($Document.machine.Nvidia.Name), $($Document.machine.Nvidia.MemoryMiB) MiB, driver $($Document.machine.Nvidia.DriverVersion), compute capability $($Document.machine.Nvidia.ComputeCapability)."
+        } else {
+            '- Accelerator: CPU-only benchmark.'
+        }),
         "- Cold start: $loadSummary.",
         '',
         '## Long-context throughput',
@@ -538,19 +542,19 @@ function Write-BenchmarkReport {
         '|---|---|---:|---|'
     )
     if ($bestThread) {
-        $lines += "| Generation threads | $($bestThread.threads) threads | $($bestThread.averageTokensPerSecond) | Keep 8 threads; it is P-core-focused and within run variance of the fastest point. |"
+        $lines += "| Generation threads | $($bestThread.threads) threads | $($bestThread.averageTokensPerSecond) | Compare this point with the selected profile's $($selectedProfile.threads.generation) threads before applying it. |"
     }
     if ($bestMoe) {
         $lines += "| CPU-MoE placement | $($bestMoe.cpuMoeLayers) layers | $($bestMoe.averageTokensPerSecond) | Keep 0 explicit CPU-MoE layers; the measured difference is too small to justify added placement complexity. |"
     }
     if ($bestBatch) {
-        $lines += "| Batch / micro-batch | $($bestBatch.batch) / $($bestBatch.microBatch) | $($bestBatch.averageTokensPerSecond) prompt | Keep 1024 / 256 because that exact pair passed the 64K and 80K gates; larger micro-batches were only swept at 4K. |"
+        $lines += "| Batch / micro-batch | $($bestBatch.batch) / $($bestBatch.microBatch) | $($bestBatch.averageTokensPerSecond) prompt | Compare with the selected $($selectedProfile.batch.logical) / $($selectedProfile.batch.physical) pair and re-run the full context gate before applying. |"
     }
     if ($bestKv) {
-        $lines += "| Matched KV cache | $($bestKv.kvKeyType) / $($bestKv.kvValueType) | $($bestKv.averageTokensPerSecond) generation | Keep Q8_0 / Q8_0 because it passed the 64K/80K capacity gates with headroom; Q4 remains a measured fallback and F16 was not capacity-tested at those contexts. |"
+        $lines += "| Matched KV cache | $($bestKv.kvKeyType) / $($bestKv.kvValueType) | $($bestKv.averageTokensPerSecond) generation | Re-run the selected context after changing the configured $($selectedProfile.kvCache.keyType) / $($selectedProfile.kvCache.valueType) cache. |"
     }
     if ($bestReserve) {
-        $lines += "| VRAM reserve | $($bestReserve.fitTargetMiB) MiB | $($bestReserve.averageTokensPerSecond) generation | Keep 1536 MiB for Daily/Research and 2048 MiB for Deep Research to retain operating margin. |"
+        $lines += "| Accelerator reserve | $($bestReserve.fitTargetMiB) MiB | $($bestReserve.averageTokensPerSecond) generation | Keep an operating margin appropriate to this machine; the selected profile currently reserves $($selectedProfile.gpu.vramReserveMiB) MiB. |"
     }
     $lines += @(
         '',
@@ -567,7 +571,7 @@ function Write-BenchmarkReport {
         '- Minimum generation rate is the lowest saved repetition. P95 latency is the nearest-rank 95th percentile of full-repetition duration divided by tokens.',
         '- RAM is the benchmark process peak working set. Committed memory, hard-page reads, effective CPU frequency and paging-file usage come from Windows performance counters.',
         '- VRAM, GPU utilization, temperature, power and SM clock come from `nvidia-smi` samples.',
-        '- Context tests use Q8_0 key/value cache, Flash Attention, automatic CUDA fitting and the stated VRAM reserve.',
+        "- Context tests use the selected profile's $($selectedProfile.kvCache.keyType)/$($selectedProfile.kvCache.valueType) cache, Flash Attention setting and accelerator policy.",
         '',
         '## Methodology',
         '',
@@ -583,17 +587,17 @@ function Write-BenchmarkReport {
         '- Windows `PageReadsPersec` is a hard-page-read signal and can include mapped-file reads; paging-file percentage is recorded separately. Low values support “no active thrashing” but do not identify every read source.',
         '- Prompt-cache speedup is a two-pass live-server wall-clock comparison. The server did not return a cached-token count, so reuse is inferred from identical requests plus the latency reduction and may include scheduler variance.',
         '- Cold model-load time is an external estimate that includes small process setup and teardown overhead.',
-        '- 128K remains experimental and is not automatically selected because this required suite caps its long-context gate at 80K.',
+        '- A context size is not promoted automatically; the selected model limit, memory headroom and full correctness gate all apply.',
         '',
         '## Recommended next steps',
         '',
-        '1. Keep Daily and Research at 64K for quality-first use; expose Deep Research at measured 80K with its larger reserve and explicit latency warning.',
-        '2. Re-run this harness after any model, llama.cpp, driver, CUDA, KV-cache or thread/batch change.',
+        "1. Keep $selectedProfileName selected only if its configured context and correctness gates pass on this machine.",
+        '2. Re-run this harness after any model, llama.cpp, driver, acceleration, KV-cache or thread/batch change.',
         '3. Do not enable speculative decoding until a compatible draft model passes output and tool-call equivalence tests.',
         '',
         '## Further questions',
         '',
-        '- Would a verified Laguna-compatible draft model improve latency without reducing tool-call fidelity?',
+        '- Would a tokenizer-compatible draft model improve latency without reducing output or tool-call fidelity?',
         '- Does a longer overnight agent trajectory reveal memory pressure not visible in the bounded 1,000-token decode?'
     )
 
@@ -620,56 +624,89 @@ try {
 
     $benchmarkStartedAt = (Get-Date).ToUniversalTime()
     $manifest = Get-HermesVersionManifest
-    $modelManifest = Get-Content -Raw -LiteralPath (Resolve-HermesPath 'models\manifests\Laguna-XS-2.1-Q4_K_M.json') | ConvertFrom-Json
+    $configuration = Get-HermesConfiguration
+    $modelManifest = $configuration.selectedModel
+    $benchmarkProfile = $configuration.selectedProfileConfiguration
     $fixtures = Get-Content -Raw -LiteralPath (Resolve-HermesPath 'benchmarks\inputs\benchmark-fixtures.json') | ConvertFrom-Json
     $benchMatches = @(Get-ChildItem -LiteralPath (Resolve-HermesPath 'runtimes\llama.cpp\build') -Recurse -Filter llama-bench.exe -File)
     if ($benchMatches.Count -ne 1) {
         throw "Expected one llama-bench.exe; found $($benchMatches.Count)."
     }
-    if (-not (Test-HermesFile -Path $modelManifest.localPath -ExpectedSize $modelManifest.sizeBytes -ExpectedSha256 $modelManifest.sha256)) {
+    if (-not (Test-HermesSelectedModel -Model $modelManifest -Hash:([bool]$modelManifest.sha256))) {
         throw 'Model integrity failed before benchmark.'
     }
     $binary = $benchMatches[0].FullName
-    $model = [string]$modelManifest.localPath
+    $model = [string]$modelManifest.resolvedPath
+    $acceleration = Get-HermesEffectiveAcceleration -Configuration $configuration
     $core = @(
         '-m', $model,
-        '-fa', 'on',
+        '-fa', $(if ($benchmarkProfile.flashAttention) { 'on' } else { 'off' }),
         '--prio', '1'
     )
+    if ($acceleration -eq 'cuda') {
+        $core += @('-ngl', [string]$benchmarkProfile.gpu.layers, '-fit', 'on')
+    } else {
+        $core += @('-ngl', '0')
+    }
+    $reserveArguments = if ($acceleration -eq 'cuda') {
+        @('-fitt', [string]$benchmarkProfile.gpu.vramReserveMiB)
+    } else {
+        @()
+    }
     $base = $core + @(
-        '-fitt', '1536',
-        '-ctk', 'q8_0',
-        '-ctv', 'q8_0',
-        '-t', '8',
-        '-b', '1024',
-        '-ub', '256'
-    )
+        '-ctk', [string]$benchmarkProfile.kvCache.keyType,
+        '-ctv', [string]$benchmarkProfile.kvCache.valueType,
+        '-t', [string]$benchmarkProfile.threads.generation,
+        '-b', [string]$benchmarkProfile.batch.logical,
+        '-ub', [string]$benchmarkProfile.batch.physical
+    ) + $reserveArguments
     $baseWithoutThreads = $core + @(
-        '-fitt', '1536',
-        '-ctk', 'q8_0',
-        '-ctv', 'q8_0',
-        '-b', '1024',
-        '-ub', '256'
-    )
+        '-ctk', [string]$benchmarkProfile.kvCache.keyType,
+        '-ctv', [string]$benchmarkProfile.kvCache.valueType,
+        '-b', [string]$benchmarkProfile.batch.logical,
+        '-ub', [string]$benchmarkProfile.batch.physical
+    ) + $reserveArguments
     $baseWithoutBatch = $core + @(
-        '-fitt', '1536',
-        '-ctk', 'q8_0',
-        '-ctv', 'q8_0',
-        '-t', '8'
-    )
+        '-ctk', [string]$benchmarkProfile.kvCache.keyType,
+        '-ctv', [string]$benchmarkProfile.kvCache.valueType,
+        '-t', [string]$benchmarkProfile.threads.generation
+    ) + $reserveArguments
     $baseWithoutKv = $core + @(
-        '-fitt', '1536',
-        '-t', '8',
-        '-b', '1024',
-        '-ub', '256'
-    )
+        '-t', [string]$benchmarkProfile.threads.generation,
+        '-b', [string]$benchmarkProfile.batch.logical,
+        '-ub', [string]$benchmarkProfile.batch.physical
+    ) + $reserveArguments
     $baseWithoutReserve = $core + @(
-        '-ctk', 'q8_0',
-        '-ctv', 'q8_0',
-        '-t', '8',
-        '-b', '1024',
-        '-ub', '256'
+        '-ctk', [string]$benchmarkProfile.kvCache.keyType,
+        '-ctv', [string]$benchmarkProfile.kvCache.valueType,
+        '-t', [string]$benchmarkProfile.threads.generation,
+        '-b', [string]$benchmarkProfile.batch.logical,
+        '-ub', [string]$benchmarkProfile.batch.physical
     )
+    $maximumContext = if (
+        $modelManifest.metadata -and
+        $modelManifest.metadata.PSObject.Properties.Name -contains 'modelMaximumContextTokens' -and
+        $modelManifest.metadata.modelMaximumContextTokens
+    ) {
+        [int]$modelManifest.metadata.modelMaximumContextTokens
+    } else {
+        [int]$benchmarkProfile.contextTokens
+    }
+    $contextTargets = @(16384, 32768, [int]$benchmarkProfile.contextTokens) |
+        Where-Object { $_ -le $maximumContext } |
+        Sort-Object -Unique
+    $threadCurrent = [int]$benchmarkProfile.threads.generation
+    $threadSweep = @(
+        [math]::Max(1, $threadCurrent - 2),
+        $threadCurrent,
+        [math]::Min([Environment]::ProcessorCount, $threadCurrent + 2)
+    ) | Sort-Object -Unique
+    $reserveCurrent = [int]$benchmarkProfile.gpu.vramReserveMiB
+    $reserveSweep = @(
+        [math]::Max(0, $reserveCurrent - 512),
+        $reserveCurrent,
+        $reserveCurrent + 512
+    ) | Sort-Object -Unique
     $cases = if ($Quick) {
         @(
             [ordered]@{ name = 'short-chat-2k'; args = $base + @('-p', '2048', '-n', '128', '-r', '2') },
@@ -679,14 +716,16 @@ try {
         @(
             [ordered]@{ name = 'cold-start'; args = $base + @('--no-warmup', '-p', '32', '-n', '0', '-r', '1') },
             [ordered]@{ name = 'short-chat-2k'; args = $base + @('-p', '2048', '-n', '128', '-r', '3') },
-            [ordered]@{ name = 'context-16k'; args = $base + @('-p', '16384', '-n', '32', '-r', '2') },
-            [ordered]@{ name = 'context-32k'; args = $base + @('-p', '32768', '-n', '32', '-r', '2') },
-            [ordered]@{ name = 'context-64k'; args = $base + @('-p', '65536', '-n', '32', '-r', '1') },
-            [ordered]@{ name = 'context-80k'; args = $base + @('-p', '81920', '-n', '32', '-r', '1') },
-            [ordered]@{ name = 'long-prefill'; args = $base + @('-p', '81920', '-n', '0', '-r', '1') },
+            @($contextTargets | ForEach-Object {
+                [ordered]@{
+                    name = "context-$([math]::Round($_ / 1024))k"
+                    args = $base + @('-p', [string]$_, '-n', '32', '-r', $(if ($_ -le 32768) { '2' } else { '1' }))
+                }
+            }),
+            [ordered]@{ name = 'long-prefill'; args = $base + @('-p', [string]$benchmarkProfile.contextTokens, '-n', '0', '-r', '1') },
             [ordered]@{ name = 'sustained-decode-1000'; args = $base + @('-p', '0', '-n', '1000', '-r', '1') },
             [ordered]@{ name = 'warm-standard'; args = $base + @('-p', '2048', '-n', '256', '-r', '3') },
-            [ordered]@{ name = 'thread-sweep'; args = $baseWithoutThreads + @('-t', '6,8,10,14', '-p', '0', '-n', '256', '-r', '2') },
+            [ordered]@{ name = 'thread-sweep'; args = $baseWithoutThreads + @('-t', ($threadSweep -join ','), '-p', '0', '-n', '256', '-r', '2') },
             [ordered]@{ name = 'cpu-moe-sweep'; args = $base + @('-ncmoe', '0,4,8,16,24,32,40', '-p', '0', '-n', '256', '-r', '2') },
             [ordered]@{ name = 'batch-sweep-512'; args = $baseWithoutBatch + @('-b', '512', '-ub', '128', '-p', '4096', '-n', '0', '-r', '2') },
             [ordered]@{ name = 'batch-sweep-1024'; args = $baseWithoutBatch + @('-b', '1024', '-ub', '256', '-p', '4096', '-n', '0', '-r', '2') },
@@ -694,9 +733,12 @@ try {
             [ordered]@{ name = 'kv-sweep-f16'; args = $baseWithoutKv + @('-ctk', 'f16', '-ctv', 'f16', '-p', '4096', '-n', '128', '-r', '2') },
             [ordered]@{ name = 'kv-sweep-q8'; args = $baseWithoutKv + @('-ctk', 'q8_0', '-ctv', 'q8_0', '-p', '4096', '-n', '128', '-r', '2') },
             [ordered]@{ name = 'kv-sweep-q4'; args = $baseWithoutKv + @('-ctk', 'q4_0', '-ctv', 'q4_0', '-p', '4096', '-n', '128', '-r', '2') },
-            [ordered]@{ name = 'reserve-sweep'; args = $baseWithoutReserve + @('-fitt', '1024,1536,2048', '-p', '4096', '-n', '128', '-r', '2') }
+            $(if ($acceleration -eq 'cuda') {
+                [ordered]@{ name = 'reserve-sweep'; args = $baseWithoutReserve + @('-fitt', ($reserveSweep -join ','), '-p', '4096', '-n', '128', '-r', '2') }
+            })
         )
     }
+    $cases = @($cases | Where-Object { $null -ne $_ })
 
     $statusPath = Resolve-HermesPath 'data\runtime\status.json'
     if (Test-Path -LiteralPath $statusPath) {
@@ -773,8 +815,7 @@ try {
     }
 
     $benchmarkCompletedAt = (Get-Date).ToUniversalTime()
-    $profiles = Get-Content -Raw -LiteralPath (Resolve-HermesPath 'config\profiles\profiles.json') | ConvertFrom-Json
-    $selectedProfile = $profiles.profiles | Where-Object name -eq $profiles.selected | Select-Object -First 1
+    $selectedProfile = $configuration.selectedProfileConfiguration
     $document = [ordered]@{
         schemaVersion = 1
         harnessVersion = 2
@@ -785,11 +826,14 @@ try {
         mode = if ($Quick) { 'quick' } else { 'full' }
         machine = Get-HermesHardwareSnapshot
         model = [ordered]@{
+            id = $modelManifest.id
+            displayName = $modelManifest.displayName
+            alias = $modelManifest.alias
             filename = $modelManifest.filename
-            revision = $modelManifest.revision
+            revision = Get-BenchmarkValue -Record $modelManifest -Name revision
             sizeBytes = $modelManifest.sizeBytes
-            sha256 = $modelManifest.sha256
-            quantization = $modelManifest.metadata.quantization
+            sha256 = Get-BenchmarkValue -Record $modelManifest -Name sha256
+            quantization = Get-BenchmarkValue -Record $modelManifest.metadata -Name quantization -Default 'unknown'
         }
         llamaCpp = [ordered]@{
             commit = $manifest.sources.llamaCpp.commit
@@ -800,7 +844,7 @@ try {
         selectionPolicy = @(
             'correct output and stable tool calling',
             'no active page-file thrashing',
-            'no CUDA OOM',
+            'no accelerator out-of-memory failure',
             'quality preserved',
             'sustained generation near or above 15 tok/s',
             'prompt-processing performance',
@@ -808,7 +852,7 @@ try {
         )
         speculativeDecoding = [ordered]@{
             tested = $false
-            reason = 'No compatible verified Laguna draft model is installed.'
+            reason = 'No compatible verified draft model is registered for the selected model.'
         }
         selectedProfile = if ($selectedProfile) {
             [ordered]@{
@@ -838,20 +882,6 @@ try {
         ($document | ConvertTo-Json -Depth 32) + [Environment]::NewLine
     )
     Write-BenchmarkReport -Document $document
-
-    if (-not $Quick) {
-        $profilesPath = Resolve-HermesPath 'config\profiles\profiles.json'
-        $profiles = Get-Content -Raw -LiteralPath $profilesPath | ConvertFrom-Json
-        $profiles.selectionStatus = 'measured-2026-07-28'
-        $profiles.selected = 'Daily'
-        Write-HermesAtomicText -Path $profilesPath -Content (
-            ($profiles | ConvertTo-Json -Depth 16) + [Environment]::NewLine
-        ) -Backup
-        $modelManifest.benchmarkProfile = 'Research-64K-quality; Deep-Research-80K-measured'
-        Write-HermesAtomicText -Path (Resolve-HermesPath 'models\manifests\Laguna-XS-2.1-Q4_K_M.json') -Content (
-            ($modelManifest | ConvertTo-Json -Depth 16) + [Environment]::NewLine
-        ) -Backup
-    }
 
     $failed = @($runCases | Where-Object { -not $_.succeeded })
     Write-HermesLog -Component benchmarks -Message "Benchmark completed with $($runCases.Count) case(s), $($failed.Count) failed."

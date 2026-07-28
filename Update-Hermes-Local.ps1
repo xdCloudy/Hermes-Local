@@ -113,11 +113,13 @@ function Get-RecordValue {
 
 function Get-UpdateInventory {
     $manifest = Get-HermesVersionManifest
+    Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Configuration.psm1') -Force
+    $configuration = Get-HermesConfiguration
+    $selectedModel = $configuration.selectedModel
     $hermesRoot = Resolve-HermesPath 'source\hermes-agent'
     $llamaRoot = Resolve-HermesPath 'runtimes\llama.cpp\source'
     $desktopPackage = Get-Content -Raw -LiteralPath (Join-Path $hermesRoot 'apps\desktop\package.json') | ConvertFrom-Json
-    $modelPath = Resolve-HermesPath "models\Laguna-XS-2.1\$($manifest.model.filename)"
-    $modelValid = Test-HermesFile -Path $modelPath -ExpectedSize $manifest.model.sizeBytes -ExpectedSha256 $manifest.model.sha256
+    $modelValid = Test-HermesSelectedModel -Model $selectedModel -Hash:([bool]$selectedModel.sha256)
     $python = Resolve-HermesPath 'runtimes\python\hermes\Scripts\python.exe'
     $pythonVersion = if (Test-Path -LiteralPath $python) {
         (& $python -c 'import sys,sqlite3; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}|{sqlite3.sqlite_version}")').Trim()
@@ -151,12 +153,12 @@ function Get-UpdateInventory {
                 -RemoteBranch ([string]$manifest.sources.llamaCpp.branch) `
                 -PinnedCommit ([string]$manifest.sources.llamaCpp.commit)
             Model = [ordered]@{
-                name = 'Laguna XS 2.1 Q4_K_M'
-                current = [string]$manifest.model.revision
-                candidate = [string]$manifest.model.revision
+                name = [string]$selectedModel.displayName
+                current = [string]$selectedModel.revision
+                candidate = [string]$selectedModel.revision
                 updateAvailable = $false
                 integrityValid = $modelValid
-                sha256 = [string]$manifest.model.sha256
+                sha256 = [string]$selectedModel.sha256
                 policy = 'Model files are staged beside the active model and promoted only after size, SHA-256 and smoke validation.'
             }
             PythonLock = Get-FileHashRecord -Name 'Python uv.lock' -Path (Join-Path $hermesRoot 'uv.lock')

@@ -1,9 +1,10 @@
 # Hermes Local
 
-Hermes Local is a Windows-native, loopback-only AI workstation built from the
-official NousResearch Hermes Agent. It combines the Hermes CLI, TUI, Desktop
-and Web Dashboard with a CUDA-enabled llama.cpp server running
-Laguna XS 2.1 Q4_K_M. The packaged control centre is **Hermes Launcher**.
+Hermes Local is a configurable, Windows-native local AI workstation built on
+the official [NousResearch Hermes Agent](https://github.com/NousResearch/hermes-agent)
+and llama.cpp. Hermes Launcher combines chat, the TUI, dashboard, model
+management, inference profiles, health, logs, backups, benchmarks and security
+controls in one desktop application.
 
 > [!NOTE]
 > This is an independent Windows integration, not an official Nous Research
@@ -11,171 +12,151 @@ Laguna XS 2.1 Q4_K_M. The packaged control centre is **Hermes Launcher**.
 
 ![Hermes Launcher home screen](reports/acceptance/launcher-home.png)
 
-This installation is tuned for Windows 11 Pro, an Intel Core i5-14600K,
-64 GiB RAM and an NVIDIA RTX 3060 12 GiB. All substantial source, runtimes,
-model data, configuration, logs and build output live below
-`D:\Hermes-Local`. Docker, WSL and paid model APIs are not required.
+## Portable by design
+
+The repository has no required drive letter, model, GPU, CUDA architecture,
+port pair or fixed CPU tuning:
+
+- clone it to any non-system folder;
+- use CPU inference or NVIDIA CUDA, with auto-detection as the default;
+- register any local GGUF model and switch models from Hermes Launcher;
+- create, clone, edit, select and delete inference profiles;
+- change the loopback ports and acceleration policy in the launcher;
+- keep selections in ignored `config\launcher\user-settings.json`, never in
+  tracked defaults;
+- resolve default thread counts, build parallelism and VRAM reserve from the
+  current machine.
+
+The included Laguna XS 2.1 Q4_K_M manifest is a ready-to-download starter, not
+a runtime requirement. Model weights are never committed or bundled.
+
+## Requirements
+
+- Windows 10 or Windows 11 x64
+- PowerShell 7
+- about 16 GiB free before model weights; allow space for the GGUFs you choose
+- Visual Studio 2022 C++ build tools for the bundled llama.cpp build
+- optional NVIDIA GPU, driver and CUDA Toolkit for CUDA acceleration
+
+Docker, WSL and paid inference APIs are not required.
+
+## Install
+
+Open a normal, non-elevated PowerShell 7 window:
+
+```powershell
+git clone https://github.com/xdCloudy/Hermes-Local.git
+Set-Location .\Hermes-Local
+& '.\Setup-Hermes-Local.ps1' -NonInteractive
+```
+
+Setup reconstructs the pinned Hermes integration, installs project-managed
+dependencies, builds llama.cpp for the selected acceleration mode, downloads
+the selected model when it has a source URL, generates the runtime provider
+configuration and runs bootstrap diagnostics. Downloads resume when setup is
+rerun.
+
+See [Installation](docs/INSTALLATION.md) for CPU/CUDA selection, custom models
+and release packages.
+
+## Run
+
+Commands are relative to the clone, so the examples work on any drive:
+
+```powershell
+& '.\Start-Hermes-Local.ps1' -NonInteractive
+& '.\dist\Hermes Launcher.exe'
+```
+
+Stop and test the stack:
+
+```powershell
+& '.\Stop-Hermes-Local.ps1' -NonInteractive
+& '.\Test-Hermes-Local.ps1' -NonInteractive
+```
+
+Omit `-Profile` to use the current launcher selection, or select one for a
+single start:
+
+```powershell
+& '.\Start-Hermes-Local.ps1' -Profile 'Coding' -NonInteractive
+```
+
+## Models, profiles and settings
+
+Open **Models** in Hermes Launcher to:
+
+- register a `.gguf` file without copying it;
+- select any registered model;
+- choose `Auto`, `CUDA` or `CPU` acceleration;
+- change the loopback-only model and Hermes ports;
+- set build workers, CUDA architecture, Python line and startup verification
+  when an automatic choice is not appropriate.
+
+Open **Profiles** to create and tune context, KV cache, threads, batching,
+offload, Flash Attention and prompt caching. Tracked starter profiles use
+`auto` for machine-dependent values. Once edited, the resolved values become
+explicit per-user settings.
+
+Model registrations and profile edits are stored in
+`config\launcher\user-settings.json`. That file is Git-ignored and included in
+local backups. Tracked manifests under `models\manifests` remain portable by
+using relative paths.
+
+## Runtime layout
+
+| Component | Portable location |
+|---|---|
+| Project root | the directory containing this README |
+| Hermes checkout | `source\hermes-agent` |
+| Hermes user state | `data\hermes` |
+| Default workspace | `data\user` |
+| User settings | `config\launcher\user-settings.json` |
+| Model catalog | `models\manifests\*.json` plus user registrations |
+| llama.cpp build | `runtimes\llama.cpp\build` |
+| Packaged launcher | `dist\Hermes Launcher.exe` |
+
+The default endpoints are `http://127.0.0.1:8011/v1` and
+`http://127.0.0.1:9119`, but both ports are configurable. The host is
+deliberately restricted to IPv4 or IPv6 loopback.
+
+The API token is random, protected for the current Windows user with DPAPI and
+passed to owned processes without command-line exposure.
 
 ## Download
 
 The [latest GitHub release](https://github.com/xdCloudy/Hermes-Local/releases/latest)
-provides:
+provides the Windows installer and portable launcher. Release binaries contain
+the control centre, not model weights or project-managed runtimes: clone and
+provision the workstation first.
 
-- [Windows installer](https://github.com/xdCloudy/Hermes-Local/releases/download/v0.17.0/Hermes-Launcher-0.17.0-windows-x64-setup.exe)
-- [Portable launcher](https://github.com/xdCloudy/Hermes-Local/releases/download/v0.17.0/Hermes-Launcher-0.17.0-windows-x64-portable.exe)
-- [Update blockmap](https://github.com/xdCloudy/Hermes-Local/releases/download/v0.17.0/Hermes-Launcher-0.17.0-windows-x64-setup.exe.blockmap)
-
-The release binaries contain the control centre, not the 20 GB model or
-project-managed runtimes. Provision the workstation from source first, then
-use either launcher package. This keeps the download legal, inspectable and
-resumable.
-
-The locally built binaries are not Authenticode-signed. Windows may display a
-SmartScreen warning. Verify the SHA-256 values in the release notes and the
-[published packaging results](docs/ACCEPTANCE_RESULTS.md#packaging) before
+The binaries are not Authenticode-signed. Verify release SHA-256 values before
 running them.
-
-## Install from source
-
-Open a normal, non-elevated PowerShell 7 window. The project intentionally
-uses the fixed `D:\Hermes-Local` root:
-
-```powershell
-Set-Location D:\
-git clone https://github.com/xdCloudy/Hermes-Local.git Hermes-Local
-Set-Location D:\Hermes-Local
-& '.\Setup-Hermes-Local.ps1' -NonInteractive
-```
-
-Setup downloads and verifies the pinned model, reconstructs the official
-Hermes integration from the committed patch series, prepares the local
-runtimes and builds the CUDA-enabled backend. An interrupted model download
-resumes when setup is rerun.
-
-See the [installation guide](docs/INSTALLATION.md) for prerequisites,
-storage requirements, installer behavior and first-run checks.
-
-## Start here
-
-Run the idempotent setup from PowerShell 7:
-
-```powershell
-& 'D:\Hermes-Local\Setup-Hermes-Local.ps1' -NonInteractive
-```
-
-Start the measured Daily profile:
-
-```powershell
-& 'D:\Hermes-Local\Start-Hermes-Local.ps1' -Profile Daily -NonInteractive
-```
-
-Open the control centre:
-
-```powershell
-& 'D:\Hermes-Local\dist\Hermes Launcher.exe'
-```
-
-Stop everything cleanly:
-
-```powershell
-& 'D:\Hermes-Local\Stop-Hermes-Local.ps1' -NonInteractive
-```
-
-The installer is
-`D:\Hermes-Local\dist\Hermes-Launcher-0.17.0-windows-x64-setup.exe`; the
-portable build is
-`D:\Hermes-Local\dist\Hermes-Launcher-0.17.0-windows-x64-portable.exe`.
-
-## What the launcher controls
-
-Hermes Launcher extends the official Electron/React desktop application. It
-keeps the normal Chat, Skills and Settings experiences and adds a local
-workstation with Home, TUI, Web Dashboard, Services, Models, Profiles, Tasks,
-Tools, Memory, Sessions, Projects, Logs, Benchmarks, Security and About
-surfaces.
-
-The Home and Services views use structured health and runtime state. The TUI
-is the real Hermes TUI through a Windows pseudo-terminal and xterm.js. The
-dashboard is the official Hermes dashboard on loopback. No second chatbot or
-mock service replaces Hermes.
-
-## Runtime layout
-
-| Component | Location or endpoint |
-|---|---|
-| Project root | `D:\Hermes-Local` |
-| Official Hermes checkout | `D:\Hermes-Local\source\hermes-agent` |
-| Hermes user state | `D:\Hermes-Local\data\hermes` |
-| Safe default working directory | `D:\Hermes-Local\data\user` |
-| Laguna model | `D:\Hermes-Local\models\Laguna-XS-2.1\Laguna-XS-2.1-Q4_K_M.gguf` |
-| llama.cpp model API | `http://127.0.0.1:8011/v1` |
-| Hermes backend/dashboard | `http://127.0.0.1:9119` |
-| Packaged launcher | `D:\Hermes-Local\dist\Hermes Launcher.exe` |
-
-The local API token is randomly generated, protected per user with Windows
-DPAPI and injected only into owned processes. It is not stored in Git,
-renderer state or command-line arguments.
-
-## Selected model profile
-
-Daily is the quality-first default: 65,536 tokens, Q8_0 key/value cache,
-Flash Attention, automatic CUDA fitting, 8 generation threads, 14 batch
-threads, batch 1024, micro-batch 256 and 1,536 MiB VRAM reserve. Research uses
-the same measured base; Deep Research provides 81,920 tokens with a 2,048 MiB
-reserve. Maximum Context at 131,072 tokens is deliberately experimental.
-
-Measured on this machine:
-
-- 53.297 tok/s short-chat mean;
-- 54.57 tok/s sustained 1,000-token decode;
-- 284.582 prompt tok/s and 33.062 decode tok/s at 64K;
-- 269.377 prompt tok/s and 33.347 decode tok/s at 80K;
-- about 10,750 MiB peak VRAM and 18.1 GiB peak process RAM at 64K;
-- no active page-file thrashing in the selected profile.
-
-See [MODEL_TUNING.md](docs/MODEL_TUNING.md) and
-[the latest benchmark report](benchmarks/reports/LATEST.md).
 
 ## Maintenance
 
 | Action | Command |
 |---|---|
-| Health and real tool test | `& 'D:\Hermes-Local\Test-Hermes-Local.ps1' -NonInteractive` |
-| Restart | `& 'D:\Hermes-Local\Restart-Hermes-Local.ps1' -Profile Daily -NonInteractive` |
-| Repair | `& 'D:\Hermes-Local\Repair-Hermes-Local.ps1' -NonInteractive` |
-| Backup | `& 'D:\Hermes-Local\Backup-Hermes-Local.ps1' -Name manual -NonInteractive` |
-| Check updates | `& 'D:\Hermes-Local\Update-Hermes-Local.ps1' -Mode Check -NonInteractive` |
-| Security scan | `& 'D:\Hermes-Local\Security-Scan-Hermes-Local.ps1' -NonInteractive` |
-| Diagnostics | `& 'D:\Hermes-Local\Export-Hermes-Diagnostics.ps1' -NonInteractive` |
+| Test | `& '.\Test-Hermes-Local.ps1' -NonInteractive` |
+| Restart selected configuration | `& '.\Restart-Hermes-Local.ps1' -NonInteractive` |
+| Repair | `& '.\Repair-Hermes-Local.ps1' -NonInteractive` |
+| Backup | `& '.\Backup-Hermes-Local.ps1' -Name manual -NonInteractive` |
+| Check updates | `& '.\Update-Hermes-Local.ps1' -Mode Check -NonInteractive` |
+| Security scan | `& '.\Security-Scan-Hermes-Local.ps1' -NonInteractive` |
+| Diagnostics | `& '.\Export-Hermes-Diagnostics.ps1' -NonInteractive` |
 
-Updates are checked, staged, backed up and smoke-tested before switching.
-Rollback restores the last known-good component without touching the model,
-sessions, memory or skills. See
-[UPDATE_AND_ROLLBACK.md](docs/UPDATE_AND_ROLLBACK.md).
-
-## Security model
-
-Both services bind to `127.0.0.1`; LAN mode is not implemented. Model
-inference requires the DPAPI-backed bearer token. Electron uses context
-isolation, sandboxing, no Node integration, web security, a strict CSP, exact
-navigation controls and a narrow schema-validated preload bridge. Dangerous
-terminal work, memory writes and skill writes require explicit approval.
-
-The final repeatable scan passed with three triaged, non-reachable or optional
-dependency advisories, zero installed Python vulnerabilities, zero production
-secret findings and a clean Defender artifact scan. See
-[SECURITY.md](docs/SECURITY.md) and
-[SECURITY_REPORT.md](security/reports/SECURITY_REPORT.md).
+Historical benchmark and acceptance reports describe the original validation
+machine and are labelled as evidence, not current runtime requirements.
 
 ## Documentation
 
 - [Installation](docs/INSTALLATION.md)
 - [User guide](docs/USER_GUIDE.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Model and profile configuration](docs/MODEL_TUNING.md)
 - [Free/local feature matrix](docs/FREE_FEATURE_MATRIX.md)
-- [Model tuning](docs/MODEL_TUNING.md)
 - [Security](docs/SECURITY.md)
 - [Update and rollback](docs/UPDATE_AND_ROLLBACK.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Development](docs/DEVELOPMENT.md)
-- [Acceptance results](docs/ACCEPTANCE_RESULTS.md)
+- [Historical acceptance results](docs/ACCEPTANCE_RESULTS.md)

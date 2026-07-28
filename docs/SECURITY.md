@@ -5,8 +5,8 @@
 Hermes Local is a single-user, local workstation. It is not a multi-tenant
 server and does not expose a supported LAN mode.
 
-- llama.cpp listens only on `127.0.0.1:8011`;
-- Hermes/dashboard listens only on `127.0.0.1:9119`;
+- llama.cpp listens only on the configured IPv4/IPv6 loopback model port;
+- Hermes/dashboard listens only on the configured IPv4/IPv6 loopback Hermes port;
 - model inventory and inference require the generated bearer token;
 - the token is encrypted per user with DPAPI and never stored in frontend
   state, Git, logs or process arguments;
@@ -30,8 +30,8 @@ workstation WebView.
 
 Model output is untrusted. Terminal operations show the local working
 directory, support cancellation/timeouts/output limits and require approval
-for dangerous commands. The configuration denies destructive commands aimed
-at `D:\Hermes-Local`, disk formatting and diskpart by default. Memory and skill
+for dangerous commands. The configuration dynamically denies destructive
+commands aimed at the resolved project root, disk formatting and diskpart by default. Memory and skill
 writes require approval. Delegation is capped at one child and does not inherit
 arbitrary MCP servers.
 
@@ -86,16 +86,17 @@ source gate passed 463 tests with zero failures.
 ## Run and inspect
 
 ```powershell
-& 'D:\Hermes-Local\Security-Scan-Hermes-Local.ps1' -NonInteractive
+Set-Location 'C:\path\to\Hermes-Local'
+& '.\Security-Scan-Hermes-Local.ps1' -NonInteractive
 ```
 
 Primary outputs:
 
-- `D:\Hermes-Local\security\reports\SECURITY_REPORT.md`
-- `D:\Hermes-Local\security\reports\latest-scan.json`
-- `D:\Hermes-Local\security\threat-model\THREAT_MODEL.md`
-- `D:\Hermes-Local\security\reports\HARDENING.md`
-- `D:\Hermes-Local\security\sbom`
+- `security\reports\SECURITY_REPORT.md`
+- `security\reports\latest-scan.json`
+- `security\threat-model\THREAT_MODEL.md`
+- `security\reports\HARDENING.md`
+- `security\sbom`
 
 The scan redacts output before evidence is written. Do not attach raw
 configuration, browser profiles or session databases to bug reports. Use

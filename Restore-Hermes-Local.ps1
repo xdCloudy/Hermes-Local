@@ -17,7 +17,7 @@ try {
     $resolvedBackup = [System.IO.Path]::GetFullPath($BackupPath)
     $backupRoot = (Resolve-HermesPath 'backups').TrimEnd('\') + '\'
     if (-not $resolvedBackup.StartsWith($backupRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw 'Restore archives must be selected from D:\Hermes-Local\backups.'
+        throw "Restore archives must be selected from $backupRoot"
     }
     if (-not (Test-Path -LiteralPath $resolvedBackup -PathType Leaf) -or
         [System.IO.Path]::GetExtension($resolvedBackup) -ne '.zip') {
@@ -70,7 +70,8 @@ try {
         '-File', (Resolve-HermesPath 'Stop-Hermes-Local.ps1'), '-NonInteractive'
     ) -LogComponent backup
 
-    if (-not $NonInteractive -and -not $PSCmdlet.ShouldProcess('D:\Hermes-Local\config and D:\Hermes-Local\data', "Restore $resolvedBackup")) {
+    $restoreTarget = "$(Resolve-HermesPath 'config') and $(Resolve-HermesPath 'data')"
+    if (-not $NonInteractive -and -not $PSCmdlet.ShouldProcess($restoreTarget, "Restore $resolvedBackup")) {
         Write-Host 'Restore cancelled.'
         exit 2
     }
@@ -96,7 +97,8 @@ try {
 } finally {
     if ($staging -and (Test-Path -LiteralPath $staging)) {
         $resolvedStaging = [System.IO.Path]::GetFullPath($staging)
-        if ($resolvedStaging.StartsWith('D:\Hermes-Local\temp\restore-', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $restorePrefix = Resolve-HermesPath 'temp\restore-'
+        if ($resolvedStaging.StartsWith($restorePrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
             Remove-Item -LiteralPath $resolvedStaging -Recurse -Force
         }
     }

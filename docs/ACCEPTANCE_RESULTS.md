@@ -1,5 +1,9 @@
 # Acceptance results
 
+> Historical reference: these results describe the original validation
+> machine and v0.17.0 starter model. Current installations resolve their own
+> model, profile, acceleration and ports from per-user settings.
+
 Assessment date: 2026-07-28  
 Release: Hermes Launcher 0.17.0 / local integration 0.17.0-local.1  
 Result: **Accepted for local use with two explicit limitations**
@@ -23,7 +27,7 @@ Docker or WSL was used.
 
 The final full operational test passed 9/9 checks at
 `2026-07-28T10:11:18Z`. Evidence:
-`D:\Hermes-Local\logs\diagnostics\latest-test.json`.
+`logs\diagnostics\latest-test.json`.
 
 ## Performance
 
@@ -45,8 +49,8 @@ VRAM reserve sweeps. Speculation was omitted because no compatible verified
 draft model was available.
 
 Evidence:
-`D:\Hermes-Local\benchmarks\results\latest.json` and
-`D:\Hermes-Local\benchmarks\reports\LATEST.md`.
+`benchmarks\results\latest.json` and
+`benchmarks\reports\LATEST.md`.
 
 ## Source and application tests
 
@@ -77,7 +81,7 @@ The final upstream full Desktop Vitest command reported 3,332 passed,
   is a Nous/cloud surface and is disabled for the local Laguna deployment.
 
 No test was skipped or weakened to hide these results. Exact output is
-`D:\Hermes-Local\reports\acceptance\desktop-vitest-full-final.txt`.
+`reports\acceptance\desktop-vitest-full-final.txt`.
 
 ## Packaging
 
@@ -136,8 +140,8 @@ Three dependency residuals—React Router RSC-only, build-only brace-expansion
 and optional/uninstalled PyNaCl—are accepted with re-review triggers.
 
 Evidence:
-`D:\Hermes-Local\security\reports\latest-scan.json` and
-`D:\Hermes-Local\security\reports\SECURITY_REPORT.md`.
+`security\reports\latest-scan.json` and
+`security\reports\SECURITY_REPORT.md`.
 
 ## Limitations
 

@@ -1,0 +1,19 @@
+{
+  "$schema": "../schemas/workstation.schema.json",
+  "schemaVersion": 1,
+  "network": {
+    "host": "127.0.0.1",
+    "modelPort": 8011,
+    "hermesPort": 9119
+  },
+  "runtime": {
+    "acceleration": "auto",
+    "buildParallelism": "auto",
+    "cudaArchitecture": "auto",
+    "pythonVersion": "3.13",
+    "verifyModelOnStart": true
+  },
+  "selectedModelId": "laguna-xs-2.1-q4km",
+  "selectedProfile": "Daily",
+  "models": []
+}
