@@ -49,10 +49,14 @@ function Invoke-HermesPowerShellScript {
         [string] $LogComponent = 'update'
     )
 
-    Invoke-HermesProcess -FilePath 'pwsh.exe' -ArgumentList @(
+    $allArguments = @(
         '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
         '-File', (Resolve-HermesPath $RelativePath)
-    ) + $Arguments -LogComponent $LogComponent
+    ) + $Arguments
+    Invoke-HermesProcess `
+        -FilePath 'pwsh.exe' `
+        -ArgumentList $allArguments `
+        -LogComponent $LogComponent
 }
 
 function Get-AgentCandidate {
@@ -182,6 +186,7 @@ function New-StagedAgentCandidate {
     $stageRoot = Resolve-HermesPath "build\updates\staging\hermes-agent-$Stamp"
     $source = Join-Path $stageRoot 'source'
     $repository = [string]$Manifest.sources.hermesAgent.repository
+    $currentBase = [string]$Manifest.sources.hermesAgent.commit
     $integrationBranch = [string]$Manifest.sources.hermesAgent.integrationBranch
     $patchDirectory = Resolve-HermesPath ([string]$Manifest.sources.hermesAgent.patchSeries)
     $patches = @(Get-ChildItem -LiteralPath $patchDirectory -Filter '*.patch' -File | Sort-Object Name)
@@ -193,6 +198,9 @@ function New-StagedAgentCandidate {
     try {
         Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
             'clone', '--filter=blob:none', '--no-checkout', $repository, $source
+        ) -LogComponent update
+        Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
+            '-C', $source, 'fetch', 'origin', $currentBase, '--depth', '1'
         ) -LogComponent update
         Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
             '-C', $source, 'fetch', 'origin', $Candidate, '--depth', '1'
@@ -293,6 +301,7 @@ function Invoke-AgentApply {
     $knownDist = Join-Path $knownGood 'dist'
     $historyRoot = Resolve-HermesPath 'build\updates\history'
     $previousOverride = Get-SourceOverrideContent
+    $capturedPrevious = $false
     $promoted = $false
 
     [System.IO.Directory]::CreateDirectory($knownGood) | Out-Null
@@ -305,6 +314,7 @@ function Invoke-AgentApply {
         )
 
         Move-Item -LiteralPath $activeSource -Destination $knownSource
+        $capturedPrevious = $true
         if (Test-Path -LiteralPath $activeVenv) {
             Move-Item -LiteralPath $activeVenv -Destination $knownVenv
         }
@@ -360,7 +370,7 @@ function Invoke-AgentApply {
         return $history
     } catch {
         $failure = $_
-        if ($promoted) {
+        if ($promoted -or $capturedPrevious) {
             try { Stop-AgentStack } catch { }
             $failedRoot = Resolve-HermesPath "build\updates\failed\hermes-agent-promoted-$Stamp"
             [System.IO.Directory]::CreateDirectory($failedRoot) | Out-Null
@@ -370,7 +380,9 @@ function Invoke-AgentApply {
             if (Test-Path -LiteralPath $activeVenv) {
                 Move-Item -LiteralPath $activeVenv -Destination (Join-Path $failedRoot 'venv')
             }
-            Move-Item -LiteralPath $knownSource -Destination $activeSource
+            if (Test-Path -LiteralPath $knownSource) {
+                Move-Item -LiteralPath $knownSource -Destination $activeSource
+            }
             if (Test-Path -LiteralPath $knownVenv) {
                 Move-Item -LiteralPath $knownVenv -Destination $activeVenv
             }
@@ -437,7 +449,12 @@ function Invoke-AgentRollback {
         Get-ChildItem -LiteralPath $dist -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
         Copy-Item -Path (Join-Path ([string]$history.previous.dist) '*') -Destination $dist -Recurse -Force
     }
-    Restore-SourceOverride -Content ([string]$history.previous.sourceOverrideContent)
+    $previousOverride = if ($null -eq $history.previous.sourceOverrideContent) {
+        $null
+    } else {
+        [string]$history.previous.sourceOverrideContent
+    }
+    Restore-SourceOverride -Content $previousOverride
     Start-And-TestAgent -Profile $runState.Profile
     if (-not $runState.WasRunning) {
         Stop-AgentStack
