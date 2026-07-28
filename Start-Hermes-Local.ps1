@@ -12,6 +12,31 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Configuration.psm1') -Force
 
+function Get-RunningHermesSupervisor {
+    param(
+        [Parameter(Mandatory)]
+        [string] $PidPath,
+        [int] $ExcludePid = 0
+    )
+
+    if (-not (Test-Path -LiteralPath $PidPath)) {
+        return $null
+    }
+
+    try {
+        $candidatePid = 0
+        $rawPid = (Get-Content -Raw -LiteralPath $PidPath).Trim()
+        if (-not [int]::TryParse($rawPid, [ref] $candidatePid) -or
+            $candidatePid -le 0 -or
+            $candidatePid -eq $ExcludePid) {
+            return $null
+        }
+        return Get-Process -Id $candidatePid -ErrorAction SilentlyContinue
+    } catch {
+        return $null
+    }
+}
+
 try {
     Assert-HermesRoot
     Initialize-HermesLayout
@@ -21,12 +46,9 @@ try {
     $runtimeDirectory = Resolve-HermesPath 'data\runtime'
     $statusPath = Join-Path $runtimeDirectory 'status.json'
     $pidPath = Join-Path $runtimeDirectory 'supervisor.pid'
-    $existingPid = if (Test-Path -LiteralPath $pidPath) {
-        [int](Get-Content -Raw -LiteralPath $pidPath).Trim()
-    } else {
-        0
-    }
-    if ($existingPid -and (Get-Process -Id $existingPid -ErrorAction SilentlyContinue)) {
+    $process = Get-RunningHermesSupervisor -PidPath $pidPath
+    $existingPid = if ($process) { $process.Id } else { 0 }
+    if ($process) {
         $status = if (Test-Path -LiteralPath $statusPath) {
             try {
                 Get-Content -Raw -LiteralPath $statusPath | ConvertFrom-Json
@@ -38,43 +60,70 @@ try {
         }
         if ($status -and
             $status.PSObject.Properties.Name -contains 'phase' -and
-            $status.phase -eq 'running') {
+            $status.PSObject.Properties.Name -contains 'controllerPid' -and
+            [int]$status.controllerPid -eq $existingPid -and
+            $status.phase -eq 'running' -and
+            $status.model.healthy -and
+            $status.hermes.healthy) {
             Write-Host "Hermes Local is already running with profile '$($status.profile)' (supervisor PID $existingPid)."
             exit 0
         }
-        throw "Hermes Local supervisor PID $existingPid exists but is not ready. Inspect $statusPath."
+        Write-HermesLog -Component supervisor -Message (
+            "Waiting for existing supervisor PID $existingPid to finish starting profile '$Profile'."
+        )
+    } else {
+        [System.IO.Directory]::CreateDirectory($runtimeDirectory) | Out-Null
+        $supervisor = Resolve-HermesPath 'scripts\supervisor\Hermes-Supervisor.ps1'
+        $pwsh = (Get-Command pwsh.exe -ErrorAction Stop).Source
+        $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = $pwsh
+        $startInfo.WorkingDirectory = Get-HermesRoot
+        # Shell execution prevents the long-lived supervisor from inheriting the
+        # caller's redirected stdout/stderr pipes. Without this, noninteractive
+        # callers wait forever for EOF even after this short launcher exits.
+        $startInfo.UseShellExecute = $true
+        $startInfo.CreateNoWindow = $true
+        $startInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+        foreach ($argument in @(
+            '-NoLogo', '-NoProfile', '-NonInteractive',
+            '-ExecutionPolicy', 'Bypass',
+            '-File', $supervisor,
+            '-Profile', $Profile
+        )) {
+            $startInfo.ArgumentList.Add($argument)
+        }
+        $process = [System.Diagnostics.Process]::Start($startInfo)
+        if (-not $process) {
+            throw 'Failed to launch Hermes Local supervisor.'
+        }
+        Write-HermesLog -Component supervisor -Message "Launched supervisor PID $($process.Id) for profile '$Profile'."
     }
-
-    [System.IO.Directory]::CreateDirectory($runtimeDirectory) | Out-Null
-    $supervisor = Resolve-HermesPath 'scripts\supervisor\Hermes-Supervisor.ps1'
-    $pwsh = (Get-Command pwsh.exe -ErrorAction Stop).Source
-    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = $pwsh
-    $startInfo.WorkingDirectory = Get-HermesRoot
-    # Shell execution prevents the long-lived supervisor from inheriting the
-    # caller's redirected stdout/stderr pipes. Without this, noninteractive
-    # callers wait forever for EOF even after this short launcher exits.
-    $startInfo.UseShellExecute = $true
-    $startInfo.CreateNoWindow = $true
-    $startInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-    foreach ($argument in @(
-        '-NoLogo', '-NoProfile', '-NonInteractive',
-        '-ExecutionPolicy', 'Bypass',
-        '-File', $supervisor,
-        '-Profile', $Profile
-    )) {
-        $startInfo.ArgumentList.Add($argument)
-    }
-    $process = [System.Diagnostics.Process]::Start($startInfo)
-    if (-not $process) {
-        throw 'Failed to launch Hermes Local supervisor.'
-    }
-    Write-HermesLog -Component supervisor -Message "Launched supervisor PID $($process.Id) for profile '$Profile'."
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $lastPhase = ''
     while ((Get-Date) -lt $deadline) {
         if ($process.HasExited -and $process.ExitCode -ne 0) {
+            if ($process.ExitCode -eq 16) {
+                # Two callers can both launch before the supervisor mutex is
+                # acquired. The loser exits with the documented code 16; join
+                # the winning process instead of reporting a false failure.
+                $losingPid = $process.Id
+                $winnerDeadline = (Get-Date).AddSeconds(5)
+                $winner = $null
+                while (-not $winner -and (Get-Date) -lt $winnerDeadline) {
+                    $winner = Get-RunningHermesSupervisor -PidPath $pidPath -ExcludePid $losingPid
+                    if (-not $winner) {
+                        Start-Sleep -Milliseconds 100
+                    }
+                }
+                if ($winner) {
+                    $process = $winner
+                    Write-HermesLog -Component supervisor -Message (
+                        "Supervisor PID $losingPid lost the startup race; joining supervisor PID $($winner.Id)."
+                    )
+                    continue
+                }
+            }
             $failure = if (Test-Path -LiteralPath $statusPath) {
                 Get-Content -Raw -LiteralPath $statusPath | ConvertFrom-Json
             } else {
@@ -88,6 +137,12 @@ try {
                 $status = Get-Content -Raw -LiteralPath $statusPath | ConvertFrom-Json
                 if (-not $status -or $status.PSObject.Properties.Name -notcontains 'phase') {
                     Write-Verbose 'Waiting for a complete atomic supervisor status update.'
+                    Start-Sleep -Milliseconds 250
+                    continue
+                }
+                if ($status.PSObject.Properties.Name -notcontains 'controllerPid' -or
+                    [int]$status.controllerPid -ne $process.Id) {
+                    Write-Verbose "Ignoring stale supervisor status while waiting for PID $($process.Id)."
                     Start-Sleep -Milliseconds 250
                     continue
                 }

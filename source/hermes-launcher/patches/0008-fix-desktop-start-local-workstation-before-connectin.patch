@@ -1,0 +1,173 @@
+From f85f5a3c87bb43b5e19e5e3031b7da6b361806b2 Mon Sep 17 00:00:00 2001
+From: xdCloudy <connerabery@gmail.com>
+Date: Tue, 28 Jul 2026 14:29:35 +0100
+Subject: [PATCH] fix(desktop): start local workstation before connecting
+
+---
+ .../e2e/hermes-local-workstation.spec.ts      |  5 ++-
+ .../electron/hermes-local-control.test.ts     | 31 +++++++++++++++++++
+ apps/desktop/electron/hermes-local-control.ts | 30 +++++++++++++++++-
+ apps/desktop/electron/main.ts                 |  6 ++++
+ apps/desktop/package.json                     |  2 +-
+ package-lock.json                             |  2 +-
+ 6 files changed, 72 insertions(+), 4 deletions(-)
+
+diff --git a/apps/desktop/e2e/hermes-local-workstation.spec.ts b/apps/desktop/e2e/hermes-local-workstation.spec.ts
+index 1cf838bd7..dd265c6d9 100644
+--- a/apps/desktop/e2e/hermes-local-workstation.spec.ts
++++ b/apps/desktop/e2e/hermes-local-workstation.spec.ts
+@@ -190,7 +190,10 @@ test.describe('Hermes Local packaged workstation', () => {
+ 
+       const workstationNav = page.locator('[data-sidebar="menu"]').first()
+ 
+-      await workstationNav.getByRole('button', { name: 'Home', exact: true }).click()
++      // A cold Hermes Local launch starts the workstation stack before the
++      // gateway can open. Keep the proof on the real user path and wait for
++      // the initial boot/onboarding overlay to release interaction.
++      await workstationNav.getByRole('button', { name: 'Home', exact: true }).click({ timeout: 120_000 })
+       await page.getByRole('heading', { name: 'Local AI workstation' }).waitFor({ timeout: 60_000 })
+       await expect(page.getByText('Ready for local inference')).toBeVisible()
+       await expect(page.getByText(/and Hermes are online/)).toBeVisible()
+diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
+index 983346bc1..afbba9648 100644
+--- a/apps/desktop/electron/hermes-local-control.test.ts
++++ b/apps/desktop/electron/hermes-local-control.test.ts
+@@ -1,3 +1,4 @@
++import { EventEmitter } from 'node:events'
+ import os from 'node:os'
+ import path from 'node:path'
+ 
+@@ -106,4 +107,34 @@ describe('Hermes Local Electron boundary', () => {
+     })
+     expect(() => hermesLocalControlTest.setLoginItem('true')).toThrow(/must be a boolean/i)
+   })
++
++  it('waits for the workstation start action to finish before connecting', async () => {
++    const child = new EventEmitter()
++
++    const task = {
++      action: 'start',
++      child,
++      completedAt: null,
++      exitCode: null,
++      id: 'startup-task',
++      output: '',
++      startedAt: new Date().toISOString(),
++      status: 'running'
++    }
++
++    let settled = false
++
++    const waiting = hermesLocalControlTest.waitForActionTask(task as never).then(() => {
++      settled = true
++    })
++
++    await Promise.resolve()
++    expect(settled).toBe(false)
++
++    task.status = 'succeeded'
++    child.emit('close', 0)
++    await waiting
++
++    expect(settled).toBe(true)
++  })
+ })
+diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
+index 428c6e8e4..1f96b1284 100644
+--- a/apps/desktop/electron/hermes-local-control.ts
++++ b/apps/desktop/electron/hermes-local-control.ts
+@@ -289,6 +289,33 @@ function getActionTask(taskId: unknown) {
+   return publicTask(task)
+ }
+ 
++function waitForActionTask(task: ActionTask): Promise<ActionTask> {
++  if (task.status !== 'running') {
++    return Promise.resolve(task)
++  }
++
++  return new Promise(resolve => {
++    task.child.once('close', () => resolve(task))
++  })
++}
++
++export async function ensureHermesLocalWorkstationReady(): Promise<void> {
++  const started = startActionTask('start', null)
++  const task = tasks.get(started.id)
++
++  if (!task) {
++    throw new Error('Hermes Local workstation start task was not created')
++  }
++
++  const completed = await waitForActionTask(task)
++
++  if (completed.status !== 'succeeded') {
++    const detail = completed.output.trim() || `exit code ${completed.exitCode ?? 'unknown'}`
++
++    throw new Error(`Hermes Local workstation failed to start: ${detail}`)
++  }
++}
++
+ async function health(url: string): Promise<boolean> {
+   try {
+     const response = await fetch(url, { signal: AbortSignal.timeout(2500) })
+@@ -620,5 +647,6 @@ export const hermesLocalControlTest = {
+   redacted,
+   resolveUnderRoot,
+   sanitizeEditableProfile,
+-  setLoginItem
++  setLoginItem,
++  waitForActionTask
+ }
+diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
+index 4aab04a93..ba66bd4fb 100644
+--- a/apps/desktop/electron/main.ts
++++ b/apps/desktop/electron/main.ts
+@@ -124,6 +124,7 @@ import {
+ } from './hardening'
+ import {
+   configureHermesLocalDesktopEnvironment,
++  ensureHermesLocalWorkstationReady,
+   hermesLocalTuiLaunch,
+   registerHermesLocalControlIpc
+ } from './hermes-local-control'
+@@ -8137,6 +8138,11 @@ async function startHermes() {
+       backendArgs.unshift('--profile', activeProfile)
+     }
+ 
++    if (HERMES_LOCAL_MODE) {
++      await advanceBootProgress('backend.workstation', 'Starting Hermes Local workstation', 16)
++      await ensureHermesLocalWorkstationReady()
++    }
++
+     const setup = await runPrimaryBackendStartup({
+       connectRemote,
+       ensureLocalRuntime: ensureRuntime,
+diff --git a/apps/desktop/package.json b/apps/desktop/package.json
+index 883884371..64767261b 100644
+--- a/apps/desktop/package.json
++++ b/apps/desktop/package.json
+@@ -2,7 +2,7 @@
+   "name": "hermes-launcher",
+   "productName": "Hermes Launcher",
+   "private": true,
+-  "version": "0.18.0",
++  "version": "0.18.1",
+   "description": "Native desktop shell for Hermes Agent.",
+   "author": "Nous Research",
+   "type": "module",
+diff --git a/package-lock.json b/package-lock.json
+index e1706ea33..a557615ac 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -81,7 +81,7 @@
+     },
+     "apps/desktop": {
+       "name": "hermes-launcher",
+-      "version": "0.18.0",
++      "version": "0.18.1",
+       "dependencies": {
+         "@assistant-ui/react": "^0.14.23",
+         "@assistant-ui/react-streamdown": "^0.3.4",
+-- 
+2.55.0.windows.3
+

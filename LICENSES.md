@@ -23,7 +23,7 @@ The packaged Node graph is predominantly MIT (539 components), ISC (38), MPL-2.0
 
 Two Node components omit licence metadata in their package records but inherit the repository licence:
 
-- private `hermes-launcher` 0.18.0 — MIT via the NousResearch/hermes-agent repository.
+- private `hermes-launcher` 0.18.1 — MIT via the NousResearch/hermes-agent repository.
 - private `@hermes/shared` 0.0.0 — MIT via the same repository.
 
 `khroma` 2.1.0 omits package licence metadata; its upstream repository licence is MIT.

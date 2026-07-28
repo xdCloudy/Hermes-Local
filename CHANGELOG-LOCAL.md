@@ -1,5 +1,15 @@
 # Hermes Local changelog
 
+## 0.18.1 — 2026-07-28
+
+- Fixed fresh launcher startup so the Electron connection gate starts and
+  awaits the configured Hermes Local workstation instead of deadlocking on an
+  offline port 9119.
+- Made concurrent launcher/start requests join an already-booting supervisor
+  rather than treating normal startup overlap as a failure.
+- Fixed strict-mode source reconstruction and patch argument handling for
+  genuinely fresh public clones, and removed leaked native exit-code output.
+
 ## 0.18.0 — 2026-07-28
 
 - Replaced the fixed drive, model, profile, port, CUDA architecture and build
