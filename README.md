@@ -109,6 +109,7 @@ using relative paths.
 |---|---|
 | Project root | the directory containing this README |
 | Hermes checkout | `source\hermes-agent` |
+| Hermes source pin override | `config\launcher\source-overrides.json` |
 | Hermes user state | `data\hermes` |
 | Default workspace | `data\user` |
 | User settings | `config\launcher\user-settings.json` |
@@ -141,9 +142,20 @@ running them.
 | Restart selected configuration | `& '.\Restart-Hermes-Local.ps1' -NonInteractive` |
 | Repair | `& '.\Repair-Hermes-Local.ps1' -NonInteractive` |
 | Backup | `& '.\Backup-Hermes-Local.ps1' -Name manual -NonInteractive` |
-| Check updates | `& '.\Update-Hermes-Local.ps1' -Mode Check -NonInteractive` |
+| Check all updates | `& '.\Update-Hermes-Local.ps1' -Mode Check -NonInteractive` |
+| Check Hermes Agent | `& '.\Update-Hermes-Agent.ps1' -Mode Check` |
+| Update Hermes Agent | `& '.\Update-Hermes-Agent.ps1' -Mode Apply` |
+| Roll back Hermes Agent | `& '.\Update-Hermes-Agent.ps1' -Mode Rollback` |
 | Security scan | `& '.\Security-Scan-Hermes-Local.ps1' -NonInteractive` |
 | Diagnostics | `& '.\Export-Hermes-Diagnostics.ps1' -NonInteractive` |
+
+Windows users can also double-click `Update-Hermes-Agent.cmd`. The updater
+stages upstream code away from the active installation, applies the Hermes
+Local patch series, backs up state, rebuilds dependencies and the launcher,
+runs health checks, and restores the previous installation automatically if
+promotion fails. Do not use Hermes Agent's in-chat `/update` command for a
+Hermes Local checkout because it does not understand the integration patch
+layer.
 
 Historical benchmark and acceptance reports describe the original validation
 machine and are labelled as evidence, not current runtime requirements.
