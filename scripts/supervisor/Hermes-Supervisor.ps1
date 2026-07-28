@@ -445,16 +445,29 @@ try {
     if ($job) {
         $job.Dispose()
     }
-    if (Test-Path -LiteralPath $controllerPidPath) {
-        Remove-Item -LiteralPath $controllerPidPath -Force -ErrorAction SilentlyContinue
-    }
-    if (Test-Path -LiteralPath $stopRequestPath) {
-        Remove-Item -LiteralPath $stopRequestPath -Force -ErrorAction SilentlyContinue
+    if ($createdNew) {
+        # A process that loses the named-mutex race must not delete the
+        # winning supervisor's PID or stop request during its own cleanup.
+        if (Test-Path -LiteralPath $controllerPidPath) {
+            try {
+                $recordedPid = 0
+                $rawPid = (Get-Content -Raw -LiteralPath $controllerPidPath).Trim()
+                if ([int]::TryParse($rawPid, [ref] $recordedPid) -and $recordedPid -eq $PID) {
+                    Remove-Item -LiteralPath $controllerPidPath -Force -ErrorAction SilentlyContinue
+                }
+            } catch {
+            }
+        }
+        if (Test-Path -LiteralPath $stopRequestPath) {
+            Remove-Item -LiteralPath $stopRequestPath -Force -ErrorAction SilentlyContinue
+        }
     }
     if ($mutex) {
-        try {
-            $mutex.ReleaseMutex()
-        } catch {
+        if ($createdNew) {
+            try {
+                $mutex.ReleaseMutex()
+            } catch {
+            }
         }
         $mutex.Dispose()
     }

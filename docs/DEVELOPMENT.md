@@ -28,7 +28,9 @@ files into Git.
 4. current-user launch at login;
 5. native Windows skill preprocessing and WSL rejection;
 6. portable Windows compression-persistence test fixtures;
-7. portable workstation configuration and model/profile controls.
+7. portable workstation configuration and model/profile controls;
+8. automatic cold-start of the supervised workstation before desktop
+   connection.
 
 Setup reconstructs from the pinned upstream base with `git am`, verifies the
 resulting tree and tolerates a different local commit ID caused only by
