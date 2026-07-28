@@ -31,6 +31,8 @@
 /config/launcher/state.json
 /config/launcher/user-settings.json
 /config/launcher/user-settings.json.*
+/config/launcher/source-overrides.json
+/config/launcher/source-overrides.json.*
 
 # Package and editor output
 node_modules/
