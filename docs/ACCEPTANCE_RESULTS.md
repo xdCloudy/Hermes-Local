@@ -22,7 +22,7 @@ Docker or WSL was used.
 | Binding | Pass: ports 8011 and 9119 listen only on `127.0.0.1` |
 
 The final full operational test passed 9/9 checks at
-`2026-07-28T09:43:55Z`. Evidence:
+`2026-07-28T10:11:18Z`. Evidence:
 `D:\Hermes-Local\logs\diagnostics\latest-test.json`.
 
 ## Performance
