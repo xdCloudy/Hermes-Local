@@ -379,7 +379,9 @@ function Invoke-HermesProcess {
     if ($AcceptExitCode -notcontains $process.ExitCode) {
         throw "$resolvedFile exited with code $($process.ExitCode). See logs\$LogComponent\$LogComponent.log."
     }
-    return $process.ExitCode
+    # Success is silent by default. Callers that need command output opt in via
+    # PassThruOutput; unsuccessful exit codes are raised above.
+    return
 }
 
 function Get-OrCreateHermesApiToken {

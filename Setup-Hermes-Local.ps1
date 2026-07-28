@@ -78,8 +78,8 @@ function Initialize-SourceCheckout {
         ) -LogComponent setup
     }
 
-    $currentCommit = (& git -C $Path rev-parse HEAD).Trim()
-    $currentTree = (& git -C $Path rev-parse 'HEAD^{tree}').Trim()
+    $currentCommit = (@(& git -C $Path rev-parse HEAD) -join [Environment]::NewLine).Trim()
+    $currentTree = (@(& git -C $Path rev-parse 'HEAD^{tree}') -join [Environment]::NewLine).Trim()
     $status = (& git -C $Path status --porcelain) -join [Environment]::NewLine
     if ($LASTEXITCODE -ne 0) {
         throw "Unable to inspect Git checkout: $Path"
@@ -100,7 +100,7 @@ function Initialize-SourceCheckout {
     }
 
     if ($IntegrationTree -and $currentTree -eq $IntegrationTree) {
-        $branch = (& git -C $Path branch --show-current).Trim()
+        $branch = (@(& git -C $Path branch --show-current) -join [Environment]::NewLine).Trim()
         if ($branch -ne $IntegrationBranch) {
             Invoke-HermesProcess -FilePath git -ArgumentList @(
                 '-C', $Path, 'switch', '-C', $IntegrationBranch
@@ -119,7 +119,9 @@ function Initialize-SourceCheckout {
         '-C', $Path, 'checkout', '--detach', $Commit
     ) -LogComponent setup
 
-    $branchExists = (& git -C $Path branch --list $IntegrationBranch).Trim()
+    # A missing branch is the expected state on the first setup. Git emits no
+    # stdout in that case, which PowerShell represents as $null.
+    $branchExists = (@(& git -C $Path branch --list $IntegrationBranch) -join [Environment]::NewLine).Trim()
     if ($branchExists) {
         Invoke-HermesProcess -FilePath git -ArgumentList @(
             '-C', $Path, 'branch', '-f', $IntegrationBranch, $Commit
@@ -145,18 +147,18 @@ function Initialize-SourceCheckout {
             throw 'The Hermes Local integration patch series is empty.'
         }
 
+        $patchArguments = @(
+            '-C', $Path, 'am', '--committer-date-is-author-date'
+        ) + @($patches | ForEach-Object { $_.FullName })
         try {
-            Invoke-HermesProcess -FilePath git -ArgumentList @(
-                '-C', $Path, 'am', '--committer-date-is-author-date',
-                @($patches | ForEach-Object FullName)
-            ) -LogComponent setup
+            Invoke-HermesProcess -FilePath git -ArgumentList $patchArguments -LogComponent setup
         } catch {
             & git -C $Path am --abort 2>$null
             throw
         }
 
-        $appliedCommit = (& git -C $Path rev-parse HEAD).Trim()
-        $appliedTree = (& git -C $Path rev-parse 'HEAD^{tree}').Trim()
+        $appliedCommit = (@(& git -C $Path rev-parse HEAD) -join [Environment]::NewLine).Trim()
+        $appliedTree = (@(& git -C $Path rev-parse 'HEAD^{tree}') -join [Environment]::NewLine).Trim()
         if ($appliedTree -ne $IntegrationTree) {
             throw "Hermes Local patch series produced tree $appliedTree; expected $IntegrationTree."
         }
@@ -281,7 +283,7 @@ function Install-HermesDependencies {
             'venv', $Runtime, '--python', $managedPython.FullName, '--seed'
         ) -LogComponent setup
     } else {
-        $runtimeVersion = (& $pythonExe -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")').Trim()
+        $runtimeVersion = (@(& $pythonExe -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")') -join [Environment]::NewLine).Trim()
         if ($runtimeVersion -ne $pythonVersion) {
             throw "The existing Hermes runtime uses Python $runtimeVersion. Preserve it as a rollback copy and rebuild the venv with project-managed Python $pythonVersion."
         }
