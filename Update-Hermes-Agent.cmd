@@ -9,7 +9,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-pwsh.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0Update-Hermes-Agent.ps1" -Mode Apply
+pwsh.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0Invoke-Hermes-Agent-Update.ps1" -Mode Apply
 set "EXIT_CODE=%ERRORLEVEL%"
 
 echo.
