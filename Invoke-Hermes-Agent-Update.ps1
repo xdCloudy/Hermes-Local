@@ -17,6 +17,7 @@ $ErrorActionPreference = 'Stop'
 
 $updater = Join-Path $PSScriptRoot 'Update-Hermes-Agent.ps1'
 $activeObjects = Join-Path $PSScriptRoot 'source\hermes-agent\.git\objects'
+$generatedUpdater = Join-Path $PSScriptRoot '.Update-Hermes-Agent.generated.ps1'
 
 if (-not (Test-Path -LiteralPath $updater -PathType Leaf)) {
     throw "Hermes Agent updater is missing: $updater"
@@ -26,22 +27,16 @@ if (-not (Test-Path -LiteralPath $activeObjects -PathType Container)) {
 }
 
 $pwsh = (Get-Command pwsh.exe -ErrorAction Stop).Source
-$previousAlternates = [Environment]::GetEnvironmentVariable(
-    'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+$previousObjectHint = [Environment]::GetEnvironmentVariable(
+    'HERMES_LOCAL_INTEGRATION_OBJECTS',
     [EnvironmentVariableTarget]::Process
 )
-$pathSeparator = [System.IO.Path]::PathSeparator
-$alternateObjects = if ([string]::IsNullOrWhiteSpace($previousAlternates)) {
-    $activeObjects
-} else {
-    "$activeObjects$pathSeparator$previousAlternates"
-}
 
 $arguments = @(
     '-NoLogo',
     '-NoProfile',
     '-ExecutionPolicy', 'Bypass',
-    '-File', $updater,
+    '-File', $generatedUpdater,
     '-Mode', $Mode
 )
 if ($TargetCommit) {
@@ -56,21 +51,54 @@ if ($NonInteractive) {
 
 $exitCode = 1
 try {
-    # Later Hermes Local patches reference preimage blobs created by earlier
-    # integration commits. Those blobs are not part of the upstream repository,
-    # so expose the active, verified integration object database while staging.
+    if (Test-Path -LiteralPath $generatedUpdater) {
+        Remove-Item -LiteralPath $generatedUpdater -Force
+    }
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+    foreach ($line in [System.IO.File]::ReadAllLines($updater)) {
+        [void] $lines.Add($line)
+    }
+
+    $matches = @()
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        if ($lines[$index].Trim() -eq "GIT_COMMITTER_EMAIL = 'hermes-local@localhost'") {
+            $matches += $index
+        }
+    }
+    if ($matches.Count -ne 1) {
+        throw "Could not safely locate the updater's git am environment block. Found $($matches.Count) matches."
+    }
+
+    # Only git am needs the original integration object database. Applying the
+    # alternate globally corrupts clone/index-pack negotiation with unresolved
+    # deltas, so inject it into the patch subprocess environment alone.
+    $lines.Insert(
+        ([int] $matches[0]) + 1,
+        "                GIT_ALTERNATE_OBJECT_DIRECTORIES = `$env:HERMES_LOCAL_INTEGRATION_OBJECTS"
+    )
+
+    [System.IO.File]::WriteAllLines(
+        $generatedUpdater,
+        $lines,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+
     [Environment]::SetEnvironmentVariable(
-        'GIT_ALTERNATE_OBJECT_DIRECTORIES',
-        $alternateObjects,
+        'HERMES_LOCAL_INTEGRATION_OBJECTS',
+        $activeObjects,
         [EnvironmentVariableTarget]::Process
     )
 
     & $pwsh @arguments
     $exitCode = $LASTEXITCODE
 } finally {
+    if (Test-Path -LiteralPath $generatedUpdater) {
+        Remove-Item -LiteralPath $generatedUpdater -Force
+    }
     [Environment]::SetEnvironmentVariable(
-        'GIT_ALTERNATE_OBJECT_DIRECTORIES',
-        $previousAlternates,
+        'HERMES_LOCAL_INTEGRATION_OBJECTS',
+        $previousObjectHint,
         [EnvironmentVariableTarget]::Process
     )
 }
