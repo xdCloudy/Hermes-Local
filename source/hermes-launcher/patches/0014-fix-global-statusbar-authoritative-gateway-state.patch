@@ -1,0 +1,618 @@
+From c3726e9df079b2128bc7fd9afb65be3b3416e82b Mon Sep 17 00:00:00 2001
+From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
+Date: Wed, 29 Jul 2026 23:58:34 +0100
+Subject: [PATCH 14/14] fix(desktop): use authoritative gateway status in
+ global chrome
+
+---
+ .../hooks/gateway-statusbar-state.test.ts     | 114 ++++++++++++++++++
+ .../shell/hooks/gateway-statusbar-state.ts    |  59 +++++++++
+ .../shell/hooks/use-status-snapshot.test.ts   |  89 ++++++++++----
+ .../app/shell/hooks/use-status-snapshot.ts    | 113 ++++++++++-------
+ .../app/shell/hooks/use-statusbar-items.tsx   |  37 +++---
+ 5 files changed, 333 insertions(+), 79 deletions(-)
+ create mode 100644 apps/desktop/src/app/shell/hooks/gateway-statusbar-state.test.ts
+ create mode 100644 apps/desktop/src/app/shell/hooks/gateway-statusbar-state.ts
+
+diff --git a/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.test.ts b/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..bb72682a579dd2ef2c8a144e3547cd5d65ed7a66
+--- /dev/null
++++ b/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.test.ts
+@@ -0,0 +1,114 @@
++import { describe, expect, it } from 'vitest'
++
++import type { RuntimeReadinessResult } from '@/lib/runtime-readiness'
++import type { StatusResponse } from '@/types/hermes'
++
++import { resolveGatewayStatusbarState } from './gateway-statusbar-state'
++
++function status(overrides: Partial<StatusResponse> = {}): StatusResponse {
++  return {
++    active_sessions: 0,
++    config_path: '',
++    config_version: 1,
++    env_path: '',
++    gateway_exit_reason: null,
++    gateway_health_url: null,
++    gateway_pid: 1,
++    gateway_platforms: {},
++    gateway_running: true,
++    gateway_state: 'running',
++    gateway_updated_at: null,
++    hermes_home: '',
++    latest_config_version: 1,
++    release_date: '',
++    version: 'test',
++    ...overrides
++  }
++}
++
++const readyInference: RuntimeReadinessResult = {
++  checksDisagree: false,
++  ready: true,
++  reason: null,
++  source: 'runtime_check'
++}
++
++describe('resolveGatewayStatusbarState', () => {
++  it('never reports ready when authoritative gateway status is stopped', () => {
++    expect(
++      resolveGatewayStatusbarState({
++        gatewayState: 'open',
++        inferenceStatus: readyInference,
++        statusSnapshot: status({
++          gateway_pid: null,
++          gateway_running: false,
++          gateway_state: 'stopped'
++        })
++      })
++    ).toMatchObject({
++      kind: 'offline',
++      reason: 'stopped'
++    })
++  })
++
++  it('reports a starting authoritative gateway as connecting', () => {
++    expect(
++      resolveGatewayStatusbarState({
++        gatewayState: 'open',
++        inferenceStatus: readyInference,
++        statusSnapshot: status({
++          gateway_running: false,
++          gateway_state: 'starting'
++        })
++      })
++    ).toMatchObject({ kind: 'connecting' })
++  })
++
++  it('reports ready only after status and inference are both authoritative', () => {
++    expect(
++      resolveGatewayStatusbarState({
++        gatewayState: 'open',
++        inferenceStatus: readyInference,
++        statusSnapshot: status()
++      })
++    ).toEqual({ kind: 'ready' })
++  })
++
++  it('reports checking while authoritative REST status is unavailable', () => {
++    expect(
++      resolveGatewayStatusbarState({
++        gatewayState: 'open',
++        inferenceStatus: readyInference,
++        statusSnapshot: null
++      })
++    ).toEqual({ kind: 'checking' })
++  })
++
++  it('keeps inference setup state separate after the gateway process is running', () => {
++    expect(
++      resolveGatewayStatusbarState({
++        gatewayState: 'open',
++        inferenceStatus: {
++          checksDisagree: false,
++          ready: false,
++          reason: 'Provider setup required',
++          source: 'runtime_check'
++        },
++        statusSnapshot: status()
++      })
++    ).toMatchObject({
++      kind: 'needs-setup',
++      reason: 'Provider setup required'
++    })
++  })
++
++  it('does not report ready when the Desktop transport is offline', () => {
++    expect(
++      resolveGatewayStatusbarState({
++        gatewayState: 'closed',
++        inferenceStatus: readyInference,
++        statusSnapshot: status()
++      })
++    ).toEqual({ kind: 'offline' })
++  })
++})
+\ No newline at end of file
+diff --git a/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.ts b/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..17043696d7bbe7bba46f843a78fb5595912654d2
+--- /dev/null
++++ b/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.ts
+@@ -0,0 +1,59 @@
++import type { RuntimeReadinessResult } from '@/lib/runtime-readiness'
++import type { StatusResponse } from '@/types/hermes'
++
++export type GatewayStatusbarKind = 'checking' | 'connecting' | 'needs-setup' | 'offline' | 'ready'
++
++export interface GatewayStatusbarState {
++  kind: GatewayStatusbarKind
++  reason?: string
++}
++
++interface ResolveGatewayStatusbarStateOptions {
++  gatewayState: string | undefined
++  inferenceStatus: RuntimeReadinessResult | null
++  statusSnapshot: StatusResponse | null
++}
++
++const STARTING_STATES = new Set(['initializing', 'restarting', 'start_pending', 'starting'])
++
++export function resolveGatewayStatusbarState({
++  gatewayState,
++  inferenceStatus,
++  statusSnapshot
++}: ResolveGatewayStatusbarStateOptions): GatewayStatusbarState {
++  const authoritativeState = statusSnapshot?.gateway_state?.trim().toLowerCase() || null
++
++  // The REST status payload is authoritative for the messaging gateway process.
++  // It must win over an independently open Desktop JSON-RPC/WebSocket transport.
++  if (statusSnapshot && !statusSnapshot.gateway_running) {
++    return {
++      kind: authoritativeState && STARTING_STATES.has(authoritativeState) ? 'connecting' : 'offline',
++      reason: statusSnapshot.gateway_exit_reason || statusSnapshot.gateway_state || undefined
++    }
++  }
++
++  if (gatewayState === 'connecting') {
++    return { kind: 'connecting' }
++  }
++
++  if (gatewayState !== 'open') {
++    return { kind: 'offline' }
++  }
++
++  if (!statusSnapshot) {
++    return { kind: 'checking' }
++  }
++
++  if (inferenceStatus?.ready === false) {
++    return {
++      kind: 'needs-setup',
++      reason: inferenceStatus.reason ?? undefined
++    }
++  }
++
++  if (inferenceStatus?.ready === true) {
++    return { kind: 'ready' }
++  }
++
++  return { kind: 'checking' }
++}
+\ No newline at end of file
+diff --git a/apps/desktop/src/app/shell/hooks/use-status-snapshot.test.ts b/apps/desktop/src/app/shell/hooks/use-status-snapshot.test.ts
+index 1c05ac05822a044a0ae9c428ff4557362445c9dd..5acb66a101ee73f12e9880b8c9503922815168a9 100644
+--- a/apps/desktop/src/app/shell/hooks/use-status-snapshot.test.ts
++++ b/apps/desktop/src/app/shell/hooks/use-status-snapshot.test.ts
+@@ -2,6 +2,7 @@ import { act, cleanup, renderHook } from '@testing-library/react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ 
+ import { getStatus } from '@/hermes'
++import type { StatusResponse } from '@/types/hermes'
+ 
+ import { useStatusSnapshot } from './use-status-snapshot'
+ 
+@@ -11,6 +12,27 @@ vi.mock('@/hermes', () => ({
+ 
+ type GatewayRequester = <T = unknown>(method: string, params?: Record<string, unknown>) => Promise<T>
+ 
++function status(overrides: Partial<StatusResponse> = {}): StatusResponse {
++  return {
++    active_sessions: 0,
++    config_path: '',
++    config_version: 1,
++    env_path: '',
++    gateway_exit_reason: null,
++    gateway_health_url: null,
++    gateway_pid: 1,
++    gateway_platforms: {},
++    gateway_running: true,
++    gateway_state: 'running',
++    gateway_updated_at: null,
++    hermes_home: '',
++    latest_config_version: 1,
++    release_date: '',
++    version: 'test',
++    ...overrides
++  }
++}
++
+ function deferred<T>() {
+   let resolve: (value: T) => void = () => undefined
+   let reject: (reason?: unknown) => void = () => undefined
+@@ -31,9 +53,7 @@ async function flushAsync() {
+ 
+ beforeEach(() => {
+   vi.useFakeTimers()
+-  vi.mocked(getStatus)
+-    .mockReset()
+-    .mockResolvedValue({} as never)
++  vi.mocked(getStatus).mockReset().mockResolvedValue(status())
+ })
+ 
+ afterEach(() => {
+@@ -42,7 +62,46 @@ afterEach(() => {
+ })
+ 
+ describe('useStatusSnapshot', () => {
+-  it('keeps the last authoritative readiness through a transient RPC failure', async () => {
++  it('polls authoritative REST status every two seconds without rerunning the heavy inference probe', async () => {
++    const requestGatewayMock = vi.fn(
++      async (method: string) =>
++        (method === 'setup.runtime_check' ? { ok: true } : { provider_configured: true }) as never
++    )
++    const requestGateway = requestGatewayMock as unknown as GatewayRequester
++
++    renderHook(() => useStatusSnapshot('open', requestGateway))
++    await flushAsync()
++
++    expect(getStatus).toHaveBeenCalledTimes(1)
++    expect(requestGatewayMock).toHaveBeenCalledTimes(2)
++
++    await act(async () => {
++      await vi.advanceTimersByTimeAsync(2_000)
++    })
++
++    expect(getStatus).toHaveBeenCalledTimes(2)
++    expect(requestGatewayMock).toHaveBeenCalledTimes(2)
++  })
++
++  it('clears a stale running snapshot when authoritative status becomes unavailable', async () => {
++    vi.mocked(getStatus)
++      .mockResolvedValueOnce(status())
++      .mockRejectedValueOnce(new Error('status endpoint unavailable'))
++
++    const requestGateway = vi.fn() as unknown as GatewayRequester
++    const { result } = renderHook(() => useStatusSnapshot('closed', requestGateway))
++
++    await flushAsync()
++    expect(result.current.statusSnapshot?.gateway_running).toBe(true)
++
++    await act(async () => {
++      await vi.advanceTimersByTimeAsync(2_000)
++    })
++
++    expect(result.current.statusSnapshot).toBeNull()
++  })
++
++  it('keeps the last authoritative inference readiness through a transient RPC failure', async () => {
+     let refresh = 0
+ 
+     const requestGatewayMock = vi.fn(async (method: string) => {
+@@ -55,16 +114,14 @@ describe('useStatusSnapshot', () => {
+ 
+       return (method === 'setup.runtime_check' ? { ok: true } : { provider_configured: true }) as never
+     })
+-
+     const requestGateway = requestGatewayMock as unknown as GatewayRequester
+-
+     const { result } = renderHook(() => useStatusSnapshot('open', requestGateway))
+ 
+     await flushAsync()
+     expect(result.current.inferenceStatus).toMatchObject({ ready: true, source: 'runtime_check' })
+ 
+     await act(async () => {
+-      await vi.advanceTimersByTimeAsync(15_000)
++      await vi.advanceTimersByTimeAsync(60_000)
+     })
+ 
+     expect(result.current.inferenceStatus).toMatchObject({ ready: true, source: 'runtime_check' })
+@@ -74,9 +131,7 @@ describe('useStatusSnapshot', () => {
+     const requestGatewayMock = vi.fn(async (method: string) => {
+       throw new Error(`${method} connection closed`)
+     })
+-
+     const requestGateway = requestGatewayMock as unknown as GatewayRequester
+-
+     const { result } = renderHook(() => useStatusSnapshot('open', requestGateway))
+ 
+     await flushAsync()
+@@ -91,9 +146,7 @@ describe('useStatusSnapshot', () => {
+           ? { error: 'No usable credentials found for nous.', ok: false }
+           : { provider_configured: true }) as never
+     )
+-
+     const requestGateway = requestGatewayMock as unknown as GatewayRequester
+-
+     const { result } = renderHook(() => useStatusSnapshot('open', requestGateway))
+ 
+     await flushAsync()
+@@ -105,13 +158,7 @@ describe('useStatusSnapshot', () => {
+     })
+   })
+ 
+-  it('clears readiness immediately when the gateway disconnects', async () => {
+-    const pendingStatus = deferred<never>()
+-
+-    vi.mocked(getStatus)
+-      .mockResolvedValueOnce({} as never)
+-      .mockReturnValueOnce(pendingStatus.promise)
+-
++  it('clears inference readiness immediately when the Desktop gateway transport disconnects', async () => {
+     const requestGateway = vi.fn(
+       async (method: string) =>
+         (method === 'setup.runtime_check' ? { ok: true } : { provider_configured: true }) as never
+@@ -126,18 +173,16 @@ describe('useStatusSnapshot', () => {
+ 
+     rerender({ gatewayState: 'connecting' })
+ 
+-    expect(getStatus).toHaveBeenCalledTimes(2)
+     expect(result.current.inferenceStatus).toBeNull()
+   })
+ 
+-  it('waits for a slow refresh to settle before scheduling another one', async () => {
++  it('waits for a slow inference refresh to settle before scheduling another one', async () => {
+     const setup = deferred<unknown>()
+     const runtime = deferred<unknown>()
+ 
+     const requestGatewayMock = vi.fn(
+       (method: string) => (method === 'setup.runtime_check' ? runtime.promise : setup.promise) as never
+     )
+-
+     const requestGateway = requestGatewayMock as unknown as GatewayRequester
+ 
+     renderHook(() => useStatusSnapshot('open', requestGateway))
+@@ -167,4 +212,4 @@ describe('useStatusSnapshot', () => {
+     })
+     expect(requestGatewayMock).toHaveBeenCalledTimes(4)
+   })
+-})
++})
+\ No newline at end of file
+diff --git a/apps/desktop/src/app/shell/hooks/use-status-snapshot.ts b/apps/desktop/src/app/shell/hooks/use-status-snapshot.ts
+index d2b714904b8b90640197db2baac44960fc34471e..7d75c48cc4864ce822accd0f41fde0ebb19994a0 100644
+--- a/apps/desktop/src/app/shell/hooks/use-status-snapshot.ts
++++ b/apps/desktop/src/app/shell/hooks/use-status-snapshot.ts
+@@ -4,11 +4,8 @@ import { getStatus } from '@/hermes'
+ import { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
+ import type { StatusResponse } from '@/types/hermes'
+ 
+-// Statusbar health is ambient chrome, not live data — nothing the user acts on
+-// within seconds. 60s + a hidden-tab skip keeps it honest at a quarter of the
+-// old traffic; the visibility listener refreshes immediately on return so a
+-// backgrounded window never shows stale health after re-focus.
+-const REFRESH_MS = 60_000
++const STATUS_REFRESH_MS = 2_000
++const INFERENCE_REFRESH_MS = 60_000
+ 
+ type GatewayRequester = <T = unknown>(method: string, params?: Record<string, unknown>) => Promise<T>
+ 
+@@ -20,22 +17,76 @@ export function useStatusSnapshot(gatewayState: string | undefined, requestGatew
+     let cancelled = false
+     let timer: number | undefined
+ 
+-    // A closed/connecting gateway cannot have an authoritative live-runtime
+-    // result. Clear readiness before starting the REST status leg so a hung
+-    // getStatus() cannot leave a stale "ready" state visible after disconnect.
++    const scheduleRefresh = () => {
++      if (!cancelled) {
++        timer = window.setTimeout(() => void refresh(), STATUS_REFRESH_MS)
++      }
++    }
++
++    const refresh = async () => {
++      if (document.visibilityState !== 'visible') {
++        scheduleRefresh()
++
++        return
++      }
++
++      try {
++        const status = await getStatus()
++
++        if (!cancelled) {
++          setStatusSnapshot(status)
++        }
++      } catch {
++        // Never preserve a stale "running" result when the authoritative REST
++        // status endpoint can no longer be verified.
++        if (!cancelled) {
++          setStatusSnapshot(null)
++        }
++      } finally {
++        scheduleRefresh()
++      }
++    }
++
++    const onVisible = () => {
++      if (document.visibilityState === 'visible' && !cancelled) {
++        if (timer !== undefined) {
++          window.clearTimeout(timer)
++        }
++
++        void refresh()
++      }
++    }
++
++    document.addEventListener('visibilitychange', onVisible)
++    void refresh()
++
++    return () => {
++      cancelled = true
++      document.removeEventListener('visibilitychange', onVisible)
++
++      if (timer !== undefined) {
++        window.clearTimeout(timer)
++      }
++    }
++  }, [])
++
++  useEffect(() => {
++    let cancelled = false
++    let timer: number | undefined
++
+     if (gatewayState !== 'open') {
+       setInferenceStatus(null)
++
++      return
+     }
+ 
+     const scheduleRefresh = () => {
+       if (!cancelled) {
+-        timer = window.setTimeout(() => void refresh(), REFRESH_MS)
++        timer = window.setTimeout(() => void refresh(), INFERENCE_REFRESH_MS)
+       }
+     }
+ 
+     const refresh = async () => {
+-      // Hidden window: skip the round-trips, keep the timer alive; the
+-      // visibilitychange listener repaints immediately on return.
+       if (document.visibilityState !== 'visible') {
+         scheduleRefresh()
+ 
+@@ -43,37 +94,17 @@ export function useStatusSnapshot(gatewayState: string | undefined, requestGatew
+       }
+ 
+       try {
+-        // Wait for both legs before scheduling the next refresh. setInterval
+-        // allowed a slow runtime check to overlap with later polls, which
+-        // multiplied load on an already-busy gateway and let stale failures
+-        // race newer healthy results.
+-        const [statusResult, inferenceResult] = await Promise.allSettled([
+-          getStatus(),
+-          gatewayState === 'open' ? evaluateRuntimeReadiness(requestGateway) : Promise.resolve(null)
+-        ])
+-
+-        if (cancelled) {
+-          return
+-        }
+-
+-        if (statusResult.status === 'fulfilled') {
+-          setStatusSnapshot(statusResult.value)
+-        }
++        const inference = await evaluateRuntimeReadiness(requestGateway)
+ 
+-        if (inferenceResult.status === 'fulfilled') {
+-          const inference = inferenceResult.value
+-
+-          if (inference === null) {
+-            setInferenceStatus(null)
+-          } else if (inference.source !== 'fallback') {
+-            // runtime_check/setup_status returned an authoritative boolean.
+-            // A fallback means both RPCs failed or returned no boolean, so it
+-            // is a transient/unknown transport state, not proof that inference
+-            // became unconfigured. Keep the last authoritative result instead
+-            // of flashing "Inference not ready" during a gateway flap.
+-            setInferenceStatus(inference)
+-          }
++        if (!cancelled && inference.source !== 'fallback') {
++          // A fallback means both RPCs failed or returned no authoritative
++          // boolean. Keep the last authoritative inference result instead of
++          // flashing a false setup failure during a transport flap.
++          setInferenceStatus(inference)
+         }
++      } catch {
++        // Preserve the last authoritative result through an unexpected probe
++        // failure. Transport lifecycle changes still clear it immediately.
+       } finally {
+         scheduleRefresh()
+       }
+@@ -103,4 +134,4 @@ export function useStatusSnapshot(gatewayState: string | undefined, requestGatew
+   }, [gatewayState, requestGateway])
+ 
+   return { inferenceStatus, statusSnapshot }
+-}
++}
+\ No newline at end of file
+diff --git a/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx b/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
+index 0aa3c69fe3b6dbed9f0774f40d71d4d9bcd903ea..198edad1bf079323e29feafa7ffc7fd27aea05fb 100644
+--- a/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
++++ b/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
+@@ -47,7 +47,7 @@ import type { StatusResponse, UsageStats } from '@/types/hermes'
+ 
+ import { CRON_ROUTE, SETTINGS_ROUTE, WEBHOOKS_ROUTE } from '../../routes'
+ import type { StatusbarItem } from '../statusbar-controls'
+-
++import { resolveGatewayStatusbarState } from './gateway-statusbar-state'
+ const EMPTY_USAGE = { calls: 0, input: 0, output: 0, total: 0 } as const
+ 
+ function workspaceLabel(cwd: string): string {
+@@ -197,22 +197,26 @@ export function useStatusbarItems({
+     [gatewayState, inferenceStatus, openCommandCenterSection, statusSnapshot]
+   )
+ 
+-  const gatewayOpen = gatewayState === 'open'
+-  const gatewayConnecting = gatewayState === 'connecting'
+-  const inferenceReady = gatewayOpen && inferenceStatus?.ready === true
+-  const gatewayDegraded = gatewayOpen || gatewayConnecting
++  const gatewayStatus = resolveGatewayStatusbarState({
++    gatewayState,
++    inferenceStatus,
++    statusSnapshot
++  })
++  const gatewayReady = gatewayStatus.kind === 'ready'
++  const gatewayDegraded = ['checking', 'connecting', 'needs-setup'].includes(gatewayStatus.kind)
+ 
+-  const gatewayDetail = gatewayOpen
+-    ? inferenceStatus?.ready
++  const gatewayDetail =
++    gatewayStatus.kind === 'ready'
+       ? copy.gatewayReady
+-      : inferenceStatus
++      : gatewayStatus.kind === 'needs-setup'
+         ? copy.gatewayNeedsSetup
+-        : copy.gatewayChecking
+-    : gatewayConnecting
+-      ? copy.gatewayConnecting
+-      : copy.gatewayOffline
++        : gatewayStatus.kind === 'checking'
++          ? copy.gatewayChecking
++          : gatewayStatus.kind === 'connecting'
++            ? copy.gatewayConnecting
++            : copy.gatewayOffline
+ 
+-  const gatewayClassName = inferenceReady
++  const gatewayClassName = gatewayReady
+     ? undefined
+     : gatewayDegraded
+       ? 'text-amber-600 hover:text-amber-600'
+@@ -348,7 +352,7 @@ export function useStatusbarItems({
+         detail: gatewayRestarting ? copy.gatewayRestarting : gatewayDetail,
+         icon: gatewayRestarting ? (
+           <GlyphSpinner ariaLabel={copy.gatewayRestarting} className="size-3" />
+-        ) : inferenceReady ? (
++        ) : gatewayReady ? (
+           <Activity className="size-3" />
+         ) : (
+           <AlertCircle className="size-3" />
+@@ -358,7 +362,7 @@ export function useStatusbarItems({
+         menuClassName: 'w-72',
+         menuContent: gatewayMenuContent,
+         // Tip only when there's a real status reason — not "gateway status" restating the label.
+-        title: inferenceStatus?.reason || undefined,
++        title: gatewayStatus.reason || inferenceStatus?.reason || undefined,
+         toggleLabel: copy.gateway,
+         variant: 'menu'
+       },
+@@ -451,8 +455,9 @@ export function useStatusbarItems({
+       gatewayMenuContent,
+       gatewayClassName,
+       gatewayDetail,
++      gatewayReady,
+       gatewayRestarting,
+-      inferenceReady,
++      gatewayStatus.reason,
+       inferenceStatus?.reason,
+       openAgents,
+       projectName,
