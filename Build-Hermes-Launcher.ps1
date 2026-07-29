@@ -24,22 +24,10 @@ function New-TemporaryTablerTypeDeclaration {
     $path = Join-Path $sourceRoot 'hermes-local-tabler-direct-icons.generated.d.ts'
     $content = @'
 // Generated temporarily by Hermes Local during launcher compilation.
+// Deep Tabler icon modules omit declarations in the pinned npm package, so
+// mirror the exact public type of a normal barrel-exported Tabler icon.
 declare module '@tabler/icons-react/dist/esm/icons/*.mjs' {
-  import type {
-    ForwardRefExoticComponent,
-    RefAttributes,
-    SVGProps
-  } from 'react'
-
-  type HermesLocalTablerIconProps = SVGProps<SVGSVGElement> & {
-    size?: number | string
-    stroke?: number | string
-  }
-
-  const Icon: ForwardRefExoticComponent<
-    HermesLocalTablerIconProps & RefAttributes<SVGSVGElement>
-  >
-
+  const Icon: typeof import('@tabler/icons-react').IconActivity
   export default Icon
 }
 '@
