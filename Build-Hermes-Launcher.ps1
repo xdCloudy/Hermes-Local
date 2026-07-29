@@ -7,6 +7,55 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
 
+function New-TemporaryTablerTypeDeclaration {
+    param(
+        [Parameter(Mandatory)]
+        [string] $DesktopSource
+    )
+
+    $sourceRoot = Join-Path $DesktopSource 'src'
+    $usesDirectTablerImports = Get-ChildItem -LiteralPath $sourceRoot -Recurse -File -Include '*.ts', '*.tsx' |
+        Select-String -SimpleMatch '@tabler/icons-react/dist/esm/icons/' -Quiet
+
+    if (-not $usesDirectTablerImports) {
+        return $null
+    }
+
+    $path = Join-Path $sourceRoot 'hermes-local-tabler-direct-icons.generated.d.ts'
+    $content = @'
+// Generated temporarily by Hermes Local during launcher compilation.
+declare module '@tabler/icons-react/dist/esm/icons/*.mjs' {
+  import type {
+    ForwardRefExoticComponent,
+    RefAttributes,
+    SVGProps
+  } from 'react'
+
+  type HermesLocalTablerIconProps = SVGProps<SVGSVGElement> & {
+    size?: number | string
+    stroke?: number | string
+  }
+
+  const Icon: ForwardRefExoticComponent<
+    HermesLocalTablerIconProps & RefAttributes<SVGSVGElement>
+  >
+
+  export default Icon
+}
+'@
+
+    [System.IO.File]::WriteAllText(
+        $path,
+        $content + [Environment]::NewLine,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    Write-HermesLog -Component launcher -Message "Created temporary Tabler direct-import declaration at $path."
+    return $path
+}
+
+$temporaryTypeDeclaration = $null
+$exitCode = 0
+
 try {
     Assert-HermesRoot
     Initialize-HermesLayout
@@ -15,6 +64,8 @@ try {
     $desktop = Join-Path $source 'apps\desktop'
     $release = Join-Path $desktop 'release'
     $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
+
+    $temporaryTypeDeclaration = New-TemporaryTablerTypeDeclaration -DesktopSource $desktop
 
     $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @('run', 'build', '--workspace', 'web') -WorkingDirectory $source -LogComponent launcher
     $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @('run', 'typecheck', '--workspace', 'apps/desktop') -WorkingDirectory $source -LogComponent launcher
@@ -41,9 +92,15 @@ try {
     }
     Write-HermesLog -Component launcher -Message "Built production launcher at $target."
     Write-Host "Hermes Launcher built: $target"
-    exit 0
 } catch {
+    $exitCode = 1
     Write-HermesLog -Component launcher -Level ERROR -Message $_.Exception.ToString()
     Write-Host "Hermes Launcher build failed: $($_.Exception.Message)" -ForegroundColor Red
-    exit 1
+} finally {
+    if ($temporaryTypeDeclaration -and (Test-Path -LiteralPath $temporaryTypeDeclaration)) {
+        Remove-Item -LiteralPath $temporaryTypeDeclaration -Force
+        Write-HermesLog -Component launcher -Message "Removed temporary Tabler direct-import declaration at $temporaryTypeDeclaration."
+    }
 }
+
+exit $exitCode
