@@ -1,7 +1,7 @@
-From 67280ba3f86910f7271169c8684718d99cad84ce Mon Sep 17 00:00:00 2001
+From 75cf0426126d5ac4f0247640c60864e8697cdb1b Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Tue, 28 Jul 2026 10:36:05 +0100
-Subject: [PATCH] fix(windows): keep skill preprocessing native
+Subject: [PATCH 05/12] fix(windows): keep skill preprocessing native
 
 ---
  agent/skill_commands.py                       |  15 ++-
@@ -10,10 +10,10 @@ Subject: [PATCH] fix(windows): keep skill preprocessing native
  3 files changed, 147 insertions(+), 4 deletions(-)
 
 diff --git a/agent/skill_commands.py b/agent/skill_commands.py
-index 294ca2b17..77e6977a1 100644
+index 3f1156a859290b55a4c02656358c35040ef5b113..886e0d14485dad4bfb4c3f0248bb4883e856e4f0 100644
 --- a/agent/skill_commands.py
 +++ b/agent/skill_commands.py
-@@ -337,7 +337,13 @@ def _build_skill_message(
+@@ -341,7 +341,13 @@ def _build_skill_message(
              if subdir_path.exists():
                  for f in sorted(subdir_path.rglob("*")):
                      if f.is_file() and not f.is_symlink():
@@ -28,7 +28,7 @@ index 294ca2b17..77e6977a1 100644
                          supporting.append(rel)
  
      if supporting and skill_dir:
-@@ -349,7 +355,12 @@ def _build_skill_message(
+@@ -353,7 +359,12 @@ def _build_skill_message(
          parts.append("")
          parts.append("[This skill has supporting files:]")
          for sf in supporting:
@@ -43,7 +43,7 @@ index 294ca2b17..77e6977a1 100644
              f'\nLoad any of these with skill_view(name="{skill_view_target}", '
              f'file_path="<path>"), or run scripts directly by absolute path '
 diff --git a/agent/skill_preprocessing.py b/agent/skill_preprocessing.py
-index 19c6eeb80..301cfc72c 100644
+index 19c6eeb80fb3d714ef75bad96caba248ea3e7273..301cfc72c42d17a3c031e0e96673d51bdee9e4af 100644
 --- a/agent/skill_preprocessing.py
 +++ b/agent/skill_preprocessing.py
 @@ -1,7 +1,9 @@
@@ -185,7 +185,7 @@ index 19c6eeb80..301cfc72c 100644
          output = output[:_INLINE_SHELL_MAX_OUTPUT] + "...[truncated]"
      return output
 diff --git a/tests/test_windows_subprocess_no_window_flags.py b/tests/test_windows_subprocess_no_window_flags.py
-index 0dcf29405..ef613faba 100644
+index 0dcf29405ba4cebace66eb5a83149bb225e66461..ef613faba86d5a17aa8a00aaa8169c1e5761292b 100644
 --- a/tests/test_windows_subprocess_no_window_flags.py
 +++ b/tests/test_windows_subprocess_no_window_flags.py
 @@ -550,13 +550,40 @@ def test_inline_skill_shell_hides_bash_window(monkeypatch):
@@ -230,6 +230,3 @@ index 0dcf29405..ef613faba 100644
  def test_tts_opus_conversion_hides_ffmpeg_window(monkeypatch, tmp_path):
      from tools import tts_tool
  
--- 
-2.55.0.windows.3
-

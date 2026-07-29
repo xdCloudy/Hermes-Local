@@ -1,7 +1,7 @@
-From 485f188d89a306895f17d9303d2734c0a154e666 Mon Sep 17 00:00:00 2001
+From a64f5fbe551b16ce693e8d8f50a9b73e716ea1ae Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Wed, 29 Jul 2026 18:43:43 +0100
-Subject: [PATCH] test(desktop): cover packaged functional workflows
+Subject: [PATCH 10/12] test(desktop): cover packaged functional workflows
 
 ---
  .../e2e/hermes-local-functional.spec.ts       | 210 ++++++++++++++++++
@@ -11,7 +11,7 @@ Subject: [PATCH] test(desktop): cover packaged functional workflows
 
 diff --git a/apps/desktop/e2e/hermes-local-functional.spec.ts b/apps/desktop/e2e/hermes-local-functional.spec.ts
 new file mode 100644
-index 000000000..4dba5f65e
+index 0000000000000000000000000000000000000000..4dba5f65eb5c8bb20dcb0e80a207f9339a74c0fe
 --- /dev/null
 +++ b/apps/desktop/e2e/hermes-local-functional.spec.ts
 @@ -0,0 +1,210 @@
@@ -226,7 +226,7 @@ index 000000000..4dba5f65e
 +  })
 +})
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index d4b888469..0119519c2 100644
+index d4b888469ea3091e2e9ea727035bbe60cf597f09..0119519c286c7017a20c2ea79cca83be3f16cf7c 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -777,6 +777,7 @@ function LogViewer() {
@@ -237,6 +237,3 @@ index d4b888469..0119519c2 100644
            className="h-8 rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 text-xs outline-none"
            onChange={event => setName(event.currentTarget.value as LocalLog)}
            value={name}
--- 
-2.55.0.windows.3
-

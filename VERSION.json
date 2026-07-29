@@ -9,10 +9,10 @@
     "hermesAgent": {
       "repository": "https://github.com/NousResearch/hermes-agent.git",
       "branch": "main",
-      "commit": "3be565fbdee3115ab5b9338551768b8e5e655c56",
+      "commit": "a0222295666558c72cc2b03d69f932801dcf96e6",
       "integrationBranch": "hermes-local-integration",
-      "integrationCommit": "0c1dbce2930bdb8b9c09ac768e71f20a3b87f814",
-      "integrationTree": "5df883962b78c8b29b98bcbfa1ebc5c939a3f6f4",
+      "integrationCommit": "d2bd71242fb3fb1e14aa7fdd7f4036e2427d2e0b",
+      "integrationTree": "11723e1f6a6b094bb06bec8a136e6e2f7664f906",
       "patchSeries": "source/hermes-launcher/patches"
     },
     "llamaCpp": {
@@ -46,5 +46,5 @@
     "modelAliasDefault": "laguna-xs-2.1-q4km",
     "portableSettings": true
   },
-  "recordedAt": "2026-07-29T17:31:13.7934665Z"
+  "recordedAt": "2026-07-29T21:09:54.0268607Z"
 }

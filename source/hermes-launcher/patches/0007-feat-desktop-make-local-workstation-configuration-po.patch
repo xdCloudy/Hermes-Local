@@ -1,7 +1,8 @@
-From 8c49c779dc422a5de14a22ba6387418d9c76bedf Mon Sep 17 00:00:00 2001
+From 46358ca41be14cfac291328e527feb30652791c0 Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Tue, 28 Jul 2026 12:36:08 +0100
-Subject: [PATCH] feat(desktop): make local workstation configuration portable
+Subject: [PATCH 07/12] feat(desktop): make local workstation configuration
+ portable
 
 ---
  .../e2e/hermes-local-configuration.spec.ts    | 182 +++++
@@ -24,7 +25,7 @@ Subject: [PATCH] feat(desktop): make local workstation configuration portable
 
 diff --git a/apps/desktop/e2e/hermes-local-configuration.spec.ts b/apps/desktop/e2e/hermes-local-configuration.spec.ts
 new file mode 100644
-index 000000000..2f26f1ade
+index 0000000000000000000000000000000000000000..2f26f1adeae7947e81a90b4c34379328e71bf339
 --- /dev/null
 +++ b/apps/desktop/e2e/hermes-local-configuration.spec.ts
 @@ -0,0 +1,182 @@
@@ -211,7 +212,7 @@ index 000000000..2f26f1ade
 +  })
 +})
 diff --git a/apps/desktop/e2e/hermes-local-portable.spec.ts b/apps/desktop/e2e/hermes-local-portable.spec.ts
-index 27f3a870c..1d9349672 100644
+index 27f3a870cb4e26fdeaa382b69f82c3ba5b90981f..1d93496728c509e51635ff5716736f2111bc89ed 100644
 --- a/apps/desktop/e2e/hermes-local-portable.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-portable.spec.ts
 @@ -6,10 +6,13 @@ import path from 'node:path'
@@ -244,7 +245,7 @@ index 27f3a870c..1d9349672 100644
          env,
          shell: false,
 diff --git a/apps/desktop/e2e/hermes-local-workstation.spec.ts b/apps/desktop/e2e/hermes-local-workstation.spec.ts
-index 4544a3831..1cf838bd7 100644
+index 4544a3831c1fbb5813d1ebd0beaf25f0be645fb5..1cf838bd73233733c702e10bd712dfe19978ee3f 100644
 --- a/apps/desktop/e2e/hermes-local-workstation.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-workstation.spec.ts
 @@ -4,7 +4,7 @@ import path from 'node:path'
@@ -426,7 +427,7 @@ index 4544a3831..1cf838bd7 100644
        await page.screenshot({ fullPage: true, path: path.join(evidence, 'launcher-tui.png') })
  
 diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
-index c4f5e0daf..983346bc1 100644
+index c4f5e0dafe682b17f4f5f44541219d9896a353d3..983346bc1f467e875a14f94b5ec117e51c65c1cb 100644
 --- a/apps/desktop/electron/hermes-local-control.test.ts
 +++ b/apps/desktop/electron/hermes-local-control.test.ts
 @@ -1,3 +1,6 @@
@@ -486,7 +487,7 @@ index c4f5e0daf..983346bc1 100644
  
    it('uses a current-user Windows login item and rejects renderer type confusion', () => {
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index 642f45cdd..428c6e8e4 100644
+index 642f45cdd710dfea00d39785b02ec462925778d6..428c6e8e4e7d5f3018a5db17a714321bdc9ee512 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -7,11 +7,22 @@ import { promisify } from 'node:util'
@@ -830,7 +831,7 @@ index 642f45cdd..428c6e8e4 100644
  
 diff --git a/apps/desktop/electron/hermes-local-settings.test.ts b/apps/desktop/electron/hermes-local-settings.test.ts
 new file mode 100644
-index 000000000..eed8315c7
+index 0000000000000000000000000000000000000000..eed8315c784e2ebd6c323c9bdad424cb1024b4f7
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-settings.test.ts
 @@ -0,0 +1,169 @@
@@ -1005,7 +1006,7 @@ index 000000000..eed8315c7
 +})
 diff --git a/apps/desktop/electron/hermes-local-settings.ts b/apps/desktop/electron/hermes-local-settings.ts
 new file mode 100644
-index 000000000..03f128922
+index 0000000000000000000000000000000000000000..03f12892266d96aa50e6c993489a072c84716fbf
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-settings.ts
 @@ -0,0 +1,551 @@
@@ -1561,7 +1562,7 @@ index 000000000..03f128922
 +  sanitizeModel
 +}
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
-index 564795986..19e9ca29f 100644
+index 29e7c8acaec8f5b96c72ffc210f3f694ccacf4de..577dc2210cd596f8197ebceb5f1f46dc6a776b5a 100644
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
 @@ -104,7 +104,12 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
@@ -1578,7 +1579,7 @@ index 564795986..19e9ca29f 100644
      openRoot: () => ipcRenderer.invoke('hermes:local:root:open')
    },
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
-index 7c2ce73c2..883884371 100644
+index 41be53b488a66416650b1e18da47575c6b8598e5..989f392f557989507d838f697b9dfaa4bd804dda 100644
 --- a/apps/desktop/package.json
 +++ b/apps/desktop/package.json
 @@ -2,7 +2,7 @@
@@ -1591,7 +1592,7 @@ index 7c2ce73c2..883884371 100644
    "author": "Nous Research",
    "type": "module",
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index 54028e50d..d60f54fff 100644
+index 54028e50dd948284c5903789577c1a865bdecfc5..d60f54fff5d376267011ef4c894f32391fd34122 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -15,6 +15,7 @@ import {
@@ -2625,7 +2626,7 @@ index 54028e50d..d60f54fff 100644
              onSetLaunchAtLogin={setLaunchAtLogin}
              section={section}
 diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
-index 7e1ced1f0..6e93daa20 100644
+index 7e1ced1f0e2a346daa596a425fb6a68976a0fdde..6e93daa20a3aaf0a58523f37103cb121deaabdac 100644
 --- a/apps/desktop/src/app/local-workstation/types.ts
 +++ b/apps/desktop/src/app/local-workstation/types.ts
 @@ -55,6 +55,60 @@ export interface LocalInferenceProfile {
@@ -2742,7 +2743,7 @@ index 7e1ced1f0..6e93daa20 100644
      updatedAt?: string
    }
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index 2a38acae5..975ec7ec9 100644
+index a1a557d49bbd2be1c8af16e8a5fc6e7eb0e7fb8b..1512f1bacc0c44f53c15fb782ece8fe5d5fecc7d 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
 @@ -6,6 +6,8 @@ import type {
@@ -2770,7 +2771,7 @@ index 2a38acae5..975ec7ec9 100644
          snapshot: () => Promise<LocalWorkstationSnapshot>
          startAction: (action: LocalAction, input?: { profile?: string }) => Promise<LocalActionTask>
 diff --git a/package-lock.json b/package-lock.json
-index 89d98ab9d..e1706ea33 100644
+index 15b27466d78b9787f25516431b0afa66fb543697..b5b9d313fa7fe768e9c24847ccd939f610c848f3 100644
 --- a/package-lock.json
 +++ b/package-lock.json
 @@ -81,7 +81,7 @@
@@ -2782,6 +2783,3 @@ index 89d98ab9d..e1706ea33 100644
        "dependencies": {
          "@assistant-ui/react": "^0.14.23",
          "@assistant-ui/react-streamdown": "^0.3.4",
--- 
-2.55.0.windows.3
-

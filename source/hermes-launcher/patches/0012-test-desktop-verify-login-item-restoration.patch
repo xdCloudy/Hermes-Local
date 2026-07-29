@@ -1,14 +1,14 @@
-From 0c1dbce2930bdb8b9c09ac768e71f20a3b87f814 Mon Sep 17 00:00:00 2001
+From b4e9095ed2b745977636cf87e1d3a16b368fd2a0 Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Wed, 29 Jul 2026 19:15:23 +0100
-Subject: [PATCH] test(desktop): verify login item restoration
+Subject: [PATCH 12/12] test(desktop): verify login item restoration
 
 ---
  .../e2e/hermes-local-functional.spec.ts       | 39 +++++++++++++++++++
  1 file changed, 39 insertions(+)
 
 diff --git a/apps/desktop/e2e/hermes-local-functional.spec.ts b/apps/desktop/e2e/hermes-local-functional.spec.ts
-index a5f0c8305..f4edde2ef 100644
+index a5f0c8305b8e565fc03ba27bb438870fa57da80d..f4edde2ef42ca104f96adff7756700b12bb95d4c 100644
 --- a/apps/desktop/e2e/hermes-local-functional.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-functional.spec.ts
 @@ -19,6 +19,22 @@ interface WorkstationState {
@@ -64,6 +64,3 @@ index a5f0c8305..f4edde2ef 100644
        const sections = [
          ['Services', 'Services', 'services'],
          ['Web Dashboard', 'Dashboard', 'dashboard'],
--- 
-2.55.0.windows.3
-

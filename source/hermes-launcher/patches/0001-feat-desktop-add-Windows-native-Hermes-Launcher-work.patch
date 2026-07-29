@@ -1,7 +1,7 @@
-From a3c90292606bdd0415714f6d8415d7dc90521cc8 Mon Sep 17 00:00:00 2001
+From 3f096c759c80bccc3c5bed4d02afec4c41fc1da6 Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Tue, 28 Jul 2026 08:45:53 +0100
-Subject: [PATCH 1/4] feat(desktop): add Windows-native Hermes Launcher
+Subject: [PATCH 01/12] feat(desktop): add Windows-native Hermes Launcher
  workstation
 
 ---
@@ -37,7 +37,7 @@ Subject: [PATCH 1/4] feat(desktop): add Windows-native Hermes Launcher
 
 diff --git a/apps/desktop/e2e/hermes-local-portable.spec.ts b/apps/desktop/e2e/hermes-local-portable.spec.ts
 new file mode 100644
-index 000000000..8aa16b4b1
+index 0000000000000000000000000000000000000000..8aa16b4b1b333200a45a0a769848a7523e118f61
 --- /dev/null
 +++ b/apps/desktop/e2e/hermes-local-portable.spec.ts
 @@ -0,0 +1,169 @@
@@ -212,7 +212,7 @@ index 000000000..8aa16b4b1
 +})
 diff --git a/apps/desktop/e2e/hermes-local-workstation.spec.ts b/apps/desktop/e2e/hermes-local-workstation.spec.ts
 new file mode 100644
-index 000000000..00c3e47ac
+index 0000000000000000000000000000000000000000..00c3e47ac55c77282fdf3055cc35c2f4afe1ba16
 --- /dev/null
 +++ b/apps/desktop/e2e/hermes-local-workstation.spec.ts
 @@ -0,0 +1,135 @@
@@ -353,7 +353,7 @@ index 000000000..00c3e47ac
 +})
 diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
 new file mode 100644
-index 000000000..7b35b0b6a
+index 0000000000000000000000000000000000000000..7b35b0b6a749bcd5ea739f8c3ed7f9b6ef0a6bb9
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-control.test.ts
 @@ -0,0 +1,89 @@
@@ -448,7 +448,7 @@ index 000000000..7b35b0b6a
 +})
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
 new file mode 100644
-index 000000000..8a206a37a
+index 0000000000000000000000000000000000000000..8a206a37af20d533dbdb6be54f5dfb9ea45ec9c3
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -0,0 +1,605 @@
@@ -1058,10 +1058,10 @@ index 000000000..8a206a37a
 +  sanitizeEditableProfile
 +}
 diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
-index d88e1f787..0ba2b7bce 100644
+index 344b149d0d1036c91cd256601d028edc2544030a..5670d68e9f8f98b811297ea98b98932ed2a4107e 100644
 --- a/apps/desktop/electron/main.ts
 +++ b/apps/desktop/electron/main.ts
-@@ -122,6 +122,11 @@ import {
+@@ -133,6 +133,11 @@ import {
    resolveTimeoutMs,
    TEXT_PREVIEW_SOURCE_MAX_BYTES
  } from './hardening'
@@ -1073,7 +1073,7 @@ index d88e1f787..0ba2b7bce 100644
  import { createLinkTitleWindow, guardLinkTitleSession, readLinkTitleWindowTitle } from './link-title-window'
  import { ensureMainWindow } from './main-window-lifecycle'
  import {
-@@ -227,6 +232,8 @@ import { isPackagedInstallPath as isPackagedInstallPathUnderRoots } from './work
+@@ -241,6 +246,8 @@ import { isPackagedInstallPath as isPackagedInstallPathUnderRoots } from './work
  import { readWslWindowsClipboardImage } from './wsl-clipboard-image'
  import { resolvePickerDefaultPath } from './wsl-path-bridge'
  
@@ -1082,7 +1082,7 @@ index d88e1f787..0ba2b7bce 100644
  const USER_DATA_OVERRIDE = process.env.HERMES_DESKTOP_USER_DATA_DIR
  
  if (USER_DATA_OVERRIDE) {
-@@ -8916,6 +8923,7 @@ function closeQuickEntryWindow() {
+@@ -9118,6 +9125,7 @@ function closeQuickEntryWindow() {
  function createWindow() {
    const icon = getAppIconPath()
    const savedWindowState = readWindowState()
@@ -1090,7 +1090,7 @@ index d88e1f787..0ba2b7bce 100644
    mainWindow = new BrowserWindow({
      ...computeWindowOptions(savedWindowState, screen.getAllDisplays()),
      minWidth: WINDOW_MIN_WIDTH,
-@@ -8969,7 +8977,7 @@ function createWindow() {
+@@ -9171,7 +9179,7 @@ function createWindow() {
    }
  
    mainWindow.once('ready-to-show', () => {
@@ -1099,7 +1099,7 @@ index d88e1f787..0ba2b7bce 100644
        mainWindow.show()
      }
  
-@@ -8999,7 +9007,7 @@ function createWindow() {
+@@ -9201,7 +9209,7 @@ function createWindow() {
  
    // Under Playright testing, instantly show the window.
    // `ready-to-show` doesn't fire in some testing envs.
@@ -1108,7 +1108,7 @@ index d88e1f787..0ba2b7bce 100644
      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
        mainWindow.show()
      }
-@@ -9139,6 +9147,8 @@ function createWindow() {
+@@ -9341,6 +9349,8 @@ function createWindow() {
    })
  }
  
@@ -1117,7 +1117,7 @@ index d88e1f787..0ba2b7bce 100644
  ipcMain.handle('hermes:connection', async (_event, profile) => ensureBackend(profile))
  // Reconnect-after-wake recovery. A REMOTE primary backend has no child process,
  // so the 'exit'/'error' handlers that would clear a dead connection promise never
-@@ -10821,8 +10831,20 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
+@@ -11127,8 +11137,20 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
    ensureNodePtySpawnHelper()
  
    const id = crypto.randomUUID()
@@ -1139,7 +1139,7 @@ index d88e1f787..0ba2b7bce 100644
    const cols = Math.max(2, Number.parseInt(String(payload?.cols || 80), 10) || 80)
    const rows = Math.max(2, Number.parseInt(String(payload?.rows || 24), 10) || 24)
  
-@@ -10830,6 +10852,10 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
+@@ -11136,6 +11158,10 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
    const remote = Boolean(sshTarget)
    const remoteState = remote ? sshConnections.get(sshTarget.scope) : null
  
@@ -1150,7 +1150,7 @@ index d88e1f787..0ba2b7bce 100644
    const remoteCommand =
      remoteState?.remotePlatform === 'Windows'
        ? buildWindowsInteractiveCommand(String(payload?.cwd || '').trim())
-@@ -10843,7 +10869,13 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
+@@ -11149,7 +11175,13 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
          buildInteractiveSshArgs(sshTarget.ssh, String(payload?.cwd || '').trim(), undefined, remoteCommand),
          { cols, cwd: app.getPath('home'), env: terminalShellEnv(), name: 'xterm-256color', rows }
        )
@@ -1165,7 +1165,7 @@ index d88e1f787..0ba2b7bce 100644
  
    terminalSessions.set(id, {
      pty: ptyProcess,
-@@ -10866,7 +10898,7 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
+@@ -11172,7 +11204,7 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
    })
    event.sender.once('destroyed', () => disposeTerminalSession(id))
  
@@ -1174,7 +1174,7 @@ index d88e1f787..0ba2b7bce 100644
  })
  
  ipcMain.handle('hermes:terminal:write', (_event, id, data) => {
-@@ -10907,23 +10939,40 @@ ipcMain.handle('hermes:terminal:cwd', async (_event, id) => {
+@@ -11213,23 +11245,40 @@ ipcMain.handle('hermes:terminal:cwd', async (_event, id) => {
  
  ipcMain.handle('hermes:terminal:dispose', (_event, id) => disposeTerminalSession(String(id || '')))
  
@@ -1222,7 +1222,7 @@ index d88e1f787..0ba2b7bce 100644
  ipcMain.handle('hermes:updates:branch:get', async () => readDesktopUpdateConfig())
  
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
-index 99df85abd..fcb0c44b8 100644
+index b82a6e1484b044ced7e0ddcf557b155182b91609..06d2fceedc771e5e31290448850cc8763fd8c718 100644
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
 @@ -94,6 +94,16 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
@@ -1243,7 +1243,7 @@ index 99df85abd..fcb0c44b8 100644
    notify: payload => ipcRenderer.invoke('hermes:notify', payload),
    requestMicrophoneAccess: () => ipcRenderer.invoke('hermes:requestMicrophoneAccess'),
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
-index 1e3a6e10c..d8d68223d 100644
+index 01f0e45eb7b049f31ba9fe5f713b4d97596429fd..53f098ed4adfbe6efbc0355a41ccb71c9b9b8e73 100644
 --- a/apps/desktop/package.json
 +++ b/apps/desktop/package.json
 @@ -1,6 +1,6 @@
@@ -1255,7 +1255,7 @@ index 1e3a6e10c..d8d68223d 100644
    "private": true,
    "version": "0.17.0",
    "description": "Native desktop shell for Hermes Agent.",
-@@ -170,9 +170,9 @@
+@@ -169,9 +169,9 @@
    },
    "build": {
      "electronVersion": "40.10.2",
@@ -1268,7 +1268,7 @@ index 1e3a6e10c..d8d68223d 100644
      "protocols": [
        {
          "name": "Hermes Protocol",
-@@ -181,7 +181,7 @@
+@@ -180,7 +180,7 @@
          ]
        }
      ],
@@ -1277,7 +1277,7 @@ index 1e3a6e10c..d8d68223d 100644
      "icon": "assets/icon",
      "directories": {
        "output": "release"
-@@ -205,13 +205,8 @@
+@@ -204,13 +204,8 @@
          "to": "icon.ico"
        }
      ],
@@ -1328,7 +1328,7 @@ index 1e3a6e10c..d8d68223d 100644
    }
  }
 diff --git a/apps/desktop/scripts/after-pack.mjs b/apps/desktop/scripts/after-pack.mjs
-index 509cbb424..00ced32f3 100644
+index 509cbb42481475a3335b5a0e8daf0d2ff7092b8f..00ced32f312c5d0180a6f661c8dcd9f889cc171a 100644
 --- a/apps/desktop/scripts/after-pack.mjs
 +++ b/apps/desktop/scripts/after-pack.mjs
 @@ -19,23 +19,14 @@
@@ -1360,7 +1360,7 @@ index 509cbb424..00ced32f3 100644
 +  console.log(`[after-pack] ${productName}.exe identity was stamped by electron-builder`)
  }
 diff --git a/apps/desktop/src/app/chat/sidebar/index.tsx b/apps/desktop/src/app/chat/sidebar/index.tsx
-index c1f00e577..c0bb3d9f7 100644
+index 3609791ff363ad32d07627ffc7cdf69364b2014a..12be1e25889cc55c8bcbc0857c79f2330d3efa8d 100644
 --- a/apps/desktop/src/app/chat/sidebar/index.tsx
 +++ b/apps/desktop/src/app/chat/sidebar/index.tsx
 @@ -98,12 +98,26 @@ import {
@@ -1392,7 +1392,7 @@ index c1f00e577..c0bb3d9f7 100644
  } from '../../routes'
  import type { SidebarNavItem } from '../../types'
  
-@@ -140,11 +154,64 @@ const NON_SESSION_LOAD_STEP = 10
+@@ -142,11 +156,64 @@ const NON_SESSION_LOAD_STEP = 10
  
  const SIDEBAR_NAV: SidebarNavItem[] = [
    {
@@ -1461,7 +1461,7 @@ index c1f00e577..c0bb3d9f7 100644
    },
    {
      id: 'skills',
-@@ -154,18 +221,53 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
+@@ -156,18 +223,53 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
      keybindActionId: 'nav.skills'
    },
    {
@@ -1522,7 +1522,7 @@ index c1f00e577..c0bb3d9f7 100644
  ]
  
 diff --git a/apps/desktop/src/app/contrib/surfaces.tsx b/apps/desktop/src/app/contrib/surfaces.tsx
-index 852c5311a..0e455dc91 100644
+index 852c5311a29c5d1b33d62a8162ccb0c2c84408c7..0e455dc91388aabe5363d18ed728b879ae75bbef 100644
 --- a/apps/desktop/src/app/contrib/surfaces.tsx
 +++ b/apps/desktop/src/app/contrib/surfaces.tsx
 @@ -35,6 +35,8 @@ import type { SidebarActions, WiringActions } from './types'
@@ -1558,7 +1558,7 @@ index 852c5311a..0e455dc91 100644
        <Route element={null} path="cron" />
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
 new file mode 100644
-index 000000000..92d8df748
+index 0000000000000000000000000000000000000000..92d8df7487d2e38697874219048ec624e4a389ac
 --- /dev/null
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -0,0 +1,1170 @@
@@ -2734,7 +2734,7 @@ index 000000000..92d8df748
 +}
 diff --git a/apps/desktop/src/app/local-workstation/tui-panel.tsx b/apps/desktop/src/app/local-workstation/tui-panel.tsx
 new file mode 100644
-index 000000000..cc689816f
+index 0000000000000000000000000000000000000000..cc689816f16398f75c759da67a04aa69bf2ab50a
 --- /dev/null
 +++ b/apps/desktop/src/app/local-workstation/tui-panel.tsx
 @@ -0,0 +1,160 @@
@@ -2900,7 +2900,7 @@ index 000000000..cc689816f
 +}
 diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
 new file mode 100644
-index 000000000..543a6d0b3
+index 0000000000000000000000000000000000000000..543a6d0b39514c9415768e143fb6b0395c3bc17d
 --- /dev/null
 +++ b/apps/desktop/src/app/local-workstation/types.ts
 @@ -0,0 +1,152 @@
@@ -3057,7 +3057,7 @@ index 000000000..543a6d0b3
 +  path: string
 +}
 diff --git a/apps/desktop/src/app/routes.ts b/apps/desktop/src/app/routes.ts
-index 9ee9365c3..2c1f45af7 100644
+index 9ee9365c328775b62e8c0003d7d0aa6d64055739..2c1f45af709cdbbdb09cb85e65f034d2f76f65e4 100644
 --- a/apps/desktop/src/app/routes.ts
 +++ b/apps/desktop/src/app/routes.ts
 @@ -18,6 +18,21 @@ export const CRON_ROUTE = '/cron'
@@ -3137,7 +3137,7 @@ index 9ee9365c3..2c1f45af7 100644
  
  const APP_VIEW_BY_PATH = new Map<string, AppView>(APP_ROUTES.map(route => [route.path, route.view]))
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index 1e6225bb2..3c1dd61e9 100644
+index 2c1904c3215fe10a331bd3312e990590dda1af0f..be8fb68997c1bdacf156d8743eb956fcc1b5d53a 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
 @@ -1,5 +1,13 @@
@@ -3171,7 +3171,7 @@ index 1e6225bb2..3c1dd61e9 100644
        api: <T>(request: HermesApiRequest) => Promise<T>
        notify: (payload: HermesNotification) => Promise<boolean>
        requestMicrophoneAccess: () => Promise<boolean>
-@@ -220,7 +238,12 @@ declare global {
+@@ -237,7 +255,12 @@ declare global {
          onData: (id: string, callback: (payload: string) => void) => () => void
          onExit: (id: string, callback: (payload: HermesTerminalExit) => void) => () => void
          resize: (id: string, size: { cols: number; rows: number }) => Promise<boolean>
@@ -3185,7 +3185,7 @@ index 1e6225bb2..3c1dd61e9 100644
          write: (id: string, data: string) => Promise<boolean>
        }
        onClosePreviewRequested?: (callback: () => void) => () => void
-@@ -303,6 +326,7 @@ export interface DesktopMarketplaceThemeResult {
+@@ -320,6 +343,7 @@ export interface DesktopMarketplaceThemeResult {
  export interface HermesTerminalSession {
    cwd: string
    id: string
@@ -3194,10 +3194,10 @@ index 1e6225bb2..3c1dd61e9 100644
  }
  
 diff --git a/apps/desktop/src/i18n/ar.ts b/apps/desktop/src/i18n/ar.ts
-index cb4a8d74f..161377b3b 100644
+index c72898a9cea5511e72286f7edc419f068cdf28fb..004ef79a2bbd39a8175d035d567fb8b87bcf539f 100644
 --- a/apps/desktop/src/i18n/ar.ts
 +++ b/apps/desktop/src/i18n/ar.ts
-@@ -1521,10 +1521,26 @@ export const ar = defineLocale({
+@@ -1522,10 +1522,26 @@ export const ar = defineLocale({
    sidebar: {
      nav: {
        'new-session': 'جلسة جديدة',
@@ -3226,10 +3226,10 @@ index cb4a8d74f..161377b3b 100644
        cron: 'المهام المجدولة',
        agents: 'الوكلاء'
 diff --git a/apps/desktop/src/i18n/en.ts b/apps/desktop/src/i18n/en.ts
-index abdd8c4c4..f10b478e5 100644
+index d55c494e070494be68222982d0cc9cd8bdcb848b..5d12c016cde14d6a81fb7404b2827f0272005f8c 100644
 --- a/apps/desktop/src/i18n/en.ts
 +++ b/apps/desktop/src/i18n/en.ts
-@@ -1783,9 +1783,27 @@ export const en: Translations = {
+@@ -1789,9 +1789,27 @@ export const en: Translations = {
    sidebar: {
      nav: {
        'new-session': 'New session',
@@ -3260,10 +3260,10 @@ index abdd8c4c4..f10b478e5 100644
      searchAria: 'Search sessions',
      searchPlaceholder: 'Search sessions…',
 diff --git a/apps/desktop/src/i18n/ja.ts b/apps/desktop/src/i18n/ja.ts
-index 198058eed..10167fe81 100644
+index ad8f206abe2e647917d81b07c5735d05714ee26f..798dfe73984c9eedaf77866d64d604dd458788cd 100644
 --- a/apps/desktop/src/i18n/ja.ts
 +++ b/apps/desktop/src/i18n/ja.ts
-@@ -1647,6 +1647,24 @@ export const ja = defineLocale({
+@@ -1651,6 +1651,24 @@ export const ja = defineLocale({
    sidebar: {
      nav: {
        'new-session': '新しいセッション',
@@ -3289,10 +3289,10 @@ index 198058eed..10167fe81 100644
        messaging: 'メッセージング',
        artifacts: 'アーティファクト'
 diff --git a/apps/desktop/src/i18n/zh-hant.ts b/apps/desktop/src/i18n/zh-hant.ts
-index 12e7a5c2c..233060113 100644
+index 5343d3957244c0ae40b305dab70d2b9b3f50494f..999aa228bd652e5a395662f0d08e21db309f6b52 100644
 --- a/apps/desktop/src/i18n/zh-hant.ts
 +++ b/apps/desktop/src/i18n/zh-hant.ts
-@@ -1595,6 +1595,24 @@ export const zhHant = defineLocale({
+@@ -1597,6 +1597,24 @@ export const zhHant = defineLocale({
    sidebar: {
      nav: {
        'new-session': '新工作階段',
@@ -3318,10 +3318,10 @@ index 12e7a5c2c..233060113 100644
        messaging: '訊息平台',
        artifacts: '成品'
 diff --git a/apps/desktop/src/i18n/zh.ts b/apps/desktop/src/i18n/zh.ts
-index ad3e22e60..486e4fca2 100644
+index 86049412b4caac1143df83d2e08df7136e8aa1ed..d30e9ce8cbdbd0b5027c40bc46ca6a21122117ec 100644
 --- a/apps/desktop/src/i18n/zh.ts
 +++ b/apps/desktop/src/i18n/zh.ts
-@@ -1973,6 +1973,24 @@ export const zh: Translations = {
+@@ -1983,6 +1983,24 @@ export const zh: Translations = {
    sidebar: {
      nav: {
        'new-session': '新建会话',
@@ -3347,10 +3347,10 @@ index ad3e22e60..486e4fca2 100644
        messaging: '消息平台',
        artifacts: '产物'
 diff --git a/apps/desktop/src/store/updates.ts b/apps/desktop/src/store/updates.ts
-index 6c7e1483c..24e80952e 100644
+index 0b46920e30d26bca9a6d310493ebaaabaac56b41..c5e7b8587149bbeb63e846dc2db4f3b032e39fee 100644
 --- a/apps/desktop/src/store/updates.ts
 +++ b/apps/desktop/src/store/updates.ts
-@@ -650,6 +650,13 @@ export function startUpdatePoller(): void {
+@@ -671,6 +671,13 @@ export function startUpdatePoller(): void {
      return
    }
  
@@ -3364,6 +3364,3 @@ index 6c7e1483c..24e80952e 100644
    const bridge = window.hermesDesktop?.updates
  
    if (!bridge) {
--- 
-2.55.0.windows.3
-

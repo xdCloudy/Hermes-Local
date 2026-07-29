@@ -1,36 +1,36 @@
-From 662b2b6fe2350f45aab4d34f6f285fec5d8ae06e Mon Sep 17 00:00:00 2001
+From fa76d7a45dacc8f89cef4a85f2d500873b972639 Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Wed, 29 Jul 2026 18:30:48 +0100
-Subject: [PATCH] fix(desktop): harden local workstation workflows
+Subject: [PATCH 09/12] fix(desktop): harden local workstation workflows
 
 ---
  .../electron/desktop-installation.test.ts     |   5 +-
  .../electron/hermes-local-control.test.ts     |  44 ++++
- apps/desktop/electron/hermes-local-control.ts | 104 +++++++-
+ apps/desktop/electron/hermes-local-control.ts | 104 ++++++--
  .../electron/hermes-local-settings.test.ts    |  24 ++
  .../desktop/electron/hermes-local-settings.ts |  31 ++-
+ apps/desktop/electron/main.ts                 |   3 -
  apps/desktop/electron/preload.ts              |   2 +-
  apps/desktop/electron/ssh-config.test.ts      |  44 ++--
- apps/desktop/electron/ssh-connection.test.ts  |  37 ++-
+ apps/desktop/electron/ssh-connection.test.ts  |  37 +--
  apps/desktop/electron/update-relaunch.test.ts |  12 +-
  apps/desktop/electron/update-relaunch.ts      |   9 +-
  apps/desktop/electron/windows-hermes-path.ts  |   7 +-
  apps/desktop/scripts/stage-native-deps.mjs    |  36 +--
- .../src/app/local-workstation/index.tsx       | 237 ++++++++++-------
+ .../src/app/local-workstation/index.tsx       | 237 +++++++++++-------
  .../src/app/local-workstation/tui-panel.tsx   |  10 +-
  .../settings/billing/billing-amounts.test.ts  |  16 ++
  .../app/settings/billing/billing-amounts.ts   |   2 +-
  apps/desktop/src/app/skills/index.test.tsx    |   3 +-
  apps/desktop/src/global.d.ts                  |   2 +-
- apps/desktop/src/lib/icons.ts                 | 240 +++++++++---------
  apps/desktop/src/styles.css                   |   5 +-
  apps/desktop/vitest.setup.ts                  |   7 +
  ...test_windows_subprocess_no_window_flags.py |   5 +-
- 22 files changed, 571 insertions(+), 311 deletions(-)
+ 22 files changed, 452 insertions(+), 193 deletions(-)
  create mode 100644 apps/desktop/src/app/settings/billing/billing-amounts.test.ts
 
 diff --git a/apps/desktop/electron/desktop-installation.test.ts b/apps/desktop/electron/desktop-installation.test.ts
-index c8e8c78a2..47d20265e 100644
+index c8e8c78a2884b79ee9bd46dd511db5257c1f823f..47d20265e92850a6c00f2717ad7c68a3ed907f9d 100644
 --- a/apps/desktop/electron/desktop-installation.test.ts
 +++ b/apps/desktop/electron/desktop-installation.test.ts
 @@ -38,7 +38,10 @@ test('loadOrCreateInstallationId persists and reuses one installation ID', () =>
@@ -46,7 +46,7 @@ index c8e8c78a2..47d20265e 100644
  
  test('loadOrCreateInstallationId tightens an existing identity file', () =>
 diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
-index afbba9648..f4ec0e9de 100644
+index afbba9648d69d4a1c2232c35164bea7b50ad2ff4..f4ec0e9de131a2ed179dcd5d128e4785bb8fa268 100644
 --- a/apps/desktop/electron/hermes-local-control.test.ts
 +++ b/apps/desktop/electron/hermes-local-control.test.ts
 @@ -137,4 +137,48 @@ describe('Hermes Local Electron boundary', () => {
@@ -99,7 +99,7 @@ index afbba9648..f4ec0e9de 100644
 +  })
  })
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index 1f96b1284..e5436719e 100644
+index 1f96b1284b53b9ad6bf1d3dce9643aad89319f63..e5436719e31b091eff6e0019c6fe08e6b66cdcce 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -22,6 +22,7 @@ import {
@@ -289,7 +289,7 @@ index 1f96b1284..e5436719e 100644
    waitForActionTask
  }
 diff --git a/apps/desktop/electron/hermes-local-settings.test.ts b/apps/desktop/electron/hermes-local-settings.test.ts
-index eed8315c7..74ae5fa1c 100644
+index eed8315c784e2ebd6c323c9bdad424cb1024b4f7..74ae5fa1cdd119ed3a55cf1c986d88232e29813d 100644
 --- a/apps/desktop/electron/hermes-local-settings.test.ts
 +++ b/apps/desktop/electron/hermes-local-settings.test.ts
 @@ -126,6 +126,30 @@ describe('Hermes Local portable settings', () => {
@@ -324,7 +324,7 @@ index eed8315c7..74ae5fa1c 100644
      saveWorkstationSettings(
        root,
 diff --git a/apps/desktop/electron/hermes-local-settings.ts b/apps/desktop/electron/hermes-local-settings.ts
-index 03f128922..4bfe0d5a2 100644
+index 03f12892266d96aa50e6c993489a072c84716fbf..4bfe0d5a2c9b84a988b78ef561024e6a140a66b6 100644
 --- a/apps/desktop/electron/hermes-local-settings.ts
 +++ b/apps/desktop/electron/hermes-local-settings.ts
 @@ -3,7 +3,7 @@ import path from 'node:path'
@@ -384,8 +384,22 @@ index 03f128922..4bfe0d5a2 100644
    saveUserSettings(root, settings)
  
    return profile
+diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
+index e7e0b9ab9d449e57999accaea9405775611cc714..b30ea2476f5dd203d08cbcfea2441c79308b480b 100644
+--- a/apps/desktop/electron/main.ts
++++ b/apps/desktop/electron/main.ts
+@@ -620,9 +620,6 @@ const DESKTOP_WINDOW_STATE_PATH = path.join(app.getPath('userData'), 'window-sta
+ // ~/.hermes/active_profile file. Unset (null) preserves the legacy behavior:
+ // no --profile flag, so the backend honors active_profile / default.
+ const DESKTOP_PROFILE_CONFIG_PATH = path.join(app.getPath('userData'), 'active-profile.json')
+-// Mirrors hermes_cli.profiles._PROFILE_ID_RE so we never hand the backend a
+-// value its profile resolver would reject and exit on.
+-const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
+ // Branch we track for self-update. The GUI work has merged to main, so this
+ // tracks main. User can also override at runtime via
+ // hermesDesktop.updates.setBranch().
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
-index 19e9ca29f..620cbf518 100644
+index 577dc2210cd596f8197ebceb5f1f46dc6a776b5a..2380a873f4e05414267e19ca555cd11e404b5968 100644
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
 @@ -103,7 +103,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
@@ -398,7 +412,7 @@ index 19e9ca29f..620cbf518 100644
      selectProfile: name => ipcRenderer.invoke('hermes:local:profile:select', name),
      registerModel: model => ipcRenderer.invoke('hermes:local:model:register', model),
 diff --git a/apps/desktop/electron/ssh-config.test.ts b/apps/desktop/electron/ssh-config.test.ts
-index 01eb89910..a9ffbf71d 100644
+index 01eb89910558cff3ad2b4e42aa8c70bca29952d2..a9ffbf71d78420df3f508bbd0552e2a37a80a5c9 100644
 --- a/apps/desktop/electron/ssh-config.test.ts
 +++ b/apps/desktop/electron/ssh-config.test.ts
 @@ -1,4 +1,5 @@
@@ -483,7 +497,7 @@ index 01eb89910..a9ffbf71d 100644
  
    assert.deepEqual(hosts.sort(), ['home', 'root', 'work'].sort())
 diff --git a/apps/desktop/electron/ssh-connection.test.ts b/apps/desktop/electron/ssh-connection.test.ts
-index a3d6d731b..27a927ae6 100644
+index a3d6d731bd56e8332f9028fed107d5d746b7961e..27a927ae6479378afde454208c8b431a82f40ac7 100644
 --- a/apps/desktop/electron/ssh-connection.test.ts
 +++ b/apps/desktop/electron/ssh-connection.test.ts
 @@ -63,7 +63,7 @@ test('controlSocketPath is stable, short, and host-distinct', () => {
@@ -638,7 +652,7 @@ index a3d6d731b..27a927ae6 100644
    await conn.close()
    assert.equal(conn._opened, false)
 diff --git a/apps/desktop/electron/update-relaunch.test.ts b/apps/desktop/electron/update-relaunch.test.ts
-index 54e42eabf..d3da2f92b 100644
+index 54e42eabf9b2ac2269f41ce58ac645700a6693e6..d3da2f92b1ffdc07ea5cbfa0a02875245a74cc7f 100644
 --- a/apps/desktop/electron/update-relaunch.test.ts
 +++ b/apps/desktop/electron/update-relaunch.test.ts
 @@ -38,7 +38,7 @@ import {
@@ -693,7 +707,7 @@ index 54e42eabf..d3da2f92b 100644
      fs.rmSync(tmp, { force: true })
    }
 diff --git a/apps/desktop/electron/update-relaunch.ts b/apps/desktop/electron/update-relaunch.ts
-index 46ea789bb..7ef190cfe 100644
+index 46ea789bbf6962b8ca55da458b20be116c41fdc1..7ef190cfedb98fb3eb33dd9c32f09a017748ede4 100644
 --- a/apps/desktop/electron/update-relaunch.ts
 +++ b/apps/desktop/electron/update-relaunch.ts
 @@ -64,11 +64,12 @@ function resolveUnpackedRelease(execPath, updateRoot, platform) {
@@ -714,7 +728,7 @@ index 46ea789bb..7ef190cfe 100644
    if (normalizedExec === unpacked || normalizedExec.startsWith(withSep)) {
      return unpacked
 diff --git a/apps/desktop/electron/windows-hermes-path.ts b/apps/desktop/electron/windows-hermes-path.ts
-index 6f3542853..a883d1b62 100644
+index 6f3542853e74c8c9440912f0fa78587bef2720de..a883d1b621cd29ad2d752e3e2aade302837d143c 100644
 --- a/apps/desktop/electron/windows-hermes-path.ts
 +++ b/apps/desktop/electron/windows-hermes-path.ts
 @@ -110,6 +110,7 @@ export function getVenvSitePackagesEntries(
@@ -753,7 +767,7 @@ index 6f3542853..a883d1b62 100644
      if (directoryExists(sitePackages)) {
        entries.push(sitePackages)
 diff --git a/apps/desktop/scripts/stage-native-deps.mjs b/apps/desktop/scripts/stage-native-deps.mjs
-index e4a6958fe..bca4c9922 100644
+index e4a6958fee89917bdb8e1e8343da026a3a684b29..bca4c99222cfd9d6df6ac9ef5ff5e92b4f2e1528 100644
 --- a/apps/desktop/scripts/stage-native-deps.mjs
 +++ b/apps/desktop/scripts/stage-native-deps.mjs
 @@ -1,4 +1,3 @@
@@ -833,7 +847,7 @@ index e4a6958fe..bca4c9922 100644
        cwd: projectRoot,
        stdio: 'inherit'
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index d60f54fff..d4b888469 100644
+index d60f54fff5d376267011ef4c894f32391fd34122..d4b888469ea3091e2e9ea727035bbe60cf597f09 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -1,32 +1,30 @@
@@ -1227,7 +1241,7 @@ index d60f54fff..d4b888469 100644
                <span className="sr-only">Refresh workstation</span>
              </Button>
 diff --git a/apps/desktop/src/app/local-workstation/tui-panel.tsx b/apps/desktop/src/app/local-workstation/tui-panel.tsx
-index cc689816f..67a2ed251 100644
+index cc689816f16398f75c759da67a04aa69bf2ab50a..67a2ed251eb6d7ea2548c3db04d2fcb9079e6831 100644
 --- a/apps/desktop/src/app/local-workstation/tui-panel.tsx
 +++ b/apps/desktop/src/app/local-workstation/tui-panel.tsx
 @@ -1,6 +1,8 @@
@@ -1255,7 +1269,7 @@ index cc689816f..67a2ed251 100644
          <div className="ml-auto">
 diff --git a/apps/desktop/src/app/settings/billing/billing-amounts.test.ts b/apps/desktop/src/app/settings/billing/billing-amounts.test.ts
 new file mode 100644
-index 000000000..f6236d827
+index 0000000000000000000000000000000000000000..f6236d8277abd3fe0202a593f72b5af4203753a6
 --- /dev/null
 +++ b/apps/desktop/src/app/settings/billing/billing-amounts.test.ts
 @@ -0,0 +1,16 @@
@@ -1276,7 +1290,7 @@ index 000000000..f6236d827
 +  })
 +})
 diff --git a/apps/desktop/src/app/settings/billing/billing-amounts.ts b/apps/desktop/src/app/settings/billing/billing-amounts.ts
-index 0b0e5517b..3bc90e754 100644
+index 0b0e5517b92e1ff17906f05b47361d981cfc1cb2..3bc90e754959c33356225521951c8cada10356d2 100644
 --- a/apps/desktop/src/app/settings/billing/billing-amounts.ts
 +++ b/apps/desktop/src/app/settings/billing/billing-amounts.ts
 @@ -114,7 +114,7 @@ export function formatMoney(value?: null | number | string): string {
@@ -1289,7 +1303,7 @@ index 0b0e5517b..3bc90e754 100644
      maximumFractionDigits: amount % 1 === 0 ? 0 : 2,
      minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
 diff --git a/apps/desktop/src/app/skills/index.test.tsx b/apps/desktop/src/app/skills/index.test.tsx
-index 0c05bec75..67521d89c 100644
+index 0c05bec75adf31ea07988d567ad0ad8221b17dd1..67521d89c57deed87720f10099c357bac83dc331 100644
 --- a/apps/desktop/src/app/skills/index.test.tsx
 +++ b/apps/desktop/src/app/skills/index.test.tsx
 @@ -8,6 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -1310,7 +1324,7 @@ index 0c05bec75..67521d89c 100644
    await act(async () => {
      result = render(
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index 975ec7ec9..af1a0c5f0 100644
+index 1512f1bacc0c44f53c15fb782ece8fe5d5fecc7d..3af5913b92803ca5d6fae6a51e86f3b5060df2b8 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
 @@ -132,7 +132,7 @@ declare global {
@@ -1322,260 +1336,11 @@ index 975ec7ec9..af1a0c5f0 100644
          saveSettings: (settings: Partial<LocalWorkstationSettings>) => Promise<unknown>
          selectModel: (id: string) => Promise<{ id: string }>
          selectProfile: (name: string) => Promise<{ name: string }>
-diff --git a/apps/desktop/src/lib/icons.ts b/apps/desktop/src/lib/icons.ts
-index 1fda821b7..a8ab37a4f 100644
---- a/apps/desktop/src/lib/icons.ts
-+++ b/apps/desktop/src/lib/icons.ts
-@@ -1,125 +1,123 @@
--import {
--  IconActivity as Activity,
--  IconAlertCircle as AlertCircle,
--  IconAlertTriangle as AlertTriangle,
--  IconAppWindow as AppWindow,
--  IconArchive as Archive,
--  IconArchiveOff as ArchiveOff,
--  IconArrowUp as ArrowUp,
--  IconArrowUpRight as ArrowUpRight,
--  IconAt as AtSign,
--  IconWaveSine as AudioLines,
--  IconChartBar as BarChart3,
--  IconBell as Bell,
--  IconBookmark as Bookmark,
--  IconBookmarkFilled as BookmarkFilled,
--  IconBox as Box,
--  IconBrain as Brain,
--  IconBug as Bug,
--  IconCheck as Check,
--  IconCircleCheck as CheckCircle2,
--  IconCheck as CheckIcon,
--  IconChevronDown as ChevronDown,
--  IconChevronDown as ChevronDownIcon,
--  IconChevronLeft as ChevronLeft,
--  IconChevronLeft as ChevronLeftIcon,
--  IconChevronRight as ChevronRight,
--  IconChevronRight as ChevronRightIcon,
--  IconCircle as CircleIcon,
--  IconCircleLetterA as CircleLetterA,
--  IconClipboard as Clipboard,
--  IconClock as Clock,
--  IconCloud as Cloud,
--  IconCommand as Command,
--  IconCopy as Copy,
--  IconCopy as CopyIcon,
--  IconCpu as Cpu,
--  IconCreditCard as CreditCard,
--  IconDownload as Download,
--  IconEgg as Egg,
--  IconExternalLink as ExternalLink,
--  IconEye as Eye,
--  IconEyeOff as EyeOff,
--  IconPhoto as FileImage,
--  IconFileText as FileText,
--  IconFolderOpen as FolderOpen,
--  IconGitBranch as GitBranch,
--  IconGitBranch as GitBranchIcon,
--  IconGitFork as GitFork,
--  IconGitFork as GitForkIcon,
--  IconGlobe as Globe,
--  IconHash as Hash,
--  IconHelpCircle as HelpCircle,
--  IconPhoto as ImageIcon,
--  IconInfoCircle as Info,
--  IconKeyboard as Keyboard,
--  IconKey as KeyRound,
--  IconLayersIntersect2 as Layers3,
--  IconLayoutDashboard as LayoutDashboard,
--  IconLink as Link,
--  IconLink as Link2,
--  IconLink as LinkIcon,
--  IconLoader2 as Loader2,
--  IconLoader2 as Loader2Icon,
--  IconLock as Lock,
--  IconLogin as LogIn,
--  IconMail as Mail,
--  IconMaximize as Maximize,
--  IconMessageCircle as MessageCircle,
--  IconMessageQuestion as MessageQuestion,
--  IconMessage2 as MessageSquareText,
--  IconMicrophone as Mic,
--  IconMicrophoneOff as MicOff,
--  IconDeviceDesktop as Monitor,
--  IconDeviceDesktopAnalytics as MonitorPlay,
--  IconMoon as Moon,
--  IconDots as MoreHorizontal,
--  IconDots as MoreHorizontalIcon,
--  IconDotsVertical as MoreVertical,
--  IconNotebook as NotebookTabs,
--  IconPackage as Package,
--  IconPalette as Palette,
--  IconLayoutBottombar as PanelBottom,
--  IconLayoutSidebar as PanelLeftIcon,
--  IconPlayerPause as Pause,
--  IconPaw as PawPrint,
--  IconPencil as Pencil,
--  IconPencil as PencilIcon,
--  IconPencil as PencilLine,
--  IconPin as Pin,
--  IconPlayerPlay as Play,
--  IconPlus as Plus,
--  IconRefresh as RefreshCw,
--  IconRefresh as RefreshCwIcon,
--  IconDeviceFloppy as Save,
--  IconSearch as Search,
--  IconSearch as SearchIcon,
--  IconSend as Send,
--  IconSettings as Settings,
--  IconSettings2 as Settings2,
--  IconAdjustmentsHorizontal as SlidersHorizontal,
--  IconSquare as Square,
--  IconChartDots3 as Starmap,
--  IconSteeringWheel as SteeringWheel,
--  IconPlayerStopFilled as StopFilled,
--  IconSun as Sun,
--  IconTerminal2 as Terminal,
--  IconTrash as Trash2,
--  IconUpload as Upload,
--  IconUsers as Users,
--  IconVolume2 as Volume2,
--  IconVolume2 as Volume2Icon,
--  IconVolumeOff as VolumeX,
--  IconVolumeOff as VolumeXIcon,
--  IconTool as Wrench,
--  IconX as X,
--  IconX as XIcon,
--  IconBolt as Zap,
--  IconBoltFilled as ZapFilled,
--  IconZoomIn as ZoomIn,
--  IconZoomOut as ZoomOut
--} from '@tabler/icons-react'
-+import Activity from '@tabler/icons-react/dist/esm/icons/IconActivity.mjs'
-+import SlidersHorizontal from '@tabler/icons-react/dist/esm/icons/IconAdjustmentsHorizontal.mjs'
-+import AlertCircle from '@tabler/icons-react/dist/esm/icons/IconAlertCircle.mjs'
-+import AlertTriangle from '@tabler/icons-react/dist/esm/icons/IconAlertTriangle.mjs'
-+import AppWindow from '@tabler/icons-react/dist/esm/icons/IconAppWindow.mjs'
-+import Archive from '@tabler/icons-react/dist/esm/icons/IconArchive.mjs'
-+import ArchiveOff from '@tabler/icons-react/dist/esm/icons/IconArchiveOff.mjs'
-+import ArrowUp from '@tabler/icons-react/dist/esm/icons/IconArrowUp.mjs'
-+import ArrowUpRight from '@tabler/icons-react/dist/esm/icons/IconArrowUpRight.mjs'
-+import AtSign from '@tabler/icons-react/dist/esm/icons/IconAt.mjs'
-+import Bell from '@tabler/icons-react/dist/esm/icons/IconBell.mjs'
-+import Zap from '@tabler/icons-react/dist/esm/icons/IconBolt.mjs'
-+import ZapFilled from '@tabler/icons-react/dist/esm/icons/IconBoltFilled.mjs'
-+import Bookmark from '@tabler/icons-react/dist/esm/icons/IconBookmark.mjs'
-+import BookmarkFilled from '@tabler/icons-react/dist/esm/icons/IconBookmarkFilled.mjs'
-+import Box from '@tabler/icons-react/dist/esm/icons/IconBox.mjs'
-+import Brain from '@tabler/icons-react/dist/esm/icons/IconBrain.mjs'
-+import Bug from '@tabler/icons-react/dist/esm/icons/IconBug.mjs'
-+import BarChart3 from '@tabler/icons-react/dist/esm/icons/IconChartBar.mjs'
-+import Starmap from '@tabler/icons-react/dist/esm/icons/IconChartDots3.mjs'
-+import Check from '@tabler/icons-react/dist/esm/icons/IconCheck.mjs'
-+import ChevronDown from '@tabler/icons-react/dist/esm/icons/IconChevronDown.mjs'
-+import ChevronLeft from '@tabler/icons-react/dist/esm/icons/IconChevronLeft.mjs'
-+import ChevronRight from '@tabler/icons-react/dist/esm/icons/IconChevronRight.mjs'
-+import CircleIcon from '@tabler/icons-react/dist/esm/icons/IconCircle.mjs'
-+import CheckCircle2 from '@tabler/icons-react/dist/esm/icons/IconCircleCheck.mjs'
-+import CircleLetterA from '@tabler/icons-react/dist/esm/icons/IconCircleLetterA.mjs'
-+import Clipboard from '@tabler/icons-react/dist/esm/icons/IconClipboard.mjs'
-+import Clock from '@tabler/icons-react/dist/esm/icons/IconClock.mjs'
-+import Cloud from '@tabler/icons-react/dist/esm/icons/IconCloud.mjs'
-+import Command from '@tabler/icons-react/dist/esm/icons/IconCommand.mjs'
-+import Copy from '@tabler/icons-react/dist/esm/icons/IconCopy.mjs'
-+import Cpu from '@tabler/icons-react/dist/esm/icons/IconCpu.mjs'
-+import CreditCard from '@tabler/icons-react/dist/esm/icons/IconCreditCard.mjs'
-+import Monitor from '@tabler/icons-react/dist/esm/icons/IconDeviceDesktop.mjs'
-+import MonitorPlay from '@tabler/icons-react/dist/esm/icons/IconDeviceDesktopAnalytics.mjs'
-+import Save from '@tabler/icons-react/dist/esm/icons/IconDeviceFloppy.mjs'
-+import MoreHorizontal from '@tabler/icons-react/dist/esm/icons/IconDots.mjs'
-+import MoreVertical from '@tabler/icons-react/dist/esm/icons/IconDotsVertical.mjs'
-+import Download from '@tabler/icons-react/dist/esm/icons/IconDownload.mjs'
-+import Egg from '@tabler/icons-react/dist/esm/icons/IconEgg.mjs'
-+import ExternalLink from '@tabler/icons-react/dist/esm/icons/IconExternalLink.mjs'
-+import Eye from '@tabler/icons-react/dist/esm/icons/IconEye.mjs'
-+import EyeOff from '@tabler/icons-react/dist/esm/icons/IconEyeOff.mjs'
-+import FileText from '@tabler/icons-react/dist/esm/icons/IconFileText.mjs'
-+import FolderOpen from '@tabler/icons-react/dist/esm/icons/IconFolderOpen.mjs'
-+import GitBranch from '@tabler/icons-react/dist/esm/icons/IconGitBranch.mjs'
-+import GitFork from '@tabler/icons-react/dist/esm/icons/IconGitFork.mjs'
-+import Globe from '@tabler/icons-react/dist/esm/icons/IconGlobe.mjs'
-+import Hash from '@tabler/icons-react/dist/esm/icons/IconHash.mjs'
-+import HelpCircle from '@tabler/icons-react/dist/esm/icons/IconHelpCircle.mjs'
-+import Info from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs'
-+import KeyRound from '@tabler/icons-react/dist/esm/icons/IconKey.mjs'
-+import Keyboard from '@tabler/icons-react/dist/esm/icons/IconKeyboard.mjs'
-+import Layers3 from '@tabler/icons-react/dist/esm/icons/IconLayersIntersect2.mjs'
-+import PanelBottom from '@tabler/icons-react/dist/esm/icons/IconLayoutBottombar.mjs'
-+import LayoutDashboard from '@tabler/icons-react/dist/esm/icons/IconLayoutDashboard.mjs'
-+import PanelLeftIcon from '@tabler/icons-react/dist/esm/icons/IconLayoutSidebar.mjs'
-+import Link from '@tabler/icons-react/dist/esm/icons/IconLink.mjs'
-+import Loader2 from '@tabler/icons-react/dist/esm/icons/IconLoader2.mjs'
-+import Lock from '@tabler/icons-react/dist/esm/icons/IconLock.mjs'
-+import LogIn from '@tabler/icons-react/dist/esm/icons/IconLogin.mjs'
-+import Mail from '@tabler/icons-react/dist/esm/icons/IconMail.mjs'
-+import Maximize from '@tabler/icons-react/dist/esm/icons/IconMaximize.mjs'
-+import MessageSquareText from '@tabler/icons-react/dist/esm/icons/IconMessage2.mjs'
-+import MessageCircle from '@tabler/icons-react/dist/esm/icons/IconMessageCircle.mjs'
-+import MessageQuestion from '@tabler/icons-react/dist/esm/icons/IconMessageQuestion.mjs'
-+import Mic from '@tabler/icons-react/dist/esm/icons/IconMicrophone.mjs'
-+import MicOff from '@tabler/icons-react/dist/esm/icons/IconMicrophoneOff.mjs'
-+import Moon from '@tabler/icons-react/dist/esm/icons/IconMoon.mjs'
-+import NotebookTabs from '@tabler/icons-react/dist/esm/icons/IconNotebook.mjs'
-+import Package from '@tabler/icons-react/dist/esm/icons/IconPackage.mjs'
-+import Palette from '@tabler/icons-react/dist/esm/icons/IconPalette.mjs'
-+import PawPrint from '@tabler/icons-react/dist/esm/icons/IconPaw.mjs'
-+import Pencil from '@tabler/icons-react/dist/esm/icons/IconPencil.mjs'
-+import FileImage from '@tabler/icons-react/dist/esm/icons/IconPhoto.mjs'
-+import Pin from '@tabler/icons-react/dist/esm/icons/IconPin.mjs'
-+import Pause from '@tabler/icons-react/dist/esm/icons/IconPlayerPause.mjs'
-+import Play from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs'
-+import StopFilled from '@tabler/icons-react/dist/esm/icons/IconPlayerStopFilled.mjs'
-+import Plus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs'
-+import RefreshCw from '@tabler/icons-react/dist/esm/icons/IconRefresh.mjs'
-+import Search from '@tabler/icons-react/dist/esm/icons/IconSearch.mjs'
-+import Send from '@tabler/icons-react/dist/esm/icons/IconSend.mjs'
-+import Settings2 from '@tabler/icons-react/dist/esm/icons/IconSettings2.mjs'
-+import Settings from '@tabler/icons-react/dist/esm/icons/IconSettings.mjs'
-+import Square from '@tabler/icons-react/dist/esm/icons/IconSquare.mjs'
-+import SteeringWheel from '@tabler/icons-react/dist/esm/icons/IconSteeringWheel.mjs'
-+import Sun from '@tabler/icons-react/dist/esm/icons/IconSun.mjs'
-+import Terminal from '@tabler/icons-react/dist/esm/icons/IconTerminal2.mjs'
-+import Wrench from '@tabler/icons-react/dist/esm/icons/IconTool.mjs'
-+import Trash2 from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs'
-+import Upload from '@tabler/icons-react/dist/esm/icons/IconUpload.mjs'
-+import Users from '@tabler/icons-react/dist/esm/icons/IconUsers.mjs'
-+import Volume2 from '@tabler/icons-react/dist/esm/icons/IconVolume2.mjs'
-+import VolumeX from '@tabler/icons-react/dist/esm/icons/IconVolumeOff.mjs'
-+import AudioLines from '@tabler/icons-react/dist/esm/icons/IconWaveSine.mjs'
-+import X from '@tabler/icons-react/dist/esm/icons/IconX.mjs'
-+import ZoomIn from '@tabler/icons-react/dist/esm/icons/IconZoomIn.mjs'
-+import ZoomOut from '@tabler/icons-react/dist/esm/icons/IconZoomOut.mjs'
- 
-+const CheckIcon = Check
-+const ChevronDownIcon = ChevronDown
-+const ChevronLeftIcon = ChevronLeft
-+const ChevronRightIcon = ChevronRight
-+const CopyIcon = Copy
-+const GitBranchIcon = GitBranch
-+const GitForkIcon = GitFork
-+const ImageIcon = FileImage
-+const Link2 = Link
-+const LinkIcon = Link
-+const Loader2Icon = Loader2
-+const MoreHorizontalIcon = MoreHorizontal
-+const PencilIcon = Pencil
-+const PencilLine = Pencil
-+const RefreshCwIcon = RefreshCw
-+const SearchIcon = Search
-+const Volume2Icon = Volume2
-+const VolumeXIcon = VolumeX
-+const XIcon = X
- export {
-   Activity,
-   AlertCircle,
 diff --git a/apps/desktop/src/styles.css b/apps/desktop/src/styles.css
-index 0f7fdbdd3..4339a67bd 100644
+index aba9d14a64c6fc7c55e562718c7e800e38ce03c4..656b8bb34be155553ddb19e5ce681428e3bf31cf 100644
 --- a/apps/desktop/src/styles.css
 +++ b/apps/desktop/src/styles.css
-@@ -863,8 +863,9 @@ code {
+@@ -917,8 +917,9 @@ code {
  }
  
  /* Arc-style multicolor action surface (static, not animated). Reusable on any
@@ -1588,7 +1353,7 @@ index 0f7fdbdd3..4339a67bd 100644
    color: #fff;
    border-color: transparent;
 diff --git a/apps/desktop/vitest.setup.ts b/apps/desktop/vitest.setup.ts
-index a780ec2fa..b2de9b380 100644
+index a780ec2faa521b221482bd4de50f0bc575f6a9f5..b2de9b3808a936a2581ad6507d34833719f927e4 100644
 --- a/apps/desktop/vitest.setup.ts
 +++ b/apps/desktop/vitest.setup.ts
 @@ -10,3 +10,10 @@ import { configure } from '@testing-library/react'
@@ -1603,7 +1368,7 @@ index a780ec2fa..b2de9b380 100644
 +// this method with their own deterministic context fixture.
 +HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext
 diff --git a/tests/test_windows_subprocess_no_window_flags.py b/tests/test_windows_subprocess_no_window_flags.py
-index ef613faba..4adec6823 100644
+index ef613faba86d5a17aa8a00aaa8169c1e5761292b..4adec6823febae51e260df391827078f1a04eafe 100644
 --- a/tests/test_windows_subprocess_no_window_flags.py
 +++ b/tests/test_windows_subprocess_no_window_flags.py
 @@ -1093,12 +1093,13 @@ def test_suppress_platform_ver_console_posix_noop(monkeypatch):
@@ -1622,6 +1387,3 @@ index ef613faba..4adec6823 100644
  
  
  def test_suppress_platform_ver_console_stubs_syscmd_ver(monkeypatch):
--- 
-2.55.0.windows.3
-

@@ -1,14 +1,15 @@
-From ee683263aaa7f3bca33f785630926350fa119c38 Mon Sep 17 00:00:00 2001
+From 47dcdcdd83831f56a588813057aca640c6abab5b Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Tue, 28 Jul 2026 10:40:36 +0100
-Subject: [PATCH] test(windows): make compression persistence fixtures portable
+Subject: [PATCH 06/12] test(windows): make compression persistence fixtures
+ portable
 
 ---
  tests/run_agent/test_compression_persistence.py | 12 ++++++++++--
  1 file changed, 10 insertions(+), 2 deletions(-)
 
 diff --git a/tests/run_agent/test_compression_persistence.py b/tests/run_agent/test_compression_persistence.py
-index c21afa1f3..f21c86df0 100644
+index c21afa1f35e7da6dd18922e96fee16ea6c149ade..f21c86df0cbd04de10c7150e6c184aea1f135183 100644
 --- a/tests/run_agent/test_compression_persistence.py
 +++ b/tests/run_agent/test_compression_persistence.py
 @@ -99,6 +99,7 @@ class TestFlushAfterCompression:
@@ -62,6 +63,3 @@ index c21afa1f3..f21c86df0 100644
                  "Built prompt missing 'Platform: cli' — drift detection cannot read it"
              )
 +            db.close()
--- 
-2.55.0.windows.3
-
