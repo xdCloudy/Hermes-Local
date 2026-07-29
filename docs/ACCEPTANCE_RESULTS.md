@@ -13,11 +13,12 @@
 | Electron Vitest | 835 passed, three skipped |
 | UI Vitest | 2,555 passed, one skipped |
 | Windows-critical Python | 136 passed, two skipped |
-| PowerShell parser | 24 files, zero failures; one excluded security script |
+| PowerShell parser | 25 files, zero failures; one excluded security script |
 | Recovery fixtures | 7/7 passed |
 | Unpacked / portable / installed launcher | Pass |
 | Start / stop / restart / recovery | Pass |
 | Patch reconstruction | Exact tree match from 12 patches |
+| Transactional Hermes Agent update check | Pass; candidate reported without active-install mutation |
 | Protected user state | Pass |
 
 Fourteen reproduced first-party defects were fixed. The rebuilt portable

@@ -8,7 +8,8 @@ Security auditing and vulnerability assessment were excluded from this QA engage
 
 - Root branch: `codex/full-qa-refactor`
 - Root base: `b47e87e710c4f7509da5db54ad25b435ecc679e5`
-- Root implementation commits: `5974b3d`, `889bcd1`
+- Root PR base: `e61a9e926fddeacbfe5733d3ad7de961c53ac3e0`
+- Root implementation commits: `324872e`, `bfc09fe`
 - Pinned upstream: `3be565fbdee3115ab5b9338551768b8e5e655c56`
 - Nested integration: `0c1dbce2930bdb8b9c09ac768e71f20a3b87f814`
 - Expected integration tree:
@@ -21,7 +22,7 @@ Security auditing and vulnerability assessment were excluded from this QA engage
 | Gate | Final result |
 |---|---|
 | Inventory generation/final disposition | Pass |
-| PowerShell parser | 24 files, 0 failures; one security script excluded |
+| PowerShell parser | 25 files, 0 failures; one security script excluded |
 | TypeScript | Pass |
 | ESLint | 0 errors, 51 existing warnings |
 | Focused Electron regressions | Pass |
@@ -39,14 +40,15 @@ Security auditing and vulnerability assessment were excluded from this QA engage
 | Service start/stop/restart | Pass |
 | Model process automatic recovery | Pass |
 | Update check | Pass |
+| Transactional Hermes Agent update check | Pass; candidate reported without active-install mutation |
 | Patch reconstruction/tree equality | Pass |
 | Protected state verification | Pass |
 
 The final full orchestrator completed 12/12 required steps in 170,179 ms.
 The finalized inventories were generated afterward and the orchestrator now
-runs that finalizer as a required thirteenth step on future full runs. The
-updated orchestrator then passed its post-documentation `Fast` scope 8/8 in
-51,640 ms, including the finalizer.
+runs that finalizer as a required thirteenth step on future full runs. After
+rebasing onto current `main`, the updated orchestrator passed its `Fast` scope
+8/8 in 48,522 ms, including the finalizer.
 
 The full run recorded nested commit `ba953455…`. The final nested commit
 `0c1dbce…` adds only login-item restoration coverage; that exact commit passed
@@ -86,10 +88,11 @@ The package stamp records integration commit `0c1dbce…`, branch
 
 - 48 controls and nine UI states are source-inventoried but were not
   individually actuated.
-- 192 executable entries are inventoried but were not run independently; 14
+- 193 executable entries are inventoried but were not run independently; 14
   additional PowerShell entries have parser-only evidence.
-- Eight workflows have partial evidence, principally where mutating the active
-  model/settings/benchmark/repair state would conflict with data protection.
+- Ten workflows have partial evidence, principally where mutating the active
+  model/settings/benchmark/repair state or applying/rolling back the newly
+  rebased transactional updater would conflict with data protection.
 - No physical reboot, Windows logoff/shutdown, real insufficient-disk event,
   interrupted live update, or full Windows scaling matrix was exercised.
 - The user stopped the last direct portable re-launch. The earlier direct

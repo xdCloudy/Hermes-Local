@@ -21,7 +21,8 @@ Security auditing and vulnerability assessment were excluded from this QA engage
 |---|---|
 | Root branch | `codex/full-qa-refactor` |
 | Root base | `b47e87e710c4f7509da5db54ad25b435ecc679e5` |
-| Root implementation commits | `5974b3d`, `889bcd1` |
+| Root PR base | `e61a9e926fddeacbfe5733d3ad7de961c53ac3e0` |
+| Root implementation commits | `324872e`, `bfc09fe` |
 | Nested initial commit | `f85f5a3c87bb43b5e19e5e3031b7da6b361806b2` |
 | Pinned upstream | `3be565fbdee3115ab5b9338551768b8e5e655c56` |
 | Final nested integration | `0c1dbce2930bdb8b9c09ac768e71f20a3b87f814` |
@@ -35,11 +36,12 @@ Security auditing and vulnerability assessment were excluded from this QA engage
 
 Baseline runtime was healthy on the Daily profile, Laguna XS 2.1 Q4_K_M,
 automatic acceleration, model port 8011, and Hermes/dashboard port 9119.
-The 12-step full orchestrator ran against nested commit `ba953455…` and the QA
-working tree on root base `b47e87e…`. Final commit `0c1dbce…` changes only the
+The original 12-step full orchestrator ran against nested commit `ba953455…`
+and the QA working tree on baseline root `b47e87e…`. Final commit `0c1dbce…` changes only the
 packaged E2E login-item restoration assertion; that exact commit passed the
-final packaged E2E and the later 8-step Fast gate. This distinction is retained
-in `qa-results.json`.
+final packaged E2E and the later 8-step Fast gates. The PR was then rebased
+onto `e61a9e9…`; the current branch passed another 8-step Fast gate. These
+distinctions are retained in `qa-results.json`.
 
 ## Scope and architecture inventory
 
@@ -92,12 +94,12 @@ and launch-at-login restoration.
 
 | Disposition | Count |
 |---|---:|
-| Total executable entries | 233 |
-| Functional scope | 226 |
+| Total executable entries | 235 |
+| Functional scope | 228 |
 | Security-excluded | 7 |
-| Direct execution passed | 20 |
+| Direct execution passed | 21 |
 | PowerShell static parse only | 14 |
-| Inventoried, not independently executed | 192 |
+| Inventoried, not independently executed | 193 |
 
 All entries have a final disposition. The inventory does not treat a filename
 reference or syntax pass as an executed success/failure-path test.
@@ -106,18 +108,18 @@ reference or syntax pass as an executed success/failure-path test.
 
 | Disposition | Count |
 |---|---:|
-| Total | 29 |
-| Functional scope | 28 |
+| Total | 31 |
+| Functional scope | 30 |
 | Security-excluded | 1 |
 | End-to-end pass | 11 |
 | Focused automated pass | 6 |
 | Controlled fixture pass | 3 |
-| Partial evidence | 8 |
+| Partial evidence | 10 |
 
 The partial group includes model mutation, sessions/projects/chat depth,
-benchmark, and repair workflows where the surface and related suites passed
-but the state-mutating operation was not fully run against the protected
-installation.
+benchmark, repair, and transactional Hermes Agent Apply/Rollback workflows
+where Check/surface/related evidence passed but the state-mutating operation
+was not fully run against the protected installation.
 
 ## Functional execution
 
@@ -133,6 +135,9 @@ installation.
 - A controlled model-process exit recovered automatically in 54.208 s; the PID
   changed and the recovery counter moved from zero to one.
 - `Update-Hermes-Local.ps1 -Mode Check` completed successfully.
+- The rebased transactional `Update-Hermes-Agent.ps1 -Mode Check` completed
+  successfully, reporting candidate `c3ffe273…` without mutating the active
+  installation. Apply and Rollback remain partial rather than falsely passed.
 - The integration was reconstructed from pinned upstream plus patches
   0001–0012 in a clean worktree and the resulting tree matched
   `5df883962…`.
@@ -154,13 +159,13 @@ The final `Full` orchestrator passed 12/12 required steps in 170,179 ms:
 | Recovery fixtures | 7/7 passed |
 | Full Electron | 74 files passed, one skipped; 835 passed, three skipped |
 | Full UI | 299 files passed; 2,555 passed, one skipped |
-| PowerShell parser | 24 files, zero failures; one security file excluded |
+| PowerShell parser | 25 files, zero failures; one security file excluded |
 | Desktop build | Pass |
 | Operational diagnostics | Pass |
 
 The orchestrator now includes inventory finalization as a required thirteenth
-step for subsequent full runs. Its post-documentation `Fast` scope passed 8/8
-in 51,640 ms, including that finalization step.
+step for subsequent full runs. After rebasing onto current `main`, its `Fast`
+scope passed 8/8 in 48,522 ms, including that finalization step.
 
 ## Defects and regression coverage
 
@@ -246,6 +251,7 @@ and removed. The final managed stack is healthy on the original Daily profile.
 & '.\Start-Hermes-Local.ps1' -NonInteractive
 & '.\Restart-Hermes-Local.ps1' -NonInteractive
 & '.\Update-Hermes-Local.ps1' -Mode Check -Component All -NonInteractive
+& '.\Update-Hermes-Agent.ps1' -Mode Check -NonInteractive
 & '.\Package-Hermes-Launcher.ps1' -NonInteractive
 ```
 
@@ -267,9 +273,9 @@ durations, exit codes, and log paths are in
 
 - 48 controls and nine UI states were source-inventoried but not individually
   exercised.
-- 192 executable entries were not independently executed; 14 more PowerShell
+- 193 executable entries were not independently executed; 14 more PowerShell
   entries have parser-only evidence.
-- Eight workflows have partial evidence rather than a full state-mutating pass.
+- Ten workflows have partial evidence rather than a full state-mutating pass.
 - A physical reboot, Windows logoff/shutdown, real insufficient-disk event,
   interrupted live update, and full display-scaling matrix were not performed.
 - Idle CPU/memory and long-duration leak profiles were not controlled well

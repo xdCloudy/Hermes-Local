@@ -71,6 +71,7 @@ const directScriptEvidence = new Map([
   ['Start-Hermes-Local.ps1', [finalVerification]],
   ['Stop-Hermes-Local.ps1', [finalVerification]],
   ['Test-Hermes-Local.ps1', [evidence('operational-diagnostics.stdout.txt')]],
+  ['Update-Hermes-Agent.ps1', [finalVerification]],
   ['Update-Hermes-Local.ps1', [finalVerification]],
   ['scripts/qa/Invoke-FullFunctionalQA.ps1', [evidence('qa-run.json')]],
   ['scripts/qa/Test-PowerShellSyntax.ps1', [evidence('powershell-syntax.json')]],
@@ -194,7 +195,9 @@ const workflowGroups = {
     'projects',
     'chat',
     'benchmark',
-    'repair'
+    'repair',
+    'hermes-agent-update',
+    'hermes-agent-rollback'
   ])
 }
 const workflowDefects = {
@@ -258,7 +261,7 @@ for (const entry of workflows.entries) {
     entry.evidenceQualification = 'Executed against isolated fixtures or a clean reconstruction worktree.'
   } else {
     entry.successPath =
-      ['sessions', 'projects', 'chat'].includes(id)
+      ['sessions', 'projects', 'chat', 'hermes-agent-update'].includes(id)
         ? 'passed-limited-live-or-packaged-surface'
         : 'ui-surface-only-operation-not-run'
     entry.failurePath = 'not-individually-demonstrated'

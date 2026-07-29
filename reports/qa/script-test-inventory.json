@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-29T18:41:16.025Z",
+  "generatedAt": "2026-07-29T18:53:46.671Z",
   "generator": "scripts/qa/build-qa-inventories.mjs",
-  "rootCommit": "889bcd1f4c6e067e602150e45ef9d1624fb1ebb2",
+  "rootCommit": "b561d6f52741c3cba9376130edac77ab61f42cb2",
   "nestedCommit": "0c1dbce2930bdb8b9c09ac768e71f20a3b87f814",
   "methodology": "First-party executable files in the current worktree and npm entry points. Related references are discovery evidence only; final execution evidence is populated by finalize-qa-inventories.mjs. Final dispositions distinguish direct execution, PowerShell syntax parsing, inventory-only review, and excluded scope; no related reference is treated as a direct pass. Final dispositions distinguish direct execution, PowerShell syntax parsing, inventory-only review, and excluded scope; no related reference is treated as a direct pass.",
   "summary": {
-    "total": 233,
-    "functionalQa": 226,
+    "total": 235,
+    "functionalQa": 228,
     "securityExcluded": 7,
     "finalDisposition": {
       "excluded": 7,
-      "inventoried-not-directly-executed": 192,
-      "passed-direct-execution": 20,
+      "inventoried-not-directly-executed": 193,
+      "passed-direct-execution": 21,
       "passed-static-parse-not-directly-executed": 14
     }
   },
@@ -268,6 +268,42 @@
       "evidenceQualification": "The PowerShell parser accepted this file, but its success and failure paths were not individually executed."
     },
     {
+      "id": "script:Update-Hermes-Agent.cmd",
+      "repository": "root",
+      "file": "Update-Hermes-Agent.cmd",
+      "kind": "cmd",
+      "bytes": 533,
+      "scope": "functional-qa",
+      "successPath": "not-directly-executed",
+      "failurePath": "not-directly-executed",
+      "argumentValidation": "not-individually-demonstrated",
+      "exitCodeVerification": "not-individually-demonstrated",
+      "currentAutomatedCoverage": "inventory-only",
+      "finalResult": "inventoried-not-directly-executed",
+      "evidenceLocation": [
+        "Update-Hermes-Agent.cmd"
+      ],
+      "evidenceQualification": "Inventory/source evidence only. This entry point was not executed independently in the final QA run."
+    },
+    {
+      "id": "script:Update-Hermes-Agent.ps1",
+      "repository": "root",
+      "file": "Update-Hermes-Agent.ps1",
+      "kind": "ps1",
+      "bytes": 20981,
+      "scope": "functional-qa",
+      "successPath": "passed-direct-execution",
+      "failurePath": "not-individually-demonstrated",
+      "argumentValidation": "not-individually-demonstrated",
+      "exitCodeVerification": "verified-zero",
+      "currentAutomatedCoverage": "direct-execution",
+      "finalResult": "passed-direct-execution",
+      "evidenceLocation": [
+        "reports/qa/final-verification.md"
+      ],
+      "evidenceQualification": "The executable entry point completed successfully; only explicitly cited fixture runs demonstrate a failure path."
+    },
+    {
       "id": "script:Update-Hermes-Local.ps1",
       "repository": "root",
       "file": "Update-Hermes-Local.ps1",
@@ -290,7 +326,7 @@
       "repository": "root",
       "file": "scripts/Common-Hermes.psm1",
       "kind": "psm1",
-      "bytes": 16793,
+      "bytes": 17647,
       "scope": "functional-qa",
       "successPath": "not-directly-executed",
       "failurePath": "not-directly-executed",
@@ -380,7 +416,7 @@
       "repository": "root",
       "file": "scripts/qa/Invoke-FullFunctionalQA.ps1",
       "kind": "ps1",
-      "bytes": 8207,
+      "bytes": 8440,
       "scope": "functional-qa",
       "successPath": "passed-direct-execution",
       "failurePath": "not-individually-demonstrated",
@@ -398,7 +434,7 @@
       "repository": "root",
       "file": "scripts/qa/Test-PowerShellSyntax.ps1",
       "kind": "ps1",
-      "bytes": 2874,
+      "bytes": 2969,
       "scope": "functional-qa",
       "successPath": "passed-direct-execution",
       "failurePath": "not-individually-demonstrated",
@@ -416,7 +452,7 @@
       "repository": "root",
       "file": "scripts/qa/Test-RecoveryFixtures.ps1",
       "kind": "ps1",
-      "bytes": 7709,
+      "bytes": 7879,
       "scope": "functional-qa",
       "successPath": "passed-direct-execution",
       "failurePath": "passed-ordinary-failure-fixtures",
@@ -434,7 +470,7 @@
       "repository": "root",
       "file": "scripts/qa/build-qa-inventories.mjs",
       "kind": "mjs",
-      "bytes": 18135,
+      "bytes": 18978,
       "scope": "functional-qa",
       "successPath": "passed-direct-execution",
       "failurePath": "not-individually-demonstrated",
@@ -452,7 +488,7 @@
       "repository": "root",
       "file": "scripts/qa/finalize-qa-inventories.mjs",
       "kind": "mjs",
-      "bytes": 14241,
+      "bytes": 14673,
       "scope": "functional-qa",
       "successPath": "passed-direct-execution",
       "failurePath": "not-individually-demonstrated",
@@ -4284,6 +4320,6 @@
       "evidenceQualification": "Inventory/source evidence only. This entry point was not executed independently in the final QA run."
     }
   ],
-  "finalizedAt": "2026-07-29T18:42:23.435Z",
+  "finalizedAt": "2026-07-29T18:54:45.352Z",
   "finalEvidenceDirectory": "temp/qa-runs/final-full"
 }

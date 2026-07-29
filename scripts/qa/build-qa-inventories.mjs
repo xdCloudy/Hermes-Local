@@ -344,6 +344,16 @@ const workflows = [
   ['benchmark', 'Run benchmark', 'Benchmark action → Benchmark-Hermes-Local.ps1 → report → refreshed dashboard'],
   ['repair', 'Repair installation', 'Repair action → Repair-Hermes-Local.ps1 → dependency/config recovery → diagnostics'],
   ['update-check', 'Check for updates', 'Update action → Update-Hermes-Local.ps1 -Mode Check → task output'],
+  [
+    'hermes-agent-update',
+    'Transactional Hermes Agent update',
+    'Update-Hermes-Agent.ps1 Check/Apply → staged upstream + ordered patches → backup → promotion → health validation'
+  ],
+  [
+    'hermes-agent-rollback',
+    'Transactional Hermes Agent rollback',
+    'Update-Hermes-Agent.ps1 Rollback → safety backup → known-good source/runtime/launcher restore → health validation'
+  ],
   ['patch-reconstruction', 'Reconstruct integration', 'Pinned upstream → ordered mail patches → dependency install → tree comparison'],
   ['package', 'Build/package launcher', 'Desktop build → electron-builder → portable executable → package smoke/E2E'],
   ['security', 'Security screen/action', 'Inventory only; security auditing and vulnerability assessment excluded']

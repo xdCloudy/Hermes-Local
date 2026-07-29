@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-29T18:41:16.025Z",
+  "generatedAt": "2026-07-29T18:53:46.671Z",
   "generator": "scripts/qa/build-qa-inventories.mjs",
-  "rootCommit": "889bcd1f4c6e067e602150e45ef9d1624fb1ebb2",
+  "rootCommit": "b561d6f52741c3cba9376130edac77ab61f42cb2",
   "nestedCommit": "0c1dbce2930bdb8b9c09ac768e71f20a3b87f814",
   "methodology": "TypeScript AST inventory of tracked production TSX. Coverage labels are conservative static evidence, not claims that a control passed. Final dispositions distinguish label assertions, related-suite evidence, and source-only inventory; related-suite evidence is not represented as individual control actuation. Final dispositions distinguish label assertions, related-suite evidence, and source-only inventory; related-suite evidence is not represented as individual control actuation.",
   "summary": {
@@ -55403,6 +55403,6 @@
       "evidenceQualification": "The owning component has passing automated coverage; the individual control was not necessarily actuated."
     }
   ],
-  "finalizedAt": "2026-07-29T18:42:23.435Z",
+  "finalizedAt": "2026-07-29T18:54:45.352Z",
   "finalEvidenceDirectory": "temp/qa-runs/final-full"
 }

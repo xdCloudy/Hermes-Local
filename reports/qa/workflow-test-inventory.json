@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-29T18:41:16.025Z",
+  "generatedAt": "2026-07-29T18:53:46.671Z",
   "generator": "scripts/qa/build-qa-inventories.mjs",
-  "rootCommit": "889bcd1f4c6e067e602150e45ef9d1624fb1ebb2",
+  "rootCommit": "b561d6f52741c3cba9376130edac77ab61f42cb2",
   "nestedCommit": "0c1dbce2930bdb8b9c09ac768e71f20a3b87f814",
   "entries": [
     {
@@ -536,6 +536,44 @@
       "evidenceQualification": "Executed through automated packaged coverage and/or a recorded live workstation workflow."
     },
     {
+      "id": "workflow:hermes-agent-update",
+      "name": "Transactional Hermes Agent update",
+      "chain": "Update-Hermes-Agent.ps1 Check/Apply → staged upstream + ordered patches → backup → promotion → health validation",
+      "scope": "functional-qa",
+      "successPath": "passed-limited-live-or-packaged-surface",
+      "failurePath": "not-individually-demonstrated",
+      "recoveryPath": "not-individually-demonstrated",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "temp/qa-runs/final-full/ui-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "partial-evidence-operation-not-fully-exercised",
+      "relatedDefectIds": [],
+      "evidenceQualification": "The workflow appears in the inventory and its UI/related suite passed, but the state-mutating operation was not fully exercised against the protected active installation."
+    },
+    {
+      "id": "workflow:hermes-agent-rollback",
+      "name": "Transactional Hermes Agent rollback",
+      "chain": "Update-Hermes-Agent.ps1 Rollback → safety backup → known-good source/runtime/launcher restore → health validation",
+      "scope": "functional-qa",
+      "successPath": "ui-surface-only-operation-not-run",
+      "failurePath": "not-individually-demonstrated",
+      "recoveryPath": "not-individually-demonstrated",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "temp/qa-runs/final-full/ui-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "partial-evidence-operation-not-fully-exercised",
+      "relatedDefectIds": [],
+      "evidenceQualification": "The workflow appears in the inventory and its UI/related suite passed, but the state-mutating operation was not fully exercised against the protected active installation."
+    },
+    {
       "id": "workflow:patch-reconstruction",
       "name": "Reconstruct integration",
       "chain": "Pinned upstream → ordered mail patches → dependency install → tree comparison",
@@ -590,18 +628,18 @@
     }
   ],
   "summary": {
-    "total": 29,
-    "functionalQa": 28,
+    "total": 31,
+    "functionalQa": 30,
     "securityExcluded": 1,
     "finalDisposition": {
       "excluded": 1,
-      "partial-evidence-operation-not-fully-exercised": 8,
+      "partial-evidence-operation-not-fully-exercised": 10,
       "passed-automated": 6,
       "passed-controlled-fixture": 3,
       "passed-end-to-end": 11
     }
   },
   "methodology": "Major workflow inventory with direct E2E, automated regression, controlled fixture, partial surface-only, or excluded dispositions. Partial evidence is not represented as a full pass.",
-  "finalizedAt": "2026-07-29T18:42:23.435Z",
+  "finalizedAt": "2026-07-29T18:54:45.352Z",
   "finalEvidenceDirectory": "temp/qa-runs/final-full"
 }

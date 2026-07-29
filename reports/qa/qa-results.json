@@ -1,12 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-29T18:40:00Z",
+  "generatedAt": "2026-07-29T18:56:00Z",
   "outcome": "pass-with-explicit-functional-coverage-limitations",
   "securityScope": "Security auditing and vulnerability assessment were excluded from this QA engagement.",
   "source": {
     "rootBranch": "codex/full-qa-refactor",
-    "rootBaseCommit": "b47e87e710c4f7509da5db54ad25b435ecc679e5",
-    "rootImplementationCommit": "889bcd1f4c6e067e602150e45ef9d1624fb1ebb2",
+    "rootQaBaselineCommit": "b47e87e710c4f7509da5db54ad25b435ecc679e5",
+    "rootPullRequestBaseCommit": "e61a9e926fddeacbfe5733d3ad7de961c53ac3e0",
+    "rootImplementationCommit": "bfc09fec0eeccd4041dc4d25eb70c7e1d5234eb8",
     "nestedUpstreamCommit": "3be565fbdee3115ab5b9338551768b8e5e655c56",
     "nestedIntegrationCommit": "0c1dbce2930bdb8b9c09ac768e71f20a3b87f814",
     "nestedIntegrationTree": "5df883962b78c8b29b98bcbfa1ebc5c939a3f6f4",
@@ -33,14 +34,14 @@
     "testedNestedCommit": "ba953455a63aee9a151cd49a6df9f559ff4cdd3c",
     "evidence": "temp/qa-runs/final-full/qa-run.json"
   },
-  "postDocumentationFastGate": {
+  "postRebaseFastGate": {
     "passed": true,
     "stepsPassed": 8,
     "stepsFailed": 0,
-    "durationMilliseconds": 51640,
-    "testedRootCommitWithReportsWorkingTree": "889bcd1f4c6e067e602150e45ef9d1624fb1ebb2",
+    "durationMilliseconds": 48522,
+    "testedRootCommitWithReportsWorkingTree": "b561d6f52741c3cba9376130edac77ab61f42cb2",
     "testedNestedCommit": "0c1dbce2930bdb8b9c09ac768e71f20a3b87f814",
-    "evidence": "temp/qa-runs/post-docs-fast/qa-run.json"
+    "evidence": "temp/qa-runs/post-rebase-fast/qa-run.json"
   },
   "tests": {
     "typescript": {
@@ -71,8 +72,8 @@
     },
     "powershellSyntax": {
       "passed": true,
-      "files": 24,
-      "functionalFiles": 23,
+      "files": 25,
+      "functionalFiles": 24,
       "securityExcludedFiles": 1,
       "failures": 0
     },
@@ -111,21 +112,21 @@
       "automatedOrRelatedSuitePercent": 95.67
     },
     "scripts": {
-      "total": 233,
-      "functionalScope": 226,
+      "total": 235,
+      "functionalScope": 228,
       "securityExcluded": 7,
-      "passedDirectExecution": 20,
+      "passedDirectExecution": 21,
       "passedPowerShellStaticParseOnly": 14,
-      "inventoriedNotDirectlyExecuted": 192
+      "inventoriedNotDirectlyExecuted": 193
     },
     "workflows": {
-      "total": 29,
-      "functionalScope": 28,
+      "total": 31,
+      "functionalScope": 30,
       "securityExcluded": 1,
       "passedEndToEnd": 11,
       "passedAutomated": 6,
       "passedControlledFixture": 3,
-      "partialEvidence": 8
+      "partialEvidence": 10
     }
   },
   "defects": {
@@ -170,8 +171,8 @@
   },
   "limitations": [
     "Forty-eight controls and nine UI states were source-inventoried but not individually exercised.",
-    "One hundred ninety-two executable entries were inventoried but not independently executed; fourteen additional PowerShell entries received parser-only coverage.",
-    "Eight workflows have partial evidence because their state-mutating operation was not fully run against the protected active installation.",
+    "One hundred ninety-three executable entries were inventoried but not independently executed; fourteen additional PowerShell entries received parser-only coverage.",
+    "Ten workflows have partial evidence because their state-mutating operation was not fully run against the protected active installation.",
     "A physical reboot, Windows logoff/shutdown, true insufficient-disk condition, interrupted live update, and every Windows scaling level were not exercised.",
     "The final direct portable re-launch was stopped by the user; the prior direct portable smoke and final unpacked/installed package tests passed."
   ]
