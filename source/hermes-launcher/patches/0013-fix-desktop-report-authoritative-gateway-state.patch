@@ -1,0 +1,503 @@
+From 16b774a019dc02c745c3370ffa51bd8aca3a4710 Mon Sep 17 00:00:00 2001
+From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
+Date: Wed, 29 Jul 2026 23:30:51 +0100
+Subject: [PATCH 13/13] fix(desktop): report authoritative gateway state
+
+---
+ .lazy-refresh-incomplete                      |  2 -
+ apps/desktop/electron/hermes-local-control.ts |  8 +-
+ .../hermes-local-gateway-status.test.ts       | 74 ++++++++++++++
+ .../electron/hermes-local-gateway-status.ts   | 75 ++++++++++++++
+ .../src/app/local-workstation/index.tsx       | 17 ++--
+ .../src/app/local-workstation/types.ts        |  7 ++
+ .../workstation-status.test.ts                | 90 +++++++++++++++++
+ .../local-workstation/workstation-status.ts   | 97 +++++++++++++++++++
+ 8 files changed, 359 insertions(+), 11 deletions(-)
+ delete mode 100644 .lazy-refresh-incomplete
+ create mode 100644 apps/desktop/electron/hermes-local-gateway-status.test.ts
+ create mode 100644 apps/desktop/electron/hermes-local-gateway-status.ts
+ create mode 100644 apps/desktop/src/app/local-workstation/workstation-status.test.ts
+ create mode 100644 apps/desktop/src/app/local-workstation/workstation-status.ts
+
+diff --git a/.lazy-refresh-incomplete b/.lazy-refresh-incomplete
+deleted file mode 100644
+index b9745a74b12f2e29798dabe48a9d217e741faa4a..0000000000000000000000000000000000000000
+--- a/.lazy-refresh-incomplete
++++ /dev/null
+@@ -1,2 +0,0 @@
+-started=1785343166.9711895
+-pid=2093896
+diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
+index e5436719e31b091eff6e0019c6fe08e6b66cdcce..02f0c781c085d3901679ddc6a4ba19f89eac3924 100644
+--- a/apps/desktop/electron/hermes-local-control.ts
++++ b/apps/desktop/electron/hermes-local-control.ts
+@@ -20,6 +20,8 @@ import {
+   validProfileName
+ } from './hermes-local-settings'
+ 
++import { readGatewayStatus } from './hermes-local-gateway-status'
++
+ const execFileAsync = promisify(execFile)
+ const MAX_TASK_OUTPUT = 128 * 1024
+ const MAX_COMPLETED_TASKS = 50
+@@ -506,7 +508,10 @@ async function buildWorkstationSnapshot() {
+   const modelBase = `http://${configuration.network.host}:${configuration.network.modelPort}`
+   const hermesBase = `http://${configuration.network.host}:${configuration.network.hermesPort}`
+ 
+-  const snapshotHealth = await serviceHealth(modelBase, hermesBase)
++  const [snapshotHealth, gateway] = await Promise.all([
++    serviceHealth(modelBase, hermesBase),
++    readGatewayStatus(`${hermesBase}/api/status`)
++  ])
+ 
+   const actions = Object.fromEntries(
+     Object.entries(ACTION_SCRIPTS).map(([name, relativePath]) => [name, fs.existsSync(resolveUnderRoot(relativePath))])
+@@ -523,6 +528,7 @@ async function buildWorkstationSnapshot() {
+     },
+     health: {
+       dashboard: snapshotHealth.dashboard,
++      gateway,
+       hermes: snapshotHealth.hermes,
+       model: snapshotHealth.model
+     },
+diff --git a/apps/desktop/electron/hermes-local-gateway-status.test.ts b/apps/desktop/electron/hermes-local-gateway-status.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e48f9a4c227267a8dbb34e041767c6a501194fe9
+--- /dev/null
++++ b/apps/desktop/electron/hermes-local-gateway-status.test.ts
+@@ -0,0 +1,74 @@
++import { describe, expect, it, vi } from 'vitest'
++
++import { normalizeGatewayStatus, readGatewayStatus } from './hermes-local-gateway-status'
++
++describe('Hermes Local gateway status probe', () => {
++  it('normalizes the authoritative running response', () => {
++    expect(
++      normalizeGatewayStatus({
++        gateway_running: true,
++        gateway_state: 'running',
++        gateway_updated_at: '2026-07-29T21:00:00+00:00'
++      })
++    ).toEqual({
++      checked: true,
++      reachable: true,
++      running: true,
++      state: 'running',
++      updatedAt: '2026-07-29T21:00:00+00:00'
++    })
++  })
++
++  it('preserves non-running lifecycle states', () => {
++    expect(normalizeGatewayStatus({ gateway_running: false, gateway_state: 'starting' })).toMatchObject({
++      checked: true,
++      reachable: true,
++      running: false,
++      state: 'starting'
++    })
++
++    expect(normalizeGatewayStatus({ gateway_running: false, gateway_state: 'stopped' })).toMatchObject({
++      checked: true,
++      reachable: true,
++      running: false,
++      state: 'stopped'
++    })
++  })
++
++  it('returns unavailable when the status endpoint cannot be verified', async () => {
++    const failedFetch = vi.fn(async () => {
++      throw new Error('offline')
++    })
++
++    await expect(readGatewayStatus('http://localhost/api/status', failedFetch as never)).resolves.toEqual({
++      checked: true,
++      reachable: false,
++      running: false,
++      state: 'unavailable',
++      updatedAt: null
++    })
++  })
++
++  it('queries the supplied portable status URL', async () => {
++    const fetchImpl = vi.fn(async (_input: string) => ({
++      ok: true,
++      json: async () => ({
++        gateway_running: false,
++        gateway_state: 'stopped',
++        gateway_updated_at: null
++      })
++    }))
++
++    const url = 'http://localhost:9119/api/status'
++    const result = await readGatewayStatus(url, fetchImpl as never)
++
++    expect(fetchImpl).toHaveBeenCalledOnce()
++    expect(fetchImpl.mock.calls[0]?.[0]).toBe(url)
++    expect(result).toMatchObject({
++      checked: true,
++      reachable: true,
++      running: false,
++      state: 'stopped'
++    })
++  })
++})
+\ No newline at end of file
+diff --git a/apps/desktop/electron/hermes-local-gateway-status.ts b/apps/desktop/electron/hermes-local-gateway-status.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..41b4923a9359262153602ecfd3cff5921af5a69e
+--- /dev/null
++++ b/apps/desktop/electron/hermes-local-gateway-status.ts
+@@ -0,0 +1,75 @@
++export interface GatewayStatusSnapshot {
++  checked: boolean
++  reachable: boolean
++  running: boolean
++  state: string
++  updatedAt: null | string
++}
++
++interface GatewayStatusPayload {
++  gateway_running?: unknown
++  gateway_state?: unknown
++  gateway_updated_at?: unknown
++}
++
++type GatewayFetch = (
++  input: string,
++  init?: { signal?: AbortSignal }
++) => Promise<{
++  json: () => Promise<unknown>
++  ok: boolean
++}>
++
++function unavailableGatewayStatus(): GatewayStatusSnapshot {
++  return {
++    checked: true,
++    reachable: false,
++    running: false,
++    state: 'unavailable',
++    updatedAt: null
++  }
++}
++
++export function normalizeGatewayStatus(payload: unknown): GatewayStatusSnapshot {
++  if (!payload || typeof payload !== 'object') {
++    return {
++      checked: true,
++      reachable: true,
++      running: false,
++      state: 'unknown',
++      updatedAt: null
++    }
++  }
++
++  const record = payload as GatewayStatusPayload
++  const running = record.gateway_running === true
++  const suppliedState = typeof record.gateway_state === 'string' ? record.gateway_state.trim() : ''
++  const updatedAt = typeof record.gateway_updated_at === 'string' ? record.gateway_updated_at : null
++
++  return {
++    checked: true,
++    reachable: true,
++    running,
++    state: suppliedState || (running ? 'running' : 'stopped'),
++    updatedAt
++  }
++}
++
++export async function readGatewayStatus(
++  url: string,
++  fetchImpl: GatewayFetch = fetch
++): Promise<GatewayStatusSnapshot> {
++  try {
++    const response = await fetchImpl(url, {
++      signal: AbortSignal.timeout(2500)
++    })
++
++    if (!response.ok) {
++      return unavailableGatewayStatus()
++    }
++
++    return normalizeGatewayStatus(await response.json())
++  } catch {
++    return unavailableGatewayStatus()
++  }
++}
+\ No newline at end of file
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index 0119519c286c7017a20c2ea79cca83be3f16cf7c..086aa72519453f8fd7e236ee9a673f111b6a93ef 100644
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -40,6 +40,7 @@ import type {
+   LocalWorkstationSettings,
+   LocalWorkstationSnapshot
+ } from './types'
++import { deriveLocalWorkstationStatus } from './workstation-status'
+ 
+ const SECTION_COPY = {
+   about: ['About', 'Pinned sources, build identity and workstation paths.'],
+@@ -826,7 +827,8 @@ function HomeContent({
+   snapshot: LocalWorkstationSnapshot
+   task: LocalActionTask | null
+ }) {
+-  const running = snapshot.health.model && snapshot.health.hermes
++  const status = deriveLocalWorkstationStatus(snapshot)
++  const stackRunning = status.stackRunning
+   const memoryUsed = snapshot.hardware.memoryTotalBytes - snapshot.hardware.memoryFreeBytes
+   const ramPercent = (memoryUsed / snapshot.hardware.memoryTotalBytes) * 100
+   const gpuPercent = snapshot.gpu ? (snapshot.gpu.memoryUsedMiB / snapshot.gpu.memoryTotalMiB) * 100 : 0
+@@ -838,22 +840,21 @@ function HomeContent({
+           <div className="absolute inset-y-0 left-0 w-1 bg-(--ui-accent)" />
+           <div className="min-w-0">
+             <div className="mb-2 flex flex-wrap items-center gap-2">
+-              <StatusPill label={running ? 'Ready for local inference' : 'Stack stopped'} ok={running} />
++              <StatusPill label={status.label} ok={status.ready} />
+               <span className="text-[0.6875rem] text-(--ui-text-tertiary)">
+                 {snapshot.runtime.profile || snapshot.profiles?.selected || 'No profile'}
+               </span>
+             </div>
+             <h2 className="text-xl font-semibold tracking-[-0.02em]">
+-              {running ? `${snapshot.model.displayName} and Hermes are online` : 'Start the local workstation'}
++              {status.title}
+             </h2>
+             <p className="mt-1 max-w-2xl text-sm leading-6 text-(--ui-text-secondary)">
+-              {running
+-                ? 'Authenticated loopback services are healthy and the desktop chat can use the local model.'
+-                : 'The model and Hermes stay off until you start them. User data and the verified model remain on disk.'}
++              {status.description}
++
+             </p>
+           </div>
+           <div className="flex flex-wrap gap-2 md:justify-end">
+-            {running ? (
++            {stackRunning ? (
+               <>
+                 <ActionButton action="restart" available={snapshot.actions.restart} onRun={onRun} task={task}>
+                   <IconRefresh className="size-3.5" />
+@@ -1543,7 +1544,7 @@ export function LocalWorkstationView() {
+     }
+ 
+     void load()
+-    const timer = window.setInterval(() => void load(), 5000)
++    const timer = window.setInterval(() => void load(), 2000)
+ 
+     return () => {
+       active = false
+diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
+index 6e93daa20a3aaf0a58523f37103cb121deaabdac..cfa9be5b67424723c4563931f5b7055fa31b4026 100644
+--- a/apps/desktop/src/app/local-workstation/types.ts
++++ b/apps/desktop/src/app/local-workstation/types.ts
+@@ -129,6 +129,13 @@ export interface LocalWorkstationSnapshot {
+   }
+   health: {
+     dashboard: boolean
++    gateway?: {
++      checked: boolean
++      reachable: boolean
++      running: boolean
++      state: string
++      updatedAt: null | string
++    }
+     hermes: boolean
+     model: boolean
+   }
+diff --git a/apps/desktop/src/app/local-workstation/workstation-status.test.ts b/apps/desktop/src/app/local-workstation/workstation-status.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f68d46adc34f3c6d2b752d39d2296c1e0b334bc1
+--- /dev/null
++++ b/apps/desktop/src/app/local-workstation/workstation-status.test.ts
+@@ -0,0 +1,90 @@
++import { describe, expect, it } from 'vitest'
++
++import type { LocalWorkstationSnapshot } from './types'
++import { deriveLocalWorkstationStatus } from './workstation-status'
++
++type GatewayOverride = Partial<NonNullable<LocalWorkstationSnapshot['health']['gateway']>>
++type HealthOverride = Omit<Partial<LocalWorkstationSnapshot['health']>, 'gateway'> & {
++  gateway?: GatewayOverride
++}
++
++function snapshot(health: HealthOverride): LocalWorkstationSnapshot {
++  const { gateway, ...serviceHealth } = health
++
++  return {
++    health: {
++      dashboard: true,
++      hermes: true,
++      model: true,
++      ...serviceHealth,
++      gateway: gateway
++        ? {
++            checked: gateway.checked ?? true,
++            reachable: gateway.reachable ?? true,
++            running: gateway.running ?? false,
++            state: gateway.state ?? 'stopped',
++            updatedAt: gateway.updatedAt ?? null
++          }
++        : undefined
++    },
++    model: {
++      displayName: 'Portable test model'
++    }
++  } as LocalWorkstationSnapshot
++}
++
++describe('local workstation readiness', () => {
++  it('shows Checking before an authoritative gateway result exists', () => {
++    const result = deriveLocalWorkstationStatus(snapshot({}))
++
++    expect(result.ready).toBe(false)
++    expect(result.label).toBe('Checking gateway')
++  })
++
++  it('never reports Ready when the authoritative gateway is stopped', () => {
++    const result = deriveLocalWorkstationStatus(
++      snapshot({ gateway: { running: false, state: 'stopped' } })
++    )
++
++    expect(result.ready).toBe(false)
++    expect(result.stackRunning).toBe(true)
++    expect(result.label).toBe('Gateway stopped')
++  })
++
++  it('reports starting while the gateway starts', () => {
++    const result = deriveLocalWorkstationStatus(
++      snapshot({ gateway: { running: false, state: 'starting' } })
++    )
++
++    expect(result.ready).toBe(false)
++    expect(result.label).toBe('Gateway starting')
++  })
++
++  it('reports unavailable when gateway status cannot be verified', () => {
++    const result = deriveLocalWorkstationStatus(
++      snapshot({ gateway: { reachable: false, running: false, state: 'unavailable' } })
++    )
++
++    expect(result.ready).toBe(false)
++    expect(result.label).toBe('Gateway unavailable')
++  })
++
++  it('reports Ready only after every live check passes', () => {
++    const result = deriveLocalWorkstationStatus(
++      snapshot({ gateway: { running: true, state: 'running' } })
++    )
++
++    expect(result.ready).toBe(true)
++    expect(result.label).toBe('Ready for local inference')
++  })
++
++  it('reports degraded when only part of the local stack is healthy', () => {
++    const result = deriveLocalWorkstationStatus(
++      snapshot({ hermes: false, gateway: { running: true, state: 'running' } })
++    )
++
++    expect(result.ready).toBe(false)
++    expect(result.label).toBe('Stack degraded')
++    expect(result.stackRunning).toBe(false)
++  })
++})
+\ No newline at end of file
+diff --git a/apps/desktop/src/app/local-workstation/workstation-status.ts b/apps/desktop/src/app/local-workstation/workstation-status.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..74723f38dc02acf3fdd7e921295404f5d1e0026e
+--- /dev/null
++++ b/apps/desktop/src/app/local-workstation/workstation-status.ts
+@@ -0,0 +1,97 @@
++import type { LocalWorkstationSnapshot } from './types'
++
++export interface LocalWorkstationPresentation {
++  description: string
++  label: string
++  ready: boolean
++  stackRunning: boolean
++  title: string
++}
++
++export function deriveLocalWorkstationStatus(
++  snapshot: LocalWorkstationSnapshot
++): LocalWorkstationPresentation {
++  const { health } = snapshot
++  const stackRunning = health.model && health.hermes && health.dashboard
++  const anyServiceRunning = health.model || health.hermes || health.dashboard
++
++  if (!stackRunning) {
++    if (anyServiceRunning) {
++      return {
++        description: 'One or more local services failed their live health check. Review the service logs before restarting.',
++        label: 'Stack degraded',
++        ready: false,
++        stackRunning: false,
++        title: 'Local workstation is partially available'
++      }
++    }
++
++    return {
++      description: 'The model and Hermes services are stopped. User data and the verified model remain on disk.',
++      label: 'Stack stopped',
++      ready: false,
++      stackRunning: false,
++      title: 'Start the local workstation'
++    }
++  }
++
++  const gateway = health.gateway
++
++  if (!gateway?.checked) {
++    return {
++      description: 'The local services are online while the Desktop verifies the authoritative gateway state.',
++      label: 'Checking gateway',
++      ready: false,
++      stackRunning: true,
++      title: 'Verifying gateway state'
++    }
++  }
++
++  if (!gateway.reachable) {
++    return {
++      description: 'The model and dashboard are online, but the gateway status endpoint could not be verified.',
++      label: 'Gateway unavailable',
++      ready: false,
++      stackRunning: true,
++      title: 'Gateway status is unavailable'
++    }
++  }
++
++  if (gateway.running) {
++    return {
++      description: 'The model, dashboard, and gateway have all passed live authoritative checks.',
++      label: 'Ready for local inference',
++      ready: true,
++      stackRunning: true,
++      title: `${snapshot.model.displayName}, Hermes, and the gateway are online`
++    }
++  }
++
++  if (gateway.state === 'starting' || gateway.state === 'restarting') {
++    return {
++      description: 'The model and dashboard are online and the gateway is still starting.',
++      label: 'Gateway starting',
++      ready: false,
++      stackRunning: true,
++      title: 'Waiting for the gateway'
++    }
++  }
++
++  if (['startup_failed', 'failed', 'crashed'].includes(gateway.state)) {
++    return {
++      description: 'The local services are online, but the gateway failed to start. Open the Web Dashboard or logs for details.',
++      label: 'Gateway failed',
++      ready: false,
++      stackRunning: true,
++      title: 'Gateway startup failed'
++    }
++  }
++
++  return {
++    description: 'The model and dashboard are online, but the gateway is stopped.',
++    label: 'Gateway stopped',
++    ready: false,
++    stackRunning: true,
++    title: 'Start or restart the gateway'
++  }
++}
+\ No newline at end of file
