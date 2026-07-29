@@ -1,0 +1,607 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-29T18:41:16.025Z",
+  "generator": "scripts/qa/build-qa-inventories.mjs",
+  "rootCommit": "889bcd1f4c6e067e602150e45ef9d1624fb1ebb2",
+  "nestedCommit": "0c1dbce2930bdb8b9c09ac768e71f20a3b87f814",
+  "entries": [
+    {
+      "id": "workflow:launcher-startup",
+      "name": "Launcher startup",
+      "chain": "Electron boot → environment setup → managed stack start → renderer",
+      "scope": "functional-qa",
+      "successPath": "passed",
+      "failurePath": "covered-by-related-regression-tests",
+      "recoveryPath": "not-separately-demonstrated",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts",
+        "temp/qa-runs/final-full/electron-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "passed-end-to-end",
+      "relatedDefectIds": [],
+      "evidenceQualification": "Executed through automated packaged coverage and/or a recorded live workstation workflow."
+    },
+    {
+      "id": "workflow:service-start",
+      "name": "Start services",
+      "chain": "Home/Services Start → preload.startAction → IPC action:start → Start-Hermes-Local.ps1 → status refresh",
+      "scope": "functional-qa",
+      "successPath": "passed",
+      "failurePath": "covered-by-related-regression-tests",
+      "recoveryPath": "passed",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts",
+        "temp/qa-runs/final-full/electron-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "passed-end-to-end",
+      "relatedDefectIds": [
+        "QA-003",
+        "QA-005"
+      ],
+      "evidenceQualification": "Executed through automated packaged coverage and/or a recorded live workstation workflow."
+    },
+    {
+      "id": "workflow:service-stop",
+      "name": "Stop services",
+      "chain": "Services Stop → preload.startAction → IPC action:start → Stop-Hermes-Local.ps1 → status refresh",
+      "scope": "functional-qa",
+      "successPath": "passed",
+      "failurePath": "covered-by-related-regression-tests",
+      "recoveryPath": "passed",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts",
+        "temp/qa-runs/final-full/electron-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "passed-end-to-end",
+      "relatedDefectIds": [
+        "QA-003"
+      ],
+      "evidenceQualification": "Executed through automated packaged coverage and/or a recorded live workstation workflow."
+    },
+    {
+      "id": "workflow:service-restart",
+      "name": "Restart services",
+      "chain": "Home/Services Restart → preload.startAction → IPC action:start → Restart-Hermes-Local.ps1 → status refresh",
+      "scope": "functional-qa",
+      "successPath": "passed",
+      "failurePath": "covered-by-related-regression-tests",
+      "recoveryPath": "passed",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts",
+        "temp/qa-runs/final-full/electron-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "passed-end-to-end",
+      "relatedDefectIds": [
+        "QA-003"
+      ],
+      "evidenceQualification": "Executed through automated packaged coverage and/or a recorded live workstation workflow."
+    },
+    {
+      "id": "workflow:action-exclusion",
+      "name": "Exclusive service actions",
+      "chain": "Any action button → IPC task registry → one active operation → disabled peer actions",
+      "scope": "functional-qa",
+      "successPath": "passed-automated",
+      "failurePath": "passed-ordinary-regression-case",
+      "recoveryPath": "passed-state-refresh-or-retry-case",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts",
+        "temp/qa-runs/final-full/local-electron-tests.stdout.txt"
+      ],
+      "manualEvidence": [],
+      "finalResult": "passed-automated",
+      "relatedDefectIds": [
+        "QA-003",
+        "QA-004"
+      ],
+      "evidenceQualification": "Focused Electron regression coverage passed; active user settings were not mutated."
+    },
+    {
+      "id": "workflow:profile-create",
+      "name": "Create profile",
+      "chain": "Profiles New → saveProfile → IPC profile:save → user-settings.json → snapshot",
+      "scope": "functional-qa",
+      "successPath": "passed-automated",
+      "failurePath": "passed-ordinary-regression-case",
+      "recoveryPath": "passed-state-refresh-or-retry-case",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts",
+        "temp/qa-runs/final-full/local-electron-tests.stdout.txt"
+      ],
+      "manualEvidence": [],
+      "finalResult": "passed-automated",
+      "relatedDefectIds": [
+        "QA-002"
+      ],
+      "evidenceQualification": "Focused Electron regression coverage passed; active user settings were not mutated."
+    },
+    {
+      "id": "workflow:profile-rename",
+      "name": "Rename profile",
+      "chain": "Profiles Save → original-name-aware IPC → replace profile → selected-profile migration → snapshot",
+      "scope": "functional-qa",
+      "successPath": "passed-automated",
+      "failurePath": "passed-ordinary-regression-case",
+      "recoveryPath": "passed-state-refresh-or-retry-case",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts",
+        "temp/qa-runs/final-full/local-electron-tests.stdout.txt"
+      ],
+      "manualEvidence": [],
+      "finalResult": "passed-automated",
+      "relatedDefectIds": [
+        "QA-001",
+        "QA-002"
+      ],
+      "evidenceQualification": "Focused Electron regression coverage passed; active user settings were not mutated."
+    },
+    {
+      "id": "workflow:profile-delete",
+      "name": "Delete profile",
+      "chain": "Profiles Delete → IPC profile:delete → fallback selection → snapshot",
+      "scope": "functional-qa",
+      "successPath": "passed-automated",
+      "failurePath": "passed-ordinary-regression-case",
+      "recoveryPath": "passed-state-refresh-or-retry-case",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts",
+        "temp/qa-runs/final-full/local-electron-tests.stdout.txt"
+      ],
+      "manualEvidence": [],
+      "finalResult": "passed-automated",
+      "relatedDefectIds": [],
+      "evidenceQualification": "Focused Electron regression coverage passed; active user settings were not mutated."
+    },
+    {
+      "id": "workflow:profile-select",
+      "name": "Select profile",
+      "chain": "Profile selector → IPC profile:select → user-settings.json → snapshot",
+      "scope": "functional-qa",
+      "successPath": "passed-automated",
+      "failurePath": "passed-ordinary-regression-case",
+      "recoveryPath": "passed-state-refresh-or-retry-case",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts",
+        "temp/qa-runs/final-full/local-electron-tests.stdout.txt"
+      ],
+      "manualEvidence": [],
+      "finalResult": "passed-automated",
+      "relatedDefectIds": [
+        "QA-001"
+      ],
+      "evidenceQualification": "Focused Electron regression coverage passed; active user settings were not mutated."
+    },
+    {
+      "id": "workflow:model-register",
+      "name": "Register GGUF",
+      "chain": "Models Register → file picker → IPC model:register → user-settings.json → select",
+      "scope": "functional-qa",
+      "successPath": "ui-surface-only-operation-not-run",
+      "failurePath": "not-individually-demonstrated",
+      "recoveryPath": "not-individually-demonstrated",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "temp/qa-runs/final-full/ui-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "partial-evidence-operation-not-fully-exercised",
+      "relatedDefectIds": [],
+      "evidenceQualification": "The workflow appears in the inventory and its UI/related suite passed, but the state-mutating operation was not fully exercised against the protected active installation."
+    },
+    {
+      "id": "workflow:model-remove",
+      "name": "Remove registered model",
+      "chain": "Models Remove → IPC model:remove → settings update → snapshot",
+      "scope": "functional-qa",
+      "successPath": "ui-surface-only-operation-not-run",
+      "failurePath": "not-individually-demonstrated",
+      "recoveryPath": "not-individually-demonstrated",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "temp/qa-runs/final-full/ui-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "partial-evidence-operation-not-fully-exercised",
+      "relatedDefectIds": [],
+      "evidenceQualification": "The workflow appears in the inventory and its UI/related suite passed, but the state-mutating operation was not fully exercised against the protected active installation."
+    },
+    {
+      "id": "workflow:model-select",
+      "name": "Select model",
+      "chain": "Models Select → IPC model:select → settings update → snapshot",
+      "scope": "functional-qa",
+      "successPath": "ui-surface-only-operation-not-run",
+      "failurePath": "not-individually-demonstrated",
+      "recoveryPath": "not-individually-demonstrated",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "temp/qa-runs/final-full/ui-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "partial-evidence-operation-not-fully-exercised",
+      "relatedDefectIds": [],
+      "evidenceQualification": "The workflow appears in the inventory and its UI/related suite passed, but the state-mutating operation was not fully exercised against the protected active installation."
+    },
+    {
+      "id": "workflow:settings-save",
+      "name": "Save runtime settings",
+      "chain": "Settings form → IPC settings:save → validation → user-settings.json → snapshot",
+      "scope": "functional-qa",
+      "successPath": "passed-automated",
+      "failurePath": "passed-ordinary-regression-case",
+      "recoveryPath": "passed-state-refresh-or-retry-case",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts",
+        "temp/qa-runs/final-full/local-electron-tests.stdout.txt"
+      ],
+      "manualEvidence": [],
+      "finalResult": "passed-automated",
+      "relatedDefectIds": [
+        "QA-006"
+      ],
+      "evidenceQualification": "Focused Electron regression coverage passed; active user settings were not mutated."
+    },
+    {
+      "id": "workflow:logs",
+      "name": "View logs",
+      "chain": "Logs selector/refresh → IPC logs → bounded read → redacted renderer output",
+      "scope": "functional-qa",
+      "successPath": "passed",
+      "failurePath": "passed-ordinary-unavailable-or-renderer-error-case",
+      "recoveryPath": "not-separately-demonstrated",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts",
+        "temp/qa-runs/final-full/electron-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "passed-end-to-end",
+      "relatedDefectIds": [
+        "QA-006",
+        "QA-014"
+      ],
+      "evidenceQualification": "Executed through automated packaged coverage and/or a recorded live workstation workflow."
+    },
+    {
+      "id": "workflow:dashboard",
+      "name": "Open dashboard",
+      "chain": "Dashboard Open → IPC dashboard:open → system browser",
+      "scope": "functional-qa",
+      "successPath": "passed",
+      "failurePath": "passed-ordinary-unavailable-or-renderer-error-case",
+      "recoveryPath": "not-separately-demonstrated",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts",
+        "temp/qa-runs/final-full/electron-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "passed-end-to-end",
+      "relatedDefectIds": [],
+      "evidenceQualification": "Executed through automated packaged coverage and/or a recorded live workstation workflow."
+    },
+    {
+      "id": "workflow:tui",
+      "name": "Open TUI",
+      "chain": "TUI panel → Electron PTY → managed Hermes CLI → stream cleanup",
+      "scope": "functional-qa",
+      "successPath": "passed",
+      "failurePath": "passed-ordinary-unavailable-or-renderer-error-case",
+      "recoveryPath": "passed",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts",
+        "temp/qa-runs/final-full/electron-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "passed-end-to-end",
+      "relatedDefectIds": [],
+      "evidenceQualification": "Executed through automated packaged coverage and/or a recorded live workstation workflow."
+    },
+    {
+      "id": "workflow:sessions",
+      "name": "Sessions",
+      "chain": "Sidebar route → Hermes session APIs → list/resume/delete feedback",
+      "scope": "functional-qa",
+      "successPath": "passed-limited-live-or-packaged-surface",
+      "failurePath": "not-individually-demonstrated",
+      "recoveryPath": "not-individually-demonstrated",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "temp/qa-runs/final-full/ui-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "partial-evidence-operation-not-fully-exercised",
+      "relatedDefectIds": [],
+      "evidenceQualification": "The workflow appears in the inventory and its UI/related suite passed, but the state-mutating operation was not fully exercised against the protected active installation."
+    },
+    {
+      "id": "workflow:projects",
+      "name": "Projects",
+      "chain": "Sidebar route → project APIs → list/create/open feedback",
+      "scope": "functional-qa",
+      "successPath": "passed-limited-live-or-packaged-surface",
+      "failurePath": "not-individually-demonstrated",
+      "recoveryPath": "not-individually-demonstrated",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "temp/qa-runs/final-full/ui-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "partial-evidence-operation-not-fully-exercised",
+      "relatedDefectIds": [],
+      "evidenceQualification": "The workflow appears in the inventory and its UI/related suite passed, but the state-mutating operation was not fully exercised against the protected active installation."
+    },
+    {
+      "id": "workflow:chat",
+      "name": "Desktop chat",
+      "chain": "Composer → Hermes API → streamed response/tool state → persisted session",
+      "scope": "functional-qa",
+      "successPath": "passed-limited-live-or-packaged-surface",
+      "failurePath": "not-individually-demonstrated",
+      "recoveryPath": "not-individually-demonstrated",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "temp/qa-runs/final-full/ui-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "partial-evidence-operation-not-fully-exercised",
+      "relatedDefectIds": [],
+      "evidenceQualification": "The workflow appears in the inventory and its UI/related suite passed, but the state-mutating operation was not fully exercised against the protected active installation."
+    },
+    {
+      "id": "workflow:launch-at-login",
+      "name": "Launch at sign-in",
+      "chain": "About toggle → IPC login-item:set → current-user Electron setting → refreshed state",
+      "scope": "functional-qa",
+      "successPath": "passed",
+      "failurePath": "covered-by-related-regression-tests",
+      "recoveryPath": "not-separately-demonstrated",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts",
+        "temp/qa-runs/final-full/electron-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "passed-end-to-end",
+      "relatedDefectIds": [],
+      "evidenceQualification": "Executed through automated packaged coverage and/or a recorded live workstation workflow."
+    },
+    {
+      "id": "workflow:backup",
+      "name": "Create backup",
+      "chain": "Backup action → Backup-Hermes-Local.ps1 → archive + manifest + checksum → task output",
+      "scope": "functional-qa",
+      "successPath": "passed-fixture",
+      "failurePath": "passed-ordinary-failure-fixtures",
+      "recoveryPath": "passed-fixture",
+      "automatedCoverage": [
+        "scripts/qa/Test-RecoveryFixtures.ps1",
+        "temp/qa-runs/final-full/recovery-fixtures.json"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "passed-controlled-fixture",
+      "relatedDefectIds": [],
+      "evidenceQualification": "Executed against isolated fixtures or a clean reconstruction worktree."
+    },
+    {
+      "id": "workflow:restore",
+      "name": "Restore backup",
+      "chain": "Restore-Hermes-Local.ps1 → validation → pre-restore backup → state restore → restart",
+      "scope": "functional-qa",
+      "successPath": "passed-fixture",
+      "failurePath": "passed-ordinary-failure-fixtures",
+      "recoveryPath": "passed-fixture",
+      "automatedCoverage": [
+        "scripts/qa/Test-RecoveryFixtures.ps1",
+        "temp/qa-runs/final-full/recovery-fixtures.json"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "passed-controlled-fixture",
+      "relatedDefectIds": [],
+      "evidenceQualification": "Executed against isolated fixtures or a clean reconstruction worktree."
+    },
+    {
+      "id": "workflow:diagnostics",
+      "name": "Export diagnostics",
+      "chain": "Diagnostics action → Export-Hermes-Diagnostics.ps1 → bounded archive → task output",
+      "scope": "functional-qa",
+      "successPath": "passed",
+      "failurePath": "covered-by-related-regression-tests",
+      "recoveryPath": "not-separately-demonstrated",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts",
+        "temp/qa-runs/final-full/electron-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "passed-end-to-end",
+      "relatedDefectIds": [],
+      "evidenceQualification": "Executed through automated packaged coverage and/or a recorded live workstation workflow."
+    },
+    {
+      "id": "workflow:benchmark",
+      "name": "Run benchmark",
+      "chain": "Benchmark action → Benchmark-Hermes-Local.ps1 → report → refreshed dashboard",
+      "scope": "functional-qa",
+      "successPath": "ui-surface-only-operation-not-run",
+      "failurePath": "not-individually-demonstrated",
+      "recoveryPath": "not-individually-demonstrated",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "temp/qa-runs/final-full/ui-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "partial-evidence-operation-not-fully-exercised",
+      "relatedDefectIds": [],
+      "evidenceQualification": "The workflow appears in the inventory and its UI/related suite passed, but the state-mutating operation was not fully exercised against the protected active installation."
+    },
+    {
+      "id": "workflow:repair",
+      "name": "Repair installation",
+      "chain": "Repair action → Repair-Hermes-Local.ps1 → dependency/config recovery → diagnostics",
+      "scope": "functional-qa",
+      "successPath": "ui-surface-only-operation-not-run",
+      "failurePath": "not-individually-demonstrated",
+      "recoveryPath": "not-individually-demonstrated",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "temp/qa-runs/final-full/ui-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "partial-evidence-operation-not-fully-exercised",
+      "relatedDefectIds": [],
+      "evidenceQualification": "The workflow appears in the inventory and its UI/related suite passed, but the state-mutating operation was not fully exercised against the protected active installation."
+    },
+    {
+      "id": "workflow:update-check",
+      "name": "Check for updates",
+      "chain": "Update action → Update-Hermes-Local.ps1 -Mode Check → task output",
+      "scope": "functional-qa",
+      "successPath": "passed",
+      "failurePath": "covered-by-related-regression-tests",
+      "recoveryPath": "not-separately-demonstrated",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts",
+        "temp/qa-runs/final-full/electron-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "passed-end-to-end",
+      "relatedDefectIds": [],
+      "evidenceQualification": "Executed through automated packaged coverage and/or a recorded live workstation workflow."
+    },
+    {
+      "id": "workflow:patch-reconstruction",
+      "name": "Reconstruct integration",
+      "chain": "Pinned upstream → ordered mail patches → dependency install → tree comparison",
+      "scope": "functional-qa",
+      "successPath": "passed-fixture",
+      "failurePath": "passed-ordinary-failure-fixtures",
+      "recoveryPath": "passed-fixture",
+      "automatedCoverage": [
+        "reports/qa/final-verification.md"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "passed-controlled-fixture",
+      "relatedDefectIds": [],
+      "evidenceQualification": "Executed against isolated fixtures or a clean reconstruction worktree."
+    },
+    {
+      "id": "workflow:package",
+      "name": "Build/package launcher",
+      "chain": "Desktop build → electron-builder → portable executable → package smoke/E2E",
+      "scope": "functional-qa",
+      "successPath": "passed",
+      "failurePath": "covered-by-related-regression-tests",
+      "recoveryPath": "not-separately-demonstrated",
+      "automatedCoverage": [
+        "source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts",
+        "source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts",
+        "temp/qa-runs/final-full/electron-full.stdout.txt"
+      ],
+      "manualEvidence": [
+        "reports/qa/final-verification.md"
+      ],
+      "finalResult": "passed-end-to-end",
+      "relatedDefectIds": [],
+      "evidenceQualification": "Executed through automated packaged coverage and/or a recorded live workstation workflow."
+    },
+    {
+      "id": "workflow:security",
+      "name": "Security screen/action",
+      "chain": "Inventory only; security auditing and vulnerability assessment excluded",
+      "scope": "security-excluded",
+      "successPath": "excluded-by-engagement-scope",
+      "failurePath": "excluded-by-engagement-scope",
+      "recoveryPath": "excluded-by-engagement-scope",
+      "automatedCoverage": [],
+      "manualEvidence": [],
+      "finalResult": "excluded",
+      "relatedDefectIds": [],
+      "evidenceQualification": "Security auditing and vulnerability assessment were excluded from this QA engagement."
+    }
+  ],
+  "summary": {
+    "total": 29,
+    "functionalQa": 28,
+    "securityExcluded": 1,
+    "finalDisposition": {
+      "excluded": 1,
+      "partial-evidence-operation-not-fully-exercised": 8,
+      "passed-automated": 6,
+      "passed-controlled-fixture": 3,
+      "passed-end-to-end": 11
+    }
+  },
+  "methodology": "Major workflow inventory with direct E2E, automated regression, controlled fixture, partial surface-only, or excluded dispositions. Partial evidence is not represented as a full pass.",
+  "finalizedAt": "2026-07-29T18:42:23.435Z",
+  "finalEvidenceDirectory": "temp/qa-runs/final-full"
+}

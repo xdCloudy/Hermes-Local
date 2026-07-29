@@ -1,5 +1,35 @@
 # Acceptance results
 
+## 2026-07-29 functional QA
+
+- Release: Hermes Launcher 0.18.1
+- Integration: `0c1dbce2930bdb8b9c09ac768e71f20a3b87f814`
+- Tree: `5df883962b78c8b29b98bcbfa1ebc5c939a3f6f4`
+- Result: **Pass with explicit functional coverage limitations**
+
+| Gate | Result |
+|---|---|
+| Full functional orchestrator | 12/12 passed in 170.179 s |
+| Electron Vitest | 835 passed, three skipped |
+| UI Vitest | 2,555 passed, one skipped |
+| Windows-critical Python | 136 passed, two skipped |
+| PowerShell parser | 24 files, zero failures; one excluded security script |
+| Recovery fixtures | 7/7 passed |
+| Unpacked / portable / installed launcher | Pass |
+| Start / stop / restart / recovery | Pass |
+| Patch reconstruction | Exact tree match from 12 patches |
+| Protected user state | Pass |
+
+Fourteen reproduced first-party defects were fixed. The rebuilt portable
+launcher is 126,983,589 bytes with SHA-256
+`eb6227c867d28de3a062be095ddfbdfcaadcca7fd89b48c6d2d9754769ae3ab5`.
+The detailed report and explicit inventory gaps are under `reports\qa`.
+
+Security auditing and vulnerability assessment were excluded from this QA
+engagement. The historical security section below was not revalidated.
+
+## 2026-07-28 historical acceptance
+
 > Historical reference: these results describe the original validation
 > machine and v0.17.0 starter model. Current installations resolve their own
 > model, profile, acceleration and ports from per-user settings.

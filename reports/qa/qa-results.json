@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-29T18:40:00Z",
+  "outcome": "pass-with-explicit-functional-coverage-limitations",
+  "securityScope": "Security auditing and vulnerability assessment were excluded from this QA engagement.",
+  "source": {
+    "rootBranch": "codex/full-qa-refactor",
+    "rootBaseCommit": "b47e87e710c4f7509da5db54ad25b435ecc679e5",
+    "rootImplementationCommit": "889bcd1f4c6e067e602150e45ef9d1624fb1ebb2",
+    "nestedUpstreamCommit": "3be565fbdee3115ab5b9338551768b8e5e655c56",
+    "nestedIntegrationCommit": "0c1dbce2930bdb8b9c09ac768e71f20a3b87f814",
+    "nestedIntegrationTree": "5df883962b78c8b29b98bcbfa1ebc5c939a3f6f4",
+    "patchCount": 12,
+    "patchReconstructionPassed": true
+  },
+  "environment": {
+    "operatingSystem": "Windows 11 Pro x64 build 26200",
+    "powershell": "7.6.4",
+    "node": "24.18.0",
+    "npm": "11.16.0",
+    "managedPython": "3.13.14",
+    "managedSqlite": "3.53.1",
+    "git": "2.55.0",
+    "launcherVersion": "0.18.1"
+  },
+  "releaseGate": {
+    "passed": true,
+    "runId": "20260729T180521Z",
+    "durationMilliseconds": 170179,
+    "stepsPassed": 12,
+    "stepsFailed": 0,
+    "testedRootBaseCommitWithQaWorkingTree": "b47e87e710c4f7509da5db54ad25b435ecc679e5",
+    "testedNestedCommit": "ba953455a63aee9a151cd49a6df9f559ff4cdd3c",
+    "evidence": "temp/qa-runs/final-full/qa-run.json"
+  },
+  "postDocumentationFastGate": {
+    "passed": true,
+    "stepsPassed": 8,
+    "stepsFailed": 0,
+    "durationMilliseconds": 51640,
+    "testedRootCommitWithReportsWorkingTree": "889bcd1f4c6e067e602150e45ef9d1624fb1ebb2",
+    "testedNestedCommit": "0c1dbce2930bdb8b9c09ac768e71f20a3b87f814",
+    "evidence": "temp/qa-runs/post-docs-fast/qa-run.json"
+  },
+  "tests": {
+    "typescript": {
+      "passed": true
+    },
+    "eslint": {
+      "passed": true,
+      "errors": 0,
+      "warnings": 51
+    },
+    "electronVitest": {
+      "passed": true,
+      "filesPassed": 74,
+      "filesSkipped": 1,
+      "testsPassed": 835,
+      "testsSkipped": 3
+    },
+    "uiVitest": {
+      "passed": true,
+      "filesPassed": 299,
+      "testsPassed": 2555,
+      "testsSkipped": 1
+    },
+    "pythonFunctional": {
+      "passed": true,
+      "testsPassed": 136,
+      "testsSkipped": 2
+    },
+    "powershellSyntax": {
+      "passed": true,
+      "files": 24,
+      "functionalFiles": 23,
+      "securityExcludedFiles": 1,
+      "failures": 0
+    },
+    "recoveryFixtures": {
+      "passed": true,
+      "testsPassed": 7,
+      "testsFailed": 0
+    },
+    "packagedFunctionalE2e": {
+      "unpackedPassed": true,
+      "installedPathWithSpacesPassed": true,
+      "portableDirectSmokePassed": true,
+      "launchAtLoginRestored": true
+    },
+    "dashboardRoutes": {
+      "passed": true,
+      "routesExercised": 17,
+      "consoleWarningsOrErrors": 0
+    },
+    "serviceLifecycle": {
+      "startPassed": true,
+      "stopPassed": true,
+      "restartPassed": true,
+      "automaticModelRecoveryPassed": true
+    }
+  },
+  "inventory": {
+    "ui": {
+      "sourceFiles": 322,
+      "controls": 1184,
+      "states": 133,
+      "totalEntries": 1317,
+      "labelAsserted": 78,
+      "relatedSuiteNotControlSpecific": 1182,
+      "sourceOnlyNotIndividuallyExercised": 57,
+      "automatedOrRelatedSuitePercent": 95.67
+    },
+    "scripts": {
+      "total": 233,
+      "functionalScope": 226,
+      "securityExcluded": 7,
+      "passedDirectExecution": 20,
+      "passedPowerShellStaticParseOnly": 14,
+      "inventoriedNotDirectlyExecuted": 192
+    },
+    "workflows": {
+      "total": 29,
+      "functionalScope": 28,
+      "securityExcluded": 1,
+      "passedEndToEnd": 11,
+      "passedAutomated": 6,
+      "passedControlledFixture": 3,
+      "partialEvidence": 8
+    }
+  },
+  "defects": {
+    "found": 14,
+    "fixed": 14,
+    "openReproducibleFirstParty": 0
+  },
+  "performance": {
+    "baselineBuildMilliseconds": 6137,
+    "postChangeMedianBuildMilliseconds": 5693,
+    "finalBuildMilliseconds": 5532,
+    "medianImprovementPercent": 7.2,
+    "baselineModules": 4539,
+    "finalModules": 4538
+  },
+  "package": {
+    "sourceStampCommit": "0c1dbce2930bdb8b9c09ac768e71f20a3b87f814",
+    "sourceStampDirty": false,
+    "portable": {
+      "path": "dist/Hermes Launcher.exe",
+      "sizeBytes": 126983589,
+      "sha256": "eb6227c867d28de3a062be095ddfbdfcaadcca7fd89b48c6d2d9754769ae3ab5"
+    },
+    "installer": {
+      "path": "dist/Hermes-Launcher-0.18.1-windows-x64-setup.exe",
+      "sizeBytes": 127245805,
+      "sha256": "f8d24f2b1d32b0f819808a5c6aa64d5c8a56702606f8701c483f6becebbf8ba6"
+    },
+    "blockmap": {
+      "path": "dist/Hermes-Launcher-0.18.1-windows-x64-setup.exe.blockmap",
+      "sizeBytes": 125820,
+      "sha256": "05c443ba92e2becc9123938c37161e52961ca7b094b332da733e69cb4231911a"
+    }
+  },
+  "dataIntegrity": {
+    "passed": true,
+    "userSettingsSha256BeforeAndAfter": "7129eff2e9b9df1c965a654da12044e6854b9ab09b023c26f5a4fee4f6a70fd8",
+    "nestedUserLockSha256BeforeAndAfter": "d63bf263d81d632a1c113f156e402f8387c632f270fd045de576f7609f16b82c",
+    "sessionSemanticCountsRestored": true,
+    "temporaryAchievementStateRemoved": true,
+    "safetyBackupSha256": "747f156e643cc872f7ec70864b62fe3a5c9562ffdffc6450814c6e9fbed428ef"
+  },
+  "limitations": [
+    "Forty-eight controls and nine UI states were source-inventoried but not individually exercised.",
+    "One hundred ninety-two executable entries were inventoried but not independently executed; fourteen additional PowerShell entries received parser-only coverage.",
+    "Eight workflows have partial evidence because their state-mutating operation was not fully run against the protected active installation.",
+    "A physical reboot, Windows logoff/shutdown, true insufficient-disk condition, interrupted live update, and every Windows scaling level were not exercised.",
+    "The final direct portable re-launch was stopped by the user; the prior direct portable smoke and final unpacked/installed package tests passed."
+  ]
+}

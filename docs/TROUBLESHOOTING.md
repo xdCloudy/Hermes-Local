@@ -12,6 +12,20 @@ From the project directory:
 Inspect `logs\diagnostics\latest-test.json` and the launcher Logs surface.
 Never publish the DPAPI token store or a raw session database.
 
+For a reproducible developer-side functional run:
+
+```powershell
+& '.\scripts\qa\Invoke-FullFunctionalQA.ps1' `
+  -Scope Full `
+  -OutputDirectory '.\temp\qa-runs\full'
+```
+
+Start with `qa-run.md` and `qa-run.json` in the selected output directory.
+Every step has separate `.stdout.txt` and `.stderr.txt` files. Python also
+writes JUnit XML; recovery and PowerShell checks write JSON. Inventory entries
+in `reports\qa` distinguish direct execution, related-suite evidence, parser
+evidence, and source-only gaps.
+
 ## Stack will not start
 
 1. Check `data\runtime\status.json`.
@@ -98,6 +112,11 @@ $env:HERMES_LOCAL_ROOT = (Resolve-Path '.').Path
 The same root can be passed as
 `--hermes-local-root=C:\path\to\Hermes-Local`.
 
+The portable artifact is a self-extractor. Use the unpacked or installed
+launcher for Playwright Electron tests, and use a native launch smoke for
+`dist\Hermes Launcher.exe` itself. Always confirm its packaged source stamp
+matches `VERSION.json` before interpreting UI results.
+
 ## TUI disconnected
 
 Use its restart control, then inspect launcher and Hermes logs. Launch the
@@ -113,3 +132,10 @@ $env:HERMES_HOME = (Resolve-Path '.\data\hermes').Path
 Do not edit a backup ZIP in place. Verify its `.sha256` sidecar and keep the
 archive under the current clone's `backups` directory. Restore rejects
 absolute and parent-traversal entries and creates a pre-restore backup.
+
+Run the isolated ordinary-failure fixtures without touching active user data:
+
+```powershell
+& '.\scripts\qa\Test-RecoveryFixtures.ps1' `
+  -OutputPath '.\temp\qa-runs\recovery-fixtures.json'
+```

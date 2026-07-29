@@ -195,6 +195,7 @@ running them.
 | Action | Command |
 |---|---|
 | Test | `& '.\Test-Hermes-Local.ps1' -NonInteractive` |
+| Full functional QA | `& '.\scripts\qa\Invoke-FullFunctionalQA.ps1' -Scope Full` |
 | Restart selected configuration | `& '.\Restart-Hermes-Local.ps1' -NonInteractive` |
 | Repair | `& '.\Repair-Hermes-Local.ps1' -NonInteractive` |
 | Backup | `& '.\Backup-Hermes-Local.ps1' -Name manual -NonInteractive` |
@@ -215,6 +216,11 @@ layer.
 
 Historical benchmark and acceptance reports describe the original validation
 machine and are labelled as evidence, not current runtime requirements.
+
+The full functional QA command writes timestamped JSON, Markdown, JUnit,
+stdout and stderr evidence beneath `temp\qa-runs`, and refreshes the
+machine-readable UI, script and workflow inventories in `reports\qa`. The
+current report is `reports\qa\FULL_FUNCTIONAL_QA_REPORT.md`.
 
 ## Documentation
 

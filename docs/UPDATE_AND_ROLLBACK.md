@@ -83,6 +83,10 @@ the updater exits before stopping the active installation. A maintainer must
 rebase the affected patch, validate the resulting integration and publish the
 updated patch series.
 
+Rerun the applicable source, UI, functional QA, and package gates before
+publishing that series. Security work is a separately authorised scope and was
+excluded from the 2026-07-29 functional QA engagement.
+
 ## Roll back Hermes Agent
 
 The most recent successful update retains its prior source checkout, Python
@@ -152,3 +156,10 @@ restarts the previous profile.
 `Get-HermesVersionManifest` merges the ignored source override over the tracked
 default manifest. Setup, repair, diagnostics and future update checks therefore
 use the promoted source pin without modifying tracked repository files.
+
+For the 2026-07-29 functional QA, Check mode completed successfully and the
+complete 0001–0012 patch series reconstructed
+`5df883962b78c8b29b98bcbfa1ebc5c939a3f6f4` from pinned upstream
+`3be565fbdee3115ab5b9338551768b8e5e655c56`. Failure-path update and rollback
+coverage used existing controlled tests and historical fixture evidence; no
+interrupted update was induced in the active protected installation.

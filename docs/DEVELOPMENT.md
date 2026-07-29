@@ -30,7 +30,11 @@ files into Git.
 6. portable Windows compression-persistence test fixtures;
 7. portable workstation configuration and model/profile controls;
 8. automatic cold-start of the supervised workstation before desktop
-   connection.
+   connection;
+9. workstation action, profile, polling, portability and build fixes;
+10. packaged functional workstation coverage;
+11. manifest-derived packaged source-pin verification;
+12. launch-at-login restoration coverage.
 
 Setup reconstructs from the pinned upstream base with `git am`, verifies the
 resulting tree and tolerates a different local commit ID caused only by
@@ -69,11 +73,25 @@ $env:HERMES_LOCAL_ROOT = $HermesRoot
 $env:HERMES_LOCAL_LAUNCHER_PATH = Join-Path $HermesRoot 'dist\Hermes Launcher.exe'
 Set-Location (Join-Path $HermesRoot 'source\hermes-agent\apps\desktop')
 & '.\node_modules\.bin\playwright.cmd' test `
-  e2e\hermes-local-workstation.spec.ts e2e\hermes-local-configuration.spec.ts `
+  e2e\hermes-local-functional.spec.ts `
   --workers=1 --reporter=list
 ```
 
 Use the root `node_modules\.bin` path if workspace bin shims are hoisted.
+
+Run the practical complete functional gate from the root:
+
+```powershell
+& '.\scripts\qa\Invoke-FullFunctionalQA.ps1' `
+  -Scope Full `
+  -OutputDirectory '.\temp\qa-runs\final-full'
+```
+
+`Fast` omits full UI/Electron/build/recovery/operational steps. `Package` adds
+the official packaging command. Every run captures per-step stdout/stderr and
+a machine-readable summary; full runs also produce JUnit Python output and
+finalize the UI, script, and workflow inventories. A related component suite
+is not counted as proof that every control was individually actuated.
 
 ## Python tests
 
@@ -99,7 +117,10 @@ The final Windows-critical selection and exact output are retained at
 
 Packaging builds the renderer/main bundles and uses electron-builder for NSIS
 and portable x64 artifacts. Re-run unpacked, portable and installed E2E tests,
-Defender and package hashing after every build-stamp or source change.
+native portable smoke, and package hashing after every build-stamp or source
+change. Playwright should target the unpacked or installed executable; the
+portable executable is a self-extractor and receives a recorded native smoke
+test.
 
 ## Release gates
 
@@ -107,17 +128,20 @@ Before promotion:
 
 1. nested source and root Git worktrees are clean;
 2. setup BootstrapOnly reconstruction passes;
-3. 13-file Windows-critical source suite is green;
+3. the documented Windows-critical Python selection is green;
 4. TypeScript and Ruff are green, ESLint has no errors;
 5. focused Electron/local-control/theme tests pass;
 6. real model, auth, loopback, tool schema and Hermes terminal tests pass;
 7. unpacked, portable and installed launcher E2E pass;
 8. installer/uninstaller preserve model/runtime/user data;
-9. benchmark and security reports identify the current source;
-10. package hashes are recorded and Defender is clean;
+9. benchmark and other separately scoped release evidence identify the current
+   source;
+10. package hashes and the clean source stamp are recorded;
 11. docs and known limitations are current.
 
-The upstream full desktop Vitest command currently contains POSIX-only
-fixtures and two billing assertions for features disabled in Hermes Local.
-Do not suppress them. The exact final result and waiver are in
-`ACCEPTANCE_RESULTS.md`.
+The current Windows full desktop and UI Vitest projects are green. Do not
+suppress future platform failures: classify and fix a first-party portability
+defect or document a proven upstream-only limitation with exact output.
+
+Security auditing and vulnerability assessment were excluded from the
+2026-07-29 functional QA engagement.
