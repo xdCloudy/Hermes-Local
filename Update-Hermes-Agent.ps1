@@ -196,14 +196,17 @@ function New-StagedAgentCandidate {
 
     [System.IO.Directory]::CreateDirectory($stageRoot) | Out-Null
     try {
+        # The mail patches contain abbreviated preimage blob IDs. A blob-filtered
+        # clone cannot resolve those IDs while git am --3way constructs its fake
+        # ancestor, so staging must retain the complete upstream object database.
         Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
-            'clone', '--filter=blob:none', '--no-checkout', $repository, $source
+            'clone', '--no-checkout', $repository, $source
         ) -LogComponent update
         Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
-            '-C', $source, 'fetch', 'origin', $currentBase, '--depth', '1'
+            '-C', $source, 'fetch', 'origin', $currentBase
         ) -LogComponent update
         Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
-            '-C', $source, 'fetch', 'origin', $Candidate, '--depth', '1'
+            '-C', $source, 'fetch', 'origin', $Candidate
         ) -LogComponent update
         Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
             '-C', $source, 'checkout', '--detach', $Candidate
@@ -221,7 +224,8 @@ function New-StagedAgentCandidate {
                 GIT_COMMITTER_EMAIL = 'hermes-local@localhost'
             } -LogComponent update
         } catch {
-            Invoke-NativeText -FilePath 'git' -WorkingDirectory $source -ArgumentList @('am', '--abort') -AllowFailure | Out-Null
+            # Keep the failed am session intact. The outer catch quarantines this
+            # staging tree under build\updates\failed for direct conflict review.
             throw "The Hermes Local patch series did not apply cleanly to $Candidate. The active installation was not changed. $($_.Exception.Message)"
         }
 
