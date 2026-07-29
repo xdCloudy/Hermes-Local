@@ -12,6 +12,62 @@ controls in one desktop application.
 
 ![Hermes Launcher home screen](reports/acceptance/launcher-home.png)
 
+## Project vision
+
+Hermes Local exists to make powerful, private local AI more accessible while
+pushing the practical limits of what personal computers can run.
+
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) provides the
+excellent agent foundation. Hermes Local builds around it as a Windows-first
+delivery, integration and research platform: simplifying setup and maintenance,
+connecting models to the right inference runtime, exposing advanced features
+through a usable interface, and prioritising leading inference optimisations for
+consumer hardware.
+
+The project approaches efficiency primarily from the **inference and systems
+side** rather than attempting to train foundation models. Its focus includes:
+
+- pluggable inference backends such as llama.cpp, specialised llama.cpp builds,
+  vLLM, SGLang and compatible external servers;
+- weight and KV-cache quantisation, including experimental techniques such as
+  TurboQuant where they can be integrated safely;
+- Flash Attention, prompt and prefix caching, speculative decoding, MTP,
+  EAGLE-family methods and other decode accelerators;
+- CPU, GPU, RAM, VRAM and pagefile-aware placement, including heterogeneous and
+  MoE-specific offloading;
+- hardware-aware memory planning, automated tuning and workload-specific
+  profiles;
+- long-context efficiency, context compression and cache observability;
+- reproducible benchmarks and capability certification covering quality,
+  tool use, context, stability and speed;
+- a modular path for integrating, comparing and extending experimental research
+  projects before promoting successful techniques into dependable features.
+
+The deliberately ambitious North Star is **frontier-class private AI running
+interactively on ordinary consumer hardware**. A concrete aspirational target is
+to make the most capable possible models usable locally at roughly 15 tokens per
+second, including on laptops where technically possible. The project may fall
+short of that extreme target, but every improvement in model capability,
+context, speed, memory use, reliability or accessibility still advances the
+mission.
+
+Hermes Local optimises for **useful capability**, not tokens per second alone.
+An optimisation should be measurable, reproducible and reversible, and it must
+not be considered successful if it makes tool calling, structured output,
+reasoning, long-context behaviour or system stability materially worse.
+
+The long-term goal is for a user to describe the capability they need and let
+Hermes Local determine the best validated combination of model, runtime,
+optimisations and resource policy for their machine.
+
+Key roadmap work:
+
+- [Multi-Backend AI Inference Orchestration](https://github.com/xdCloudy/Hermes-Local/issues/4)
+- [Dependable Installation and Maintenance](https://github.com/xdCloudy/Hermes-Local/issues/5)
+- [Hardware-Aware AutoTune and Memory Planner](https://github.com/xdCloudy/Hermes-Local/issues/12)
+- [Model Capability Certification Suite](https://github.com/xdCloudy/Hermes-Local/issues/15)
+- [Speculative Decoding and MTP Optimisation Manager](https://github.com/xdCloudy/Hermes-Local/issues/21)
+
 ## Portable by design
 
 The repository has no required drive letter, model, GPU, CUDA architecture,
