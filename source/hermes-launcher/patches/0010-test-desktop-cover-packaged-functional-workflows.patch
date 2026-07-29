@@ -1,0 +1,242 @@
+From 485f188d89a306895f17d9303d2734c0a154e666 Mon Sep 17 00:00:00 2001
+From: xdCloudy <connerabery@gmail.com>
+Date: Wed, 29 Jul 2026 18:43:43 +0100
+Subject: [PATCH] test(desktop): cover packaged functional workflows
+
+---
+ .../e2e/hermes-local-functional.spec.ts       | 210 ++++++++++++++++++
+ .../src/app/local-workstation/index.tsx       |   1 +
+ 2 files changed, 211 insertions(+)
+ create mode 100644 apps/desktop/e2e/hermes-local-functional.spec.ts
+
+diff --git a/apps/desktop/e2e/hermes-local-functional.spec.ts b/apps/desktop/e2e/hermes-local-functional.spec.ts
+new file mode 100644
+index 000000000..4dba5f65e
+--- /dev/null
++++ b/apps/desktop/e2e/hermes-local-functional.spec.ts
+@@ -0,0 +1,210 @@
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++
++import { _electron, expect, type Page, test } from '@playwright/test'
++
++const ROOT = process.env.HERMES_LOCAL_ROOT || path.resolve(import.meta.dirname, '../../../../..')
++const LAUNCHER = process.env.HERMES_LOCAL_LAUNCHER_PATH || path.join(ROOT, 'dist', 'Hermes Launcher.exe')
++const ENABLED = process.env.HERMES_LOCAL_FUNCTIONAL_ACCEPTANCE === '1'
++const EXPECTED_INTEGRATION_COMMIT = '662b2b6fe2350f45aab4d34f6f285fec5d8ae06e'
++
++interface WorkstationState {
++  health: {
++    dashboard: boolean
++    hermes: boolean
++    model: boolean
++  }
++  runtime: {
++    controllerAlive: boolean
++  }
++}
++
++async function workstationState(page: Page): Promise<WorkstationState> {
++  return page.evaluate(() =>
++    (
++      window as unknown as {
++        hermesDesktop: {
++          localWorkstation: {
++            snapshot: () => Promise<WorkstationState>
++          }
++        }
++      }
++    ).hermesDesktop.localWorkstation.snapshot()
++  )
++}
++
++test.describe('Hermes Local packaged functional acceptance', () => {
++  test.skip(!ENABLED, 'Set HERMES_LOCAL_FUNCTIONAL_ACCEPTANCE=1 to test the packaged local workstation.')
++
++  test('exercises the packaged workstation routes and state-preserving controls', async () => {
++    test.setTimeout(300_000)
++
++    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-local-functional-'))
++    const evidence = path.join(ROOT, 'reports', 'qa', 'screenshots')
++    const rendererErrors: string[] = []
++
++    const env = Object.fromEntries(
++      Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string')
++    )
++
++    fs.mkdirSync(evidence, { recursive: true })
++
++    for (const name of ['ALLUSERSPROFILE', 'ProgramData']) {
++      if (env[name]?.includes('%SystemDrive%')) {
++        env[name] = env[name].replaceAll('%SystemDrive%', env.SystemDrive || 'C:')
++      }
++    }
++
++    Object.assign(env, {
++      HERMES_DESKTOP_APP_NAME: `Hermes Functional QA ${path.basename(sandbox)}`,
++      HERMES_DESKTOP_TEST_HIDDEN: '1',
++      HERMES_DESKTOP_USER_DATA_DIR: path.join(sandbox, 'user-data'),
++      HERMES_LOCAL_ROOT: ROOT
++    })
++    delete env.HERMES_DESKTOP_BOOT_FAKE
++    delete env.HERMES_DESKTOP_REMOTE_TOKEN
++    delete env.HERMES_DESKTOP_REMOTE_URL
++
++    const app = await _electron.launch({
++      args: ['--disable-gpu'],
++      executablePath: LAUNCHER,
++      env
++    })
++
++    try {
++      const packageIdentity = await app.evaluate(({ app }) => ({
++        appVersion: app.getVersion(),
++        executable: app.getPath('exe'),
++        isPackaged: app.isPackaged,
++        resourcesPath: process.resourcesPath
++      }))
++
++      const stamp = JSON.parse(
++        fs.readFileSync(path.join(packageIdentity.resourcesPath, 'install-stamp.json'), 'utf8')
++      ) as {
++        commit: string
++        dirty: boolean
++      }
++
++      expect(packageIdentity.isPackaged).toBe(true)
++      expect(packageIdentity.appVersion).toBe('0.18.1')
++      expect(path.resolve(packageIdentity.executable)).toBe(path.resolve(LAUNCHER))
++      expect(stamp).toMatchObject({
++        commit: EXPECTED_INTEGRATION_COMMIT,
++        dirty: false
++      })
++
++      const page = await app.firstWindow({ timeout: 120_000 })
++
++      page.on('console', message => {
++        if (message.type() === 'error') {
++          rendererErrors.push(`console: ${message.text()}`)
++        }
++      })
++      page.on('pageerror', error => rendererErrors.push(`pageerror: ${error.message}`))
++      await page.setViewportSize({ height: 960, width: 1440 })
++
++      const nav = page.locator('[data-sidebar="menu"]').first()
++
++      await nav.getByRole('button', { exact: true, name: 'Home' }).click({ timeout: 120_000 })
++      await expect(page.getByRole('heading', { name: 'Local AI workstation' })).toBeVisible({ timeout: 60_000 })
++      await expect(page.getByText('Ready for local inference')).toBeVisible()
++
++      const initialState = await workstationState(page)
++
++      expect(initialState).toMatchObject({
++        health: { dashboard: true, hermes: true, model: true },
++        runtime: { controllerAlive: true }
++      })
++      await page.getByRole('button', { name: 'Refresh workstation' }).click()
++      await expect(page.getByRole('button', { name: 'Refresh workstation' })).toBeEnabled({ timeout: 30_000 })
++      await page.screenshot({ fullPage: true, path: path.join(evidence, 'packaged-home.png') })
++
++      const sections = [
++        ['Services', 'Services', 'services'],
++        ['Web Dashboard', 'Dashboard', 'dashboard'],
++        ['Tasks', 'Tasks', 'tasks'],
++        ['Models', 'Models', 'models'],
++        ['Profiles', 'Profiles', 'profiles'],
++        ['Tools', 'Tools', 'tools'],
++        ['Memory', 'Memory', 'memory'],
++        ['Sessions', 'Sessions', 'sessions'],
++        ['Projects', 'Projects', 'projects'],
++        ['Benchmarks', 'Benchmarks', 'benchmarks'],
++        ['Logs', 'Logs', 'logs'],
++        ['About', 'About', 'about']
++      ] as const
++
++      for (const [buttonName, headingName, screenshotName] of sections) {
++        await nav.getByRole('button', { exact: true, name: buttonName }).click()
++        await expect(page.getByRole('heading', { exact: true, name: headingName })).toBeVisible()
++        await page.screenshot({
++          fullPage: true,
++          path: path.join(evidence, `packaged-${screenshotName}.png`)
++        })
++      }
++
++      await nav.getByRole('button', { exact: true, name: 'Services' }).click()
++
++      for (const action of ['Start', 'Stop', 'Restart']) {
++        await expect(page.getByRole('button', { exact: true, name: action })).toBeVisible()
++      }
++
++      await nav.getByRole('button', { exact: true, name: 'Web Dashboard' }).click()
++      await expect(page.getByRole('button', { exact: true, name: 'Open Dashboard' })).toBeEnabled()
++
++      await nav.getByRole('button', { exact: true, name: 'Models' }).click()
++      await expect(page.getByRole('button', { exact: true, name: 'Register GGUF' })).toBeEnabled()
++
++      await nav.getByRole('button', { exact: true, name: 'Profiles' }).click()
++      const nameInput = page.getByLabel('Profile name')
++      const originalName = await nameInput.inputValue()
++
++      await nameInput.fill(`${originalName} QA draft`)
++      await page.getByRole('button', { exact: true, name: 'Flash Attention' }).click()
++      await expect(page.getByRole('button', { exact: true, name: 'Save profile' })).toBeEnabled()
++      await nav.getByRole('button', { exact: true, name: 'Home' }).click()
++
++      const unchangedProfile = await page.getByLabel('Inference profile').inputValue()
++
++      expect(unchangedProfile).toBe(originalName)
++
++      await nav.getByRole('button', { exact: true, name: 'Logs' }).click()
++      const logSelector = page.getByLabel('Log source')
++
++      await logSelector.selectOption('model')
++      await page.getByRole('button', { name: 'Refresh logs' }).click()
++      await expect(page.locator('pre')).not.toBeEmpty()
++
++      await nav.getByRole('button', { exact: true, name: 'TUI' }).click()
++      await expect(page.getByText('Hermes TUI', { exact: true })).toBeVisible()
++      await expect(page.getByText(/Connected · PID \d+/)).toBeVisible({ timeout: 60_000 })
++      await page.waitForFunction(
++        () => (document.querySelector('.xterm-rows')?.textContent?.trim().length || 0) > 10,
++        undefined,
++        { timeout: 60_000 }
++      )
++      await page.screenshot({ fullPage: true, path: path.join(evidence, 'packaged-tui.png') })
++
++      await page.setViewportSize({ height: 700, width: 900 })
++      await expect(page.getByText('Hermes TUI', { exact: true })).toBeVisible()
++
++      const horizontalOverflow = await page.evaluate(
++        () => document.documentElement.scrollWidth > document.documentElement.clientWidth
++      )
++
++      expect(horizontalOverflow).toBe(false)
++      await page.screenshot({ fullPage: true, path: path.join(evidence, 'packaged-tui-narrow.png') })
++
++      await page.keyboard.press('Tab')
++      const focusedTag = await page.evaluate(() => document.activeElement?.tagName || '')
++
++      expect(focusedTag).not.toBe('BODY')
++      expect(rendererErrors, rendererErrors.join('\n')).toEqual([])
++    } finally {
++      await app.close().catch(() => undefined)
++      fs.rmSync(sandbox, { force: true, recursive: true })
++    }
++  })
++})
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index d4b888469..0119519c2 100644
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -777,6 +777,7 @@ function LogViewer() {
+     <Surface className="overflow-hidden">
+       <header className="flex items-center gap-2 border-b border-(--ui-stroke-secondary) px-3 py-2">
+         <select
++          aria-label="Log source"
+           className="h-8 rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 text-xs outline-none"
+           onChange={event => setName(event.currentTarget.value as LocalLog)}
+           value={name}
+-- 
+2.55.0.windows.3
+
