@@ -93,11 +93,13 @@ jobs:
       - name: Record successful validation
         shell: pwsh
         run: |
-          $marker = '.gateway-compatibility-success'
-          if (Test-Path -LiteralPath $marker) {
-            Write-Host 'Compatibility marker already exists.'
+          $markerCommit = 'test: record gateway compatibility validation'
+          $subject = git log -1 --pretty=%s
+          if ($subject -eq $markerCommit) {
+            Write-Host 'Marker commit already represents the validated parent.'
             exit 0
           }
+          $marker = '.gateway-compatibility-success'
           @(
             'Pinned Hermes Agent: a0222295666558c72cc2b03d69f932801dcf96e6'
             "Validated commit: $env:GITHUB_SHA"
@@ -106,5 +108,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- $marker
-          git commit -m 'test: record gateway compatibility validation'
+          git commit -m $markerCommit
           git push origin HEAD:agent/manage-messaging-gateway
