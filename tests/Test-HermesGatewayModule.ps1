@@ -87,4 +87,5 @@ if ($supervisorText.Contains("-GatewayState 'stopped' -GatewayState 'stopped'"))
     throw 'Supervisor contains a duplicate stopped-state argument.'
 }
 
+& (Join-Path $PSScriptRoot 'Test-SetupChildProcessIsolation.ps1')
 Write-Host 'Hermes gateway module tests passed.'
