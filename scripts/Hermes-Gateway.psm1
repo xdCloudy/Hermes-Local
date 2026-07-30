@@ -3,6 +3,9 @@ $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'Common-Hermes.psm1') -Force
 
+$script:GatewaySnapshotCache = $null
+$script:GatewaySnapshotCachedAt = [datetime]::MinValue
+
 function Get-HermesGatewayEnvironment {
     [CmdletBinding()]
     param([string] $Token)
@@ -24,7 +27,21 @@ function Get-HermesGatewayEnvironment {
 
 function Get-HermesGatewaySnapshot {
     [CmdletBinding()]
-    param([switch] $Discover)
+    param(
+        [switch] $Discover,
+        [ValidateRange(0, 60)]
+        [int] $CacheSeconds = 8
+    )
+
+    $now = (Get-Date).ToUniversalTime()
+    if (-not $Discover -and $CacheSeconds -gt 0 -and $script:GatewaySnapshotCache) {
+        $ageSeconds = ($now - $script:GatewaySnapshotCachedAt).TotalSeconds
+        $cacheIsStable = -not [bool]$script:GatewaySnapshotCache.required -or
+            [bool]$script:GatewaySnapshotCache.healthy
+        if ($cacheIsStable -and $ageSeconds -lt $CacheSeconds) {
+            return $script:GatewaySnapshotCache
+        }
+    }
 
     $python = Resolve-HermesPath 'runtimes\python\hermes\Scripts\python.exe'
     if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
@@ -49,7 +66,10 @@ function Get-HermesGatewaySnapshot {
         throw 'Hermes gateway inspection returned no JSON snapshot.'
     }
     try {
-        return $jsonLine | ConvertFrom-Json -Depth 16
+        $snapshot = $jsonLine | ConvertFrom-Json -Depth 16
+        $script:GatewaySnapshotCache = $snapshot
+        $script:GatewaySnapshotCachedAt = $now
+        return $snapshot
     } catch {
         throw "Hermes gateway inspection returned invalid JSON: $($_.Exception.Message)"
     }
