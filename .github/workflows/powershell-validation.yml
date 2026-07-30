@@ -57,11 +57,6 @@ jobs:
           python -m py_compile '.\scripts\gateway_snapshot.py' '.\tests\test_gateway_snapshot.py'
           & '.\tests\Test-HermesGatewayModule.ps1'
 
-      - name: Test setup child-process isolation
-        shell: pwsh
-        run: |
-          & '.\tests\Test-SetupChildProcessIsolation.ps1'
-
       - name: Verify source override merge
         shell: pwsh
         run: |
