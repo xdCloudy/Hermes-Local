@@ -40,7 +40,7 @@ benchmarking and orchestrating local models—without Docker, WSL or a paid infe
 <!-- BEGIN GENERATED STATUS -->
 | Release | Delivery | Repository |
 |---|---|---|
-| **Current build:** v0.18.1<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x – Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Remove fatal and opaque failure modes before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 51 open · 1 closed<br>**Overall completion:** 2%<br>**Recent commit:** [`228e75e`](https://github.com/xdCloudy/Hermes-Local/commit/228e75e1060ae208e9852ab89989f43667a1106b) Merge pull request #57 from xdCloudy/agent/document-project-views |
+| **Current build:** v0.18.1<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x – Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Remove fatal and opaque failure modes before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 51 open · 1 closed<br>**Overall completion:** 2%<br>**Recent commit:** [`724f828`](https://github.com/xdCloudy/Hermes-Local/commit/724f82815dbd60360e482c54d339e681d9422240) Merge pull request #58 from xdCloudy/agent/redesign-documentation-experience |
 
 > Status is generated from GitHub issues, milestones, releases and commits.
 <!-- END GENERATED STATUS -->
