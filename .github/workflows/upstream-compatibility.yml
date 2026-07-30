@@ -1,0 +1,378 @@
+name: Upstream compatibility
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/upstream-compatibility.yml'
+      - 'scripts/ci/compatibility.py'
+      - 'tests/test_compatibility.py'
+      - 'docs/UPSTREAM_COMPATIBILITY.md'
+      - 'VERSION.json'
+      - 'source/hermes-launcher/patches/**'
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+    inputs:
+      hermes_agent_ref:
+        description: Hermes Agent branch, tag, or full commit; blank uses VERSION.json branch
+        required: false
+        type: string
+      llama_cpp_ref:
+        description: llama.cpp branch, tag, or full commit; blank uses VERSION.json branch
+        required: false
+        type: string
+      run_desktop_checks:
+        description: Install, test, and build the patched Desktop workspace
+        required: true
+        default: true
+        type: boolean
+      run_python_checks:
+        description: Install and run the Windows-critical Hermes Agent Python selection
+        required: true
+        default: true
+        type: boolean
+      run_package_checks:
+        description: Run the candidate Desktop packaging script when available
+        required: true
+        default: true
+        type: boolean
+      run_gpu_gate:
+        description: Run the CUDA build gate on a trusted self-hosted runner
+        required: true
+        default: false
+        type: boolean
+  repository_dispatch:
+    types:
+      - upstream-candidate
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-compatibility-${{ github.event_name }}
+  cancel-in-progress: false
+
+env:
+  PYTHONUTF8: '1'
+
+jobs:
+  unit-tests:
+    name: Compatibility tooling tests
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Validate compatibility tooling
+        shell: pwsh
+        run: |
+          python -m py_compile '.\scripts\ci\compatibility.py' '.\tests\test_compatibility.py'
+          python -m unittest '.\tests\test_compatibility.py' -v
+
+  hermes-agent:
+    name: Hermes Agent candidate
+    if: github.event_name != 'pull_request'
+    needs: unit-tests
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      HERMES_AGENT_REF: ${{ inputs.hermes_agent_ref || github.event.client_payload.hermes_agent_ref || '' }}
+      RUN_DESKTOP_CHECKS: ${{ github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || inputs.run_desktop_checks }}
+      RUN_PYTHON_CHECKS: ${{ github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || inputs.run_python_checks }}
+      RUN_PACKAGE_CHECKS: ${{ github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || inputs.run_package_checks }}
+    steps:
+      - name: Check out repository without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Test patched candidate
+        id: compatibility
+        shell: pwsh
+        run: |
+          $arguments = @(
+            '.\scripts\ci\compatibility.py',
+            'hermes-agent',
+            '--repository-root', '.',
+            '--work-dir', '.\temp\compatibility\hermes-agent',
+            '--log-dir', '.\artifacts\compatibility\hermes-agent\logs',
+            '--report', '.\artifacts\compatibility\hermes-agent\hermes-agent-report.json'
+          )
+          if ($env:HERMES_AGENT_REF) {
+            $arguments += @('--candidate-ref', $env:HERMES_AGENT_REF)
+          }
+          if ($env:RUN_DESKTOP_CHECKS -eq 'true') {
+            $arguments += '--run-desktop-checks'
+          }
+          if ($env:RUN_PYTHON_CHECKS -eq 'true') {
+            $arguments += '--run-python-checks'
+          }
+          if ($env:RUN_PACKAGE_CHECKS -eq 'true') {
+            $arguments += '--run-package-checks'
+          }
+
+          python @arguments
+          $exitCode = $LASTEXITCODE
+          "exit_code=$exitCode" >> $env:GITHUB_OUTPUT
+          exit 0
+
+      - name: Upload Hermes Agent compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: compatibility-hermes-agent
+          path: artifacts/compatibility/hermes-agent
+          if-no-files-found: error
+          retention-days: 30
+
+  llama-cpp-cpu:
+    name: llama.cpp CPU candidate
+    if: github.event_name != 'pull_request'
+    needs: unit-tests
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      LLAMA_CPP_REF: ${{ inputs.llama_cpp_ref || github.event.client_payload.llama_cpp_ref || '' }}
+    steps:
+      - name: Check out repository without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Build and smoke-test CPU candidate
+        id: compatibility
+        shell: pwsh
+        run: |
+          $arguments = @(
+            '.\scripts\ci\compatibility.py',
+            'llama-cpp',
+            '--repository-root', '.',
+            '--work-dir', '.\temp\compatibility\llama-cpp-cpu',
+            '--log-dir', '.\artifacts\compatibility\llama-cpp-cpu\logs',
+            '--report', '.\artifacts\compatibility\llama-cpp-cpu\llama-cpp-cpu-report.json',
+            '--parallel', '2'
+          )
+          if ($env:LLAMA_CPP_REF) {
+            $arguments += @('--candidate-ref', $env:LLAMA_CPP_REF)
+          }
+
+          python @arguments
+          $exitCode = $LASTEXITCODE
+          "exit_code=$exitCode" >> $env:GITHUB_OUTPUT
+          exit 0
+
+      - name: Upload CPU runtime compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: compatibility-llama-cpp-cpu
+          path: artifacts/compatibility/llama-cpp-cpu
+          if-no-files-found: error
+          retention-days: 30
+
+  llama-cpp-gpu:
+    name: llama.cpp trusted CUDA gate
+    if: >-
+      github.event_name != 'pull_request' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.run_gpu_gate) ||
+       (github.event_name == 'repository_dispatch' && github.event.client_payload.run_gpu_gate == true))
+    needs: unit-tests
+    runs-on:
+      - self-hosted
+      - windows
+      - hermes-gpu-gate
+    timeout-minutes: 180
+    env:
+      LLAMA_CPP_REF: ${{ inputs.llama_cpp_ref || github.event.client_payload.llama_cpp_ref || '' }}
+    steps:
+      - name: Check out repository without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Build and smoke-test CUDA candidate
+        shell: pwsh
+        run: |
+          $arguments = @(
+            '.\scripts\ci\compatibility.py',
+            'llama-cpp',
+            '--repository-root', '.',
+            '--work-dir', '.\temp\compatibility\llama-cpp-gpu',
+            '--log-dir', '.\artifacts\compatibility\llama-cpp-gpu\logs',
+            '--report', '.\artifacts\compatibility\llama-cpp-gpu\llama-cpp-gpu-report.json',
+            '--parallel', '2',
+            '--cuda'
+          )
+          if ($env:LLAMA_CPP_REF) {
+            $arguments += @('--candidate-ref', $env:LLAMA_CPP_REF)
+          }
+
+          python @arguments
+          $exitCode = $LASTEXITCODE
+          "compatibility_exit_code=$exitCode" >> $env:GITHUB_OUTPUT
+          exit 0
+
+      - name: Upload trusted GPU compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: compatibility-llama-cpp-gpu
+          path: artifacts/compatibility/llama-cpp-gpu
+          if-no-files-found: error
+          retention-days: 30
+
+  aggregate:
+    name: Publish compatibility result
+    if: always() && github.event_name != 'pull_request'
+    needs:
+      - unit-tests
+      - hermes-agent
+      - llama-cpp-cpu
+      - llama-cpp-gpu
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Check out trusted reporting code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Download component reports
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: compatibility-*
+          path: downloaded
+          merge-multiple: true
+
+      - name: Aggregate machine-readable evidence
+        shell: pwsh
+        run: |
+          python '.\scripts\ci\compatibility.py' aggregate `
+            --reports 'downloaded/**/*-report.json' `
+            --report '.\artifacts\compatibility\aggregate\compatibility-report.json'
+
+      - name: Add workflow summary
+        shell: pwsh
+        run: |
+          $report = Get-Content -Raw '.\artifacts\compatibility\aggregate\compatibility-report.json' | ConvertFrom-Json
+          @(
+            '# Upstream compatibility',
+            '',
+            "**Status:** ``$($report.status)``",
+            '',
+            '| Component | Candidate | Status |',
+            '|---|---|---|'
+          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          foreach ($component in @($report.components)) {
+            "| $($component.component) | ``$($component.candidate)`` | ``$($component.status)`` |" |
+              Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          }
+
+      - name: Update the rolling intervention issue
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        env:
+          REPORT_PATH: artifacts/compatibility/aggregate/compatibility-report.json
+        with:
+          script: |
+            const fs = require('fs')
+            const report = JSON.parse(fs.readFileSync(process.env.REPORT_PATH, 'utf8'))
+            const marker = '<!-- hermes-local:compatibility-rollup:v1 -->'
+            const actionable = !['compatible', 'compatible-with-warnings'].includes(report.status)
+            const { owner, repo } = context.repo
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'all',
+              labels: 'upstream',
+              per_page: 100
+            })
+            const existing = issues.find(issue => !issue.pull_request && (issue.body || '').includes(marker))
+            const componentRows = report.components.map(component => {
+              const candidate = component.candidate ? `\`${component.candidate}\`` : 'unresolved'
+              return `| ${component.component} | ${candidate} | \`${component.status}\` |`
+            }).join('\n')
+            const failures = report.failures.length
+              ? report.failures.map(item => `- **${item.component} / ${item.stage}:** ${item.message}`).join('\n')
+              : '- None.'
+            const warnings = report.warnings.length
+              ? report.warnings.map(item => `- **${item.component} / ${item.stage}:** ${item.message}`).join('\n')
+              : '- None.'
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`
+            const body = `${marker}
+            ## Latest upstream compatibility result
+
+            **Status:** \`${report.status}\`  
+            **Generated:** ${report.generatedAt}  
+            **Evidence:** ${runUrl}
+
+            | Component | Candidate | Status |
+            |---|---|---|
+            ${componentRows}
+
+            ### Failures
+            ${failures}
+
+            ### Warnings
+            ${warnings}
+
+            This issue is maintained automatically. Infrastructure failures are reported separately and do not classify an upstream candidate as incompatible.`.replace(/^            /gm, '')
+
+            if (actionable) {
+              if (existing) {
+                await github.rest.issues.update({
+                  owner,
+                  repo,
+                  issue_number: existing.number,
+                  title: 'Compatibility: upstream candidate intervention required',
+                  body,
+                  state: 'open'
+                })
+              } else {
+                await github.rest.issues.create({
+                  owner,
+                  repo,
+                  title: 'Compatibility: upstream candidate intervention required',
+                  body,
+                  labels: ['upstream', 'component: ci-testing', 'priority: high']
+                })
+              }
+            } else if (existing && existing.state === 'open') {
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: existing.number,
+                body,
+                state: 'closed',
+                state_reason: 'completed'
+              })
+            }
+
+      - name: Upload aggregate compatibility report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: compatibility-aggregate
+          path: artifacts/compatibility/aggregate
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Enforce promotion gate
+        shell: pwsh
+        run: |
+          $arguments = @(
+            '.\scripts\ci\compatibility.py',
+            'verify',
+            '--report', '.\artifacts\compatibility\aggregate\compatibility-report.json',
+            '--require-component', 'hermes-agent',
+            '--require-component', 'llama-cpp-cpu'
+          )
+          if (Test-Path '.\downloaded\llama-cpp-gpu-report.json') {
+            $arguments += @('--require-component', 'llama-cpp-gpu')
+          }
+          python @arguments
