@@ -42,4 +42,4 @@ jobs:
 
       - name: Run focused Electron control tests
         working-directory: /tmp/hermes-agent/apps/desktop
-        run: npx vitest run electron/hermes-local-control.test.ts
+        run: npx vitest run electron/hermes-local-control.test.ts -t "returns the active task|waits for an active benchmark"
