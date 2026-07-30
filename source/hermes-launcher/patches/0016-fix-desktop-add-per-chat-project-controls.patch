@@ -1,0 +1,874 @@
+From a001cd0ee3eb0c3335f8aaf2c8393dac868d48f1 Mon Sep 17 00:00:00 2001
+From: xdCloudy <connerabery@gmail.com>
+Date: Thu, 30 Jul 2026 05:05:40 +0100
+Subject: [PATCH] fix(desktop): add per-chat project controls
+
+---
+ apps/desktop/src/app/chat/composer/index.tsx  |  20 +++
+ .../composer/status-stack/coding-row.test.tsx |  32 ++++-
+ .../chat/composer/status-stack/coding-row.tsx | 132 ++++++++++++------
+ apps/desktop/src/app/chat/composer/types.ts   |   1 +
+ apps/desktop/src/app/chat/index.tsx           |   3 +
+ .../desktop/src/app/contrib/latest-actions.ts |   1 +
+ apps/desktop/src/app/contrib/types.ts         |   1 +
+ apps/desktop/src/app/contrib/wiring.tsx       |   3 +-
+ .../session/hooks/use-cwd-actions.test.tsx    |  57 ++++++++
+ .../src/app/session/hooks/use-cwd-actions.ts  |  22 ++-
+ apps/desktop/src/i18n/ar.ts                   |   1 +
+ apps/desktop/src/i18n/en.ts                   |   1 +
+ apps/desktop/src/i18n/ja.ts                   |   1 +
+ apps/desktop/src/i18n/types.ts                |   1 +
+ apps/desktop/src/i18n/zh-hant.ts              |   1 +
+ apps/desktop/src/i18n/zh.ts                   |   1 +
+ apps/desktop/src/store/updates.test.ts        |   6 +-
+ apps/desktop/src/store/updates.ts             |   3 +-
+ hermes_state.py                               |  13 ++
+ tests/test_hermes_state.py                    |  16 +++
+ tests/test_tui_gateway_server.py              |  55 ++++++++
+ tui_gateway/methods_session.py                |  29 ++--
+ tui_gateway/server.py                         |  26 +++-
+ 23 files changed, 360 insertions(+), 66 deletions(-)
+
+diff --git a/apps/desktop/src/app/chat/composer/index.tsx b/apps/desktop/src/app/chat/composer/index.tsx
+index cfb5e7518..347f75efb 100644
+--- a/apps/desktop/src/app/chat/composer/index.tsx
++++ b/apps/desktop/src/app/chat/composer/index.tsx
+@@ -8,6 +8,7 @@ import { Slot as ContribSlot } from '@/contrib/react/slot'
+ import { useI18n } from '@/i18n'
+ import { chatMessageText } from '@/lib/chat-messages'
+ import { sanitizeComposerInput } from '@/lib/composer-input-sanitize'
++import { selectDesktopPaths } from '@/lib/desktop-fs'
+ import { DATA_IMAGE_URL_RE } from '@/lib/embedded-images'
+ import { triggerHaptic } from '@/lib/haptics'
+ import { cn } from '@/lib/utils'
+@@ -84,6 +85,7 @@ export function ChatBar({
+   sessionId,
+   state,
+   onCancel,
++  onChangeSessionCwd,
+   onAddUrl,
+   onAttachDroppedItems,
+   onAttachImageBlob,
+@@ -190,6 +192,22 @@ export function ChatBar({
+   const reconnecting = gatewayState === 'closed' || gatewayState === 'error'
+   const inputDisabled = disabled && !reconnecting
+ 
++  const changeProject = useCallback(async () => {
++    if (!onChangeSessionCwd) {
++      return
++    }
++
++    const [selected] = await selectDesktopPaths({
++      defaultPath: cwd || undefined,
++      directories: true,
++      multiple: false
++    })
++
++    if (selected) {
++      await onChangeSessionCwd(selected)
++    }
++  }, [cwd, onChangeSessionCwd])
++
+   // The draft engine — detached source of truth (DOM + draftRef + edge
+   // selectors); typing never re-renders the chrome. ChatBar owns `queueEditRef`
+   // and threads it in so the draft↔queue coupling is an explicit dep, not a tangle.
+@@ -1140,10 +1158,12 @@ export function ChatBar({
+               />
+               <CodingStatusRow
+                 onBranchOff={handleBranchOff}
++                onChangeProject={onChangeSessionCwd ? changeProject : undefined}
+                 onConvertBranch={handleConvertBranch}
+                 onListBranches={handleListBranches}
+                 onOpen={toggleReview}
+                 onOpenWorktree={openInWorktree}
++                onRemoveProject={onChangeSessionCwd && cwd ? () => onChangeSessionCwd('') : undefined}
+                 onSwitchBranch={handleSwitchBranch}
+                 repoPath={cwd}
+               />
+diff --git a/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx b/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
+index c92182510..7fbb30b86 100644
+--- a/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
++++ b/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
+@@ -1,4 +1,4 @@
+-import { cleanup, render, screen } from '@testing-library/react'
++import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+ import { afterEach, describe, expect, it, vi } from 'vitest'
+ 
+ import { $repoStatus } from '@/store/coding-status'
+@@ -8,8 +8,12 @@ import { CodingStatusRow } from './coding-row'
+ vi.mock('@/i18n', () => ({
+   useI18n: () => ({
+     t: {
+-      rightSidebar: { noProjectTitle: 'No project' },
+-      sidebar: { projects: {} },
++      rightSidebar: {
++        changeCwdTitle: 'Change working directory',
++        noProjectTitle: 'No project',
++        removeProject: 'Remove project'
++      },
++      sidebar: { projects: { menu: 'Project actions', sectionLabel: 'Projects' } },
+       statusStack: { coding: {} }
+     }
+   })
+@@ -37,4 +41,26 @@ describe('CodingStatusRow projectless state', () => {
+ 
+     expect(screen.queryByText('No project')).toBeNull()
+   })
++
++  it('offers change and remove actions for an attached folder', async () => {
++    const onChangeProject = vi.fn()
++    const onRemoveProject = vi.fn()
++    $repoStatus.set(null)
++
++    render(
++      <CodingStatusRow
++        onChangeProject={onChangeProject}
++        onRemoveProject={onRemoveProject}
++        repoPath="/selected/folder"
++      />
++    )
++
++    fireEvent.contextMenu(screen.getByText('folder'))
++    fireEvent.click(await screen.findByText('Change working directory'))
++    expect(onChangeProject).toHaveBeenCalledOnce()
++
++    fireEvent.contextMenu(screen.getByText('folder'))
++    fireEvent.click(await screen.findByText('Remove project'))
++    expect(onRemoveProject).toHaveBeenCalledOnce()
++  })
+ })
+diff --git a/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx b/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
+index a8d587a0f..401d10c12 100644
+--- a/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
++++ b/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
+@@ -38,8 +38,12 @@ interface CodingStatusRowProps {
+   onListBranches?: () => Promise<HermesGitBranch[]>
+   /** Open the review pane (changed files + diffs). */
+   onOpen?: () => void
++  /** Pick a folder and attach it to this chat. */
++  onChangeProject?: () => Promise<void> | void
+   /** Jump into an existing worktree (open a fresh session anchored there). */
+   onOpenWorktree?: (path: string) => void
++  /** Detach this chat from its current folder/repository. */
++  onRemoveProject?: () => Promise<void> | void
+   /** Switch the current repo checkout to another branch. */
+   onSwitchBranch?: (branch: string) => Promise<void>
+   /** Repo root path for the worktree dialog. */
+@@ -56,9 +60,11 @@ interface CodingStatusRowProps {
+ export const CodingStatusRow = memo(function CodingStatusRow({
+   onBranchOff,
+   onConvertBranch,
++  onChangeProject,
+   onListBranches,
+   onOpen,
+   onOpenWorktree,
++  onRemoveProject,
+   onSwitchBranch,
+   repoPath
+ }: CodingStatusRowProps) {
+@@ -73,6 +79,25 @@ export const CodingStatusRow = memo(function CodingStatusRow({
+   const [worktreeOpen, setWorktreeOpen] = useState(false)
+   const [worktreeBase, setWorktreeBase] = useState<string | undefined>(undefined)
+   const resolvedRepoPath = repoPath?.trim() || undefined
++  const hasMenu = Boolean(onBranchOff || onChangeProject || onRemoveProject)
++
++  const renderProjectItems = (kit: MenuKit) => (
++    <>
++      <kit.Label className={MENU_SECTION}>{p.sectionLabel}</kit.Label>
++      {onChangeProject &&
++        renderActionItem(kit, {
++          key: '__change-project__',
++          label: <span className="truncate">{t.rightSidebar.changeCwdTitle}</span>,
++          onSelect: () => void onChangeProject()
++        })}
++      {onRemoveProject &&
++        renderActionItem(kit, {
++          key: '__remove-project__',
++          label: <span className="truncate">{t.rightSidebar.removeProject}</span>,
++          onSelect: () => void onRemoveProject()
++        })}
++    </>
++  )
+ 
+   const switchToBranch = async (branch: string) => {
+     if (!onSwitchBranch) {
+@@ -115,20 +140,43 @@ export const CodingStatusRow = memo(function CodingStatusRow({
+     setTimeout(() => setWorktreeOpen(true), 0)
+   }
+ 
+-  if (!status && resolvedRepoPath) {
+-    return null
+-  }
+-
+   if (!status) {
++    const label = resolvedRepoPath
++      ? resolvedRepoPath.split(/[\\/]/).filter(Boolean).at(-1) || resolvedRepoPath
++      : t.rightSidebar.noProjectTitle
++
++    const renderProjectMenu = (kit: MenuKit) => renderProjectItems(kit)
++
+     return (
+-      <StatusRow
+-        className={CODING_ROW_CLASS}
+-        leading={<Codicon className="text-muted-foreground/75" name="folder" size="0.8rem" />}
+-      >
+-        <span className="min-w-0 truncate text-xs font-normal text-muted-foreground/92">
+-          {t.rightSidebar.noProjectTitle}
+-        </span>
+-      </StatusRow>
++      <ActionsContextMenu contentClassName="w-60" disabled={!hasMenu} items={renderProjectMenu}>
++        <StatusRow
++          className={CODING_ROW_CLASS}
++          leading={<Codicon className="text-muted-foreground/75" name="folder" size="0.8rem" />}
++          onActivate={onChangeProject}
++        >
++          <div className="flex min-w-0 flex-1 items-center gap-1">
++            <span
++              className="min-w-0 truncate text-xs font-normal text-muted-foreground/92"
++              title={resolvedRepoPath}
++            >
++              {label}
++            </span>
++            {hasMenu && (
++              <ActionsMenu align="end" contentClassName="w-60" items={renderProjectMenu} side="top">
++                <Button
++                  aria-label={p.menu}
++                  className="pointer-events-none size-4 shrink-0 text-muted-foreground/60 opacity-0 transition hover:text-foreground group-hover/status-row:pointer-events-auto group-hover/status-row:opacity-100 group-focus-within/status-row:pointer-events-auto group-focus-within/status-row:opacity-100 data-[state=open]:pointer-events-auto data-[state=open]:opacity-100"
++                  onClick={event => event.stopPropagation()}
++                  size="icon-xs"
++                  variant="ghost"
++                >
++                  <Codicon name="kebab-vertical" size="0.8rem" />
++                </Button>
++              </ActionsMenu>
++            )}
++          </div>
++        </StatusRow>
++      </ActionsContextMenu>
+     )
+   }
+ 
+@@ -186,37 +234,43 @@ export const CodingStatusRow = memo(function CodingStatusRow({
+ 
+     return (
+       <>
+-        <kit.Label className={MENU_SECTION}>{s.newBranch}</kit.Label>
+-        {branchItems.map(item => renderActionItem(kit, item))}
+-        {switchTarget &&
+-          renderActionItem(kit, {
+-            key: '__switch__',
+-            label: <span className="truncate">{s.switchTo(switchTarget)}</span>,
+-            onSelect: () => void switchToBranch(switchTarget)
+-          })}
+-        <kit.Separator />
+-        <kit.Label className={MENU_SECTION}>{s.worktrees}</kit.Label>
+-        {worktreeItems.map(item => renderActionItem(kit, item))}
+-        {/* Create a fresh worktree off the current HEAD (the generic "spin up a
+-            worktree here", mirroring the sidebar's + button). */}
+-        {renderActionItem(kit, {
+-          key: '__start__',
+-          label: <span className="truncate">{p.startWork}</span>,
+-          onSelect: () => startBranch(undefined)
+-        })}
+-        {onConvertBranch &&
+-          renderActionItem(kit, {
+-            key: '__convert__',
+-            label: <span className="truncate">{p.convertBranch}</span>,
+-            onSelect: () => startBranch(undefined)
+-          })}
++        {(onChangeProject || onRemoveProject) && renderProjectItems(kit)}
++        {onBranchOff && (
++          <>
++            {(onChangeProject || onRemoveProject) && <kit.Separator />}
++            <kit.Label className={MENU_SECTION}>{s.newBranch}</kit.Label>
++            {branchItems.map(item => renderActionItem(kit, item))}
++            {switchTarget &&
++              renderActionItem(kit, {
++                key: '__switch__',
++                label: <span className="truncate">{s.switchTo(switchTarget)}</span>,
++                onSelect: () => void switchToBranch(switchTarget)
++              })}
++            <kit.Separator />
++            <kit.Label className={MENU_SECTION}>{s.worktrees}</kit.Label>
++            {worktreeItems.map(item => renderActionItem(kit, item))}
++            {/* Create a fresh worktree off the current HEAD (the generic "spin up a
++                worktree here", mirroring the sidebar's + button). */}
++            {renderActionItem(kit, {
++              key: '__start__',
++              label: <span className="truncate">{p.startWork}</span>,
++              onSelect: () => startBranch(undefined)
++            })}
++            {onConvertBranch &&
++              renderActionItem(kit, {
++                key: '__convert__',
++                label: <span className="truncate">{p.convertBranch}</span>,
++                onSelect: () => startBranch(undefined)
++              })}
++          </>
++        )}
+       </>
+     )
+   }
+ 
+   return (
+     <>
+-      <ActionsContextMenu contentClassName="w-60" disabled={!onBranchOff} items={renderBranchItems}>
++      <ActionsContextMenu contentClassName="w-60" disabled={!hasMenu} items={renderBranchItems}>
+         <StatusRow
+           // The base "where am I working" strip is part of the composer surface
+           // itself, so it inherits the composer's width and clipped top radius.
+@@ -240,7 +294,7 @@ export const CodingStatusRow = memo(function CodingStatusRow({
+                 ALWAYS laid out; only its opacity flips on hover/focus/open, so
+                 revealing it never reflows the row (no layout shift). pointer-events
+                 follow opacity so the invisible trigger isn't clickable at rest. */}
+-            {onBranchOff && (
++            {hasMenu && (
+               <ActionsMenu
+                 align="end"
+                 contentClassName="w-60"
+@@ -250,7 +304,7 @@ export const CodingStatusRow = memo(function CodingStatusRow({
+                 side="top"
+               >
+                 <Button
+-                  aria-label={s.newBranch}
++                  aria-label={p.menu}
+                   className="pointer-events-none size-4 shrink-0 text-muted-foreground/60 opacity-0 transition hover:text-foreground group-hover/status-row:pointer-events-auto group-hover/status-row:opacity-100 group-focus-within/status-row:pointer-events-auto group-focus-within/status-row:opacity-100 data-[state=open]:pointer-events-auto data-[state=open]:opacity-100"
+                   onClick={event => event.stopPropagation()}
+                   onKeyDown={event => {
+diff --git a/apps/desktop/src/app/chat/composer/types.ts b/apps/desktop/src/app/chat/composer/types.ts
+index 24abcf373..77187d35e 100644
+--- a/apps/desktop/src/app/chat/composer/types.ts
++++ b/apps/desktop/src/app/chat/composer/types.ts
+@@ -42,6 +42,7 @@ export interface ChatBarProps {
+   sessionId?: string | null
+   cwd?: string | null
+   onCancel: () => Promise<void> | void
++  onChangeSessionCwd?: (cwd: string) => Promise<void> | void
+   onAddContextRef?: (refText: string, label?: string, detail?: string) => void
+   onAddUrl?: (url: string) => void
+   onAttachImageBlob?: (blob: Blob) => Promise<boolean | void> | boolean | void
+diff --git a/apps/desktop/src/app/chat/index.tsx b/apps/desktop/src/app/chat/index.tsx
+index 40a8922d4..b0692de03 100644
+--- a/apps/desktop/src/app/chat/index.tsx
++++ b/apps/desktop/src/app/chat/index.tsx
+@@ -69,6 +69,7 @@ interface ChatViewProps extends Omit<React.ComponentProps<'div'>, 'onSubmit'> {
+   onToggleSelectedPin: () => void
+   onDeleteSelectedSession: () => void
+   onCancel: () => Promise<void> | void
++  onChangeSessionCwd?: (cwd: string) => Promise<void> | void
+   onAddContextRef: (refText: string, label?: string, detail?: string) => void
+   onAddUrl: (url: string) => void
+   onBranchInNewChat?: (messageId: string) => void
+@@ -246,6 +247,7 @@ export function ChatView({
+   onToggleSelectedPin,
+   onDeleteSelectedSession,
+   onCancel,
++  onChangeSessionCwd,
+   onAddContextRef,
+   onAddUrl,
+   onAttachImageBlob,
+@@ -573,6 +575,7 @@ export function ChatView({
+               onAttachDroppedItems={onAttachDroppedItems}
+               onAttachImageBlob={onAttachImageBlob}
+               onCancel={onCancel}
++              onChangeSessionCwd={onChangeSessionCwd}
+               onPasteClipboardImage={onPasteClipboardImage}
+               onPickFiles={onPickFiles}
+               onPickFolders={onPickFolders}
+diff --git a/apps/desktop/src/app/contrib/latest-actions.ts b/apps/desktop/src/app/contrib/latest-actions.ts
+index 7d191208a..b8f38eac8 100644
+--- a/apps/desktop/src/app/contrib/latest-actions.ts
++++ b/apps/desktop/src/app/contrib/latest-actions.ts
+@@ -36,6 +36,7 @@ export function latestChatActions(actions: ChatActions): ChatActions {
+     onAttachImageBlob: (...args) => actions.onAttachImageBlob(...args),
+     onBranchInNewChat: latestOptional(() => actions.onBranchInNewChat),
+     onCancel: (...args) => actions.onCancel(...args),
++    onChangeSessionCwd: latestOptional(() => actions.onChangeSessionCwd),
+     onDeleteSelectedSession: (...args) => actions.onDeleteSelectedSession(...args),
+     onDismissError: latestOptional(() => actions.onDismissError),
+     onEdit: (...args) => actions.onEdit(...args),
+diff --git a/apps/desktop/src/app/contrib/types.ts b/apps/desktop/src/app/contrib/types.ts
+index 1e2c60ac7..947026d56 100644
+--- a/apps/desktop/src/app/contrib/types.ts
++++ b/apps/desktop/src/app/contrib/types.ts
+@@ -34,6 +34,7 @@ export type ChatActions = Pick<
+   | 'onAttachImageBlob'
+   | 'onBranchInNewChat'
+   | 'onCancel'
++  | 'onChangeSessionCwd'
+   | 'onDeleteSelectedSession'
+   | 'onDismissError'
+   | 'onEdit'
+diff --git a/apps/desktop/src/app/contrib/wiring.tsx b/apps/desktop/src/app/contrib/wiring.tsx
+index 190e4b4ac..22592ea0c 100644
+--- a/apps/desktop/src/app/contrib/wiring.tsx
++++ b/apps/desktop/src/app/contrib/wiring.tsx
+@@ -261,7 +261,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
+     [activeSessionIdRef, updateSessionState]
+   )
+ 
+-  const { refreshProjectBranch } = useCwdActions({
++  const { changeSessionCwd, refreshProjectBranch } = useCwdActions({
+     activeSessionIdRef,
+     onSessionRuntimeInfo: updateActiveSessionRuntimeInfo,
+     requestGateway
+@@ -833,6 +833,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
+     onBranchInNewChat: messageId => void branchInNewChat(messageId),
+     onBranchSession: sessionId => void branchStoredSession(sessionId),
+     onCancel: cancelRun,
++    onChangeSessionCwd: changeSessionCwd,
+     onDeleteSelectedSession: () => {
+       const id = $selectedStoredSessionId.get()
+ 
+diff --git a/apps/desktop/src/app/session/hooks/use-cwd-actions.test.tsx b/apps/desktop/src/app/session/hooks/use-cwd-actions.test.tsx
+index 213c5d205..3c1208202 100644
+--- a/apps/desktop/src/app/session/hooks/use-cwd-actions.test.tsx
++++ b/apps/desktop/src/app/session/hooks/use-cwd-actions.test.tsx
+@@ -29,15 +29,18 @@ function deferred<T>() {
+ 
+ function Harness({
+   activeSessionIdRef,
++  onSessionRuntimeInfo,
+   onReady,
+   requestGateway
+ }: {
+   activeSessionIdRef: MutableRefObject<string | null>
++  onSessionRuntimeInfo?: (info: { branch?: string; cwd?: string }) => void
+   onReady: (handle: CwdActionsHandle) => void
+   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
+ }) {
+   const actions = useCwdActions({
+     activeSessionIdRef,
++    onSessionRuntimeInfo,
+     requestGateway
+   })
+ 
+@@ -94,4 +97,58 @@ describe('useCwdActions draft workspace target', () => {
+     expect($currentCwd.get()).toBe('')
+     expect($currentBranch.get()).toBe('')
+   })
++
++  it('detaches a draft locally without asking the gateway', async () => {
++    const requestGateway = vi.fn()
++    const activeSessionIdRef: MutableRefObject<string | null> = { current: null }
++    let handle: CwdActionsHandle | null = null
++
++    setCurrentCwd('/attached')
++    setCurrentBranch('main')
++    setNewChatWorkspaceTarget('/attached')
++    render(
++      <Harness activeSessionIdRef={activeSessionIdRef} onReady={h => (handle = h)} requestGateway={requestGateway} />
++    )
++    await waitFor(() => expect(handle).not.toBeNull())
++
++    await act(async () => {
++      await handle!.changeSessionCwd('')
++    })
++
++    expect($currentCwd.get()).toBe('')
++    expect($currentBranch.get()).toBe('')
++    expect($newChatWorkspaceTarget.get()).toBeNull()
++    expect(requestGateway).not.toHaveBeenCalled()
++  })
++
++  it('detaches the active chat through session.cwd.set and applies blank runtime cwd', async () => {
++    const requestGateway = vi.fn(async () => ({ branch: '', cwd: '' }) as never)
++    const onSessionRuntimeInfo = vi.fn()
++    const activeSessionIdRef: MutableRefObject<string | null> = { current: 'runtime-1' }
++    let handle: CwdActionsHandle | null = null
++
++    setCurrentCwd('/attached')
++    setCurrentBranch('main')
++    render(
++      <Harness
++        activeSessionIdRef={activeSessionIdRef}
++        onReady={h => (handle = h)}
++        onSessionRuntimeInfo={onSessionRuntimeInfo}
++        requestGateway={requestGateway}
++      />
++    )
++    await waitFor(() => expect(handle).not.toBeNull())
++
++    await act(async () => {
++      await handle!.changeSessionCwd('')
++    })
++
++    expect(requestGateway).toHaveBeenCalledWith('session.cwd.set', {
++      cwd: '',
++      session_id: 'runtime-1'
++    })
++    expect($currentCwd.get()).toBe('')
++    expect($currentBranch.get()).toBe('')
++    expect(onSessionRuntimeInfo).toHaveBeenCalledWith({ branch: '', cwd: '' })
++  })
+ })
+diff --git a/apps/desktop/src/app/session/hooks/use-cwd-actions.ts b/apps/desktop/src/app/session/hooks/use-cwd-actions.ts
+index 0943131d0..742537993 100644
+--- a/apps/desktop/src/app/session/hooks/use-cwd-actions.ts
++++ b/apps/desktop/src/app/session/hooks/use-cwd-actions.ts
+@@ -49,10 +49,6 @@ export function useCwdActions({ activeSessionIdRef, onSessionRuntimeInfo, reques
+     async (cwd: string) => {
+       const trimmed = cwd.trim()
+ 
+-      if (!trimmed) {
+-        return
+-      }
+-
+       // Ref, not the closure-captured prop: this hook's consumers are memoized
+       // on a stable actions object, so the prop can still name the previously
+       // focused chat. Re-anchoring the wrong session's workspace would point
+@@ -61,7 +57,13 @@ export function useCwdActions({ activeSessionIdRef, onSessionRuntimeInfo, reques
+ 
+       if (!sessionId) {
+         setCurrentCwd(trimmed)
+-        const workspaceGeneration = setNewChatWorkspaceTarget(trimmed)
++        const workspaceGeneration = setNewChatWorkspaceTarget(trimmed || null)
++
++        if (!trimmed) {
++          setCurrentBranch('')
++
++          return
++        }
+ 
+         try {
+           const info = await requestGateway<{ branch?: string; cwd?: string }>('config.get', {
+@@ -96,9 +98,9 @@ export function useCwdActions({ activeSessionIdRef, onSessionRuntimeInfo, reques
+           cwd: trimmed
+         })
+ 
+-        setCurrentCwd(info.cwd || trimmed)
++        setCurrentCwd(info.cwd ?? trimmed)
+         setCurrentBranch(info.branch || '')
+-        onSessionRuntimeInfo?.({ branch: info.branch || '', cwd: info.cwd || trimmed })
++        onSessionRuntimeInfo?.({ branch: info.branch || '', cwd: info.cwd ?? trimmed })
+       } catch (err) {
+         const message = err instanceof Error ? err.message : String(err)
+ 
+@@ -108,6 +110,12 @@ export function useCwdActions({ activeSessionIdRef, onSessionRuntimeInfo, reques
+           return
+         }
+ 
++        if (!trimmed) {
++          notifyError(err, copy.cwdChangeFailed)
++
++          return
++        }
++
+         setCurrentCwd(trimmed)
+         setCurrentBranch('')
+         notify({
+diff --git a/apps/desktop/src/i18n/ar.ts b/apps/desktop/src/i18n/ar.ts
+index 004ef79a2..fa0db559f 100644
+--- a/apps/desktop/src/i18n/ar.ts
++++ b/apps/desktop/src/i18n/ar.ts
+@@ -2121,6 +2121,7 @@ export const ar = defineLocale({
+     terminal: 'الطرفية',
+     noFolderSelected: 'لم يتم اختيار مجلد',
+     changeCwdTitle: 'تغيير مجلد العمل',
++    removeProject: 'إزالة المشروع',
+     remotePickerTitle: 'اختر مجلدا بعيدا',
+     remotePickerDescription: 'استعرض المجلدات على الخادم الخلفي المتصل.',
+     remotePickerSelect: 'تحديد المجلد',
+diff --git a/apps/desktop/src/i18n/en.ts b/apps/desktop/src/i18n/en.ts
+index 5d12c016c..d167d97ca 100644
+--- a/apps/desktop/src/i18n/en.ts
++++ b/apps/desktop/src/i18n/en.ts
+@@ -2514,6 +2514,7 @@ export const en: Translations = {
+     terminal: 'Terminal',
+     noFolderSelected: 'No folder selected',
+     changeCwdTitle: 'Change working directory',
++    removeProject: 'Remove project',
+     remotePickerTitle: 'Choose remote folder',
+     remotePickerDescription: 'Browse folders on the connected backend.',
+     remotePickerSelect: 'Select folder',
+diff --git a/apps/desktop/src/i18n/ja.ts b/apps/desktop/src/i18n/ja.ts
+index 798dfe739..8f7cbf316 100644
+--- a/apps/desktop/src/i18n/ja.ts
++++ b/apps/desktop/src/i18n/ja.ts
+@@ -2364,6 +2364,7 @@ export const ja = defineLocale({
+     terminal: 'ターミナル',
+     noFolderSelected: 'フォルダーが選択されていません',
+     changeCwdTitle: '作業ディレクトリを変更',
++    removeProject: 'プロジェクトを削除',
+     remotePickerTitle: 'リモートフォルダーを選択',
+     remotePickerDescription: '接続中のバックエンド上のフォルダーを参照します。',
+     remotePickerSelect: 'フォルダーを選択',
+diff --git a/apps/desktop/src/i18n/types.ts b/apps/desktop/src/i18n/types.ts
+index 8ccc8a034..16bf96e2c 100644
+--- a/apps/desktop/src/i18n/types.ts
++++ b/apps/desktop/src/i18n/types.ts
+@@ -2101,6 +2101,7 @@ export interface Translations {
+     terminal: string
+     noFolderSelected: string
+     changeCwdTitle: string
++    removeProject: string
+     remotePickerTitle: string
+     remotePickerDescription: string
+     remotePickerSelect: string
+diff --git a/apps/desktop/src/i18n/zh-hant.ts b/apps/desktop/src/i18n/zh-hant.ts
+index 999aa228b..37a576948 100644
+--- a/apps/desktop/src/i18n/zh-hant.ts
++++ b/apps/desktop/src/i18n/zh-hant.ts
+@@ -2288,6 +2288,7 @@ export const zhHant = defineLocale({
+     terminal: '終端機',
+     noFolderSelected: '未選擇資料夾',
+     changeCwdTitle: '變更工作目錄',
++    removeProject: '移除專案',
+     remotePickerTitle: '選擇遠端資料夾',
+     remotePickerDescription: '瀏覽已連線後端上的資料夾。',
+     remotePickerSelect: '選擇資料夾',
+diff --git a/apps/desktop/src/i18n/zh.ts b/apps/desktop/src/i18n/zh.ts
+index d30e9ce8c..b9169c002 100644
+--- a/apps/desktop/src/i18n/zh.ts
++++ b/apps/desktop/src/i18n/zh.ts
+@@ -2695,6 +2695,7 @@ export const zh: Translations = {
+     terminal: '终端',
+     noFolderSelected: '未选择文件夹',
+     changeCwdTitle: '更改工作目录',
++    removeProject: '移除项目',
+     remotePickerTitle: '选择远程文件夹',
+     remotePickerDescription: '浏览已连接后端上的文件夹。',
+     remotePickerSelect: '选择文件夹',
+diff --git a/apps/desktop/src/store/updates.test.ts b/apps/desktop/src/store/updates.test.ts
+index d2b4f4311..9298491f1 100644
+--- a/apps/desktop/src/store/updates.test.ts
++++ b/apps/desktop/src/store/updates.test.ts
+@@ -134,7 +134,7 @@ describe('reportBackendContract', () => {
+   })
+ 
+   it('dismisses the toast when the backend meets the contract', () => {
+-    reportBackendContract(6)
++    reportBackendContract(7)
+     expect(dismissSpy).toHaveBeenCalledWith('backend-contract-skew')
+     expect(notifySpy).not.toHaveBeenCalled()
+   })
+@@ -174,8 +174,8 @@ describe('reportBackendContract', () => {
+     lastToast().onDismiss()
+     notifySpy.mockClear()
+ 
+-    reportBackendContract(6) // backend updated → satisfied, snooze cleared
+-    reportBackendContract(5) // a later regression must warn immediately
++    reportBackendContract(7) // backend updated → satisfied, snooze cleared
++    reportBackendContract(6) // a later regression must warn immediately
+     expect(notifySpy).toHaveBeenCalledTimes(1)
+   })
+ })
+diff --git a/apps/desktop/src/store/updates.ts b/apps/desktop/src/store/updates.ts
+index 2464e6a82..0fe6eaafd 100644
+--- a/apps/desktop/src/store/updates.ts
++++ b/apps/desktop/src/store/updates.ts
+@@ -95,7 +95,8 @@ function isUpdateToastSnoozed(): boolean {
+ // v4: requires explicit Fast-off session creation and session-scoped Fast edits.
+ // v5: requires raised WebSocket frame size for large one-shot file.attach.
+ // v6: requires implicit desktop execution cwd to remain projectless in session.info.
+-const REQUIRED_BACKEND_CONTRACT = 6
++// v7: requires session.cwd.set with an empty cwd to detach a chat from its project.
++const REQUIRED_BACKEND_CONTRACT = 7
+ const SKEW_TOAST_ID = 'backend-contract-skew'
+ // The contract check runs on every session.resume (applyRuntimeInfo), so
+ // without a snooze the warning re-popped on every thread the user opened, even
+diff --git a/hermes_state.py b/hermes_state.py
+index 727edfce6..fec619999 100644
+--- a/hermes_state.py
++++ b/hermes_state.py
+@@ -3010,6 +3010,19 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
+ 
+         self._execute_write(_do)
+ 
++    def clear_session_cwd(self, session_id: str) -> None:
++        """Detach a session from its persisted workspace and Git metadata."""
++        if not session_id:
++            return
++
++        def _do(conn):
++            conn.execute(
++                "UPDATE sessions SET cwd = NULL, git_branch = NULL, git_repo_root = NULL WHERE id = ?",
++                (session_id,),
++            )
++
++        self._execute_write(_do)
++
+     def backfill_repo_roots(self, cwd_to_root: Dict[str, str]) -> None:
+         """Persist resolved git repo roots for cwds that don't have one yet.
+ 
+diff --git a/tests/test_hermes_state.py b/tests/test_hermes_state.py
+index 1aad825fe..53baf8a8f 100644
+--- a/tests/test_hermes_state.py
++++ b/tests/test_hermes_state.py
+@@ -139,6 +139,22 @@ class TestSessionLifecycle:
+         assert session["cwd"] == "/work/repo"
+         assert session["git_branch"] == "pets-feature"
+ 
++    def test_clear_session_cwd_removes_workspace_and_git_metadata(self, db):
++        db.create_session(session_id="s1", source="desktop")
++        db.update_session_cwd(
++            "s1",
++            "/work/repo",
++            git_branch="main",
++            git_repo_root="/work/repo",
++        )
++
++        db.clear_session_cwd("s1")
++
++        session = db.get_session("s1")
++        assert session["cwd"] is None
++        assert session["git_branch"] is None
++        assert session["git_repo_root"] is None
++
+     def test_child_session_inherits_cwd_and_git_repo_root_from_parent(self, db):
+         """A parent_session_id child born without cwd/git_repo_root (e.g. the
+         compression-fork path) must inherit both from its parent, so it
+diff --git a/tests/test_tui_gateway_server.py b/tests/test_tui_gateway_server.py
+index 53f8215a0..28bfb435d 100644
+--- a/tests/test_tui_gateway_server.py
++++ b/tests/test_tui_gateway_server.py
+@@ -2896,6 +2896,61 @@ def test_session_cwd_set_profile_session_updates_profile_db(monkeypatch, tmp_pat
+     assert "launch_update" not in captured
+ 
+ 
++def test_session_cwd_set_empty_detaches_profile_session(monkeypatch, tmp_path):
++    profile_home = tmp_path / "profiles" / "worker"
++    profile_home.mkdir(parents=True)
++    workspace = tmp_path / "workspace"
++    workspace.mkdir()
++    captured = {}
++
++    class ProfileDB:
++        def clear_session_cwd(self, session_id):
++            captured["cleared"] = session_id
++
++        def close(self):
++            captured["closed"] = True
++
++    session = {
++        "agent": None,
++        "cwd": str(workspace),
++        "explicit_cwd": True,
++        "profile_home": str(profile_home),
++        "running": False,
++        "session_key": "stored-profile-session",
++        "source": "desktop",
++    }
++    server._sessions["runtime-session"] = session
++    monkeypatch.setattr("hermes_state.SessionDB", lambda db_path=None: ProfileDB())
++    monkeypatch.setattr(server, "_register_session_cwd", lambda _session: None)
++    monkeypatch.setattr(server, "_emit", lambda *args, **kwargs: None)
++
++    import tools.terminal_tool as terminal_tool
++
++    monkeypatch.setattr(terminal_tool, "cleanup_vm", lambda key: captured.setdefault("cleanup", key))
++
++    try:
++        resp = server.handle_request(
++            {
++                "id": "1",
++                "method": "session.cwd.set",
++                "params": {"session_id": "runtime-session", "cwd": ""},
++            }
++        )
++
++        assert "error" not in resp
++        assert resp["result"]["cwd"] == ""
++        assert resp["result"]["branch"] == ""
++        assert resp["result"]["project"] is None
++        assert resp["result"]["desktop_contract"] == 7
++        assert session["explicit_cwd"] is False
++        assert session["cwd"] == str(Path.home())
++        assert captured["cleared"] == "stored-profile-session"
++        assert captured["cleanup"] == "stored-profile-session"
++        assert captured["closed"] is True
++    finally:
++        server._sessions.pop("runtime-session", None)
++
++
+ def test_stored_session_runtime_overrides_skips_bare_billing_provider():
+     """A bare billing bucket ("custom"/"auto"/"openrouter") must not be restored as the
+     provider identity on resume. A custom endpoint that never used `/model` persists only
+diff --git a/tui_gateway/methods_session.py b/tui_gateway/methods_session.py
+index 1c0fd3fc2..0b353fedb 100644
+--- a/tui_gateway/methods_session.py
++++ b/tui_gateway/methods_session.py
+@@ -715,18 +715,25 @@ def _(rid, params: dict) -> dict:
+         return _err(rid, 4009, "session busy")
+     raw = str(params.get("cwd", "") or "").strip()
+     if not raw:
+-        return _err(rid, 4016, "cwd required")
+-    try:
+-        cwd = _set_session_cwd(session, raw)
+-    except ValueError as e:
+-        return _err(rid, 4017, str(e))
++        _clear_session_cwd(session)
++        cwd = ""
++    else:
++        try:
++            cwd = _set_session_cwd(session, raw)
++        except ValueError as e:
++            return _err(rid, 4017, str(e))
+     agent = session.get("agent")
+-    info = _session_info(agent, session) if agent is not None else {
+-        "cwd": cwd,
+-        "branch": _git_branch_for_cwd(cwd),
+-        "project": _project_info_for_cwd(cwd),
+-        "lazy": True,
+-    }
++    info = (
++        _session_info(agent, session)
++        if agent is not None
++        else {
++            "cwd": cwd,
++            "branch": _git_branch_for_cwd(cwd),
++            "project": _project_info_for_cwd(cwd),
++            "lazy": True,
++            "desktop_contract": DESKTOP_BACKEND_CONTRACT,
++        }
++    )
+     _emit("session.info", params.get("session_id", ""), info)
+     return _ok(rid, info)
+ 
+diff --git a/tui_gateway/server.py b/tui_gateway/server.py
+index f8d3d627c..d215f2820 100644
+--- a/tui_gateway/server.py
++++ b/tui_gateway/server.py
+@@ -2632,6 +2632,29 @@ def _set_session_cwd(session: dict, cwd: str) -> str:
+     return resolved
+ 
+ 
++def _clear_session_cwd(session: dict) -> None:
++    """Detach a desktop chat from its workspace while keeping tools runnable."""
++    neutral = os.path.abspath(os.path.expanduser("~"))
++    if not os.path.isdir(neutral):
++        neutral = os.getcwd()
++
++    session["cwd"] = neutral
++    session["explicit_cwd"] = False
++    _register_session_cwd(session)
++    with _session_db(session) as db:
++        if db is not None:
++            try:
++                db.clear_session_cwd(session.get("session_key", ""))
++            except Exception:
++                logger.debug("failed to clear session cwd", exc_info=True)
++    try:
++        from tools.terminal_tool import cleanup_vm
++
++        cleanup_vm(session["session_key"])
++    except Exception:
++        pass
++
++
+ # ── Config I/O ────────────────────────────────────────────────────────
+ 
+ 
+@@ -4604,7 +4627,8 @@ def _current_profile_name() -> str:
+ # v4: session.create fast=false is an explicit per-session normal-tier override.
+ # v5: uvicorn ws_max_size raised for one-shot base64 file.attach frames (>16 MiB).
+ # v6: implicit desktop execution cwd is never reported as an attached workspace.
+-DESKTOP_BACKEND_CONTRACT = 6
++# v7: session.cwd.set accepts an empty cwd to explicitly detach a chat.
++DESKTOP_BACKEND_CONTRACT = 7
+ 
+ 
+ def _session_usage_snapshot(session: dict | None) -> dict:
+-- 
+2.55.0.windows.3
+
