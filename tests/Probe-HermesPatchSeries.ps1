@@ -8,7 +8,7 @@ $root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $manifest = Get-Content -Raw -LiteralPath (Join-Path $root 'VERSION.json') | ConvertFrom-Json
 $checkout = Join-Path $env:RUNNER_TEMP ("hermes-agent-patch-probe-" + [guid]::NewGuid().ToString('N'))
 $patchDirectory = Join-Path $root 'source\hermes-launcher\patches'
-$newPatchName = '0014-fix-desktop-allow-start-recovery-during-benchmark.patch'
+$newPatchName = '0019-fix-desktop-allow-start-recovery-during-benchmark.patch'
 
 function Invoke-Native {
     param(
