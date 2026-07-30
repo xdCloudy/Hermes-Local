@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Corrected messaging-gateway health to treat Hermes Agent's persisted `updated_at` value as a state-change timestamp rather than a periodic heartbeat, preventing a live connected gateway from being restarted merely because it has been idle or the model is leased to a benchmark.
+- Checkpointed completed native benchmark cases before model restoration and added replacement-supervisor recovery so valid measurements survive an unrelated restoration failure.
 - Fixed benchmark startup on PowerShell by allowing newly created empty argument and case accumulator lists to bind before they are populated, with a real construction-path self-test.
 - Made the benchmark harness hardware- and settings-agnostic by probing the installed `llama-bench` options, translating abstract GPU-layer settings without mutating profiles, deriving sweeps from the selected profile and hardware, and flattening adaptive context cases.
 - Preserved a complete telemetry schema for failed native benchmark cases so report generation records the original failure instead of throwing on missing performance counters.
