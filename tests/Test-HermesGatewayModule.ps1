@@ -95,4 +95,5 @@ if ($supervisorText.Contains("-GatewayState 'stopped' -GatewayState 'stopped'"))
 }
 
 & (Join-Path $PSScriptRoot 'Test-SetupChildProcessIsolation.ps1')
+& (Join-Path $PSScriptRoot 'Probe-HermesPatchSeries.ps1')
 Write-Host 'Hermes gateway module tests passed.'
