@@ -37,7 +37,10 @@ files into Git.
 9. workstation action, profile, polling, portability and build fixes;
 10. packaged functional workstation coverage;
 11. manifest-derived packaged source-pin verification;
-12. launch-at-login restoration coverage.
+12. launch-at-login restoration coverage;
+13. authoritative gateway state reporting;
+14. authoritative gateway status in global desktop chrome;
+15. projectless packaged-chat startup and reconnect behavior.
 
 Setup reconstructs from the pinned upstream base with `git am`, verifies the
 resulting tree and tolerates a different local commit ID caused only by
