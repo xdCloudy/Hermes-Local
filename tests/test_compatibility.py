@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "ci" / "compatibility.py"
 SPEC = importlib.util.spec_from_file_location("hermes_compatibility", MODULE_PATH)
@@ -56,6 +57,46 @@ class CompatibilityReportTests(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertEqual(compatibility.package_script(package), "package:win")
+
+    def test_prepare_agent_checkout_fetches_base_and_candidate_objects(self) -> None:
+        base = "a" * 40
+        candidate = "b" * 40
+        work = Path("work")
+        source = work / "hermes-agent"
+        log = Path("logs/patches.log")
+        with mock.patch.object(compatibility, "run") as run_mock:
+            compatibility.prepare_hermes_agent_checkout(
+                "https://example.invalid/hermes-agent.git",
+                source,
+                base=base,
+                candidate=candidate,
+                work=work,
+                log=log,
+            )
+        commands = [call.args[0] for call in run_mock.call_args_list]
+        self.assertEqual(commands[0][:3], ["git", "clone", "--no-checkout"])
+        self.assertNotIn("--filter=blob:none", commands[0])
+        self.assertIn(["git", "fetch", "origin", base], commands)
+        self.assertIn(["git", "fetch", "origin", candidate], commands)
+        self.assertEqual(commands[-1], ["git", "checkout", "--detach", candidate])
+
+    def test_prepare_agent_checkout_fetches_identical_revision_once(self) -> None:
+        revision = "a" * 40
+        with mock.patch.object(compatibility, "run") as run_mock:
+            compatibility.prepare_hermes_agent_checkout(
+                "https://example.invalid/hermes-agent.git",
+                Path("work/hermes-agent"),
+                base=revision,
+                candidate=revision,
+                work=Path("work"),
+                log=Path("logs/patches.log"),
+            )
+        fetches = [
+            call.args[0]
+            for call in run_mock.call_args_list
+            if call.args[0][:2] == ["git", "fetch"]
+        ]
+        self.assertEqual(fetches, [["git", "fetch", "origin", revision]])
 
     def test_verify_requires_named_component_reports(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
