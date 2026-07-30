@@ -50,12 +50,13 @@ jobs:
             throw ($failures -join [Environment]::NewLine)
           }
 
-      - name: Test gateway lifecycle helpers
+      - name: Test gateway and benchmark lifecycle helpers
         shell: pwsh
         run: |
           python -m unittest discover -s tests -p 'test_gateway_snapshot.py' -v
           python -m py_compile '.\scripts\gateway_snapshot.py' '.\tests\test_gateway_snapshot.py'
           & '.\tests\Test-HermesGatewayModule.ps1'
+          & '.\tests\Test-BenchmarkLifecycleContract.ps1'
 
       - name: Verify source override merge
         shell: pwsh
