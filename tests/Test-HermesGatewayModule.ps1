@@ -4,7 +4,14 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-Import-Module (Join-Path $root 'scripts\Hermes-Gateway.psm1') -Force
+$commonModule = Join-Path $root 'scripts\Common-Hermes.psm1'
+$gatewayModule = Join-Path $root 'scripts\Hermes-Gateway.psm1'
+Import-Module $commonModule -Force
+Import-Module $gatewayModule -Force
+
+if (-not (Get-Command Protect-HermesLogText -ErrorAction SilentlyContinue)) {
+    throw 'Importing the gateway module removed Protect-HermesLogText from the parent script scope.'
+}
 
 function Assert-Equal {
     param(
