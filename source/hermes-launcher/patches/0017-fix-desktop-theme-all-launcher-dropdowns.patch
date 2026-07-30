@@ -1,20 +1,20 @@
-From ce9faedfdcf8c9efdb2cc3d5f34b54cc63cac0ba Mon Sep 17 00:00:00 2001
+From b99b40258b55900d2177e2baf98b48102b874eda Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Thu, 30 Jul 2026 05:36:36 +0100
 Subject: [PATCH] fix(desktop): theme all launcher dropdowns
 
 ---
- .../e2e/hermes-local-configuration.spec.ts    |  65 ++++++---
+ .../e2e/hermes-local-configuration.spec.ts    |  67 +++++++---
  .../e2e/hermes-local-functional.spec.ts       |   6 +-
  .../src/app/local-workstation/index.tsx       | 125 +++++++++++-------
  .../src/app/quick-entry/quick-entry-app.tsx   |  54 ++++----
  .../desktop/src/components/ui/select.test.tsx |  45 +++++++
  apps/desktop/src/components/ui/select.tsx     |   4 +-
- 6 files changed, 204 insertions(+), 95 deletions(-)
+ 6 files changed, 206 insertions(+), 95 deletions(-)
  create mode 100644 apps/desktop/src/components/ui/select.test.tsx
 
 diff --git a/apps/desktop/e2e/hermes-local-configuration.spec.ts b/apps/desktop/e2e/hermes-local-configuration.spec.ts
-index 2f26f1ade..19019b9f9 100644
+index 2f26f1ade..72ee002e8 100644
 --- a/apps/desktop/e2e/hermes-local-configuration.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-configuration.spec.ts
 @@ -2,7 +2,7 @@ import fs from 'node:fs'
@@ -56,20 +56,22 @@ index 2f26f1ade..19019b9f9 100644
        page.on('console', message => {
          if (message.type() === 'error') {
            rendererErrors.push(`console: ${message.text()}`)
-@@ -60,10 +64,18 @@ test.describe('Hermes Local portable configuration UI', () => {
+@@ -60,10 +64,20 @@ test.describe('Hermes Local portable configuration UI', () => {
        page.on('pageerror', error => rendererErrors.push(`pageerror: ${error.message}`))
  
        const workstationNav = page.locator('[data-sidebar="menu"]').first()
 +      const activate = (locator: Locator) => locator.evaluate(element => (element as HTMLElement).click())
- 
--      await workstationNav.getByRole('button', { exact: true, name: 'Home' }).click()
++
 +      const openSection = async (name: string) => {
 +        // Electron's persisted zoom can offset Playwright's pointer coordinates
 +        // from the CSS pixels it reports. Navigation is setup for this test,
 +        // not the behavior under test, so dispatch through the resolved button.
-+        await workstationNav.getByRole('button', { exact: true, name }).evaluate(button => button.click())
++        await workstationNav
++          .getByRole('button', { exact: true, name })
++          .evaluate(button => (button as HTMLElement).click())
 +      }
-+
+ 
+-      await workstationNav.getByRole('button', { exact: true, name: 'Home' }).click()
 +      await openSection('Home')
        await expect(page.getByRole('heading', { name: 'Local AI workstation' })).toBeVisible({ timeout: 60_000 })
 -      await workstationNav.getByRole('button', { exact: true, name: 'Models' }).click()
@@ -77,7 +79,7 @@ index 2f26f1ade..19019b9f9 100644
        await expect(page.getByRole('heading', { exact: true, name: 'Models' })).toBeVisible()
  
        await page.evaluate(async localPath => {
-@@ -77,25 +89,39 @@ test.describe('Hermes Local portable configuration UI', () => {
+@@ -77,25 +91,39 @@ test.describe('Hermes Local portable configuration UI', () => {
              }
            }
          ).hermesDesktop
@@ -122,7 +124,7 @@ index 2f26f1ade..19019b9f9 100644
        await expect
          .poll(() => {
            const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
-@@ -111,17 +137,20 @@ test.describe('Hermes Local portable configuration UI', () => {
+@@ -111,17 +139,20 @@ test.describe('Hermes Local portable configuration UI', () => {
          })
        await page.screenshot({ fullPage: true, path: path.join(evidence, 'launcher-configuration-runtime.png') })
  
@@ -145,7 +147,7 @@ index 2f26f1ade..19019b9f9 100644
        await expect
          .poll(() => {
            const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
-@@ -130,21 +159,25 @@ test.describe('Hermes Local portable configuration UI', () => {
+@@ -130,21 +161,25 @@ test.describe('Hermes Local portable configuration UI', () => {
          })
          .toBe(true)
        const settingsAfterCreate = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
@@ -175,7 +177,7 @@ index 2f26f1ade..19019b9f9 100644
        await expect(saveProfileButton).toBeEnabled()
        await expect
          .poll(() => {
-@@ -165,17 +198,19 @@ test.describe('Hermes Local portable configuration UI', () => {
+@@ -165,17 +200,19 @@ test.describe('Hermes Local portable configuration UI', () => {
            selectedProfile: customProfileName
          })
        await page.screenshot({ fullPage: true, path: path.join(evidence, 'launcher-configuration-profiles.png') })
