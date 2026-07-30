@@ -1,0 +1,89 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 20:05:00 +0100
+Subject: [PATCH 14/14] fix(desktop): allow start recovery during benchmarks
+
+The Desktop action coordinator treated every running operation as globally
+exclusive. Automatic gateway recovery therefore failed when it requested the
+idempotent start action while a benchmark was active.
+
+Permit start recovery alongside an already-running benchmark while retaining
+all existing conflicts for restart, stop, update and other disruptive actions.
+Starting a benchmark while startup is active remains blocked.
+
+Add focused Electron coverage for the asymmetric recovery policy.
+---
+ apps/desktop/electron/hermes-local-control.test.ts | 24 ++++++++++++++++++----
+ apps/desktop/electron/hermes-local-control.ts      |  8 +++++++-
+ 2 files changed, 27 insertions(+), 5 deletions(-)
+
+diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
+--- a/apps/desktop/electron/hermes-local-control.test.ts
++++ b/apps/desktop/electron/hermes-local-control.test.ts
+@@ -137,18 +137,34 @@ describe('Hermes Local Electron boundary', () => {
+-  it('returns the running task for matching and overlapping action requests', () => {
+-    const running = {
++  it('returns conflicting tasks but permits idempotent start recovery during a benchmark', () => {
++    const backup = {
+       action: 'backup',
+       status: 'running'
+     }
+ 
+-    const taskMap = new Map([['backup-task', running]])
+-    const actionIds = new Map([['backup', 'backup-task']])
++    const backupTaskMap = new Map([['backup-task', backup]])
++    const backupActionIds = new Map([['backup', 'backup-task']])
++
++    expect(hermesLocalControlTest.runningTask('backup', backupActionIds as never, backupTaskMap as never)).toBe(backup)
++    expect(hermesLocalControlTest.runningTask('restart', backupActionIds as never, backupTaskMap as never)).toBe(backup)
++
++    const benchmark = {
++      action: 'benchmark',
++      status: 'running'
++    }
++
++    const benchmarkTaskMap = new Map([['benchmark-task', benchmark]])
++    const benchmarkActionIds = new Map([['benchmark', 'benchmark-task']])
+ 
+-    expect(hermesLocalControlTest.runningTask('backup', actionIds as never, taskMap as never)).toBe(running)
+-    expect(hermesLocalControlTest.runningTask('restart', actionIds as never, taskMap as never)).toBe(running)
++    expect(
++      hermesLocalControlTest.runningTask('start', benchmarkActionIds as never, benchmarkTaskMap as never)
++    ).toBeNull()
++    expect(
++      hermesLocalControlTest.runningTask('restart', benchmarkActionIds as never, benchmarkTaskMap as never)
++    ).toBe(benchmark)
++    expect(
++      hermesLocalControlTest.runningTask('benchmark', benchmarkActionIds as never, benchmarkTaskMap as never)
++    ).toBe(benchmark)
+   })
+ 
+   it('retains running tasks while bounding completed task history', () => {
+diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
+--- a/apps/desktop/electron/hermes-local-control.ts
++++ b/apps/desktop/electron/hermes-local-control.ts
+@@ -205,6 +205,12 @@ function publicTask(task: ActionTask) {
+   }
+ }
+ 
++function actionsConflict(requestedAction: ActionName, activeAction: ActionName): boolean {
++  // Start is an idempotent readiness/recovery action. It may join the stack
++  // while a benchmark owns model resources, but disruptive actions remain
++  // mutually exclusive with the benchmark.
++  return !(requestedAction === 'start' && activeAction === 'benchmark')
++}
++
+ function runningTask(
+   requestedAction: ActionName,
+   actionIds: Map<ActionName, string> = runningActions,
+@@ -218,7 +224,7 @@ function runningTask(
+   for (const taskId of actionIds.values()) {
+     const task = taskMap.get(taskId)
+ 
+-    if (task?.status === 'running') {
++    if (task?.status === 'running' && actionsConflict(requestedAction, task.action)) {
+       return task
+     }
+   }
+-- 
+2.50.1
