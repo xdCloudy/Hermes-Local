@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Allowed idempotent Desktop stack recovery to proceed during active benchmarks without relaxing locks around disruptive lifecycle actions.
+- Coordinated Desktop recovery with benchmark lifecycle so recovery waits for benchmark cleanup instead of racing a second workstation start.
 - Prevented nested gateway-module imports from unloading shared logging and redaction commands from parent PowerShell scripts.
 - Isolated nested launcher-build and bootstrap-diagnostic scripts so forced module reloads cannot remove setup logging commands.
 - Managed enabled Hermes messaging gateways with the local stack, added authoritative gateway readiness and ownership state, and made diagnostics fail when a required gateway is offline.
