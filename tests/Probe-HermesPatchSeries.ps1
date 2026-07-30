@@ -8,6 +8,7 @@ $root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $manifest = Get-Content -Raw -LiteralPath (Join-Path $root 'VERSION.json') | ConvertFrom-Json
 $checkout = Join-Path $env:RUNNER_TEMP ("hermes-agent-patch-probe-" + [guid]::NewGuid().ToString('N'))
 $patchDirectory = Join-Path $root 'source\hermes-launcher\patches'
+$newPatchName = '0014-fix-desktop-allow-start-recovery-during-benchmark.patch'
 
 function Invoke-Native {
     param(
@@ -36,8 +37,11 @@ try {
         Get-ChildItem -LiteralPath $patchDirectory -Filter '*.patch' -File |
             Sort-Object Name
     )
-    if ($patches.Count -ne 14) {
-        throw "Expected 14 integration patches; found $($patches.Count)."
+    if ($patches.Name -notcontains $newPatchName) {
+        throw "Required integration patch is missing: $newPatchName"
+    }
+    if ($patches[-1].Name -ne $newPatchName) {
+        throw "$newPatchName must be the final integration patch; found $($patches[-1].Name)."
     }
 
     $amArguments = @('-C', $checkout, 'am', '--committer-date-is-author-date') + @($patches.FullName)
