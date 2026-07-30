@@ -138,6 +138,39 @@ function Invoke-BenchmarkSelfTest {
     if ($fitEnabled -ne 'on') {
         throw "On/off boolean translation failed: $fitEnabled"
     }
+
+    $bindingProfile = [ordered]@{
+        name = 'SelfTest'
+        contextTokens = 32768
+        flashAttention = $true
+        gpu = [ordered]@{ layers = 'auto'; vramReserveMiB = 1024 }
+        kvCache = [ordered]@{ keyType = 'q8_0'; valueType = 'q8_0' }
+        threads = [ordered]@{ generation = 4 }
+        batch = [ordered]@{ logical = 512; physical = 128 }
+    }
+    $baseArguments = @(New-BaseBenchmarkArguments `
+        -Profile $bindingProfile `
+        -ModelPath 'self-test.gguf' `
+        -Acceleration cuda `
+        -HelpText $help)
+    if (-not $baseArguments.Count -or ($baseArguments -join ' ') -notmatch '(?:^| )-m self-test\.gguf(?: |$)') {
+        throw "Fresh argument-accumulator binding failed: $($baseArguments -join ' ')"
+    }
+    if (($baseArguments -join ' ') -match '(?:^| )-ngl auto(?: |$)') {
+        throw 'Fresh argument-accumulator binding reintroduced -ngl auto.'
+    }
+
+    $quickCases = @(New-BenchmarkCases `
+        -Profile $bindingProfile `
+        -ModelPath 'self-test.gguf' `
+        -Acceleration cuda `
+        -HelpText $help `
+        -MaximumContext 32768 `
+        -QuickMode)
+    if ($quickCases.Count -ne 2 -or @($quickCases | Where-Object { -not $_.args.Count }).Count) {
+        throw 'Fresh case-accumulator binding failed.'
+    }
+
     $telemetry = New-EmptyTelemetry
     foreach ($name in @('peakPageReadsPerSecond', 'peakWorkingSetBytes', 'peakVramMiB')) {
         if (-not $telemetry.Contains($name)) {
@@ -146,4 +179,3 @@ function Invoke-BenchmarkSelfTest {
     }
     Write-Host 'Benchmark portability self-test passed.'
 }
-
