@@ -71,4 +71,20 @@ Assert-Equal `
     -Expected 'discord: starting' `
     -Message 'Pending platform state must be visible.'
 
+$diagnosticsText = Get-Content -Raw -LiteralPath (Join-Path $root 'Test-Hermes-Local.ps1')
+$gatewayImport = "Import-Module (Join-Path `$PSScriptRoot 'scripts\Hermes-Gateway.psm1') -Force"
+Assert-Equal `
+    -Actual ([regex]::Matches($diagnosticsText, [regex]::Escape($gatewayImport)).Count) `
+    -Expected 1 `
+    -Message 'Diagnostics must import the gateway module exactly once.'
+
+$supervisorText = Get-Content -Raw -LiteralPath (Join-Path $root 'scripts\supervisor\Hermes-Supervisor.ps1')
+Assert-Equal `
+    -Actual ([regex]::Matches($supervisorText, 'function Wait-HermesGatewayHealthy \{').Count) `
+    -Expected 1 `
+    -Message 'Supervisor must define the gateway wait helper exactly once.'
+if ($supervisorText.Contains("-GatewayState 'stopped' -GatewayState 'stopped'")) {
+    throw 'Supervisor contains a duplicate stopped-state argument.'
+}
+
 Write-Host 'Hermes gateway module tests passed.'
