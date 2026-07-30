@@ -10,6 +10,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Configuration.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Gateway.psm1') -Force
 
 $results = [System.Collections.Generic.List[object]]::new()
 
@@ -102,10 +103,14 @@ try {
 
     $statusPath = Resolve-HermesPath 'data\runtime\status.json'
     $running = if (Test-Path -LiteralPath $statusPath) {
-        (Get-Content -Raw -LiteralPath $statusPath | ConvertFrom-Json).phase -eq 'running'
-    } else {
-        $false
-    }
+    $runtimeStatus = Get-Content -Raw -LiteralPath $statusPath | ConvertFrom-Json
+    $gatewayReady = $runtimeStatus.PSObject.Properties.Name -notcontains 'gateway' -or
+        -not $runtimeStatus.gateway.required -or $runtimeStatus.gateway.healthy
+    $runtimeStatus.phase -eq 'running' -and $runtimeStatus.model.healthy -and
+        $runtimeStatus.hermes.healthy -and $gatewayReady
+} else {
+    $false
+}
     if (-not $running) {
         $null = Invoke-HermesProcess -FilePath 'pwsh.exe' -ArgumentList @(
             '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
@@ -141,8 +146,23 @@ try {
     Add-TestResult -Name 'Hermes health' -Passed ([bool]$hermesHealth.ok) -Detail "Hermes $($hermesHealth.version)"
     $dashboard = Invoke-WebRequest -UseBasicParsing -Uri "$hermesBase/" -TimeoutSec 10
     Add-TestResult -Name 'Web dashboard' -Passed (
-        $dashboard.StatusCode -eq 200 -and $dashboard.Headers.'Content-Type' -match 'text/html'
-    ) -Detail 'Official dashboard HTML is served from loopback.'
+    $dashboard.StatusCode -eq 200 -and $dashboard.Headers.'Content-Type' -match 'text/html'
+) -Detail 'Official dashboard HTML is served from loopback.'
+
+$gatewaySnapshot = Get-HermesGatewaySnapshot -Discover
+if ($gatewaySnapshot.required) {
+    $gatewayDetail = if ($gatewaySnapshot.healthy -and -not $gatewaySnapshot.duplicateLogicalRoots) {
+        "Healthy gateway PID $($gatewaySnapshot.pid) for $(@($gatewaySnapshot.enabledPlatforms) -join ', ')."
+    } else {
+        Get-HermesGatewayFailureDetail -Snapshot $gatewaySnapshot
+    }
+    Add-TestResult -Name 'Messaging gateway' -Passed (
+        $gatewaySnapshot.healthy -and -not $gatewaySnapshot.duplicateLogicalRoots
+    ) -Detail $gatewayDetail
+} else {
+    Add-TestResult -Name 'Messaging gateway' -Passed $true `
+        -Detail 'No gateway-backed messaging platform is enabled.'
+}
 
     $configuredPorts = @([int]$configuration.network.modelPort, [int]$configuration.network.hermesPort)
     $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $configuredPorts -ErrorAction Stop)
