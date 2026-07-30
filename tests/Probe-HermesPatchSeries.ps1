@@ -43,10 +43,12 @@ try {
     $amArguments = @('-C', $checkout, 'am', '--committer-date-is-author-date') + @($patches.FullName)
     Invoke-Native git $amArguments
 
+    $env:HERMES_PATCH_CHECKOUT = $checkout
     @'
+import os
 from pathlib import Path
 
-root = Path.cwd()
+root = Path(os.environ["HERMES_PATCH_CHECKOUT"])
 control_path = root / "apps/desktop/electron/hermes-local-control.ts"
 test_path = root / "apps/desktop/electron/hermes-local-control.test.ts"
 
@@ -170,6 +172,7 @@ test_path.write_text(tests, encoding="utf-8", newline="\n")
     Write-Host $marker
     throw $marker
 } finally {
+    Remove-Item Env:HERMES_PATCH_CHECKOUT -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $checkout -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $patchOutput -Recurse -Force -ErrorAction SilentlyContinue
 }
