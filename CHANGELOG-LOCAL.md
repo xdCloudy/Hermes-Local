@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Coordinated Desktop recovery with benchmark lifecycle so recovery waits for benchmark cleanup instead of racing a second workstation start.
+- Kept the Desktop backend and messaging gateway online during benchmarks by leasing only the model process, with automatic model restoration and stale-request recovery.
 - Prevented nested gateway-module imports from unloading shared logging and redaction commands from parent PowerShell scripts.
 - Isolated nested launcher-build and bootstrap-diagnostic scripts so forced module reloads cannot remove setup logging commands.
 - Managed enabled Hermes messaging gateways with the local stack, added authoritative gateway readiness and ownership state, and made diagnostics fail when a required gateway is offline.
