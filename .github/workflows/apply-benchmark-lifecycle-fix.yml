@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/fix-benchmark-recovery-coordination
+  pull_request:
 
 permissions:
   contents: write
