@@ -14,6 +14,7 @@ from gateway.status import (
     runtime_status_is_stale,
     runtime_status_pid_is_live,
 )
+from hermes_cli.env_loader import load_hermes_dotenv
 
 _HEALTHY_PLATFORM_STATES = {"connected", "healthy", "ready", "running"}
 _FAILED_PLATFORM_STATES = {"disconnected", "error", "failed", "fatal", "stopped"}
@@ -42,6 +43,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    # This helper is executed directly rather than through hermes_cli.main, so it
+    # must load the active HERMES_HOME dotenv before resolving env-backed platform
+    # enablement and credentials.
+    load_hermes_dotenv()
     config = load_gateway_config()
     enabled = sorted(
         platform.value
@@ -87,7 +92,6 @@ def main() -> None:
         "platforms": platform_states,
         "logicalPids": logical_pids,
         "duplicateLogicalRoots": len(logical_pids) > 1,
-        "hermesHome": str(runtime.get("hermes_home") or "") or None,
     }
     print(json.dumps(payload, separators=(",", ":"), sort_keys=True))
 
