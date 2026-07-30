@@ -1,13 +1,22 @@
 function New-BenchmarkCase {
-    param([Parameter(Mandatory)][string] $Name, [Parameter(Mandatory)][string[]] $Arguments)
+    param(
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [string[]] $Arguments
+    )
     return [ordered]@{ name = $Name; args = $Arguments }
 }
 
 function Add-BenchmarkCase {
     param(
-        [Parameter(Mandatory)][System.Collections.Generic.List[object]] $Cases,
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [System.Collections.Generic.List[object]] $Cases,
         [Parameter(Mandatory)][string] $Name,
-        [Parameter(Mandatory)][string[]] $Arguments
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [string[]] $Arguments
     )
     $Cases.Add((New-BenchmarkCase -Name $Name -Arguments $Arguments))
 }
@@ -132,4 +141,3 @@ function New-BenchmarkCases {
 
     return $ordered.ToArray()
 }
-
