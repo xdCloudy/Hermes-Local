@@ -75,7 +75,9 @@ function Get-BenchmarkBooleanValue {
 
 function Add-OptionValue {
     param(
-        [Parameter(Mandatory)][System.Collections.Generic.List[string]] $Arguments,
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [System.Collections.Generic.List[string]] $Arguments,
         [Parameter(Mandatory)][string] $HelpText,
         [Parameter(Mandatory)][string] $Option,
         [AllowNull()][object] $Value,
@@ -156,4 +158,3 @@ function New-BaseBenchmarkArguments {
     }
     return $arguments.ToArray()
 }
-
