@@ -4,7 +4,6 @@ import io
 import json
 import runpy
 import sys
-import tempfile
 import types
 import unittest
 from contextlib import redirect_stdout
@@ -40,8 +39,7 @@ class GatewaySnapshotTests(unittest.TestCase):
         platform_state: str = "running",
         logical_pids=None,
         resolved_platforms: list[str] | None = None,
-        grace_seconds: float = 60,
-        marker_directory: Path | None = None,
+        grace_seconds: float = 0,
     ):
         runtime = {
             "pid": 4200,
@@ -104,25 +102,21 @@ class GatewaySnapshotTests(unittest.TestCase):
             argv.extend(["--enabled-platforms-json", json.dumps(resolved_platforms)])
         output = io.StringIO()
 
-        marker_root = marker_directory or Path(tempfile.mkdtemp(prefix="gateway-snapshot-test-"))
-        marker = marker_root / "data" / "runtime" / "gateway-stale-grace.json"
         with (
             patch.dict(sys.modules, packages, clear=False),
             patch.object(sys, "argv", argv),
             redirect_stdout(output),
-            patch("pathlib.Path.resolve", return_value=marker_root / "scripts" / "gateway_snapshot.py"),
         ):
             namespace = runpy.run_path(str(SCRIPT), run_name="gateway_snapshot_test")
-            namespace["_MARKER_PATH"] = marker
             namespace["main"]()
 
         expected_config_calls = [] if resolved_platforms is not None else [True]
         self.assertEqual(dotenv_calls, expected_config_calls)
         self.assertEqual(config_calls, expected_config_calls)
-        return json.loads(output.getvalue()), marker
+        return json.loads(output.getvalue())
 
     def test_enabled_healthy_platform_and_duplicate_roots(self):
-        snapshot, _ = self.run_snapshot(enabled=True, discover=True, logical_pids=[4200, 4300])
+        snapshot = self.run_snapshot(enabled=True, discover=True, logical_pids=[4200, 4300])
         self.assertTrue(snapshot["required"])
         self.assertTrue(snapshot["healthy"])
         self.assertEqual(snapshot["enabledPlatforms"], ["discord"])
@@ -132,7 +126,7 @@ class GatewaySnapshotTests(unittest.TestCase):
         self.assertNotIn("hermesHome", snapshot)
 
     def test_disabled_gateway_is_explicit_and_not_healthy(self):
-        snapshot, _ = self.run_snapshot(enabled=False, discover=False)
+        snapshot = self.run_snapshot(enabled=False, discover=False)
         self.assertFalse(snapshot["required"])
         self.assertFalse(snapshot["running"])
         self.assertFalse(snapshot["healthy"])
@@ -140,7 +134,7 @@ class GatewaySnapshotTests(unittest.TestCase):
         self.assertEqual(snapshot["enabledPlatforms"], [])
 
     def test_resolved_platforms_skip_secret_and_config_reload(self):
-        snapshot, _ = self.run_snapshot(
+        snapshot = self.run_snapshot(
             enabled=True,
             discover=False,
             resolved_platforms=["Discord", "discord"],
@@ -148,42 +142,46 @@ class GatewaySnapshotTests(unittest.TestCase):
         self.assertTrue(snapshot["healthy"])
         self.assertEqual(snapshot["enabledPlatforms"], ["discord"])
 
-    def test_transient_stale_runtime_uses_bounded_grace(self):
-        with tempfile.TemporaryDirectory(prefix="gateway-grace-") as directory:
-            snapshot, marker = self.run_snapshot(
-                enabled=True,
-                discover=False,
-                stale=True,
-                grace_seconds=60,
-                marker_directory=Path(directory),
-            )
-            self.assertTrue(snapshot["healthy"])
-            self.assertTrue(snapshot["runtimeStale"])
-            self.assertTrue(snapshot["runtimeStaleGraceApplied"])
-            self.assertTrue(marker.exists())
+    def test_stale_runtime_timestamp_is_advisory_for_live_connected_gateway(self):
+        snapshot = self.run_snapshot(enabled=True, discover=False, stale=True)
+        self.assertTrue(snapshot["healthy"])
+        self.assertTrue(snapshot["runtimeStale"])
+        self.assertTrue(snapshot["runtimeTimestampAdvisory"])
+        self.assertFalse(snapshot["runtimeStaleGraceApplied"])
+        self.assertEqual(snapshot["runtimeStaleGraceSeconds"], 0.0)
+        self.assertEqual(
+            snapshot["healthBasis"],
+            "authoritative-process-and-platform-state",
+        )
 
-    def test_stale_grace_never_masks_dead_or_disconnected_gateway(self):
-        dead, _ = self.run_snapshot(enabled=True, discover=False, stale=True, live=False)
-        disconnected, _ = self.run_snapshot(
+    def test_stale_timestamp_never_masks_dead_or_disconnected_gateway(self):
+        dead = self.run_snapshot(enabled=True, discover=False, stale=True, live=False)
+        disconnected = self.run_snapshot(
             enabled=True,
             discover=False,
             stale=True,
             platform_state="disconnected",
         )
         self.assertFalse(dead["healthy"])
-        self.assertFalse(dead["runtimeStaleGraceApplied"])
         self.assertFalse(disconnected["healthy"])
-        self.assertFalse(disconnected["runtimeStaleGraceApplied"])
 
-    def test_zero_grace_reports_stale_immediately(self):
-        snapshot, _ = self.run_snapshot(
+    def test_deprecated_grace_option_does_not_change_health(self):
+        zero = self.run_snapshot(
             enabled=True,
             discover=False,
             stale=True,
             grace_seconds=0,
         )
-        self.assertFalse(snapshot["healthy"])
-        self.assertFalse(snapshot["runtimeStaleGraceApplied"])
+        maximum = self.run_snapshot(
+            enabled=True,
+            discover=False,
+            stale=True,
+            grace_seconds=300,
+        )
+        self.assertTrue(zero["healthy"])
+        self.assertTrue(maximum["healthy"])
+        self.assertEqual(zero["runtimeStaleGraceSeconds"], 0.0)
+        self.assertEqual(maximum["runtimeStaleGraceSeconds"], 0.0)
 
 
 if __name__ == "__main__":

@@ -1,3 +1,65 @@
+function New-BenchmarkDocument {
+    param(
+        [Parameter(Mandatory)][datetime] $StartedAt,
+        [Parameter(Mandatory)][datetime] $CompletedAt,
+        [Parameter(Mandatory)][bool] $QuickMode,
+        [Parameter(Mandatory)][string] $Acceleration,
+        [Parameter(Mandatory)][object] $ModelManifest,
+        [Parameter(Mandatory)][int] $MaximumContext,
+        [Parameter(Mandatory)][object] $Manifest,
+        [Parameter(Mandatory)][string] $Binary,
+        [Parameter(Mandatory)][object] $Profile,
+        [Parameter(Mandatory)][System.Collections.IDictionary] $Validation,
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]] $Cases,
+        [Parameter(Mandatory)]
+        [ValidateSet('restoration-pending', 'complete')]
+        [string] $LifecycleState
+    )
+
+    return [ordered]@{
+        schemaVersion = 1
+        harnessVersion = 4
+        generatedAt = $CompletedAt.ToString('o')
+        runStartedAt = $StartedAt.ToString('o')
+        runCompletedAt = $CompletedAt.ToString('o')
+        totalDurationSeconds = [math]::Round(($CompletedAt - $StartedAt).TotalSeconds, 3)
+        mode = if ($QuickMode) { 'quick' } else { 'full' }
+        acceleration = $Acceleration
+        lifecycle = [ordered]@{
+            state = $LifecycleState
+            stackWasRunning = $script:wasRunning
+            stackRestored = $script:stackRestored
+            recoveredByReplacement = $script:restorationRecoveredByReplacement
+            initialRestorationError = $script:restorationInitialError
+        }
+        machine = Get-HermesHardwareSnapshot
+        model = [ordered]@{
+            id = $ModelManifest.id
+            displayName = $ModelManifest.displayName
+            alias = $ModelManifest.alias
+            filename = $ModelManifest.filename
+            sizeBytes = $ModelManifest.sizeBytes
+            sha256 = Get-BenchmarkValue -Record $ModelManifest -Name sha256
+            maximumContextTokens = $MaximumContext
+        }
+        llamaCpp = [ordered]@{
+            commit = $Manifest.sources.llamaCpp.commit
+            binary = $Binary
+        }
+        selectedProfile = [ordered]@{
+            name = Get-BenchmarkValue -Record $Profile -Name name
+            contextTokens = Get-BenchmarkValue -Record $Profile -Name contextTokens
+            kvCache = Get-BenchmarkValue -Record $Profile -Name kvCache
+            threads = Get-BenchmarkValue -Record $Profile -Name threads
+            batch = Get-BenchmarkValue -Record $Profile -Name batch
+            gpu = Get-BenchmarkValue -Record $Profile -Name gpu
+            flashAttention = Get-BenchmarkValue -Record $Profile -Name flashAttention
+        }
+        validation = $Validation
+        cases = $Cases
+    }
+}
+
 try {
     Assert-HermesRoot
     Initialize-HermesLayout
@@ -82,8 +144,36 @@ try {
         }
     }
 
+    $manifest = Get-HermesVersionManifest
+    $checkpointAt = (Get-Date).ToUniversalTime()
+    $checkpointValidation = [ordered]@{
+        succeeded = $false
+        report = $null
+        error = if ($script:wasRunning) {
+            'Native benchmark cases completed; stack restoration and validation are pending.'
+        } else {
+            'Stack was not running before the benchmark.'
+        }
+    }
+    $checkpointDocument = New-BenchmarkDocument `
+        -StartedAt $startedAt `
+        -CompletedAt $checkpointAt `
+        -QuickMode ([bool]$Quick) `
+        -Acceleration $acceleration `
+        -ModelManifest $modelManifest `
+        -MaximumContext $maximumContext `
+        -Manifest $manifest `
+        -Binary $binary `
+        -Profile $profile `
+        -Validation $checkpointValidation `
+        -Cases $runCases.ToArray() `
+        -LifecycleState 'restoration-pending'
+    Write-HermesAtomicText -Path $resultsPath -Content (($checkpointDocument | ConvertTo-Json -Depth 32) + [Environment]::NewLine)
+    Write-BenchmarkReport -Document $checkpointDocument
+    Write-HermesLog -Component benchmarks -Message "Checkpointed $($runCases.Count) native benchmark case(s) before stack restoration."
+
     if ($script:wasRunning) {
-        Exit-HermesBenchmarkMode
+        Exit-HermesBenchmarkMode -Profile $script:restartProfile
     }
 
     $validation = [ordered]@{
@@ -109,42 +199,19 @@ try {
     }
 
     $completedAt = (Get-Date).ToUniversalTime()
-    $manifest = Get-HermesVersionManifest
-    $document = [ordered]@{
-        schemaVersion = 1
-        harnessVersion = 3
-        generatedAt = $completedAt.ToString('o')
-        runStartedAt = $startedAt.ToString('o')
-        runCompletedAt = $completedAt.ToString('o')
-        totalDurationSeconds = [math]::Round(($completedAt - $startedAt).TotalSeconds, 3)
-        mode = if ($Quick) { 'quick' } else { 'full' }
-        acceleration = $acceleration
-        machine = Get-HermesHardwareSnapshot
-        model = [ordered]@{
-            id = $modelManifest.id
-            displayName = $modelManifest.displayName
-            alias = $modelManifest.alias
-            filename = $modelManifest.filename
-            sizeBytes = $modelManifest.sizeBytes
-            sha256 = Get-BenchmarkValue -Record $modelManifest -Name sha256
-            maximumContextTokens = $maximumContext
-        }
-        llamaCpp = [ordered]@{
-            commit = $manifest.sources.llamaCpp.commit
-            binary = $binary
-        }
-        selectedProfile = [ordered]@{
-            name = Get-BenchmarkValue -Record $profile -Name name
-            contextTokens = Get-BenchmarkValue -Record $profile -Name contextTokens
-            kvCache = Get-BenchmarkValue -Record $profile -Name kvCache
-            threads = Get-BenchmarkValue -Record $profile -Name threads
-            batch = Get-BenchmarkValue -Record $profile -Name batch
-            gpu = Get-BenchmarkValue -Record $profile -Name gpu
-            flashAttention = Get-BenchmarkValue -Record $profile -Name flashAttention
-        }
-        validation = $validation
-        cases = $runCases
-    }
+    $document = New-BenchmarkDocument `
+        -StartedAt $startedAt `
+        -CompletedAt $completedAt `
+        -QuickMode ([bool]$Quick) `
+        -Acceleration $acceleration `
+        -ModelManifest $modelManifest `
+        -MaximumContext $maximumContext `
+        -Manifest $manifest `
+        -Binary $binary `
+        -Profile $profile `
+        -Validation $validation `
+        -Cases $runCases.ToArray() `
+        -LifecycleState 'complete'
 
     Write-HermesAtomicText -Path $resultsPath -Content (($document | ConvertTo-Json -Depth 32) + [Environment]::NewLine)
     Write-BenchmarkReport -Document $document
@@ -175,16 +242,7 @@ try {
 
     if ($script:wasRunning -and -not $script:stackRestored) {
         try {
-            $status = Get-CurrentSupervisorStatus
-            $controllerPid = if ($status) { [int](Get-BenchmarkValue -Record $status -Name controllerPid -Default 0) } else { 0 }
-            if ($controllerPid -gt 0 -and (Test-HermesProcessAlive -ProcessId $controllerPid)) {
-                Wait-HermesBenchmarkPhase -Phase running -TimeoutSeconds 960
-            } else {
-                & (Resolve-HermesPath 'Start-Hermes-Local.ps1') -Profile $script:restartProfile -NonInteractive
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Start-Hermes-Local.ps1 exited with code $LASTEXITCODE."
-                }
-            }
+            Restore-HermesBenchmarkStack -Profile $script:restartProfile
         } catch {
             Write-HermesLog -Component benchmarks -Level ERROR -Message "Could not restore stack after benchmark failure: $($_.Exception.Message)"
         }

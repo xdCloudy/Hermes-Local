@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "product": {
     "name": "Hermes Launcher",
-    "version": "0.18.2",
+    "version": "0.18.3",
     "status": "accepted-with-documented-limitations"
   },
   "sources": {
@@ -46,5 +46,5 @@
     "modelAliasDefault": "laguna-xs-2.1-q4km",
     "portableSettings": true
   },
-  "recordedAt": "2026-07-30T20:51:00Z"
+  "recordedAt": "2026-07-30T22:15:00Z"
 }
