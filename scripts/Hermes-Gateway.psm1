@@ -1,7 +1,9 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Import-Module (Join-Path $PSScriptRoot 'Common-Hermes.psm1') -Force
+# This is a nested dependency import. Do not use -Force here: reloading the
+# shared module can remove commands imported by the parent script scope.
+Import-Module (Join-Path $PSScriptRoot 'Common-Hermes.psm1')
 
 $script:GatewaySnapshotCache = $null
 $script:GatewaySnapshotCachedAt = [datetime]::MinValue
