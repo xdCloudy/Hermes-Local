@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Replaced the remaining native launcher selects with the shared themed,
+  accessible dropdown across model, runtime, network, log, profile and quick
+  entry controls.
 - Added a transactional Hermes Agent updater that stages upstream source away
   from the active installation and applies the ordered Hermes Local patch series
   with three-way merge support.

@@ -1,0 +1,562 @@
+From ce9faedfdcf8c9efdb2cc3d5f34b54cc63cac0ba Mon Sep 17 00:00:00 2001
+From: xdCloudy <connerabery@gmail.com>
+Date: Thu, 30 Jul 2026 05:36:36 +0100
+Subject: [PATCH] fix(desktop): theme all launcher dropdowns
+
+---
+ .../e2e/hermes-local-configuration.spec.ts    |  65 ++++++---
+ .../e2e/hermes-local-functional.spec.ts       |   6 +-
+ .../src/app/local-workstation/index.tsx       | 125 +++++++++++-------
+ .../src/app/quick-entry/quick-entry-app.tsx   |  54 ++++----
+ .../desktop/src/components/ui/select.test.tsx |  45 +++++++
+ apps/desktop/src/components/ui/select.tsx     |   4 +-
+ 6 files changed, 204 insertions(+), 95 deletions(-)
+ create mode 100644 apps/desktop/src/components/ui/select.test.tsx
+
+diff --git a/apps/desktop/e2e/hermes-local-configuration.spec.ts b/apps/desktop/e2e/hermes-local-configuration.spec.ts
+index 2f26f1ade..19019b9f9 100644
+--- a/apps/desktop/e2e/hermes-local-configuration.spec.ts
++++ b/apps/desktop/e2e/hermes-local-configuration.spec.ts
+@@ -2,7 +2,7 @@ import fs from 'node:fs'
+ import os from 'node:os'
+ import path from 'node:path'
+ 
+-import { _electron, expect, test } from '@playwright/test'
++import { _electron, expect, type Locator, test } from '@playwright/test'
+ 
+ const ROOT = process.env.HERMES_LOCAL_ROOT || path.resolve(import.meta.dirname, '../../../../..')
+ const LAUNCHER = process.env.HERMES_LOCAL_LAUNCHER_PATH || path.join(ROOT, 'dist', 'Hermes Launcher.exe')
+@@ -21,6 +21,7 @@ test.describe('Hermes Local portable configuration UI', () => {
+     const originalSettings = fs.existsSync(settingsPath) ? fs.readFileSync(settingsPath) : null
+     const thirdPath = path.join(sandbox, 'third-anywhere.gguf')
+     const rendererErrors: string[] = []
++
+     const env = Object.fromEntries(
+       Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+     )
+@@ -31,11 +32,13 @@ test.describe('Hermes Local portable configuration UI', () => {
+     delete env.HERMES_DESKTOP_BOOT_FAKE
+     delete env.HERMES_DESKTOP_REMOTE_TOKEN
+     delete env.HERMES_DESKTOP_REMOTE_URL
++
+     for (const name of ['ALLUSERSPROFILE', 'ProgramData']) {
+       if (env[name]?.includes('%SystemDrive%')) {
+         env[name] = env[name].replaceAll('%SystemDrive%', env.SystemDrive || 'C:')
+       }
+     }
++
+     Object.assign(env, {
+       HERMES_DESKTOP_APP_NAME: `Hermes Launcher Configuration ${path.basename(sandbox)}`,
+       HERMES_DESKTOP_TEST_HIDDEN: '1',
+@@ -52,6 +55,7 @@ test.describe('Hermes Local portable configuration UI', () => {
+     try {
+       const page = await app.firstWindow({ timeout: 120_000 })
+ 
++      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.show())
+       page.on('console', message => {
+         if (message.type() === 'error') {
+           rendererErrors.push(`console: ${message.text()}`)
+@@ -60,10 +64,18 @@ test.describe('Hermes Local portable configuration UI', () => {
+       page.on('pageerror', error => rendererErrors.push(`pageerror: ${error.message}`))
+ 
+       const workstationNav = page.locator('[data-sidebar="menu"]').first()
++      const activate = (locator: Locator) => locator.evaluate(element => (element as HTMLElement).click())
+ 
+-      await workstationNav.getByRole('button', { exact: true, name: 'Home' }).click()
++      const openSection = async (name: string) => {
++        // Electron's persisted zoom can offset Playwright's pointer coordinates
++        // from the CSS pixels it reports. Navigation is setup for this test,
++        // not the behavior under test, so dispatch through the resolved button.
++        await workstationNav.getByRole('button', { exact: true, name }).evaluate(button => button.click())
++      }
++
++      await openSection('Home')
+       await expect(page.getByRole('heading', { name: 'Local AI workstation' })).toBeVisible({ timeout: 60_000 })
+-      await workstationNav.getByRole('button', { exact: true, name: 'Models' }).click()
++      await openSection('Models')
+       await expect(page.getByRole('heading', { exact: true, name: 'Models' })).toBeVisible()
+ 
+       await page.evaluate(async localPath => {
+@@ -77,25 +89,39 @@ test.describe('Hermes Local portable configuration UI', () => {
+             }
+           }
+         ).hermesDesktop
++
+         const registered = await desktop.localWorkstation.registerModel({ localPath })
+ 
+         await desktop.localWorkstation.selectModel(registered.id)
+       }, thirdPath)
+-      await page.getByRole('button', { exact: true, name: 'Refresh workstation' }).click()
++      await activate(page.getByRole('button', { exact: true, name: 'Refresh workstation' }))
+       await expect(page.getByRole('heading', { exact: true, name: 'third-anywhere' })).toBeVisible()
+       await expect(page.getByText('Selected', { exact: true })).toBeVisible()
+       await page.screenshot({ fullPage: true, path: path.join(evidence, 'launcher-configuration-models.png') })
+-      await page.getByRole('button', { exact: true, name: 'Remove third-anywhere' }).click()
++      await activate(page.getByRole('button', { exact: true, name: 'Remove third-anywhere' }))
+       await expect(page.getByRole('heading', { exact: true, name: 'third-anywhere' })).toHaveCount(0)
+ 
+-      await page.getByLabel('Acceleration').selectOption('cpu')
++      const acceleration = page.getByLabel('Acceleration')
++
++      await acceleration.press('Enter')
++      await expect(page.getByRole('option', { name: 'CPU only' })).toBeVisible()
++      await page.screenshot({ fullPage: true, path: path.join(evidence, 'launcher-dropdown-light.png') })
++      await page.keyboard.press('Escape')
++      await page.evaluate(() => window.localStorage.setItem('hermes-desktop-mode-v1', 'dark'))
++      await page.reload()
++      await expect(page.getByRole('heading', { exact: true, name: 'Models' })).toBeVisible({ timeout: 60_000 })
++      await acceleration.press('Enter')
++      await expect(page.getByRole('option', { name: 'CPU only' })).toBeVisible()
++      await page.screenshot({ fullPage: true, path: path.join(evidence, 'launcher-dropdown-dark.png') })
++      await page.getByRole('option', { name: 'CPU only' }).press('Enter')
++      await expect(acceleration).toHaveText('CPU only')
+       await page.getByLabel('Model API port').fill('18211')
+       await page.getByLabel('Hermes/dashboard port').fill('19211')
+       await page.getByLabel('Build workers').fill('6')
+       await page.getByLabel('CUDA architecture').fill('89')
+       await page.getByLabel('Python version').fill('3.12')
+-      await page.getByRole('button', { exact: true, name: 'Verify model on start' }).click()
+-      await page.getByRole('button', { exact: true, name: 'Save settings' }).click()
++      await activate(page.getByRole('button', { exact: true, name: 'Verify model on start' }))
++      await activate(page.getByRole('button', { exact: true, name: 'Save settings' }))
+       await expect
+         .poll(() => {
+           const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
+@@ -111,17 +137,20 @@ test.describe('Hermes Local portable configuration UI', () => {
+         })
+       await page.screenshot({ fullPage: true, path: path.join(evidence, 'launcher-configuration-runtime.png') })
+ 
+-      await workstationNav.getByRole('button', { exact: true, name: 'Profiles' }).click()
++      await openSection('Profiles')
+       await expect(page.getByRole('heading', { exact: true, name: 'Profiles' })).toBeVisible()
++
+       const settingsBeforeProfiles = fs.existsSync(settingsPath)
+         ? JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
+         : {}
++
+       const profileSource = Array.isArray(settingsBeforeProfiles.profiles)
+         ? settingsBeforeProfiles.profiles
+         : JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'profiles', 'profiles.json'), 'utf8')).profiles
++
+       const profilesBefore = profileSource.map((profile: { name: string }) => profile.name)
+ 
+-      await page.getByRole('main').getByText('New profile', { exact: true }).click()
++      await activate(page.getByRole('main').getByText('New profile', { exact: true }))
+       await expect
+         .poll(() => {
+           const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
+@@ -130,21 +159,25 @@ test.describe('Hermes Local portable configuration UI', () => {
+         })
+         .toBe(true)
+       const settingsAfterCreate = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
++
+       const customProfileName = settingsAfterCreate.profiles.find(
+         (profile: { name: string }) => !profilesBefore.includes(profile.name)
+       ).name
+ 
+-      await page.getByRole('button', { exact: true, name: customProfileName }).click()
++      await activate(page.getByRole('button', { exact: true, name: customProfileName }))
+       await expect(page.getByLabel('Profile name')).toHaveValue(customProfileName)
+       await page.getByLabel('Context tokens').fill('65536')
+       await expect(page.getByLabel('Context tokens')).toHaveValue('65536')
+       await page.getByLabel('GPU layers').fill('32')
+       await expect(page.getByLabel('GPU layers')).toHaveValue('32')
+-      await page.getByLabel('KV cache values').selectOption('q4_0')
+-      await expect(page.getByLabel('KV cache values')).toHaveValue('q4_0')
++      const kvCacheValues = page.getByLabel('KV cache values')
++
++      await kvCacheValues.press('Enter')
++      await page.getByRole('option', { name: 'q4_0' }).press('Enter')
++      await expect(kvCacheValues).toHaveText('q4_0')
+       const saveProfileButton = page.getByRole('button', { exact: true, name: 'Save profile' })
+ 
+-      await saveProfileButton.click()
++      await activate(saveProfileButton)
+       await expect(saveProfileButton).toBeEnabled()
+       await expect
+         .poll(() => {
+@@ -165,17 +198,19 @@ test.describe('Hermes Local portable configuration UI', () => {
+           selectedProfile: customProfileName
+         })
+       await page.screenshot({ fullPage: true, path: path.join(evidence, 'launcher-configuration-profiles.png') })
+-      await page.getByRole('button', { exact: true, name: 'Delete' }).click()
++      await activate(page.getByRole('button', { exact: true, name: 'Delete' }))
+ 
+       expect(rendererErrors, rendererErrors.join('\n')).toEqual([])
+     } finally {
+       await app.close().catch(() => undefined)
++
+       if (originalSettings) {
+         fs.mkdirSync(path.dirname(settingsPath), { recursive: true })
+         fs.writeFileSync(settingsPath, originalSettings)
+       } else {
+         fs.rmSync(settingsPath, { force: true })
+       }
++
+       fs.rmSync(sandbox, { force: true, maxRetries: 10, recursive: true, retryDelay: 250 })
+     }
+   })
+diff --git a/apps/desktop/e2e/hermes-local-functional.spec.ts b/apps/desktop/e2e/hermes-local-functional.spec.ts
+index 84b50002d..85b9342bd 100644
+--- a/apps/desktop/e2e/hermes-local-functional.spec.ts
++++ b/apps/desktop/e2e/hermes-local-functional.spec.ts
+@@ -259,14 +259,16 @@ test.describe('Hermes Local packaged functional acceptance', () => {
+       await expect(page.getByRole('button', { exact: true, name: 'Save profile' })).toBeEnabled()
+       await nav.getByRole('button', { exact: true, name: 'Home' }).click()
+ 
+-      const unchangedProfile = await page.getByLabel('Inference profile').inputValue()
++      const unchangedProfile = (await page.getByLabel('Inference profile').textContent())?.trim()
+ 
+       expect(unchangedProfile).toBe(originalName)
+ 
+       await nav.getByRole('button', { exact: true, name: 'Logs' }).click()
+       const logSelector = page.getByLabel('Log source')
+ 
+-      await logSelector.selectOption('model')
++      await logSelector.click()
++      await page.getByRole('option', { name: 'Model' }).click()
++      await expect(logSelector).toHaveText('Model')
+       await page.getByRole('button', { name: 'Refresh logs' }).click()
+       await expect(page.locator('pre')).not.toBeEmpty()
+ 
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index 086aa7251..5da675f0d 100644
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -29,6 +29,7 @@ import { type ComponentType, type ReactNode, useCallback, useEffect, useState }
+ import { useLocation, useNavigate } from 'react-router-dom'
+ 
+ import { Button } from '@/components/ui/button'
++import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+ import { cn } from '@/lib/utils'
+ 
+ import type {
+@@ -411,25 +412,35 @@ function ProfileEditor({
+               ['KV cache values', 'valueType']
+             ] as const
+           ).map(([label, key]) => (
+-            <label className="space-y-1.5 text-xs" key={key}>
++            <label className="space-y-1.5 text-xs" htmlFor={`profile-kv-cache-${key}`} key={key}>
+               <span className="font-medium text-(--ui-text-secondary)">{label}</span>
+-              <select
+-                className="h-8 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 font-mono outline-none focus:border-(--ui-accent)"
+-                onChange={event =>
++              <Select
++                onValueChange={value =>
+                   setDraft({
+                     ...draft,
+                     kvCache: {
+                       ...draft.kvCache,
+-                      [key]: event.currentTarget.value as 'f16' | 'q4_0' | 'q8_0'
++                      [key]: value as 'f16' | 'q4_0' | 'q8_0'
+                     }
+                   })
+                 }
+                 value={draft.kvCache[key]}
+               >
+-                <option value="q8_0">q8_0</option>
+-                <option value="q4_0">q4_0</option>
+-                <option value="f16">f16</option>
+-              </select>
++                <SelectTrigger className="font-mono" id={`profile-kv-cache-${key}`}>
++                  <SelectValue />
++                </SelectTrigger>
++                <SelectContent>
++                  <SelectItem className="font-mono" value="q8_0">
++                    q8_0
++                  </SelectItem>
++                  <SelectItem className="font-mono" value="q4_0">
++                    q4_0
++                  </SelectItem>
++                  <SelectItem className="font-mono" value="f16">
++                    f16
++                  </SelectItem>
++                </SelectContent>
++              </Select>
+             </label>
+           ))}
+         </div>
+@@ -593,35 +604,45 @@ function RuntimeSettings({
+   return (
+     <Surface title="Runtime and network">
+       <div className="grid gap-3 p-4 sm:grid-cols-2">
+-        <label className="space-y-1.5 text-xs">
++        <label className="space-y-1.5 text-xs" htmlFor="runtime-acceleration">
+           <span className="font-medium text-(--ui-text-secondary)">Acceleration</span>
+-          <select
+-            className="h-8 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 outline-none focus:border-(--ui-accent)"
+-            onChange={event =>
++          <Select
++            onValueChange={value =>
+               updateDraft({
+                 ...draft,
+-                runtime: { ...draft.runtime, acceleration: event.currentTarget.value as 'auto' | 'cpu' | 'cuda' }
++                runtime: { ...draft.runtime, acceleration: value as 'auto' | 'cpu' | 'cuda' }
+               })
+             }
+             value={draft.runtime.acceleration}
+           >
+-            <option value="auto">Auto detect</option>
+-            <option value="cuda">NVIDIA CUDA</option>
+-            <option value="cpu">CPU only</option>
+-          </select>
++            <SelectTrigger id="runtime-acceleration">
++              <SelectValue />
++            </SelectTrigger>
++            <SelectContent>
++              <SelectItem value="auto">Auto detect</SelectItem>
++              <SelectItem value="cuda">NVIDIA CUDA</SelectItem>
++              <SelectItem value="cpu">CPU only</SelectItem>
++            </SelectContent>
++          </Select>
+         </label>
+-        <label className="space-y-1.5 text-xs">
++        <label className="space-y-1.5 text-xs" htmlFor="runtime-listen-address">
+           <span className="font-medium text-(--ui-text-secondary)">Listen address</span>
+-          <select
+-            className="h-8 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 font-mono outline-none focus:border-(--ui-accent)"
+-            onChange={event =>
+-              updateDraft({ ...draft, network: { ...draft.network, host: event.currentTarget.value } })
+-            }
++          <Select
++            onValueChange={value => updateDraft({ ...draft, network: { ...draft.network, host: value } })}
+             value={draft.network.host}
+           >
+-            <option value="127.0.0.1">127.0.0.1 (IPv4 loopback)</option>
+-            <option value="::1">::1 (IPv6 loopback)</option>
+-          </select>
++            <SelectTrigger className="font-mono" id="runtime-listen-address">
++              <SelectValue />
++            </SelectTrigger>
++            <SelectContent>
++              <SelectItem className="font-mono" value="127.0.0.1">
++                127.0.0.1 (IPv4 loopback)
++              </SelectItem>
++              <SelectItem className="font-mono" value="::1">
++                ::1 (IPv6 loopback)
++              </SelectItem>
++            </SelectContent>
++          </Select>
+         </label>
+         {(
+           [
+@@ -777,19 +798,19 @@ function LogViewer() {
+   return (
+     <Surface className="overflow-hidden">
+       <header className="flex items-center gap-2 border-b border-(--ui-stroke-secondary) px-3 py-2">
+-        <select
+-          aria-label="Log source"
+-          className="h-8 rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 text-xs outline-none"
+-          onChange={event => setName(event.currentTarget.value as LocalLog)}
+-          value={name}
+-        >
+-          {LOG_NAMES.map(item => (
+-            <option key={item} value={item}>
+-              {item[0].toUpperCase()}
+-              {item.slice(1)}
+-            </option>
+-          ))}
+-        </select>
++        <Select onValueChange={value => setName(value as LocalLog)} value={name}>
++          <SelectTrigger aria-label="Log source" className="w-auto min-w-28" size="sm">
++            <SelectValue />
++          </SelectTrigger>
++          <SelectContent align="start">
++            {LOG_NAMES.map(item => (
++              <SelectItem key={item} value={item}>
++                {item[0].toUpperCase()}
++                {item.slice(1)}
++              </SelectItem>
++            ))}
++          </SelectContent>
++        </Select>
+         <span
+           className={cn(
+             'min-w-0 flex-1 truncate font-mono text-[0.6875rem]',
+@@ -1720,18 +1741,22 @@ export function LocalWorkstationView() {
+             <p className="mt-0.5 truncate text-xs text-(--ui-text-tertiary)">{copy[1]}</p>
+           </div>
+           <div className="flex shrink-0 items-center gap-2">
+-            <select
+-              aria-label="Inference profile"
+-              className="h-8 max-w-44 rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 text-xs font-medium outline-none focus:border-(--ui-accent)"
+-              onChange={event => void selectProfile(event.currentTarget.value)}
++            <Select
++              disabled={!snapshot.profiles?.profiles.length}
++              onValueChange={value => void selectProfile(value)}
+               value={snapshot.profiles?.selected || ''}
+             >
+-              {snapshot.profiles?.profiles.map(profile => (
+-                <option key={profile.name} value={profile.name}>
+-                  {profile.name}
+-                </option>
+-              ))}
+-            </select>
++              <SelectTrigger aria-label="Inference profile" className="w-44 font-medium" size="sm">
++                <SelectValue />
++              </SelectTrigger>
++              <SelectContent align="end">
++                {snapshot.profiles?.profiles.map(profile => (
++                  <SelectItem key={profile.name} value={profile.name}>
++                    {profile.name}
++                  </SelectItem>
++                ))}
++              </SelectContent>
++            </Select>
+             <Button className="size-8 p-0" disabled={refreshing} onClick={refresh} size="sm" variant="outline">
+               <IconRefresh className={cn('size-3.5', refreshing && 'animate-spin motion-reduce:animate-none')} />
+               <span className="sr-only">Refresh workstation</span>
+diff --git a/apps/desktop/src/app/quick-entry/quick-entry-app.tsx b/apps/desktop/src/app/quick-entry/quick-entry-app.tsx
+index 3f5d54835..24f70a473 100644
+--- a/apps/desktop/src/app/quick-entry/quick-entry-app.tsx
++++ b/apps/desktop/src/app/quick-entry/quick-entry-app.tsx
+@@ -1,5 +1,6 @@
+ import { useEffect, useReducer, useRef } from 'react'
+ 
++import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+ import {
+   initialQuickComposerState,
+   QUICK_TARGET_CURRENT,
+@@ -160,36 +161,35 @@ export function QuickEntryApp() {
+           >
+             Send to
+           </label>
+-          <select
+-            aria-label="Target session"
++          <Select
+             disabled={!state.connected}
+-            id="quick-entry-target"
+-            onChange={event => dispatch({ target: event.target.value, type: 'target' })}
+-            onKeyDown={event => {
+-              if (event.key === 'Escape') {
+-                event.preventDefault()
+-                dispatch({ type: 'dismiss' })
+-              }
+-            }}
+-            style={{
+-              background: 'transparent',
+-              border: '1px solid var(--ui-stroke-secondary, rgba(127,127,127,0.35))',
+-              borderRadius: 6,
+-              color: 'var(--foreground, #eee)',
+-              fontSize: 11,
+-              maxWidth: 320,
+-              padding: '2px 6px'
+-            }}
++            onValueChange={target => dispatch({ target, type: 'target' })}
+             value={state.target}
+           >
+-            <option value={QUICK_TARGET_CURRENT}>Current chat</option>
+-            <option value={QUICK_TARGET_NEW}>New session</option>
+-            {state.sessions.map(session => (
+-              <option key={session.id} value={session.id}>
+-                {session.title}
+-              </option>
+-            ))}
+-          </select>
++            <SelectTrigger
++              aria-label="Target session"
++              className="w-auto max-w-80"
++              id="quick-entry-target"
++              onKeyDown={event => {
++                if (event.key === 'Escape') {
++                  event.preventDefault()
++                  dispatch({ type: 'dismiss' })
++                }
++              }}
++              size="xs"
++            >
++              <SelectValue />
++            </SelectTrigger>
++            <SelectContent align="end">
++              <SelectItem value={QUICK_TARGET_CURRENT}>Current chat</SelectItem>
++              <SelectItem value={QUICK_TARGET_NEW}>New session</SelectItem>
++              {state.sessions.map(session => (
++                <SelectItem key={session.id} value={session.id}>
++                  {session.title}
++                </SelectItem>
++              ))}
++            </SelectContent>
++          </Select>
+         </div>
+       </div>
+     </div>
+diff --git a/apps/desktop/src/components/ui/select.test.tsx b/apps/desktop/src/components/ui/select.test.tsx
+new file mode 100644
+index 000000000..3a14affde
+--- /dev/null
++++ b/apps/desktop/src/components/ui/select.test.tsx
+@@ -0,0 +1,45 @@
++import { cleanup, render, screen } from '@testing-library/react'
++import { afterEach, describe, expect, it } from 'vitest'
++
++import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select'
++
++afterEach(() => {
++  cleanup()
++  window.document.documentElement.classList.remove('dark')
++})
++
++describe.each(['light', 'dark'] as const)('Select in %s mode', mode => {
++  it('renders a portalled themed listbox with accessible option states', () => {
++    window.document.documentElement.classList.toggle('dark', mode === 'dark')
++
++    const { container } = render(
++      <Select defaultOpen value="auto">
++        <SelectTrigger aria-label="Acceleration">
++          <SelectValue />
++        </SelectTrigger>
++        <SelectContent>
++          <SelectItem value="auto">Auto detect</SelectItem>
++          <SelectItem value="cuda">NVIDIA CUDA</SelectItem>
++          <SelectItem disabled value="cpu">
++            CPU only
++          </SelectItem>
++        </SelectContent>
++      </Select>
++    )
++
++    const content = window.document.querySelector<HTMLElement>('[data-slot="select-content"]')
++    const trigger = container.querySelector<HTMLElement>('[data-slot="select-trigger"]')
++    const disabledOption = screen.getByRole('option', { name: 'CPU only' })
++
++    expect(container.querySelector('select')).toBeNull()
++    expect(trigger?.getAttribute('role')).toBe('combobox')
++    expect(trigger?.getAttribute('aria-label')).toBe('Acceleration')
++    expect(trigger?.textContent).toContain('Auto detect')
++    expect(screen.getByRole('listbox')).toBe(content)
++    expect(window.document.body.contains(content)).toBe(true)
++    expect(content?.className).toContain('bg-popover')
++    expect(content?.className).toContain('text-popover-foreground')
++    expect(content?.className).toContain('border-(--ui-stroke-secondary)')
++    expect(disabledOption.getAttribute('aria-disabled')).toBe('true')
++  })
++})
+diff --git a/apps/desktop/src/components/ui/select.tsx b/apps/desktop/src/components/ui/select.tsx
+index 059575a1c..d48a140cd 100644
+--- a/apps/desktop/src/components/ui/select.tsx
++++ b/apps/desktop/src/components/ui/select.tsx
+@@ -41,6 +41,7 @@ function SelectValue({ ...props }: React.ComponentProps<typeof SelectPrimitive.V
+ function SelectContent({
+   className,
+   children,
++  collisionPadding = 8,
+   position = 'popper',
+   ...props
+ }: React.ComponentProps<typeof SelectPrimitive.Content>) {
+@@ -53,11 +54,12 @@ function SelectContent({
+     <SelectPrimitive.Portal container={container}>
+       <SelectPrimitive.Content
+         className={cn(
+-          'relative z-(--z-modal-popover) max-h-72 min-w-32 overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=top]:slide-in-from-bottom-2 data-[side=right]:slide-in-from-left-2',
++          'relative z-(--z-modal-popover) max-h-72 min-w-32 overflow-hidden rounded-md border border-(--ui-stroke-secondary) bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=top]:slide-in-from-bottom-2 data-[side=right]:slide-in-from-left-2',
+           position === 'popper' &&
+             'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',
+           className
+         )}
++        collisionPadding={collisionPadding}
+         data-slot="select-content"
+         position={position}
+         {...props}
+-- 
+2.55.0.windows.3
+

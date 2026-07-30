@@ -41,7 +41,8 @@ files into Git.
 13. authoritative gateway state reporting;
 14. authoritative gateway status in global desktop chrome;
 15. projectless packaged-chat startup and reconnect behavior;
-16. per-chat project selection and explicit project removal.
+16. per-chat project selection and explicit project removal;
+17. theme-consistent, accessible dropdowns across every launcher surface.
 
 Setup reconstructs from the pinned upstream base with `git am`, verifies the
 resulting tree and tolerates a different local commit ID caused only by
