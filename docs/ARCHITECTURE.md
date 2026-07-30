@@ -117,5 +117,5 @@ on `hermes-local-integration`; the ordered mail patch series is under
 tree from the pinned upstream commit and verifies the tree hash even when
 local Git committer metadata produces different commit IDs.
 
-The current series contains patches 0001–0012 and reconstructs tree
-`5df883962b78c8b29b98bcbfa1ebc5c939a3f6f4`.
+The current series contains patches 0001–0018 and reconstructs tree
+`7bb0c8193032541edfd45cdc3802bd85d6b195b0`.
