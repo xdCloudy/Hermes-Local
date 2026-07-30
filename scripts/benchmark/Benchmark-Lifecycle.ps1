@@ -20,16 +20,23 @@ function Wait-HermesBenchmarkPhase {
         [Parameter(Mandatory)]
         [ValidateSet('benchmarking', 'running')]
         [string] $Phase,
-        [int] $TimeoutSeconds = 960
+        [int] $TimeoutSeconds = 960,
+        [switch] $AllowControllerReplacement
     )
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $deadControllerPid = 0
     while ((Get-Date) -lt $deadline) {
         $status = Get-CurrentSupervisorStatus
         if ($status) {
             $controllerPid = [int](Get-BenchmarkValue -Record $status -Name controllerPid -Default 0)
             if ($controllerPid -gt 0 -and -not (Test-HermesProcessAlive -ProcessId $controllerPid)) {
-                throw "Hermes Local supervisor PID $controllerPid exited during benchmark lifecycle coordination."
+                if (-not $AllowControllerReplacement) {
+                    throw "Hermes Local supervisor PID $controllerPid exited during benchmark lifecycle coordination."
+                }
+                $deadControllerPid = $controllerPid
+                Start-Sleep -Milliseconds 500
+                continue
             }
             $gateway = Get-BenchmarkValue -Record $status -Name gateway
             $gatewayRequired = [bool](Get-BenchmarkValue -Record $gateway -Name required -Default $false)
@@ -49,6 +56,9 @@ function Wait-HermesBenchmarkPhase {
                 [bool](Get-BenchmarkValue -Record $model -Name healthy -Default $false) -and
                 [bool](Get-BenchmarkValue -Record $hermes -Name healthy -Default $false) -and
                 $gatewayReady) {
+                if ($deadControllerPid -gt 0 -and $controllerPid -ne $deadControllerPid) {
+                    $script:restorationRecoveredByReplacement = $true
+                }
                 return
             }
             if ([string]$status.phase -eq 'failed') {
@@ -94,10 +104,30 @@ function Enter-HermesBenchmarkMode {
     }
 }
 
-function Exit-HermesBenchmarkMode {
-    Remove-Item -LiteralPath $script:benchmarkRequestPath -Force -ErrorAction SilentlyContinue
-    Write-HermesLog -Component benchmarks -Message 'Released exclusive model access; waiting for the model server to return.'
-    Wait-HermesBenchmarkPhase -Phase running -TimeoutSeconds 960
+function Restore-HermesBenchmarkStack {
+    param([Parameter(Mandatory)][string] $Profile)
+
+    try {
+        Wait-HermesBenchmarkPhase -Phase running -TimeoutSeconds 960
+    } catch {
+        $script:restorationInitialError = Protect-HermesLogText $_.Exception.Message
+        Write-HermesLog -Component benchmarks -Level WARN -Message (
+            "Original supervisor could not complete benchmark restoration; joining or starting a replacement: $($script:restorationInitialError)"
+        )
+        & (Resolve-HermesPath 'Start-Hermes-Local.ps1') -Profile $Profile -NonInteractive
+        if ($LASTEXITCODE -ne 0) {
+            throw "Start-Hermes-Local.ps1 exited with code $LASTEXITCODE after benchmark restoration failed."
+        }
+        Wait-HermesBenchmarkPhase -Phase running -TimeoutSeconds 960 -AllowControllerReplacement
+        $script:restorationRecoveredByReplacement = $true
+    }
     $script:stackRestored = $true
 }
 
+function Exit-HermesBenchmarkMode {
+    param([Parameter(Mandatory)][string] $Profile)
+
+    Remove-Item -LiteralPath $script:benchmarkRequestPath -Force -ErrorAction SilentlyContinue
+    Write-HermesLog -Component benchmarks -Message 'Released exclusive model access; waiting for the model server to return.'
+    Restore-HermesBenchmarkStack -Profile $Profile
+}
