@@ -34,6 +34,27 @@ def _safe_platform_state(runtime: dict[str, Any], name: str) -> dict[str, Any]:
     }
 
 
+def _resolve_enabled_platforms(encoded: str | None) -> list[str]:
+    if encoded is None:
+        # This helper runs directly rather than through hermes_cli.main, so the
+        # first inspection must load the active HERMES_HOME dotenv explicitly.
+        load_hermes_dotenv()
+        config = load_gateway_config()
+        return sorted(
+            platform.value
+            for platform, platform_config in config.platforms.items()
+            if platform != Platform.LOCAL and platform_config.enabled
+        )
+
+    try:
+        parsed = json.loads(encoded)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"invalid --enabled-platforms-json: {exc}") from exc
+    if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
+        raise SystemExit("--enabled-platforms-json must encode a string array")
+    return sorted({item.strip().lower() for item in parsed if item.strip()})
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -41,19 +62,13 @@ def main() -> None:
         action="store_true",
         help="Include a process-table scan for independent logical gateway roots.",
     )
+    parser.add_argument(
+        "--enabled-platforms-json",
+        help="Reuse an already resolved enabled-platform list without reloading secrets.",
+    )
     args = parser.parse_args()
 
-    # This helper is executed directly rather than through hermes_cli.main, so it
-    # must load the active HERMES_HOME dotenv before resolving env-backed platform
-    # enablement and credentials.
-    load_hermes_dotenv()
-    config = load_gateway_config()
-    enabled = sorted(
-        platform.value
-        for platform, platform_config in config.platforms.items()
-        if platform != Platform.LOCAL and platform_config.enabled
-    )
-
+    enabled = _resolve_enabled_platforms(args.enabled_platforms_json)
     runtime = read_runtime_status() or {}
     if not isinstance(runtime, dict):
         runtime = {}
