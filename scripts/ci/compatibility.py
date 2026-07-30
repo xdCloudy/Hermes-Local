@@ -168,6 +168,28 @@ def resolve_candidate(repository: str, reference: str, cwd: Path, log: Path) -> 
     raise RuntimeError(f"No upstream commit found for {reference!r}")
 
 
+def prepare_hermes_agent_checkout(
+    repository: str,
+    source: Path,
+    *,
+    base: str,
+    candidate: str,
+    work: Path,
+    log: Path,
+) -> None:
+    """Clone and hydrate every revision needed by ``git am --3way``.
+
+    Hermes Local's mail patches can reference preimage blobs that are reachable
+    from the recorded integration base but not from the latest upstream branch.
+    Fetching both revisions mirrors the transactional production updater and
+    prevents a missing-object error from being misreported as a patch conflict.
+    """
+    run(["git", "clone", "--no-checkout", repository, source], cwd=work, log=log, timeout=1800)
+    for revision in dict.fromkeys((base, candidate)):
+        run(["git", "fetch", "origin", revision], cwd=source, log=log, timeout=1800)
+    run(["git", "checkout", "--detach", candidate], cwd=source, log=log)
+
+
 def npm() -> str:
     return "npm.cmd" if os.name == "nt" else "npm"
 
@@ -213,8 +235,14 @@ def hermes_agent(args: argparse.Namespace) -> int:
         try:
             candidate = resolve_candidate(repository, reference, root, logs / "resolve.log")
             report["candidate"] = candidate
-            run(["git", "clone", "--no-checkout", repository, source], cwd=work, log=logs / "patches.log", timeout=1800)
-            run(["git", "checkout", "--detach", candidate], cwd=source, log=logs / "patches.log")
+            prepare_hermes_agent_checkout(
+                repository,
+                source,
+                base=base,
+                candidate=candidate,
+                work=work,
+                log=logs / "patches.log",
+            )
             run(["git", "config", "user.name", "Hermes Local Compatibility CI"], cwd=source, log=logs / "patches.log")
             run(["git", "config", "user.email", "hermes-local-ci@localhost"], cwd=source, log=logs / "patches.log")
             run(["git", "switch", "-c", str(meta.get("integrationBranch", "hermes-local-integration"))], cwd=source, log=logs / "patches.log")
