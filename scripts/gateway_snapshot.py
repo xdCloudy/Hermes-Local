@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """Emit a credential-free Hermes messaging gateway lifecycle snapshot.
 
-A live gateway can briefly miss its runtime-status freshness deadline while the
-model process is being released or reloaded. A bounded, PID-scoped grace period
-prevents one stale heartbeat from restarting the complete workstation without
-masking a genuinely hung gateway indefinitely.
+Hermes Agent's persisted ``updated_at`` value is a state-change timestamp, not a
+periodic heartbeat. An idle but connected gateway can therefore have an old
+runtime timestamp indefinitely. Health is derived from the authoritative live
+PID, matching runtime identity, gateway state, and enabled platform states;
+runtime staleness remains diagnostic metadata only.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
-import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -28,12 +26,6 @@ from hermes_cli.env_loader import load_hermes_dotenv
 
 _HEALTHY_PLATFORM_STATES = {"connected", "healthy", "ready", "running"}
 _FAILED_PLATFORM_STATES = {"disconnected", "error", "failed", "fatal", "stopped"}
-_DEFAULT_STALE_GRACE_SECONDS = 60.0
-_MARKER_PATH = Path(__file__).resolve().parents[1] / "data" / "runtime" / "gateway-stale-grace.json"
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def _safe_platform_state(runtime: dict[str, Any], name: str) -> dict[str, Any]:
@@ -71,92 +63,6 @@ def _resolve_enabled_platforms(encoded: str | None) -> list[str]:
     return sorted({item.strip().lower() for item in parsed if item.strip()})
 
 
-def _read_grace_marker() -> dict[str, Any]:
-    try:
-        parsed = json.loads(_MARKER_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
-
-
-def _write_grace_marker(pid: int, first_seen: datetime) -> None:
-    _MARKER_PATH.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "schemaVersion": 1,
-        "pid": pid,
-        "firstSeen": first_seen.isoformat().replace("+00:00", "Z"),
-    }
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f"{_MARKER_PATH.name}.",
-        suffix=".tmp",
-        dir=_MARKER_PATH.parent,
-    )
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
-            json.dump(payload, handle, separators=(",", ":"), sort_keys=True)
-            handle.write("\n")
-        os.replace(temporary_name, _MARKER_PATH)
-    finally:
-        try:
-            os.unlink(temporary_name)
-        except FileNotFoundError:
-            pass
-
-
-def _clear_grace_marker() -> None:
-    try:
-        _MARKER_PATH.unlink()
-    except FileNotFoundError:
-        pass
-    except OSError:
-        # Snapshot generation must remain available even if cleanup is blocked.
-        pass
-
-
-def _parse_utc(value: Any) -> datetime | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    text = value.strip()
-    if text.endswith("Z"):
-        text = f"{text[:-1]}+00:00"
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
-def _stale_grace(
-    *,
-    pid: int | None,
-    runtime_stale: bool,
-    otherwise_healthy: bool,
-    grace_seconds: float,
-) -> tuple[bool, float | None]:
-    """Return whether a stale snapshot is inside its bounded PID-scoped grace."""
-
-    if not runtime_stale or not otherwise_healthy or pid is None or grace_seconds <= 0:
-        _clear_grace_marker()
-        return False, None
-
-    now = _utc_now()
-    marker = _read_grace_marker()
-    marker_pid = marker.get("pid")
-    first_seen = _parse_utc(marker.get("firstSeen"))
-    if marker_pid != pid or first_seen is None or first_seen > now:
-        first_seen = now
-        try:
-            _write_grace_marker(pid, first_seen)
-        except OSError:
-            # Failure to persist grace is fail-safe: report stale immediately.
-            return False, None
-
-    age_seconds = max(0.0, (now - first_seen).total_seconds())
-    return age_seconds <= grace_seconds, round(age_seconds, 3)
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -171,8 +77,11 @@ def main() -> None:
     parser.add_argument(
         "--stale-grace-seconds",
         type=float,
-        default=_DEFAULT_STALE_GRACE_SECONDS,
-        help="Bounded grace for a live, connected gateway with a transient stale heartbeat.",
+        default=0.0,
+        help=(
+            "Deprecated compatibility option. Runtime updated_at is a state-change "
+            "timestamp and is not used as a heartbeat health gate."
+        ),
     )
     args = parser.parse_args()
     if args.stale_grace_seconds < 0 or args.stale_grace_seconds > 300:
@@ -195,35 +104,32 @@ def main() -> None:
         logical_pids = sorted({int(pid) for pid in find_gateway_pids() if int(pid) > 0})
 
     required = bool(enabled)
-    otherwise_healthy = (
+    healthy = (
         required
         and authoritative_pid is not None
         and runtime_live
         and gateway_state == "running"
         and all(item["healthy"] for item in platform_states)
     )
-    grace_applied, stale_age_seconds = _stale_grace(
-        pid=authoritative_pid,
-        runtime_stale=runtime_stale,
-        otherwise_healthy=otherwise_healthy,
-        grace_seconds=args.stale_grace_seconds,
-    )
-    healthy = otherwise_healthy and (not runtime_stale or grace_applied)
 
     payload = {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "required": required,
         "enabledPlatforms": enabled,
         "pid": authoritative_pid,
         "running": authoritative_pid is not None,
         "healthy": healthy,
         "state": gateway_state if required else "disabled",
+        "platforms": platform_states,
         "runtimeLive": runtime_live,
         "runtimeStale": runtime_stale,
-        "runtimeStaleGraceApplied": grace_applied,
-        "runtimeStaleAgeSeconds": stale_age_seconds,
-        "runtimeStaleGraceSeconds": args.stale_grace_seconds,
-        "platforms": platform_states,
+        "runtimeTimestampAdvisory": True,
+        # Retained for consumers of the previous schema. Staleness is no longer
+        # granted a timed exception because it is not a heartbeat failure.
+        "runtimeStaleGraceApplied": False,
+        "runtimeStaleAgeSeconds": None,
+        "runtimeStaleGraceSeconds": 0.0,
+        "healthBasis": "authoritative-process-and-platform-state",
         "logicalPids": logical_pids,
         "duplicateLogicalRoots": len(logical_pids) > 1,
     }
