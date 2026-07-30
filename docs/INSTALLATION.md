@@ -1,5 +1,8 @@
 # Installation
 
+[← Documentation home](README.md) · [Project home](../README.md) ·
+[Quick start](../README.md#quick-start)
+
 ## Supported systems
 
 Hermes Local supports 64-bit Windows 10 and Windows 11. It runs natively and

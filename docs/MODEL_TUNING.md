@@ -1,5 +1,8 @@
 # Model and profile configuration
 
+[← Documentation home](README.md) · [Project home](../README.md) ·
+[User guide](USER_GUIDE.md)
+
 ## Configuration layers
 
 Hermes Local resolves settings in this order:

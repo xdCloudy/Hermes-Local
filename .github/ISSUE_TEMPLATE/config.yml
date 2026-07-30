@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Documentation and troubleshooting
+    url: https://github.com/xdCloudy/Hermes-Local/blob/main/docs/TROUBLESHOOTING.md
+    about: Check known symptoms and safe diagnostic steps before reporting a bug.
   - name: Security vulnerability
     url: https://github.com/xdCloudy/Hermes-Local/security/advisories/new
     about: Report vulnerabilities privately instead of opening a public issue.

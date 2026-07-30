@@ -1,104 +1,172 @@
+<div align="center">
+
 # Hermes Local
 
-Hermes Local is a configurable, Windows-native local AI workstation built on
-the official [NousResearch Hermes Agent](https://github.com/NousResearch/hermes-agent)
-and llama.cpp. Hermes Launcher combines chat, the TUI, dashboard, model
-management, inference profiles, health, logs, backups, benchmarks and security
-controls in one desktop application.
+### Frontier-quality local AI, engineered for the Windows hardware you already own.
+
+Hermes Local turns a consumer PC into a private AI workstation for running, tuning,<br>
+benchmarking and orchestrating local models—without Docker, WSL or a paid inference API.
+
+[**Download**](https://github.com/xdCloudy/Hermes-Local/releases/latest) ·
+[**Install**](#install) ·
+[**Explore the docs**](docs/README.md) ·
+[**View the roadmap**](#roadmap) ·
+[**Contribute**](CONTRIBUTING.md)
+
+[![Latest release](https://img.shields.io/github/v/release/xdCloudy/Hermes-Local?display_name=tag&sort=semver&style=for-the-badge)](https://github.com/xdCloudy/Hermes-Local/releases/latest)
+[![License](https://img.shields.io/github/license/xdCloudy/Hermes-Local?style=for-the-badge)](LICENSE)
+[![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white&style=for-the-badge)](docs/INSTALLATION.md)
+[![PowerShell 7](https://img.shields.io/badge/PowerShell-7-5391FE?logo=powershell&logoColor=white&style=for-the-badge)](docs/INSTALLATION.md)
+
+[![PowerShell validation](https://github.com/xdCloudy/Hermes-Local/actions/workflows/powershell-validation.yml/badge.svg)](https://github.com/xdCloudy/Hermes-Local/actions/workflows/powershell-validation.yml)
+[![README dashboard](https://github.com/xdCloudy/Hermes-Local/actions/workflows/update-readme.yml/badge.svg)](https://github.com/xdCloudy/Hermes-Local/actions/workflows/update-readme.yml)
+[![Downloads](https://img.shields.io/github/downloads/xdCloudy/Hermes-Local/total?label=downloads)](https://github.com/xdCloudy/Hermes-Local/releases)
+[![Open issues](https://img.shields.io/github/issues/xdCloudy/Hermes-Local)](https://github.com/xdCloudy/Hermes-Local/issues)
+[![Closed issues](https://img.shields.io/github/issues-closed/xdCloudy/Hermes-Local?label=issues%20closed)](https://github.com/xdCloudy/Hermes-Local/issues?q=is%3Aissue+is%3Aclosed)
+[![Stars](https://img.shields.io/github/stars/xdCloudy/Hermes-Local?style=flat)](https://github.com/xdCloudy/Hermes-Local/stargazers)
+[![Last commit](https://img.shields.io/github/last-commit/xdCloudy/Hermes-Local)](https://github.com/xdCloudy/Hermes-Local/commits/main)
 
 > [!NOTE]
-> This is an independent Windows integration, not an official Nous Research
-> release. The upstream Hermes Agent remains the application core.
+> Hermes Local is an independent Windows integration built on the official
+> [NousResearch Hermes Agent](https://github.com/NousResearch/hermes-agent).
+> It is not an official Nous Research release.
+
+</div>
 
 ![Hermes Launcher home screen](reports/acceptance/launcher-home.png)
 
-## Project vision
+## At a glance
 
-Hermes Local exists to make powerful, private local AI more accessible while
-pushing the practical limits of what personal computers can run.
+<!-- BEGIN GENERATED STATUS -->
+| Release | Delivery | Repository |
+|---|---|---|
+| **Current build:** v0.18.1<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x – Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Remove fatal and opaque failure modes before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 51 open · 1 closed<br>**Overall completion:** 2%<br>**Recent commit:** [`228e75e`](https://github.com/xdCloudy/Hermes-Local/commit/228e75e1060ae208e9852ab89989f43667a1106b) Merge pull request #57 from xdCloudy/agent/document-project-views |
 
-[Hermes Agent](https://github.com/NousResearch/hermes-agent) provides the
-excellent agent foundation. Hermes Local builds around it as a Windows-first
-delivery, integration and research platform: simplifying setup and maintenance,
-connecting models to the right inference runtime, exposing advanced features
-through a usable interface, and prioritising leading inference optimisations for
-consumer hardware.
+> Status is generated from GitHub issues, milestones, releases and commits.
+<!-- END GENERATED STATUS -->
 
-The project approaches efficiency primarily from the **inference and systems
-side** rather than attempting to train foundation models. Its focus includes:
+## Why Hermes Local
 
-- pluggable inference backends such as llama.cpp, specialised llama.cpp builds,
-  vLLM, SGLang and compatible external servers;
-- weight and KV-cache quantisation, including experimental techniques such as
-  TurboQuant where they can be integrated safely;
-- Flash Attention, prompt and prefix caching, speculative decoding, MTP,
-  EAGLE-family methods and other decode accelerators;
-- CPU, GPU, RAM, VRAM and pagefile-aware placement, including heterogeneous and
-  MoE-specific offloading;
-- hardware-aware memory planning, automated tuning and workload-specific
-  profiles;
-- long-context efficiency, context compression and cache observability;
-- reproducible benchmarks and capability certification covering quality,
-  tool use, context, stability and speed;
-- a modular path for integrating, comparing and extending experimental research
-  projects before promoting successful techniques into dependable features.
+Local AI is often presented as a model picker and a start button. The difficult
+part begins after launch: matching a model and runtime to the machine, managing
+RAM and VRAM, proving an optimisation helps, recovering from failures, and
+keeping the whole system understandable.
 
-The deliberately ambitious North Star is **frontier-class private AI running
-interactively on ordinary consumer hardware**. A concrete aspirational target is
-to make the most capable possible models usable locally at roughly 15 tokens per
-second, including on laptops where technically possible. The project may fall
-short of that extreme target, but every improvement in model capability,
-context, speed, memory use, reliability or accessibility still advances the
-mission.
+Hermes Local treats those problems as the product.
 
-Hermes Local optimises for **useful capability**, not tokens per second alone.
-An optimisation should be measurable, reproducible and reversible, and it must
-not be considered successful if it makes tool calling, structured output,
-reasoning, long-context behaviour or system stability materially worse.
+| | What that means |
+|---|---|
+| **Windows first** | A native launcher, PowerShell lifecycle, Windows Job Objects, DPAPI-protected credentials and paths that work on any drive. |
+| **Hardware aware** | Profiles and planned AutoTune account for CPU, GPU, RAM, VRAM, pagefile, context and workload—not just a model name. |
+| **Evidence led** | Benchmarks measure speed, memory, quality, tool use, long context and stability. Optimisations must be measurable and reversible. |
+| **Operationally complete** | Setup, health, logs, diagnostics, backup, repair, update, rollback and uninstall belong to one workstation lifecycle. |
+| **Built to experiment** | Runtimes and research techniques can be integrated, compared and certified before they become dependable defaults. |
+| **Private by default** | Services bind to loopback, model weights remain local, and no paid inference API is required. |
 
-The long-term goal is for a user to describe the capability they need and let
-Hermes Local determine the best validated combination of model, runtime,
-optimisations and resource policy for their machine.
+The North Star is deliberately ambitious: **make the most capable private AI
+practical and interactive on ordinary consumer hardware**. Useful capability
+matters more than a headline tokens-per-second number; tool calling, structured
+output, reasoning, context and stability are part of performance.
 
-Key roadmap work:
+## What works today
 
-- [Multi-Backend AI Inference Orchestration](https://github.com/xdCloudy/Hermes-Local/issues/4)
-- [Dependable Installation and Maintenance](https://github.com/xdCloudy/Hermes-Local/issues/5)
-- [Hardware-Aware AutoTune and Memory Planner](https://github.com/xdCloudy/Hermes-Local/issues/12)
-- [Model Capability Certification Suite](https://github.com/xdCloudy/Hermes-Local/issues/15)
-- [Speculative Decoding and MTP Optimisation Manager](https://github.com/xdCloudy/Hermes-Local/issues/21)
+| Area | Capability | Status |
+|---|---|:---:|
+| Launcher | Native desktop control centre and integrated Hermes TUI | ✅ |
+| Inference | llama.cpp CPU/CUDA serving with loopback-only authenticated endpoints | ✅ |
+| Models | Portable GGUF catalog, local registration, selection and starter manifest | ✅ |
+| Profiles | Context, KV cache, threads, batching, offload, Flash Attention and prompt caching | ✅ |
+| Benchmarks | Reproducible throughput, context, memory, quality and tool-use evidence | ✅ |
+| Diagnostics | Health checks, structured logs, privacy-reviewed support bundles and repair | ✅ |
+| Security | DPAPI token protection, process isolation, threat model, scans and SBOMs | ✅ |
+| Automation | Setup, start/stop, update, rollback, backup/restore, package and QA scripts | ✅ |
+| Projects | Project, session, task and tool surfaces in Hermes Launcher | ✅ |
+| Memory | Local user-owned state, backup and restore; deeper workspace memory is planned | 🚧 |
+| Networking | Local authenticated gateway; secure paired remote access is planned | 🚧 |
+| Future | Multi-backend routing, certification, AutoTune and intelligent orchestration | ⏳ |
 
-## Portable by design
+[See the detailed free/local feature matrix →](docs/FREE_FEATURE_MATRIX.md)
 
-The repository has no required drive letter, model, GPU, CUDA architecture,
-port pair or fixed CPU tuning:
+## See it in action
 
-- clone it to any non-system folder;
-- use CPU inference or NVIDIA CUDA, with auto-detection as the default;
-- register any local GGUF model and switch models from Hermes Launcher;
-- create, clone, edit, select and delete inference profiles;
-- change the loopback ports and acceleration policy in the launcher;
-- keep selections in ignored `config\launcher\user-settings.json`, never in
-  tracked defaults;
-- resolve default thread counts, build parallelism and VRAM reserve from the
-  current machine.
+<table>
+  <tr>
+    <td width="50%"><img src="reports/qa/screenshots/packaged-dashboard.png" alt="Hardware-aware dashboard"><br><strong>Dashboard</strong> — workstation health and resource state.</td>
+    <td width="50%"><img src="reports/qa/screenshots/packaged-models.png" alt="Local model management"><br><strong>Models</strong> — register, select and inspect local GGUF models.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="reports/qa/screenshots/packaged-profiles.png" alt="Inference profiles"><br><strong>Profiles</strong> — tune context, cache, compute and offload policy.</td>
+    <td width="50%"><img src="reports/qa/screenshots/packaged-benchmarks.png" alt="Benchmark centre"><br><strong>Benchmarks</strong> — turn performance claims into repeatable evidence.</td>
+  </tr>
+</table>
 
-The included Laguna XS 2.1 Q4_K_M manifest is a ready-to-download starter, not
-a runtime requirement. Model weights are never committed or bundled.
+[Browse the complete screenshot catalog →](docs/SCREENSHOTS.md)
 
-## Requirements
+## Roadmap
 
-- Windows 10 or Windows 11 x64
-- PowerShell 7
-- about 16 GiB free before model weights; allow space for the GGUFs you choose
-- Visual Studio 2022 C++ build tools for the bundled llama.cpp build
-- optional NVIDIA GPU, driver and CUDA Toolkit for CUDA acceleration
+The roadmap is capability-based, not date-based. Each stage creates the
+contracts and evidence needed by the next.
 
-Docker, WSL and paid inference APIs are not required.
+<!-- BEGIN GENERATED ROADMAP -->
+| Stage | Purpose and success criteria | GitHub milestones | Progress |
+|---|---|---|---:|
+| ✅ **Foundation** | **Purpose:** Establish a secure, portable Windows workstation around Hermes Agent and llama.cpp.<br>**Success:** Native launcher, local inference, profiles, diagnostics, recovery, benchmarks and security controls are validated. | [Dependable Installation and Maintenance](https://github.com/xdCloudy/Hermes-Local/milestone/1) | **100%**<br>1/1 issues |
+| 🚧 **Reliable Platform** | **Purpose:** Remove fatal and opaque failure modes before expanding the control plane.<br>**Success:** Cold starts, lifecycle transitions and recovery paths fail clearly and recover predictably. | [v0.18.x – Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5) | **0%**<br>0/2 issues |
+| ⏳ **Operational Control Plane** | **Purpose:** Make every long-running workstation operation observable, durable and recoverable.<br>**Success:** Shared task state, update orchestration, focused operational surfaces and failure-path evidence. | [v0.19 – Operational Control Plane](https://github.com/xdCloudy/Hermes-Local/milestone/6) | **0%**<br>0/13 issues |
+| ⏳ **Inference Fabric** | **Purpose:** Create stable contracts for multiple inference runtimes, planning, telemetry and certification.<br>**Success:** Backends can be compared, selected and recovered through one hardware-aware orchestration layer. | [Inference Fabric Foundation](https://github.com/xdCloudy/Hermes-Local/milestone/8) | **0%**<br>0/7 issues |
+| ⏳ **Intelligent Optimisation** | **Purpose:** Turn hardware telemetry and benchmark evidence into safe, workload-specific tuning.<br>**Success:** AutoTune improves useful capability, speed or memory use without silently degrading quality or stability. | [Performance, AutoTune and Observability](https://github.com/xdCloudy/Hermes-Local/milestone/2) | **Planned** |
+| ⏳ **Agent Ecosystem** | **Purpose:** Expand trusted tools, memory, projects, routing and experimental integrations.<br>**Success:** New capabilities are permission-scoped, reproducible and promoted through measurable certification gates. | [Certification, Routing and Recovery](https://github.com/xdCloudy/Hermes-Local/milestone/3)<br>[Expansion, Security and Advanced Optimisation](https://github.com/xdCloudy/Hermes-Local/milestone/4) | **Planned** |
+| 🎯 **Version 1.0** | **Purpose:** Deliver a dependable Windows distribution suitable for supported non-technical users.<br>**Success:** Guided install, verified runtimes, signing, provenance, maintenance and data-preserving recovery are release-ready. | [v1.0 – Dependable Windows Distribution](https://github.com/xdCloudy/Hermes-Local/milestone/7) | **0%**<br>0/5 issues |
+
+Progress is derived from issue counts on the linked milestones. The sequence is intentional; dates are added only when maintainers have a credible delivery window.
+<!-- END GENERATED ROADMAP -->
+
+[Open the GitHub Project](https://github.com/users/xdCloudy/projects/1) ·
+[Browse roadmap issues](https://github.com/xdCloudy/Hermes-Local/issues) ·
+[Read the planning model](docs/PROJECT-VIEWS.md)
+
+## Architecture
+
+```mermaid
+flowchart TB
+    User([User]) --> Launcher["Hermes Launcher<br/>Desktop + TUI"]
+    Launcher --> Supervisor["Backend Supervisor<br/>lifecycle · health · recovery"]
+    Supervisor --> Agent["Hermes Agent<br/>reasoning · tools · sessions"]
+    Agent --> Runtime["Inference Runtime<br/>llama.cpp today · pluggable tomorrow"]
+    Runtime --> Models[("Local Models<br/>GGUF catalog + profiles")]
+    Agent --> Tooling["Trusted Tooling<br/>terminal · browser · MCP"]
+    Agent --> Memory[("Memory + User Data<br/>local · backed up · portable")]
+    Tooling --> Projects["Projects + Tasks"]
+    Memory --> Projects
+    Projects --> Results([Results])
+
+    classDef user fill:#6e56cf,stroke:#a99af0,color:#fff,stroke-width:2px;
+    classDef control fill:#0969da,stroke:#54aeff,color:#fff,stroke-width:2px;
+    classDef engine fill:#1f883d,stroke:#56d364,color:#fff,stroke-width:2px;
+    classDef data fill:#8250df,stroke:#d2a8ff,color:#fff,stroke-width:2px;
+    class User,Results user;
+    class Launcher,Supervisor control;
+    class Agent,Runtime,Tooling engine;
+    class Models,Memory,Projects data;
+```
+
+The launcher and supervisor are the Windows-native product layer. Hermes Agent
+remains the agent core; inference runtimes, model profiles and local services
+are integrated behind explicit process, authentication and data boundaries.
+
+[Explore the architecture and trust boundaries →](docs/ARCHITECTURE.md)
 
 ## Install
 
-Open a normal, non-elevated PowerShell 7 window:
+### Requirements
+
+- Windows 10 or Windows 11 x64
+- PowerShell 7
+- About 16 GiB free before model weights
+- Visual Studio 2022 C++ Build Tools for the bundled llama.cpp build
+- Optional NVIDIA GPU, current driver and CUDA Toolkit for CUDA acceleration
+
+Open a normal, **non-elevated** PowerShell 7 window:
 
 ```powershell
 git clone https://github.com/xdCloudy/Hermes-Local.git
@@ -107,130 +175,154 @@ Set-Location .\Hermes-Local
 ```
 
 Setup reconstructs the pinned Hermes integration, installs project-managed
-dependencies, builds llama.cpp for the selected acceleration mode, downloads
-the selected model when it has a source URL, generates the runtime provider
-configuration and runs bootstrap diagnostics. Downloads resume when setup is
-rerun.
+dependencies, builds llama.cpp for the selected acceleration mode, optionally
+downloads a starter model, writes the provider configuration and runs bootstrap
+diagnostics. Downloads resume safely when setup is rerun.
 
-See [Installation](docs/INSTALLATION.md) for CPU/CUDA selection, custom models
-and release packages.
+Prefer a packaged launcher? Get the
+[latest Windows release](https://github.com/xdCloudy/Hermes-Local/releases/latest).
+Release binaries contain the control centre—not model weights or provisioned
+runtimes—and are currently not Authenticode-signed. Verify the published
+SHA-256 values before running them.
 
-## Run
+[Installation options, CPU/CUDA selection and custom models →](docs/INSTALLATION.md)
 
-Commands are relative to the clone, so the examples work on any drive:
+## Quick start
 
 ```powershell
+# Start the selected model, inference profile and Hermes services
 & '.\Start-Hermes-Local.ps1' -NonInteractive
+
+# Open the desktop control centre
 & '.\dist\Hermes Launcher.exe'
-```
 
-Stop and test the stack:
-
-```powershell
-& '.\Stop-Hermes-Local.ps1' -NonInteractive
+# Verify or stop the workstation
 & '.\Test-Hermes-Local.ps1' -NonInteractive
+& '.\Stop-Hermes-Local.ps1' -NonInteractive
 ```
 
-Omit `-Profile` to use the current launcher selection, or select one for a
-single start:
+The default endpoints are `http://127.0.0.1:8011/v1` and
+`http://127.0.0.1:9119`. Both are configurable and remain restricted to IPv4
+or IPv6 loopback.
+
+<details>
+<summary><strong>Choose a profile for one start</strong></summary>
 
 ```powershell
 & '.\Start-Hermes-Local.ps1' -Profile 'Coding' -NonInteractive
 ```
 
-## Models, profiles and settings
+Omit `-Profile` to use the current launcher selection.
 
-Open **Models** in Hermes Launcher to:
+</details>
 
-- register a `.gguf` file without copying it;
-- select any registered model;
-- choose `Auto`, `CUDA` or `CPU` acceleration;
-- change the loopback-only model and Hermes ports;
-- set build workers, CUDA architecture, Python line and startup verification
-  when an automatic choice is not appropriate.
-
-Open **Profiles** to create and tune context, KV cache, threads, batching,
-offload, Flash Attention and prompt caching. Tracked starter profiles use
-`auto` for machine-dependent values. Once edited, the resolved values become
-explicit per-user settings.
-
-Model registrations and profile edits are stored in
-`config\launcher\user-settings.json`. That file is Git-ignored and included in
-local backups. Tracked manifests under `models\manifests` remain portable by
-using relative paths.
-
-## Runtime layout
-
-| Component | Portable location |
-|---|---|
-| Project root | the directory containing this README |
-| Hermes checkout | `source\hermes-agent` |
-| Hermes source pin override | `config\launcher\source-overrides.json` |
-| Hermes user state | `data\hermes` |
-| Default workspace | `data\user` |
-| User settings | `config\launcher\user-settings.json` |
-| Model catalog | `models\manifests\*.json` plus user registrations |
-| llama.cpp build | `runtimes\llama.cpp\build` |
-| Packaged launcher | `dist\Hermes Launcher.exe` |
-
-The default endpoints are `http://127.0.0.1:8011/v1` and
-`http://127.0.0.1:9119`, but both ports are configurable. The host is
-deliberately restricted to IPv4 or IPv6 loopback.
-
-The API token is random, protected for the current Windows user with DPAPI and
-passed to owned processes without command-line exposure.
-
-## Download
-
-The [latest GitHub release](https://github.com/xdCloudy/Hermes-Local/releases/latest)
-provides the Windows installer and portable launcher. Release binaries contain
-the control centre, not model weights or project-managed runtimes: clone and
-provision the workstation first.
-
-The binaries are not Authenticode-signed. Verify release SHA-256 values before
-running them.
-
-## Maintenance
+<details>
+<summary><strong>Maintenance command reference</strong></summary>
 
 | Action | Command |
 |---|---|
-| Test | `& '.\Test-Hermes-Local.ps1' -NonInteractive` |
-| Full functional QA | `& '.\scripts\qa\Invoke-FullFunctionalQA.ps1' -Scope Full` |
-| Restart selected configuration | `& '.\Restart-Hermes-Local.ps1' -NonInteractive` |
+| Restart | `& '.\Restart-Hermes-Local.ps1' -NonInteractive` |
 | Repair | `& '.\Repair-Hermes-Local.ps1' -NonInteractive` |
 | Backup | `& '.\Backup-Hermes-Local.ps1' -Name manual -NonInteractive` |
-| Check all updates | `& '.\Update-Hermes-Local.ps1' -Mode Check -NonInteractive` |
-| Check Hermes Agent | `& '.\Update-Hermes-Agent.ps1' -Mode Check` |
+| Check updates | `& '.\Update-Hermes-Local.ps1' -Mode Check -NonInteractive` |
 | Update Hermes Agent | `& '.\Update-Hermes-Agent.ps1' -Mode Apply` |
 | Roll back Hermes Agent | `& '.\Update-Hermes-Agent.ps1' -Mode Rollback` |
 | Security scan | `& '.\Security-Scan-Hermes-Local.ps1' -NonInteractive` |
 | Diagnostics | `& '.\Export-Hermes-Diagnostics.ps1' -NonInteractive` |
+| Full functional QA | `& '.\scripts\qa\Invoke-FullFunctionalQA.ps1' -Scope Full` |
 
-Windows users can also double-click `Update-Hermes-Agent.cmd`. The updater
-stages upstream code away from the active installation, applies the Hermes
-Local patch series, backs up state, rebuilds dependencies and the launcher,
-runs health checks, and restores the previous installation automatically if
-promotion fails. Do not use Hermes Agent's in-chat `/update` command for a
-Hermes Local checkout because it does not understand the integration patch
-layer.
+[Read the complete operations guide →](docs/OPERATIONS.md)
 
-Historical benchmark and acceptance reports describe the original validation
-machine and are labelled as evidence, not current runtime requirements.
-
-The full functional QA command writes timestamped JSON, Markdown, JUnit,
-stdout and stderr evidence beneath `temp\qa-runs`, and refreshes the
-machine-readable UI, script and workflow inventories in `reports\qa`. The
-current report is `reports\qa\FULL_FUNCTIONAL_QA_REPORT.md`.
+</details>
 
 ## Documentation
 
-- [Installation](docs/INSTALLATION.md)
-- [User guide](docs/USER_GUIDE.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Model and profile configuration](docs/MODEL_TUNING.md)
-- [Free/local feature matrix](docs/FREE_FEATURE_MATRIX.md)
-- [Security](docs/SECURITY.md)
-- [Update and rollback](docs/UPDATE_AND_ROLLBACK.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [Development](docs/DEVELOPMENT.md)
-- [Historical acceptance results](docs/ACCEPTANCE_RESULTS.md)
+| Start here | Build and operate | Evidence and governance |
+|---|---|---|
+| [Documentation home](docs/README.md) | [Installation](docs/INSTALLATION.md) | [Acceptance results](docs/ACCEPTANCE_RESULTS.md) |
+| [User guide](docs/USER_GUIDE.md) | [Models and profiles](docs/MODEL_TUNING.md) | [Security model](docs/SECURITY.md) |
+| [Architecture](docs/ARCHITECTURE.md) | [Update and rollback](docs/UPDATE_AND_ROLLBACK.md) | [Roadmap views](docs/PROJECT-VIEWS.md) |
+| [Feature matrix](docs/FREE_FEATURE_MATRIX.md) | [Troubleshooting](docs/TROUBLESHOOTING.md) | [Development](docs/DEVELOPMENT.md) |
+
+## Contributing
+
+Contributions are welcome across Windows engineering, inference optimisation,
+benchmarking, UX, documentation and testing.
+
+1. Read the [contributor guide](CONTRIBUTING.md) and
+   [development setup](docs/DEVELOPMENT.md).
+2. Choose a
+   [good first issue](https://github.com/xdCloudy/Hermes-Local/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+   or a [help-wanted task](https://github.com/xdCloudy/Hermes-Local/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22).
+3. Keep the Windows-native, local-first security model intact and include
+   verification evidence with your pull request.
+
+[Development flow](CONTRIBUTING.md#development-flow) ·
+[Open a feature request](https://github.com/xdCloudy/Hermes-Local/issues/new?template=feature_request.yml) ·
+[Report a bug](https://github.com/xdCloudy/Hermes-Local/issues/new?template=bug_report.yml)
+
+## FAQ
+
+<details>
+<summary><strong>Is Hermes Local a fork of Hermes Agent?</strong></summary>
+
+Hermes Agent is the application core. Hermes Local is an independent
+Windows-first integration and product layer that maintains a focused patch
+series, launcher, supervisor, inference runtime and workstation lifecycle.
+
+</details>
+
+<details>
+<summary><strong>Do I need Docker, WSL, cloud APIs or an NVIDIA GPU?</strong></summary>
+
+No. Docker, WSL and paid APIs are not required. CPU inference is supported;
+NVIDIA CUDA acceleration is optional.
+
+</details>
+
+<details>
+<summary><strong>Does the repository include model weights?</strong></summary>
+
+No. Model weights are never committed or bundled. A portable starter manifest
+can download a model, and you can register any compatible local GGUF.
+
+</details>
+
+<details>
+<summary><strong>Where does my data live?</strong></summary>
+
+Substantial state stays beneath the project root. Per-user launcher settings
+are Git-ignored, backups include local settings and data, and API credentials
+are protected for the current Windows user with DPAPI.
+
+</details>
+
+<details>
+<summary><strong>How mature is the project?</strong></summary>
+
+The current launcher has native packaging, lifecycle management, recovery,
+benchmarking, security controls and a large automated QA corpus. Known
+limitations are published in the
+[acceptance results](docs/ACCEPTANCE_RESULTS.md), not hidden behind a maturity
+label.
+
+</details>
+
+## License
+
+Hermes Local is licensed under the [MIT License](LICENSE). Third-party
+components, models and generated notices retain their own terms; see
+[LICENSES.md](LICENSES.md).
+
+---
+
+<div align="center">
+
+[Documentation](docs/README.md) ·
+[Releases](https://github.com/xdCloudy/Hermes-Local/releases) ·
+[Issues](https://github.com/xdCloudy/Hermes-Local/issues) ·
+[Roadmap](https://github.com/users/xdCloudy/projects/1) ·
+[Security](SECURITY.md) ·
+[Contributing](CONTRIBUTING.md)
+
+</div>

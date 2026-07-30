@@ -1,5 +1,7 @@
 # Architecture
 
+[← Documentation home](README.md) · [Project home](../README.md)
+
 ## System view
 
 ```mermaid

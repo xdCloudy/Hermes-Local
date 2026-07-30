@@ -1,0 +1,19 @@
+{
+  "config": {
+    "MD013": false,
+    "MD024": {
+      "siblings_only": true
+    },
+    "MD026": false,
+    "MD033": false,
+    "MD036": false,
+    "MD041": false,
+    "MD060": false,
+    "MD001": false
+  },
+  "ignores": [
+    "reports/**",
+    "benchmarks/reports/**",
+    "security/**"
+  ]
+}

@@ -1,5 +1,8 @@
 # Troubleshooting
 
+[← Documentation home](README.md) · [Project home](../README.md) ·
+[Operations](OPERATIONS.md)
+
 ## Begin with the health test
 
 From the project directory:
