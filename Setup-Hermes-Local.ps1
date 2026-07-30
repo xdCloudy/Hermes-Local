@@ -13,6 +13,32 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Configuration.psm1') -Force
 
+
+function Invoke-IsolatedPowerShellScript {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string] $ScriptPath,
+        [string[]] $ArgumentList = @(),
+        [Parameter(Mandatory)]
+        [string] $Description
+    )
+
+    $hostExecutable = (Get-Process -Id $PID -ErrorAction Stop).Path
+    if ([string]::IsNullOrWhiteSpace($hostExecutable)) {
+        throw 'Unable to resolve the current PowerShell host executable.'
+    }
+    $hostArguments = @(
+        '-NoLogo', '-NoProfile', '-NonInteractive',
+        '-ExecutionPolicy', 'Bypass',
+        '-File', $ScriptPath
+    ) + @($ArgumentList)
+    & $hostExecutable @hostArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Description failed with exit code $LASTEXITCODE."
+    }
+}
+
 function Require-Command {
     param(
         [Parameter(Mandatory)]
@@ -417,19 +443,23 @@ try {
     if (-not $SkipLauncherBuild) {
         $launcherBuild = Resolve-HermesPath 'Build-Hermes-Launcher.ps1'
         if (Test-Path -LiteralPath $launcherBuild) {
-            & $launcherBuild -NonInteractive:$NonInteractive
-            if ($LASTEXITCODE -ne 0) {
-                throw "Launcher build failed with exit code $LASTEXITCODE."
+            $launcherArguments = @()
+            if ($NonInteractive) {
+                $launcherArguments += '-NonInteractive'
             }
+            Invoke-IsolatedPowerShellScript `
+                -ScriptPath $launcherBuild `
+                -ArgumentList $launcherArguments `
+                -Description 'Launcher build'
         }
     }
 
     $diagnosticScript = Resolve-HermesPath 'Test-Hermes-Local.ps1'
     if (Test-Path -LiteralPath $diagnosticScript) {
-        & $diagnosticScript -BootstrapOnly
-        if ($LASTEXITCODE -ne 0) {
-            throw "Bootstrap diagnostics failed with exit code $LASTEXITCODE."
-        }
+        Invoke-IsolatedPowerShellScript `
+            -ScriptPath $diagnosticScript `
+            -ArgumentList @('-BootstrapOnly') `
+            -Description 'Bootstrap diagnostics'
     }
 
     $elapsed = (Get-Date) - $started
