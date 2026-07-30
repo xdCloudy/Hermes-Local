@@ -20,6 +20,7 @@ $runtimeDirectory = Resolve-HermesPath 'data\runtime'
 $statusPath = Join-Path $runtimeDirectory 'status.json'
 $controllerPidPath = Join-Path $runtimeDirectory 'supervisor.pid'
 $stopRequestPath = Join-Path $runtimeDirectory 'stop.request'
+$benchmarkRequestPath = Join-Path $runtimeDirectory 'benchmark.request.json'
 $modelPort = [int]$configuration.network.modelPort
 $hermesPort = [int]$configuration.network.hermesPort
 $listenHost = [string]$configuration.network.host
@@ -36,6 +37,7 @@ $job = $null
 $mutex = $null
 $createdNew = $false
 $startedAt = (Get-Date).ToUniversalTime()
+$benchmarkMode = $false
 $restartTimes = [System.Collections.Generic.List[datetime]]::new()
 
 function Write-SupervisorState {
@@ -331,10 +333,63 @@ function Wait-HermesGatewayHealthy {
 }
 
 
-function Start-Stack {
+function Get-ActiveBenchmarkRequest {
+    if (-not (Test-Path -LiteralPath $benchmarkRequestPath)) {
+        return $null
+    }
+
+    try {
+        $request = Get-Content -Raw -LiteralPath $benchmarkRequestPath | ConvertFrom-Json
+        $ownerPid = 0
+        if (-not $request.ownerPid -or
+            -not [int]::TryParse([string]$request.ownerPid, [ref]$ownerPid) -or
+            $ownerPid -le 0) {
+            throw 'Benchmark request does not contain a valid owner PID.'
+        }
+        if (-not (Get-Process -Id $ownerPid -ErrorAction SilentlyContinue)) {
+            Write-HermesLog -Component supervisor -Level WARN -Message "Removing stale benchmark request owned by exited PID $ownerPid."
+            Remove-Item -LiteralPath $benchmarkRequestPath -Force -ErrorAction SilentlyContinue
+            return $null
+        }
+        return $request
+    } catch {
+        Write-HermesLog -Component supervisor -Level WARN -Message "Removing invalid benchmark request: $($_.Exception.Message)"
+        Remove-Item -LiteralPath $benchmarkRequestPath -Force -ErrorAction SilentlyContinue
+        return $null
+    }
+}
+
+function Get-SupervisorGatewayHealth {
+    $healthy = -not $gatewayRequired
+    $state = if ($gatewayRequired) { 'unknown' } else { 'disabled' }
+    $message = ''
+    if ($gatewayRequired) {
+        try {
+            $snapshot = Get-HermesGatewaySnapshot
+            if ($snapshot.pid) {
+                $script:gatewayRuntimePid = [int]$snapshot.pid
+            }
+            $healthy = [bool]$snapshot.healthy
+            $state = [string]$snapshot.state
+            if (-not $healthy) {
+                $message = Get-HermesGatewayFailureDetail -Snapshot $snapshot
+            }
+        } catch {
+            $message = $_.Exception.Message
+        }
+    }
+    return [pscustomobject]@{
+        healthy = $healthy
+        state = $state
+        message = $message
+    }
+}
+
+function Start-Model {
     param(
         [Parameter(Mandatory)]
-        [string] $Token
+        [string] $Token,
+        [switch] $PreserveDesktopServices
     )
 
     $selectedProfile = Get-SelectedProfile
@@ -349,13 +404,16 @@ function Start-Stack {
     if ($llamaServer.Count -ne 1) {
         throw "Expected one llama-server.exe; found $($llamaServer.Count)."
     }
-    $hermesExecutable = Resolve-HermesPath 'runtimes\python\hermes\Scripts\hermes.exe'
     $apiKeyFile = Join-Path $runtimeDirectory "llama-api-key-$PID.txt"
     Assert-PortAvailable -Port $modelPort
-    Assert-PortAvailable -Port $hermesPort
 
     Sync-HermesRuntimeConfiguration -Configuration $configuration
-    Write-SupervisorState -Phase 'starting-model' -Message "Validating and loading $($selectedModel.displayName)."
+    $gatewayHealth = Get-SupervisorGatewayHealth
+    $desktopHealthy = $PreserveDesktopServices -and $hermesProcess -and -not $hermesProcess.HasExited -and
+        (Test-Endpoint -Uri "$hermesBase/api/health" -TimeoutSeconds 2)
+    Write-SupervisorState -Phase 'starting-model' -Message "Validating and loading $($selectedModel.displayName)." `
+        -HermesHealthy $desktopHealthy -GatewayHealthy $gatewayHealth.healthy `
+        -GatewayState $gatewayHealth.state -GatewayMessage $gatewayHealth.message
     Write-HermesLog -Component supervisor -Message "Starting '$($selectedModel.displayName)' with profile '$Profile'."
     [System.IO.File]::WriteAllText($apiKeyFile, $Token + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
     $acl = Get-Acl -LiteralPath $apiKeyFile
@@ -388,6 +446,17 @@ function Start-Stack {
     if (-not (Test-Endpoint -Uri "$modelBase/v1/models" -Headers $authHeaders -TimeoutSeconds 10)) {
         throw 'llama-server health passed but /v1/models did not.'
     }
+}
+
+function Start-Stack {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Token
+    )
+
+    Start-Model -Token $Token
+    $hermesExecutable = Resolve-HermesPath 'runtimes\python\hermes\Scripts\hermes.exe'
+    Assert-PortAvailable -Port $hermesPort
 
     Write-SupervisorState -Phase 'starting-hermes' -Message 'Model ready; starting Hermes backend.' -ModelHealthy $true
     Write-HermesLog -Component supervisor -Message 'Model server is healthy; starting the unified Hermes backend and dashboard.'
@@ -503,29 +572,63 @@ try {
     $consecutiveHealthFailures = 0
     while (-not (Test-Path -LiteralPath $stopRequestPath)) {
         Start-Sleep -Seconds 2
-        $modelHealthy = $modelProcess -and -not $modelProcess.HasExited -and
-            (Test-Endpoint -Uri "$modelBase/health" -TimeoutSeconds 2)
+        $benchmarkRequest = Get-ActiveBenchmarkRequest
         $hermesHealthy = $hermesProcess -and -not $hermesProcess.HasExited -and
             (Test-Endpoint -Uri "$hermesBase/api/health" -TimeoutSeconds 2)
-        $gatewaySnapshot = $null
-        $gatewayHealthy = -not $gatewayRequired
-        $gatewayState = if ($gatewayRequired) { 'unknown' } else { 'disabled' }
-        $gatewayMessage = ''
-        if ($gatewayRequired) {
-            try {
-                $gatewaySnapshot = Get-HermesGatewaySnapshot
-                if ($gatewaySnapshot.pid) {
-                    $script:gatewayRuntimePid = [int]$gatewaySnapshot.pid
-                }
-                $gatewayHealthy = [bool]$gatewaySnapshot.healthy
-                $gatewayState = [string]$gatewaySnapshot.state
-                if (-not $gatewayHealthy) {
-                    $gatewayMessage = Get-HermesGatewayFailureDetail -Snapshot $gatewaySnapshot
-                }
-            } catch {
-                $gatewayMessage = $_.Exception.Message
+        $gatewayHealth = Get-SupervisorGatewayHealth
+        $gatewayHealthy = [bool]$gatewayHealth.healthy
+        $gatewayState = [string]$gatewayHealth.state
+        $gatewayMessage = [string]$gatewayHealth.message
+
+        if ($benchmarkRequest -and -not $benchmarkMode) {
+            if (-not $hermesHealthy -or -not $gatewayHealthy) {
+                throw 'Desktop or gateway services were not healthy before entering benchmark mode.'
             }
+            Write-SupervisorState -Phase 'benchmark-preparing' `
+                -Message 'Preparing exclusive model access; Desktop and gateway services remain online.' `
+                -ModelHealthy $true -HermesHealthy $true -GatewayHealthy $gatewayHealthy `
+                -GatewayState $gatewayState -GatewayMessage $gatewayMessage
+            Write-HermesLog -Component supervisor -Message "Benchmark PID $($benchmarkRequest.ownerPid) requested exclusive model access."
+            Stop-ManagedProcess -Process $modelProcess -Name 'llama-server for benchmark access' -GraceSeconds 20 -CloseInput
+            $script:modelProcess = $null
+            $benchmarkMode = $true
+            Write-SupervisorState -Phase 'benchmarking' `
+                -Message 'Benchmark owns the model; Desktop and gateway services remain online.' `
+                -HermesHealthy $true -GatewayHealthy $gatewayHealthy `
+                -GatewayState $gatewayState -GatewayMessage $gatewayMessage
+            continue
         }
+
+        if ($benchmarkMode) {
+            if ($benchmarkRequest) {
+                if (-not $hermesHealthy -or -not $gatewayHealthy) {
+                    throw 'Desktop or gateway services became unhealthy during benchmark mode.'
+                }
+                Write-SupervisorState -Phase 'benchmarking' `
+                    -Message 'Benchmark owns the model; Desktop and gateway services remain online.' `
+                    -HermesHealthy $true -GatewayHealthy $gatewayHealthy `
+                    -GatewayState $gatewayState -GatewayMessage $gatewayMessage
+                continue
+            }
+
+            Write-HermesLog -Component supervisor -Message 'Benchmark released model access; restoring llama-server without restarting Desktop services.'
+            Start-Model -Token $token -PreserveDesktopServices
+            $gatewayHealth = Get-SupervisorGatewayHealth
+            $hermesHealthy = $hermesProcess -and -not $hermesProcess.HasExited -and
+                (Test-Endpoint -Uri "$hermesBase/api/health" -TimeoutSeconds 2)
+            if (-not $hermesHealthy -or -not $gatewayHealth.healthy) {
+                throw 'Model returned after benchmark, but Desktop or gateway services were unhealthy.'
+            }
+            $benchmarkMode = $false
+            $consecutiveHealthFailures = 0
+            Write-SupervisorState -Phase 'running' -Message 'Hermes Local is ready after benchmark completion.' `
+                -ModelHealthy $true -HermesHealthy $true -GatewayHealthy $gatewayHealth.healthy `
+                -GatewayState $gatewayHealth.state -GatewayMessage $gatewayHealth.message
+            continue
+        }
+
+        $modelHealthy = $modelProcess -and -not $modelProcess.HasExited -and
+            (Test-Endpoint -Uri "$modelBase/health" -TimeoutSeconds 2)
         if ($modelHealthy -and $hermesHealthy -and $gatewayHealthy) {
             $consecutiveHealthFailures = 0
             Write-SupervisorState -Phase 'running' -Message 'Hermes Local is ready.' `

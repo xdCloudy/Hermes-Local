@@ -15,6 +15,107 @@ $configuration = Get-HermesConfiguration
 $restartProfile = [string]$configuration.selectedProfile
 $stackRestarted = $false
 $temporaryFiles = [System.Collections.Generic.List[string]]::new()
+$benchmarkRequestPath = Resolve-HermesPath 'data\runtime\benchmark.request.json'
+
+function Test-HermesProcessAlive {
+    param(
+        [Parameter(Mandatory)]
+        [int] $ProcessId
+    )
+
+    return $null -ne (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)
+}
+
+function Wait-HermesBenchmarkPhase {
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('benchmarking', 'running')]
+        [string] $Phase,
+        [int] $TimeoutSeconds = 960
+    )
+
+    $statusPath = Resolve-HermesPath 'data\runtime\status.json'
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-Path -LiteralPath $statusPath) {
+            try {
+                $status = Get-Content -Raw -LiteralPath $statusPath | ConvertFrom-Json
+                $controllerPid = if ($status.controllerPid) { [int]$status.controllerPid } else { 0 }
+                if ($controllerPid -gt 0 -and -not (Test-HermesProcessAlive -ProcessId $controllerPid)) {
+                    throw "Hermes Local supervisor PID $controllerPid exited during benchmark lifecycle coordination."
+                }
+
+                $gatewayReady = -not $status.gateway -or -not $status.gateway.required -or $status.gateway.healthy
+                if ($Phase -eq 'benchmarking' -and
+                    $status.phase -eq 'benchmarking' -and
+                    -not $status.model.pid -and
+                    $status.hermes.healthy -and
+                    $gatewayReady) {
+                    return
+                }
+                if ($Phase -eq 'running' -and
+                    $status.phase -eq 'running' -and
+                    $status.model.healthy -and
+                    $status.hermes.healthy -and
+                    $gatewayReady) {
+                    return
+                }
+                if ($status.phase -eq 'failed') {
+                    throw "Hermes Local supervisor failed during benchmark lifecycle coordination: $($status.message)"
+                }
+            } catch [System.Management.Automation.RuntimeException] {
+                throw
+            } catch {
+                Write-Verbose "Waiting for an atomic benchmark lifecycle status update: $($_.Exception.Message)"
+            }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "Hermes Local did not enter '$Phase' benchmark lifecycle state within $TimeoutSeconds seconds."
+}
+
+function Enter-HermesBenchmarkMode {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Profile
+    )
+
+    if (Test-Path -LiteralPath $benchmarkRequestPath) {
+        try {
+            $existing = Get-Content -Raw -LiteralPath $benchmarkRequestPath | ConvertFrom-Json
+            $existingOwnerPid = if ($existing.ownerPid) { [int]$existing.ownerPid } else { 0 }
+            if ($existingOwnerPid -gt 0 -and (Test-HermesProcessAlive -ProcessId $existingOwnerPid)) {
+                throw "Benchmark lifecycle is already owned by PID $existingOwnerPid."
+            }
+        } catch [System.Management.Automation.RuntimeException] {
+            throw
+        } catch {
+            Write-HermesLog -Component benchmarks -Level WARN -Message "Removing unreadable stale benchmark request: $($_.Exception.Message)"
+        }
+        Remove-Item -LiteralPath $benchmarkRequestPath -Force -ErrorAction SilentlyContinue
+    }
+
+    $request = [ordered]@{
+        schemaVersion = 1
+        ownerPid = $PID
+        profile = $Profile
+        requestedAt = (Get-Date).ToUniversalTime().ToString('o')
+    }
+    Write-HermesAtomicText -Path $benchmarkRequestPath -Content (($request | ConvertTo-Json -Depth 4) + [Environment]::NewLine)
+    Write-HermesLog -Component benchmarks -Message 'Requested exclusive model access while preserving Desktop and gateway services.'
+    try {
+        Wait-HermesBenchmarkPhase -Phase benchmarking -TimeoutSeconds 120
+    } catch {
+        Remove-Item -LiteralPath $benchmarkRequestPath -Force -ErrorAction SilentlyContinue
+        throw
+    }
+}
+
+function Exit-HermesBenchmarkMode {
+    Remove-Item -LiteralPath $benchmarkRequestPath -Force -ErrorAction SilentlyContinue
+    Write-HermesLog -Component benchmarks -Message 'Released exclusive model access; waiting for the model server to return.'
+    Wait-HermesBenchmarkPhase -Phase running -TimeoutSeconds 960
+}
 
 function Get-Percentile {
     param(
@@ -749,10 +850,7 @@ try {
         }
     }
     if ($wasRunning) {
-        & (Resolve-HermesPath 'Stop-Hermes-Local.ps1') -NonInteractive
-        if ($LASTEXITCODE -ne 0) {
-            throw 'Could not stop the stack for exclusive benchmark access.'
-        }
+        Enter-HermesBenchmarkMode -Profile $restartProfile
     }
 
     $runCases = [System.Collections.Generic.List[object]]::new()
@@ -772,10 +870,7 @@ try {
     }
 
     if ($wasRunning) {
-        & (Resolve-HermesPath 'Start-Hermes-Local.ps1') -Profile $restartProfile -NonInteractive
-        if ($LASTEXITCODE -ne 0) {
-            throw 'Benchmark completed, but the previous stack profile could not be restarted.'
-        }
+        Exit-HermesBenchmarkMode
         $stackRestarted = $true
     }
 
@@ -896,9 +991,22 @@ try {
     Write-Host "Benchmark failed: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 } finally {
+    if (Test-Path -LiteralPath $benchmarkRequestPath) {
+        try {
+            $request = Get-Content -Raw -LiteralPath $benchmarkRequestPath | ConvertFrom-Json
+            if ([int]$request.ownerPid -eq $PID) {
+                Remove-Item -LiteralPath $benchmarkRequestPath -Force -ErrorAction SilentlyContinue
+            }
+        } catch {
+            Remove-Item -LiteralPath $benchmarkRequestPath -Force -ErrorAction SilentlyContinue
+        }
+    }
     if ($wasRunning -and -not $stackRestarted) {
         try {
             & (Resolve-HermesPath 'Start-Hermes-Local.ps1') -Profile $restartProfile -NonInteractive
+            if ($LASTEXITCODE -ne 0) {
+                throw "Start-Hermes-Local.ps1 exited with code $LASTEXITCODE."
+            }
         } catch {
             Write-HermesLog -Component benchmarks -Level ERROR -Message "Could not restore stack after benchmark failure: $($_.Exception.Message)"
         }
