@@ -12,6 +12,28 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Configuration.psm1') -Force
 
+function Test-HermesDesktopReadyState {
+    param(
+        [AllowNull()]
+        [psobject] $Status,
+        [Parameter(Mandatory)]
+        [int] $ControllerPid
+    )
+
+    if (-not $Status -or
+        $Status.PSObject.Properties.Name -notcontains 'phase' -or
+        $Status.PSObject.Properties.Name -notcontains 'controllerPid' -or
+        [int]$Status.controllerPid -ne $ControllerPid) {
+        return $false
+    }
+    $gatewayReady = $Status.PSObject.Properties.Name -notcontains 'gateway' -or
+        -not $Status.gateway.required -or $Status.gateway.healthy
+    $desktopReady = $Status.hermes.healthy -and $gatewayReady
+    $inferenceReady = $Status.phase -eq 'running' -and $Status.model.healthy
+    $benchmarkReady = $Status.phase -in @('benchmark-preparing', 'benchmarking', 'starting-model') -and $desktopReady
+    return $desktopReady -and ($inferenceReady -or $benchmarkReady)
+}
+
 function Get-RunningHermesSupervisor {
     param(
         [Parameter(Mandatory)]
@@ -58,16 +80,12 @@ try {
         } else {
             $null
         }
-        if ($status -and
-            $status.PSObject.Properties.Name -contains 'phase' -and
-            $status.PSObject.Properties.Name -contains 'controllerPid' -and
-            [int]$status.controllerPid -eq $existingPid -and
-            $status.phase -eq 'running' -and
-            $status.model.healthy -and
-            $status.hermes.healthy -and
-            ($status.PSObject.Properties.Name -notcontains 'gateway' -or
-                -not $status.gateway.required -or $status.gateway.healthy)) {
-            Write-Host "Hermes Local is already running with profile '$($status.profile)' (supervisor PID $existingPid)."
+        if (Test-HermesDesktopReadyState -Status $status -ControllerPid $existingPid) {
+            if ($status.phase -eq 'running') {
+                Write-Host "Hermes Local is already running with profile '$($status.profile)' (supervisor PID $existingPid)."
+            } else {
+                Write-Host "Hermes Local Desktop services are ready while benchmark lifecycle state is '$($status.phase)' (supervisor PID $existingPid)."
+            }
             exit 0
         }
         Write-HermesLog -Component supervisor -Message (
@@ -152,14 +170,17 @@ try {
                     Write-Verbose "Hermes Local phase: $($status.phase) — $($status.message)"
                     $lastPhase = $status.phase
                 }
-                if ($status.phase -eq 'running' -and $status.model.healthy -and $status.hermes.healthy -and `
-                    ($status.PSObject.Properties.Name -notcontains 'gateway' -or -not $status.gateway.required -or $status.gateway.healthy)) {
+                if (Test-HermesDesktopReadyState -Status $status -ControllerPid $process.Id) {
                     $gatewayDetail = if ($status.PSObject.Properties.Name -contains 'gateway' -and $status.gateway.required) {
                         " Gateway PID $($status.gateway.pid) ($($status.gateway.ownership))."
                     } else {
                         ' Messaging gateway disabled.'
                     }
-                    Write-Host "Hermes Local is ready with profile '$Profile'. Model PID $($status.model.pid); Hermes PID $($status.hermes.pid).$gatewayDetail"
+                    if ($status.phase -eq 'running') {
+                        Write-Host "Hermes Local is ready with profile '$Profile'. Model PID $($status.model.pid); Hermes PID $($status.hermes.pid).$gatewayDetail"
+                    } else {
+                        Write-Host "Hermes Local Desktop services are ready while benchmark lifecycle state is '$($status.phase)'. Hermes PID $($status.hermes.pid).$gatewayDetail"
+                    }
                     exit 0
                 }
                 if ($status.phase -eq 'failed') {
