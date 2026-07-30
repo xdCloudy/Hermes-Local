@@ -7,7 +7,6 @@
 - Fixed benchmark startup on PowerShell by allowing newly created empty argument and case accumulator lists to bind before they are populated, with a real construction-path self-test.
 - Made the benchmark harness hardware- and settings-agnostic by probing the installed `llama-bench` options, translating abstract GPU-layer settings without mutating profiles, deriving sweeps from the selected profile and hardware, and flattening adaptive context cases.
 - Preserved a complete telemetry schema for failed native benchmark cases so report generation records the original failure instead of throwing on missing performance counters.
-- Added bounded stale-heartbeat tolerance for a live, connected messaging gateway so model restoration does not restart the full Desktop stack, while persistent staleness still fails closed.
 - Made shutdown verify the complete captured supervisor process tree and detect replacement supervisors instead of reporting a false clean stop when descendants survive.
 - Kept the Desktop backend and messaging gateway online during benchmarks by leasing only the model process, with automatic model restoration and stale-request recovery.
 - Prevented nested gateway-module imports from unloading shared logging and redaction commands from parent PowerShell scripts.
