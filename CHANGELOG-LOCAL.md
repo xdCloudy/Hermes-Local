@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Isolated nested launcher-build and bootstrap-diagnostic scripts so forced module reloads cannot remove setup logging commands.
 - Managed enabled Hermes messaging gateways with the local stack, added authoritative gateway readiness and ownership state, and made diagnostics fail when a required gateway is offline.
 - Removed the redirect-only Tools page from primary navigation, preserved `/tools` as a redirect to Skills, and retained direct Chat and TUI access.
 - Replaced the remaining native launcher selects with the shared themed,
