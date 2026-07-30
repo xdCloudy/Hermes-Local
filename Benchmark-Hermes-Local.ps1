@@ -16,6 +16,8 @@ $script:benchmarkRequestPath = Resolve-HermesPath 'data\runtime\benchmark.reques
 $script:wasRunning = $false
 $script:stackRestored = $false
 $script:restartProfile = ''
+$script:restorationRecoveredByReplacement = $false
+$script:restorationInitialError = $null
 
 $benchmarkLibrary = Resolve-HermesPath 'scripts\benchmark'
 foreach ($part in @(
