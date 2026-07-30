@@ -28,7 +28,14 @@ def module(name: str, **members):
 
 
 class GatewaySnapshotTests(unittest.TestCase):
-    def run_snapshot(self, *, enabled: bool, discover: bool, logical_pids=None):
+    def run_snapshot(
+        self,
+        *,
+        enabled: bool,
+        discover: bool,
+        logical_pids=None,
+        resolved_platforms: list[str] | None = None,
+    ):
         runtime = {
             "pid": 4200,
             "kind": "hermes-gateway",
@@ -48,10 +55,16 @@ class GatewaySnapshotTests(unittest.TestCase):
                 FakePlatform.DISCORD: SimpleNamespace(enabled=enabled),
             }
         )
+        config_calls = []
+
+        def load_gateway_config():
+            config_calls.append(True)
+            return config
+
         gateway_config = module(
             "gateway.config",
             Platform=FakePlatform,
-            load_gateway_config=lambda: config,
+            load_gateway_config=load_gateway_config,
         )
         gateway_status = module(
             "gateway.status",
@@ -77,7 +90,11 @@ class GatewaySnapshotTests(unittest.TestCase):
             "hermes_cli.env_loader": env_loader,
             "hermes_cli.gateway": hermes_gateway,
         }
-        argv = [str(SCRIPT)] + (["--discover"] if discover else [])
+        argv = [str(SCRIPT)]
+        if discover:
+            argv.append("--discover")
+        if resolved_platforms is not None:
+            argv.extend(["--enabled-platforms-json", json.dumps(resolved_platforms)])
         output = io.StringIO()
         with (
             patch.dict(sys.modules, packages, clear=False),
@@ -85,7 +102,10 @@ class GatewaySnapshotTests(unittest.TestCase):
             redirect_stdout(output),
         ):
             runpy.run_path(str(SCRIPT), run_name="__main__")
-        self.assertEqual(dotenv_calls, [True])
+
+        expected_config_calls = [] if resolved_platforms is not None else [True]
+        self.assertEqual(dotenv_calls, expected_config_calls)
+        self.assertEqual(config_calls, expected_config_calls)
         return json.loads(output.getvalue())
 
     def test_enabled_healthy_platform_and_duplicate_roots(self):
@@ -105,6 +125,15 @@ class GatewaySnapshotTests(unittest.TestCase):
         self.assertFalse(snapshot["healthy"])
         self.assertEqual(snapshot["state"], "disabled")
         self.assertEqual(snapshot["enabledPlatforms"], [])
+
+    def test_resolved_platforms_skip_secret_and_config_reload(self):
+        snapshot = self.run_snapshot(
+            enabled=True,
+            discover=False,
+            resolved_platforms=["Discord", "discord"],
+        )
+        self.assertTrue(snapshot["healthy"])
+        self.assertEqual(snapshot["enabledPlatforms"], ["discord"])
 
 
 if __name__ == "__main__":
