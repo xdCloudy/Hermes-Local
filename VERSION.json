@@ -11,8 +11,8 @@
       "branch": "main",
       "commit": "a0222295666558c72cc2b03d69f932801dcf96e6",
       "integrationBranch": "hermes-local-integration",
-      "integrationCommit": "8e23c00bc79a1281077214a3325e5fc2d5fbe0ef",
-      "integrationTree": "ec7d75a2130753f842f71a848cf2c66731590d10",
+      "integrationCommit": "ea73b6c5d88fafbe4ef623e2fedeed34d8c48d01",
+      "integrationTree": "12578b0d6b7a8aa6ab302d0a79a8439dfff0190c",
       "patchSeries": "source/hermes-launcher/patches"
     },
     "llamaCpp": {
@@ -46,5 +46,5 @@
     "modelAliasDefault": "laguna-xs-2.1-q4km",
     "portableSettings": true
   },
-  "recordedAt": "2026-07-30T19:53:10Z"
+  "recordedAt": "2026-07-30T19:21:50Z"
 }
