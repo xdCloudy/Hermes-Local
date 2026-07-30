@@ -64,17 +64,28 @@ class GatewaySnapshotTests(unittest.TestCase):
             "hermes_cli.gateway",
             find_gateway_pids=lambda: list(logical_pids or []),
         )
+        dotenv_calls = []
+        env_loader = module(
+            "hermes_cli.env_loader",
+            load_hermes_dotenv=lambda: dotenv_calls.append(True),
+        )
         packages = {
             "gateway": module("gateway"),
             "gateway.config": gateway_config,
             "gateway.status": gateway_status,
             "hermes_cli": module("hermes_cli"),
+            "hermes_cli.env_loader": env_loader,
             "hermes_cli.gateway": hermes_gateway,
         }
         argv = [str(SCRIPT)] + (["--discover"] if discover else [])
         output = io.StringIO()
-        with patch.dict(sys.modules, packages, clear=False), patch.object(sys, "argv", argv), redirect_stdout(output):
+        with (
+            patch.dict(sys.modules, packages, clear=False),
+            patch.object(sys, "argv", argv),
+            redirect_stdout(output),
+        ):
             runpy.run_path(str(SCRIPT), run_name="__main__")
+        self.assertEqual(dotenv_calls, [True])
         return json.loads(output.getvalue())
 
     def test_enabled_healthy_platform_and_duplicate_roots(self):
@@ -85,6 +96,7 @@ class GatewaySnapshotTests(unittest.TestCase):
         self.assertTrue(snapshot["duplicateLogicalRoots"])
         self.assertEqual(snapshot["logicalPids"], [4200, 4300])
         self.assertNotIn("secret text", json.dumps(snapshot))
+        self.assertNotIn("hermesHome", snapshot)
 
     def test_disabled_gateway_is_explicit_and_not_healthy(self):
         snapshot = self.run_snapshot(enabled=False, discover=False)
