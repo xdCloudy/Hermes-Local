@@ -102,15 +102,15 @@ function Get-HermesGatewayFailureDetail {
     if (-not $Snapshot.running) {
         return 'No authoritative gateway process is running.'
     }
-    if ($Snapshot.runtimeStale) {
-        return 'Gateway runtime status is stale.'
-    }
     if (-not $Snapshot.runtimeLive) {
         return 'Gateway runtime PID is not live or no longer matches its recorded process identity.'
     }
     $pendingPlatforms = @($Snapshot.platforms | Where-Object { -not $_.healthy })
     if ($pendingPlatforms.Count -gt 0) {
         return ($pendingPlatforms | ForEach-Object { "$($_.name): $($_.state)" }) -join '; '
+    }
+    if ($Snapshot.runtimeStale) {
+        return 'Gateway runtime timestamp is old, but timestamp age is advisory rather than a heartbeat failure.'
     }
     return "Gateway state is '$($Snapshot.state)'."
 }
