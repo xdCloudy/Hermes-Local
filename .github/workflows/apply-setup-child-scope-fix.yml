@@ -1,0 +1,215 @@
+name: Apply setup child-scope fix
+
+on:
+  push:
+    branches:
+      - agent/fix-setup-child-scope
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-setup-child-scope
+
+      - name: Apply setup isolation fix
+        shell: pwsh
+        run: |
+          $targetCommit = 'fix(setup): isolate nested PowerShell scripts'
+          if ((git log -1 --pretty=%s) -eq $targetCommit) {
+            Write-Host 'Setup isolation fix already applied.'
+            exit 0
+          }
+
+          @'
+          from pathlib import Path
+
+          def read(path: str) -> str:
+              return Path(path).read_text(encoding="utf-8")
+
+          def write(path: str, content: str) -> None:
+              Path(path).write_text(content, encoding="utf-8", newline="\n")
+
+          setup_path = "Setup-Hermes-Local.ps1"
+          setup = read(setup_path)
+
+          import_anchor = "Import-Module (Join-Path $PSScriptRoot 'scripts\\Hermes-Configuration.psm1') -Force\n"
+          helper = r'''
+
+          function Invoke-IsolatedPowerShellScript {
+              [CmdletBinding()]
+              param(
+                  [Parameter(Mandatory)]
+                  [string] $ScriptPath,
+                  [string[]] $ArgumentList = @(),
+                  [Parameter(Mandatory)]
+                  [string] $Description
+              )
+
+              $hostExecutable = (Get-Process -Id $PID -ErrorAction Stop).Path
+              if ([string]::IsNullOrWhiteSpace($hostExecutable)) {
+                  throw 'Unable to resolve the current PowerShell host executable.'
+              }
+              $hostArguments = @(
+                  '-NoLogo', '-NoProfile', '-NonInteractive',
+                  '-ExecutionPolicy', 'Bypass',
+                  '-File', $ScriptPath
+              ) + @($ArgumentList)
+              & $hostExecutable @hostArguments
+              if ($LASTEXITCODE -ne 0) {
+                  throw "$Description failed with exit code $LASTEXITCODE."
+              }
+          }
+          '''
+          if "function Invoke-IsolatedPowerShellScript" not in setup:
+              if import_anchor not in setup:
+                  raise SystemExit("Setup import anchor not found")
+              setup = setup.replace(import_anchor, import_anchor + helper, 1)
+
+          old_launcher = r'''        if (Test-Path -LiteralPath $launcherBuild) {
+                      & $launcherBuild -NonInteractive:$NonInteractive
+                      if ($LASTEXITCODE -ne 0) {
+                          throw "Launcher build failed with exit code $LASTEXITCODE."
+                      }
+                  }'''
+          new_launcher = r'''        if (Test-Path -LiteralPath $launcherBuild) {
+                      $launcherArguments = @()
+                      if ($NonInteractive) {
+                          $launcherArguments += '-NonInteractive'
+                      }
+                      Invoke-IsolatedPowerShellScript `
+                          -ScriptPath $launcherBuild `
+                          -ArgumentList $launcherArguments `
+                          -Description 'Launcher build'
+                  }'''
+          if old_launcher not in setup:
+              raise SystemExit("Direct launcher invocation block not found")
+          setup = setup.replace(old_launcher, new_launcher, 1)
+
+          old_diagnostics = r'''    if (Test-Path -LiteralPath $diagnosticScript) {
+                  & $diagnosticScript -BootstrapOnly
+                  if ($LASTEXITCODE -ne 0) {
+                      throw "Bootstrap diagnostics failed with exit code $LASTEXITCODE."
+                  }
+              }'''
+          new_diagnostics = r'''    if (Test-Path -LiteralPath $diagnosticScript) {
+                  Invoke-IsolatedPowerShellScript `
+                      -ScriptPath $diagnosticScript `
+                      -ArgumentList @('-BootstrapOnly') `
+                      -Description 'Bootstrap diagnostics'
+              }'''
+          if old_diagnostics not in setup:
+              raise SystemExit("Direct diagnostics invocation block not found")
+          setup = setup.replace(old_diagnostics, new_diagnostics, 1)
+          write(setup_path, setup)
+
+          test_path = Path("tests/Test-SetupChildProcessIsolation.ps1")
+          test_path.write_text(r'''[CmdletBinding()]
+          param()
+
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+          $setupPath = Join-Path $root 'Setup-Hermes-Local.ps1'
+          $setup = [System.IO.File]::ReadAllText($setupPath)
+
+          if ($setup -notmatch 'function Invoke-IsolatedPowerShellScript') {
+              throw 'Setup does not define the isolated PowerShell child runner.'
+          }
+          if ($setup -match '&\s+\$launcherBuild') {
+              throw 'Launcher build is still invoked directly in the setup process.'
+          }
+          if ($setup -match '&\s+\$diagnosticScript') {
+              throw 'Bootstrap diagnostics are still invoked directly in the setup process.'
+          }
+
+          $temp = Join-Path ([System.IO.Path]::GetTempPath()) ("hermes-module-scope-" + [guid]::NewGuid().ToString('N'))
+          [System.IO.Directory]::CreateDirectory($temp) | Out-Null
+          try {
+              $modulePath = Join-Path $temp 'ScopeProbe.psm1'
+              $childPath = Join-Path $temp 'Child.ps1'
+              @'
+          function Get-ScopeProbe { 'parent-command-still-loaded' }
+          Export-ModuleMember -Function Get-ScopeProbe
+          '@ | Set-Content -LiteralPath $modulePath -Encoding utf8
+              @"
+          Import-Module '$modulePath' -Force
+          if ((Get-ScopeProbe) -ne 'parent-command-still-loaded') { exit 2 }
+          exit 0
+          "@ | Set-Content -LiteralPath $childPath -Encoding utf8
+
+              Import-Module $modulePath -Force
+              $hostExecutable = (Get-Process -Id $PID -ErrorAction Stop).Path
+              & $hostExecutable -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $childPath
+              if ($LASTEXITCODE -ne 0) {
+                  throw "Isolated child process failed with exit code $LASTEXITCODE."
+              }
+              if ((Get-ScopeProbe) -ne 'parent-command-still-loaded') {
+                  throw 'Parent module command disappeared after isolated child execution.'
+              }
+          } finally {
+              Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+          Write-Host 'Setup child-process isolation tests passed.'
+          ''', encoding="utf-8", newline="\n")
+
+          workflow_path = ".github/workflows/powershell-validation.yml"
+          workflow = read(workflow_path)
+          step_anchor = "      - name: Verify source override merge\n"
+          test_step = r'''      - name: Test setup child-process isolation
+                  shell: pwsh
+                  run: |
+                    & '.\tests\Test-SetupChildProcessIsolation.ps1'
+
+          '''
+          if "Test setup child-process isolation" not in workflow:
+              if step_anchor not in workflow:
+                  raise SystemExit("PowerShell workflow anchor not found")
+              workflow = workflow.replace(step_anchor, test_step + step_anchor, 1)
+              write(workflow_path, workflow)
+
+          changelog_path = "CHANGELOG-LOCAL.md"
+          changelog = read(changelog_path)
+          entry = "- Isolated nested launcher-build and bootstrap-diagnostic scripts so forced module reloads cannot remove setup logging commands.\n"
+          marker = "## Unreleased\n\n"
+          if entry not in changelog:
+              if marker not in changelog:
+                  raise SystemExit("Changelog marker not found")
+              changelog = changelog.replace(marker, marker + entry, 1)
+              write(changelog_path, changelog)
+          '@ | python -
+
+      - name: Validate fix
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path '.\Setup-Hermes-Local.ps1'), [ref]$tokens, [ref]$errors
+          )
+          if ($errors.Count -gt 0) {
+            throw (($errors | ForEach-Object ToString) -join [Environment]::NewLine)
+          }
+          & '.\tests\Test-SetupChildProcessIsolation.ps1'
+
+      - name: Commit fix
+        shell: pwsh
+        run: |
+          if (-not (git status --porcelain)) {
+            Write-Host 'No changes to commit.'
+            exit 0
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- `
+            Setup-Hermes-Local.ps1 `
+            CHANGELOG-LOCAL.md `
+            tests/Test-SetupChildProcessIsolation.ps1 `
+            .github/workflows/powershell-validation.yml
+          git commit -m $targetCommit
+          git push origin HEAD:agent/fix-setup-child-scope
