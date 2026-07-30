@@ -330,6 +330,37 @@ function Wait-HermesGatewayHealthy {
     throw "Hermes messaging gateway did not become healthy within $TimeoutSeconds seconds: $detail"
 }
 
+
+function Wait-HermesGatewayHealthy {
+    param(
+        [AllowNull()]
+        [System.Diagnostics.Process] $Process,
+        [int] $TimeoutSeconds = 90
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $lastSnapshot = $null
+    while ((Get-Date) -lt $deadline) {
+        if ($Process -and $Process.HasExited) {
+            throw "Hermes messaging gateway exited with code $($Process.ExitCode) before becoming healthy."
+        }
+        $lastSnapshot = Get-HermesGatewaySnapshot
+        if ($lastSnapshot.pid) {
+            $script:gatewayRuntimePid = [int]$lastSnapshot.pid
+        }
+        if ($lastSnapshot.healthy) {
+            return $lastSnapshot
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    $detail = if ($lastSnapshot) {
+        Get-HermesGatewayFailureDetail -Snapshot $lastSnapshot
+    } else {
+        'No gateway status was produced.'
+    }
+    throw "Hermes messaging gateway did not become healthy within $TimeoutSeconds seconds: $detail"
+}
+
 function Start-Stack {
     param(
         [Parameter(Mandatory)]
@@ -568,7 +599,7 @@ try {
     }
 
     Stop-Stack
-    Write-SupervisorState -Phase 'stopped' -Message 'Hermes Local stopped.' -GatewayState 'stopped'
+    Write-SupervisorState -Phase 'stopped' -Message 'Hermes Local stopped.' -GatewayState 'stopped' -GatewayState 'stopped'
     Write-HermesLog -Component supervisor -Message 'Supervisor stopped normally.'
     exit 0
 } catch {

@@ -11,6 +11,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Configuration.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Gateway.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Gateway.psm1') -Force
 
 $results = [System.Collections.Generic.List[object]]::new()
 
