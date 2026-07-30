@@ -64,7 +64,9 @@ try {
             [int]$status.controllerPid -eq $existingPid -and
             $status.phase -eq 'running' -and
             $status.model.healthy -and
-            $status.hermes.healthy) {
+            $status.hermes.healthy -and
+            ($status.PSObject.Properties.Name -notcontains 'gateway' -or
+                -not $status.gateway.required -or $status.gateway.healthy)) {
             Write-Host "Hermes Local is already running with profile '$($status.profile)' (supervisor PID $existingPid)."
             exit 0
         }
@@ -150,8 +152,14 @@ try {
                     Write-Verbose "Hermes Local phase: $($status.phase) — $($status.message)"
                     $lastPhase = $status.phase
                 }
-                if ($status.phase -eq 'running' -and $status.model.healthy -and $status.hermes.healthy) {
-                    Write-Host "Hermes Local is ready with profile '$Profile'. Model PID $($status.model.pid); Hermes PID $($status.hermes.pid)."
+                if ($status.phase -eq 'running' -and $status.model.healthy -and $status.hermes.healthy -and `
+                    ($status.PSObject.Properties.Name -notcontains 'gateway' -or -not $status.gateway.required -or $status.gateway.healthy)) {
+                    $gatewayDetail = if ($status.PSObject.Properties.Name -contains 'gateway' -and $status.gateway.required) {
+                        " Gateway PID $($status.gateway.pid) ($($status.gateway.ownership))."
+                    } else {
+                        ' Messaging gateway disabled.'
+                    }
+                    Write-Host "Hermes Local is ready with profile '$Profile'. Model PID $($status.model.pid); Hermes PID $($status.hermes.pid).$gatewayDetail"
                     exit 0
                 }
                 if ($status.phase -eq 'failed') {

@@ -9,6 +9,7 @@ $ErrorActionPreference = 'Stop'
 $root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 Import-Module (Join-Path $root 'scripts\Common-Hermes.psm1') -Force
 Import-Module (Join-Path $root 'scripts\Hermes-Configuration.psm1') -Force
+Import-Module (Join-Path $root 'scripts\Hermes-Gateway.psm1') -Force
 . (Join-Path $PSScriptRoot 'Hermes-Job.ps1')
 
 $configuration = Get-HermesConfiguration
@@ -26,6 +27,11 @@ $modelBase = "http://$listenHost`:$modelPort"
 $hermesBase = "http://$listenHost`:$hermesPort"
 $modelProcess = $null
 $hermesProcess = $null
+$gatewayProcess = $null
+$gatewayRequired = $false
+$gatewayPlatforms = @()
+$gatewayOwnership = 'disabled'
+$gatewayRuntimePid = $null
 $job = $null
 $mutex = $null
 $createdNew = $false
@@ -38,7 +44,10 @@ function Write-SupervisorState {
         [string] $Phase,
         [string] $Message = '',
         [bool] $ModelHealthy = $false,
-        [bool] $HermesHealthy = $false
+        [bool] $HermesHealthy = $false,
+        [bool] $GatewayHealthy = $false,
+        [string] $GatewayState = 'disabled',
+        [string] $GatewayMessage = ''
     )
 
     $state = [ordered]@{
@@ -65,6 +74,16 @@ function Write-SupervisorState {
             healthy = $HermesHealthy
             url = $hermesBase
             sharedWithHermesBackend = $true
+        }
+        gateway = [ordered]@{
+            required = $gatewayRequired
+            enabledPlatforms = @($gatewayPlatforms)
+            launcherPid = if ($gatewayProcess -and -not $gatewayProcess.HasExited) { $gatewayProcess.Id } else { $null }
+            pid = $gatewayRuntimePid
+            healthy = if ($gatewayRequired) { $GatewayHealthy } else { $true }
+            state = if ($gatewayRequired) { $GatewayState } else { 'disabled' }
+            ownership = $gatewayOwnership
+            message = $GatewayMessage
         }
         startedAt = $startedAt.ToString('o')
         updatedAt = (Get-Date).ToUniversalTime().ToString('o')
@@ -280,6 +299,38 @@ function Get-LlamaArguments {
     return $arguments.ToArray()
 }
 
+
+function Wait-HermesGatewayHealthy {
+    param(
+        [AllowNull()]
+        [System.Diagnostics.Process] $Process,
+        [int] $TimeoutSeconds = 90
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $lastSnapshot = $null
+    while ((Get-Date) -lt $deadline) {
+        if ($Process -and $Process.HasExited) {
+            throw "Hermes messaging gateway exited with code $($Process.ExitCode) before becoming healthy."
+        }
+        $lastSnapshot = Get-HermesGatewaySnapshot
+        if ($lastSnapshot.pid) {
+            $script:gatewayRuntimePid = [int]$lastSnapshot.pid
+        }
+        if ($lastSnapshot.healthy) {
+            return $lastSnapshot
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    $detail = if ($lastSnapshot) {
+        Get-HermesGatewayFailureDetail -Snapshot $lastSnapshot
+    } else {
+        'No gateway status was produced.'
+    }
+    throw "Hermes messaging gateway did not become healthy within $TimeoutSeconds seconds: $detail"
+}
+
+
 function Start-Stack {
     param(
         [Parameter(Mandatory)]
@@ -356,14 +407,72 @@ function Start-Stack {
         -WorkingDirectory (Resolve-HermesPath 'source\hermes-agent') `
         -Environment $hermesEnvironment
     Wait-Endpoint -Name 'Hermes backend/dashboard' -Uri "$hermesBase/api/health" -Process $hermesProcess -TimeoutSeconds 120
-    Write-SupervisorState -Phase 'running' -Message 'Hermes Local is ready.' -ModelHealthy $true -HermesHealthy $true
-    Write-HermesLog -Component supervisor -Message "Stack ready. Model PID $($modelProcess.Id); Hermes PID $($hermesProcess.Id)."
+
+    $gatewayConfig = Get-HermesGatewaySnapshot -Discover
+    $script:gatewayRequired = [bool]$gatewayConfig.required
+    $script:gatewayPlatforms = @($gatewayConfig.enabledPlatforms)
+    $script:gatewayRuntimePid = if ($gatewayConfig.pid) { [int]$gatewayConfig.pid } else { $null }
+    $script:gatewayProcess = $null
+
+    if (-not $gatewayRequired) {
+        $script:gatewayOwnership = 'disabled'
+        Write-HermesLog -Component supervisor -Message 'No enabled messaging platforms were found; gateway lifecycle is intentionally disabled.'
+        Write-SupervisorState -Phase 'running' -Message 'Hermes Local is ready without a messaging gateway.' `
+            -ModelHealthy $true -HermesHealthy $true -GatewayState 'disabled'
+    } else {
+        if ($gatewayConfig.duplicateLogicalRoots) {
+            throw (Get-HermesGatewayFailureDetail -Snapshot $gatewayConfig)
+        }
+        $platformList = $gatewayPlatforms -join ', '
+        if ($gatewayConfig.running) {
+            $script:gatewayOwnership = 'external'
+            Write-HermesLog -Component supervisor -Message (
+                "Existing gateway PID $($gatewayConfig.pid) serves configured platform(s): $platformList. Leaving it externally managed."
+            )
+            $gatewaySnapshot = Wait-HermesGatewayHealthy -TimeoutSeconds 30
+        } else {
+            $script:gatewayOwnership = 'managed'
+            Write-SupervisorState -Phase 'starting-gateway' `
+                -Message "Starting messaging gateway for: $platformList." `
+                -ModelHealthy $true -HermesHealthy $true -GatewayState 'starting'
+            Write-HermesLog -Component supervisor -Message "Starting managed messaging gateway for: $platformList."
+            $script:gatewayProcess = Start-ManagedProcess `
+                -FilePath $hermesExecutable `
+                -ArgumentList @('gateway', 'run', '--external-supervisor', '--force') `
+                -WorkingDirectory (Resolve-HermesPath 'source\hermes-agent') `
+                -Environment $hermesEnvironment
+            $gatewaySnapshot = Wait-HermesGatewayHealthy -Process $gatewayProcess -TimeoutSeconds 90
+        }
+        $script:gatewayRuntimePid = [int]$gatewaySnapshot.pid
+        Write-SupervisorState -Phase 'running' -Message 'Hermes Local is ready.' `
+            -ModelHealthy $true -HermesHealthy $true -GatewayHealthy $true `
+            -GatewayState ([string]$gatewaySnapshot.state)
+    }
+    $gatewayLog = if ($gatewayRequired) {
+        " Gateway PID $gatewayRuntimePid ($gatewayOwnership)."
+    } else {
+        ' Messaging gateway disabled.'
+    }
+    Write-HermesLog -Component supervisor -Message (
+        "Stack ready. Model PID $($modelProcess.Id); Hermes PID $($hermesProcess.Id).$gatewayLog"
+    )
 }
 
 function Stop-Stack {
-    Write-SupervisorState -Phase 'stopping' -Message 'Stopping services in reverse order.'
+    Write-SupervisorState -Phase 'stopping' -Message 'Stopping services in reverse order.' `
+        -GatewayState $(if ($gatewayRequired) { 'stopping' } else { 'disabled' })
+    if ($gatewayOwnership -eq 'managed') {
+        Stop-ManagedProcess -Process $gatewayProcess -Name 'Hermes messaging gateway' -GraceSeconds 15
+    } elseif ($gatewayOwnership -eq 'external' -and $gatewayRuntimePid) {
+        Write-HermesLog -Component supervisor -Message (
+            "Leaving externally managed gateway PID $gatewayRuntimePid running."
+        )
+    }
     Stop-ManagedProcess -Process $hermesProcess -Name 'Hermes backend/dashboard' -GraceSeconds 8
     Stop-ManagedProcess -Process $modelProcess -Name 'llama-server' -GraceSeconds 20 -CloseInput
+    $script:gatewayProcess = $null
+    $script:gatewayRuntimePid = $null
+    $script:gatewayOwnership = $(if ($gatewayRequired) { 'stopped' } else { 'disabled' })
     $script:hermesProcess = $null
     $script:modelProcess = $null
 }
@@ -398,14 +507,45 @@ try {
             (Test-Endpoint -Uri "$modelBase/health" -TimeoutSeconds 2)
         $hermesHealthy = $hermesProcess -and -not $hermesProcess.HasExited -and
             (Test-Endpoint -Uri "$hermesBase/api/health" -TimeoutSeconds 2)
-        if ($modelHealthy -and $hermesHealthy) {
+        $gatewaySnapshot = $null
+        $gatewayHealthy = -not $gatewayRequired
+        $gatewayState = if ($gatewayRequired) { 'unknown' } else { 'disabled' }
+        $gatewayMessage = ''
+        if ($gatewayRequired) {
+            try {
+                $gatewaySnapshot = Get-HermesGatewaySnapshot
+                if ($gatewaySnapshot.pid) {
+                    $script:gatewayRuntimePid = [int]$gatewaySnapshot.pid
+                }
+                $gatewayHealthy = [bool]$gatewaySnapshot.healthy
+                $gatewayState = [string]$gatewaySnapshot.state
+                if (-not $gatewayHealthy) {
+                    $gatewayMessage = Get-HermesGatewayFailureDetail -Snapshot $gatewaySnapshot
+                }
+            } catch {
+                $gatewayMessage = $_.Exception.Message
+            }
+        }
+        if ($modelHealthy -and $hermesHealthy -and $gatewayHealthy) {
             $consecutiveHealthFailures = 0
-            Write-SupervisorState -Phase 'running' -Message 'Hermes Local is ready.' -ModelHealthy $true -HermesHealthy $true
+            Write-SupervisorState -Phase 'running' -Message 'Hermes Local is ready.' `
+                -ModelHealthy $true -HermesHealthy $true -GatewayHealthy $gatewayHealthy `
+                -GatewayState $gatewayState
             continue
         }
 
         $consecutiveHealthFailures++
-        Write-SupervisorState -Phase 'degraded' -Message "Health failure $consecutiveHealthFailures of 3." -ModelHealthy $modelHealthy -HermesHealthy $hermesHealthy
+        $healthMessage = "Health failure $consecutiveHealthFailures of 3."
+        if ($gatewayMessage) {
+            $healthMessage += " Gateway: $gatewayMessage"
+        }
+        Write-SupervisorState -Phase 'degraded' -Message $healthMessage `
+            -ModelHealthy $modelHealthy -HermesHealthy $hermesHealthy `
+            -GatewayHealthy $gatewayHealthy -GatewayState $gatewayState -GatewayMessage $gatewayMessage
+        if ($gatewayRequired -and $gatewayOwnership -eq 'external' -and $modelHealthy -and $hermesHealthy) {
+            $consecutiveHealthFailures = 0
+            continue
+        }
         if ($consecutiveHealthFailures -lt 3) {
             continue
         }
@@ -429,7 +569,7 @@ try {
     }
 
     Stop-Stack
-    Write-SupervisorState -Phase 'stopped' -Message 'Hermes Local stopped.'
+    Write-SupervisorState -Phase 'stopped' -Message 'Hermes Local stopped.' -GatewayState 'stopped'
     Write-HermesLog -Component supervisor -Message 'Supervisor stopped normally.'
     exit 0
 } catch {

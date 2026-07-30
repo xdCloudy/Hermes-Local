@@ -5,6 +5,8 @@ on:
     paths:
       - '**/*.ps1'
       - '**/*.psm1'
+      - 'scripts/gateway_snapshot.py'
+      - 'tests/test_gateway_snapshot.py'
       - '.github/workflows/powershell-validation.yml'
   push:
     branches:
@@ -12,6 +14,8 @@ on:
     paths:
       - '**/*.ps1'
       - '**/*.psm1'
+      - 'scripts/gateway_snapshot.py'
+      - 'tests/test_gateway_snapshot.py'
       - '.github/workflows/powershell-validation.yml'
 
 permissions:
@@ -45,6 +49,13 @@ jobs:
           if ($failures.Count -gt 0) {
             throw ($failures -join [Environment]::NewLine)
           }
+
+      - name: Test gateway lifecycle helpers
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p 'test_gateway_snapshot.py' -v
+          python -m py_compile '.\scripts\gateway_snapshot.py' '.\tests\test_gateway_snapshot.py'
+          & '.\tests\Test-HermesGatewayModule.ps1'
 
       - name: Verify source override merge
         shell: pwsh
