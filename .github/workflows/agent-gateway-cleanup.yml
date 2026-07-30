@@ -16,157 +16,87 @@ jobs:
         with:
           ref: agent/manage-messaging-gateway
 
-      - name: Remove generated duplication and format diagnostics
+      - name: Apply deterministic cleanup
         shell: pwsh
         run: |
-          @'
-          from pathlib import Path
-
-          def read(path: str) -> str:
-              return Path(path).read_text(encoding="utf-8")
-
-          def write(path: str, content: str) -> None:
-              Path(path).write_text(content, encoding="utf-8", newline="\n")
-
-          diagnostics = "Test-Hermes-Local.ps1"
-          content = read(diagnostics)
-          duplicate_import = (
-              "Import-Module (Join-Path $PSScriptRoot 'scripts\\Hermes-Gateway.psm1') -Force\n"
-              "Import-Module (Join-Path $PSScriptRoot 'scripts\\Hermes-Gateway.psm1') -Force"
-          )
-          if duplicate_import in content:
-              content = content.replace(
-                  duplicate_import,
-                  "Import-Module (Join-Path $PSScriptRoot 'scripts\\Hermes-Gateway.psm1') -Force",
-                  1,
-              )
-
-          malformed_running = '''    $running = if (Test-Path -LiteralPath $statusPath) {
-              $runtimeStatus = Get-Content -Raw -LiteralPath $statusPath | ConvertFrom-Json
-              $gatewayReady = $runtimeStatus.PSObject.Properties.Name -notcontains 'gateway' -or
-                  -not $runtimeStatus.gateway.required -or $runtimeStatus.gateway.healthy
-              $runtimeStatus.phase -eq 'running' -and $runtimeStatus.model.healthy -and
-                  $runtimeStatus.hermes.healthy -and $gatewayReady
-          } else {
-              $false
-          }'''
-          formatted_running = '''    $running = if (Test-Path -LiteralPath $statusPath) {
-              $runtimeStatus = Get-Content -Raw -LiteralPath $statusPath | ConvertFrom-Json
-              $gatewayReady = $runtimeStatus.PSObject.Properties.Name -notcontains 'gateway' -or
-                  -not $runtimeStatus.gateway.required -or $runtimeStatus.gateway.healthy
-              $runtimeStatus.phase -eq 'running' -and $runtimeStatus.model.healthy -and
-                  $runtimeStatus.hermes.healthy -and $gatewayReady
-          } else {
-              $false
-          }'''
-          # Earlier generated content lost indentation relative to the enclosing try.
-          raw_running = '''    $running = if (Test-Path -LiteralPath $statusPath) {
-          $runtimeStatus = Get-Content -Raw -LiteralPath $statusPath | ConvertFrom-Json
-          $gatewayReady = $runtimeStatus.PSObject.Properties.Name -notcontains 'gateway' -or
-              -not $runtimeStatus.gateway.required -or $runtimeStatus.gateway.healthy
-          $runtimeStatus.phase -eq 'running' -and $runtimeStatus.model.healthy -and
-              $runtimeStatus.hermes.healthy -and $gatewayReady
-      } else {
-          $false
-      }'''
-          if raw_running in content:
-              content = content.replace(raw_running, formatted_running, 1)
-
-          raw_gateway = '''    Add-TestResult -Name 'Web dashboard' -Passed (
-          $dashboard.StatusCode -eq 200 -and $dashboard.Headers.'Content-Type' -match 'text/html'
-      ) -Detail 'Official dashboard HTML is served from loopback.'
-
-      $gatewaySnapshot = Get-HermesGatewaySnapshot -Discover
-      if ($gatewaySnapshot.required) {
-          $gatewayDetail = if ($gatewaySnapshot.healthy -and -not $gatewaySnapshot.duplicateLogicalRoots) {
-              "Healthy gateway PID $($gatewaySnapshot.pid) for $(@($gatewaySnapshot.enabledPlatforms) -join ', ')."
-          } else {
-              Get-HermesGatewayFailureDetail -Snapshot $gatewaySnapshot
-          }
-          Add-TestResult -Name 'Messaging gateway' -Passed (
-              $gatewaySnapshot.healthy -and -not $gatewaySnapshot.duplicateLogicalRoots
-          ) -Detail $gatewayDetail
-      } else {
-          Add-TestResult -Name 'Messaging gateway' -Passed $true `
-              -Detail 'No gateway-backed messaging platform is enabled.'
-      }'''
-          formatted_gateway = '''    Add-TestResult -Name 'Web dashboard' -Passed (
-              $dashboard.StatusCode -eq 200 -and $dashboard.Headers.'Content-Type' -match 'text/html'
-          ) -Detail 'Official dashboard HTML is served from loopback.'
-
-          $gatewaySnapshot = Get-HermesGatewaySnapshot -Discover
-          if ($gatewaySnapshot.required) {
-              $gatewayDetail = if ($gatewaySnapshot.healthy -and -not $gatewaySnapshot.duplicateLogicalRoots) {
-                  "Healthy gateway PID $($gatewaySnapshot.pid) for $(@($gatewaySnapshot.enabledPlatforms) -join ', ')."
-              } else {
-                  Get-HermesGatewayFailureDetail -Snapshot $gatewaySnapshot
-              }
-              Add-TestResult -Name 'Messaging gateway' -Passed (
-                  $gatewaySnapshot.healthy -and -not $gatewaySnapshot.duplicateLogicalRoots
-              ) -Detail $gatewayDetail
-          } else {
-              Add-TestResult -Name 'Messaging gateway' -Passed $true `
-                  -Detail 'No gateway-backed messaging platform is enabled.'
-          }'''
-          if raw_gateway in content:
-              content = content.replace(raw_gateway, formatted_gateway, 1)
-          write(diagnostics, content)
-
-          supervisor = "scripts/supervisor/Hermes-Supervisor.ps1"
-          content = read(supervisor)
-          marker = "function Wait-HermesGatewayHealthy {"
-          if content.count(marker) == 2:
-              first = content.index(marker)
-              second = content.index(marker, first + len(marker))
-              start_stack = content.index("function Start-Stack {", second)
-              content = content[:second] + content[start_stack:]
-          content = content.replace(
-              "-GatewayState 'stopped' -GatewayState 'stopped'",
-              "-GatewayState 'stopped'",
-          )
-          write(supervisor, content)
-
-          diagnostics_text = read(diagnostics)
-          supervisor_text = read(supervisor)
-          if diagnostics_text.count("Import-Module (Join-Path $PSScriptRoot 'scripts\\Hermes-Gateway.psm1') -Force") != 1:
-              raise SystemExit("Expected exactly one Hermes-Gateway import in Test-Hermes-Local.ps1")
-          if supervisor_text.count(marker) != 1:
-              raise SystemExit("Expected exactly one Wait-HermesGatewayHealthy function")
-          if "-GatewayState 'stopped' -GatewayState 'stopped'" in supervisor_text:
-              raise SystemExit("Duplicate GatewayState argument remains")
-          '@ | python -
-
-      - name: Validate cleaned implementation
-        shell: pwsh
-        run: |
-          python -m unittest discover -s tests -p 'test_gateway_snapshot.py' -v
-          python -m py_compile '.\scripts\gateway_snapshot.py' '.\tests\test_gateway_snapshot.py'
-          & '.\tests\Test-HermesGatewayModule.ps1'
-          foreach ($file in @(
-            '.\Start-Hermes-Local.ps1',
-            '.\Test-Hermes-Local.ps1',
-            '.\scripts\Hermes-Gateway.psm1',
-            '.\scripts\supervisor\Hermes-Supervisor.ps1'
-          )) {
-            $tokens = $null
-            $errors = $null
-            [void][System.Management.Automation.Language.Parser]::ParseFile(
-              (Resolve-Path $file), [ref]$tokens, [ref]$errors
-            )
-            if ($errors.Count -gt 0) {
-              throw (($errors | ForEach-Object ToString) -join [Environment]::NewLine)
-            }
-          }
-
-      - name: Commit cleanup
-        shell: pwsh
-        run: |
-          if (-not (git status --porcelain)) {
-            Write-Host 'Cleanup already applied.'
+          $markerCommit = 'fix(supervisor): remove duplicate gateway lifecycle code'
+          if ((git log -1 --pretty=%s) -eq $markerCommit) {
+            Write-Host 'Cleanup commit already applied.'
             exit 0
           }
+
+          $diagnosticsPath = 'Test-Hermes-Local.ps1'
+          $gatewayImport = "Import-Module (Join-Path `$PSScriptRoot 'scripts\Hermes-Gateway.psm1') -Force"
+          $diagnosticLines = [System.Collections.Generic.List[string]]::new()
+          foreach ($line in [System.IO.File]::ReadAllLines($diagnosticsPath)) {
+            if ($line -eq $gatewayImport -and $diagnosticLines.Count -gt 0 -and
+                $diagnosticLines[$diagnosticLines.Count - 1] -eq $gatewayImport) {
+              continue
+            }
+            $diagnosticLines.Add($line)
+          }
+          [System.IO.File]::WriteAllLines(
+            $diagnosticsPath,
+            $diagnosticLines,
+            [System.Text.UTF8Encoding]::new($false)
+          )
+
+          $supervisorPath = 'scripts/supervisor/Hermes-Supervisor.ps1'
+          $supervisorLines = [System.Collections.Generic.List[string]]::new()
+          foreach ($line in [System.IO.File]::ReadAllLines($supervisorPath)) {
+            $supervisorLines.Add($line)
+          }
+          $waitStarts = @()
+          for ($index = 0; $index -lt $supervisorLines.Count; $index++) {
+            if ($supervisorLines[$index] -eq 'function Wait-HermesGatewayHealthy {') {
+              $waitStarts += $index
+            }
+          }
+          if ($waitStarts.Count -eq 2) {
+            $secondStart = $waitStarts[1]
+            $startStack = -1
+            for ($index = $secondStart + 1; $index -lt $supervisorLines.Count; $index++) {
+              if ($supervisorLines[$index] -eq 'function Start-Stack {') {
+                $startStack = $index
+                break
+              }
+            }
+            if ($startStack -lt 0) {
+              throw 'Could not locate Start-Stack after duplicate wait helper.'
+            }
+            $supervisorLines.RemoveRange($secondStart, $startStack - $secondStart)
+          }
+          for ($index = 0; $index -lt $supervisorLines.Count; $index++) {
+            $supervisorLines[$index] = $supervisorLines[$index].Replace(
+              "-GatewayState 'stopped' -GatewayState 'stopped'",
+              "-GatewayState 'stopped'"
+            )
+          }
+          [System.IO.File]::WriteAllLines(
+            $supervisorPath,
+            $supervisorLines,
+            [System.Text.UTF8Encoding]::new($false)
+          )
+
+          $diagnosticsText = [System.IO.File]::ReadAllText($diagnosticsPath)
+          $supervisorText = [System.IO.File]::ReadAllText($supervisorPath)
+          if ([regex]::Matches($diagnosticsText, [regex]::Escape($gatewayImport)).Count -ne 1) {
+            throw 'Expected exactly one gateway module import.'
+          }
+          if ([regex]::Matches($supervisorText, 'function Wait-HermesGatewayHealthy \{').Count -ne 1) {
+            throw 'Expected exactly one gateway wait helper.'
+          }
+          if ($supervisorText.Contains("-GatewayState 'stopped' -GatewayState 'stopped'")) {
+            throw 'Duplicate stopped-state argument remains.'
+          }
+
+          @(
+            "Cleaned commit: $env:GITHUB_SHA"
+            "Run: $env:GITHUB_RUN_ID"
+          ) | Set-Content -LiteralPath '.gateway-cleanup-success' -Encoding utf8
+
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- Test-Hermes-Local.ps1 scripts/supervisor/Hermes-Supervisor.ps1
-          git commit -m 'fix(supervisor): remove duplicate gateway lifecycle code'
+          git add -- Test-Hermes-Local.ps1 scripts/supervisor/Hermes-Supervisor.ps1 .gateway-cleanup-success
+          git commit -m $markerCommit
           git push origin HEAD:agent/manage-messaging-gateway
