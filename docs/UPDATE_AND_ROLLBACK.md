@@ -1,5 +1,8 @@
 # Update and rollback
 
+[← Documentation home](README.md) · [Project home](../README.md) ·
+[Operations](OPERATIONS.md)
+
 Hermes Local treats the official agent, launcher integration, llama.cpp,
 model, Python lock, Node lock, browser binaries and optional tools as separate
 components. Updates are never applied without an explicit command.

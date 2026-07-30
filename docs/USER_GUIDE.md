@@ -1,5 +1,8 @@
 # User guide
 
+[← Documentation home](README.md) · [Project home](../README.md) ·
+[Installation](INSTALLATION.md)
+
 ## Start and stop
 
 From the project directory:

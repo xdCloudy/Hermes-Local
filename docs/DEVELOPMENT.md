@@ -1,5 +1,8 @@
 # Development
 
+[← Documentation home](README.md) · [Project home](../README.md) ·
+[Contributing](../CONTRIBUTING.md)
+
 ## Repositories
 
 The root repository owns the Windows product scripts, configuration, patch

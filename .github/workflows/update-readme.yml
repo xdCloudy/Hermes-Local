@@ -1,0 +1,49 @@
+name: Update README dashboard
+
+on:
+  issues:
+    types: [opened, edited, closed, reopened, deleted, transferred, milestoned, demilestoned]
+  milestone:
+    types: [created, closed, opened, edited, deleted]
+  release:
+    types: [published, edited, deleted]
+  workflow_dispatch:
+  schedule:
+    - cron: '23 3 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-readme-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.repository == 'xdCloudy/Hermes-Local'
+    runs-on: windows-latest
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Regenerate live sections
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          & '.\scripts\update-readme.ps1' -Verbose
+
+      - name: Commit changes
+        shell: pwsh
+        run: |
+          if (-not (git status --porcelain -- README.md)) {
+            Write-Host 'README is already current.'
+            exit 0
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- README.md
+          git commit -m 'docs: refresh project dashboard'
+          git push

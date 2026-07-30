@@ -1,5 +1,8 @@
 # Security
 
+[← Documentation home](README.md) · [Project home](../README.md) ·
+[Security policy](../SECURITY.md)
+
 ## Default posture
 
 Hermes Local is a single-user, local workstation. It is not a multi-tenant

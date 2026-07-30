@@ -1,0 +1,78 @@
+name: Documentation validation
+
+on:
+  pull_request:
+    paths:
+      - '**/*.md'
+      - '.markdownlint-cli2.jsonc'
+      - 'docs/roadmap.json'
+      - 'scripts/update-readme.ps1'
+      - 'tests/fixtures/readme-api.json'
+      - '.github/workflows/documentation-validation.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - '**/*.md'
+      - '.markdownlint-cli2.jsonc'
+      - 'docs/roadmap.json'
+      - 'scripts/update-readme.ps1'
+      - 'tests/fixtures/readme-api.json'
+      - '.github/workflows/documentation-validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  markdown:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Lint maintained documentation
+        uses: DavidAnson/markdownlint-cli2-action@v20
+        with:
+          globs: |
+            README.md
+            CONTRIBUTING.md
+            docs/README.md
+            docs/OPERATIONS.md
+            docs/SCREENSHOTS.md
+
+  generator:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Parse README generator
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path '.\scripts\update-readme.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          )
+          if ($errors.Count -gt 0) {
+            throw ($errors | Out-String)
+          }
+
+      - name: Verify deterministic fixture generation
+        shell: pwsh
+        run: |
+          $testReadme = Join-Path $env:RUNNER_TEMP 'README.md'
+          Copy-Item -LiteralPath '.\README.md' -Destination $testReadme
+          $arguments = @{
+            ReadmePath = $testReadme
+            FixturePath = '.\tests\fixtures\readme-api.json'
+          }
+          & '.\scripts\update-readme.ps1' @arguments
+          $firstHash = (Get-FileHash -LiteralPath $testReadme).Hash
+          & '.\scripts\update-readme.ps1' @arguments
+          $secondHash = (Get-FileHash -LiteralPath $testReadme).Hash
+          if ($firstHash -ne $secondHash) {
+            throw 'README generation is not idempotent.'
+          }

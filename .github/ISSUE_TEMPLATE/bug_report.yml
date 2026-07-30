@@ -2,7 +2,9 @@ name: Bug report
 description: Report a reproducible Hermes Local problem
 title: "[Bug]: "
 labels:
-  - bug
+  - "type: bug"
+  - "status: needs-triage"
+  - "needs reproduction"
 body:
   - type: markdown
     attributes:
@@ -58,3 +60,19 @@ body:
     attributes:
       label: Redacted diagnostics
       description: Share only the relevant redacted excerpt or a safe bundle link.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected area
+      options:
+        - Launcher / desktop UI
+        - Setup / repair / uninstall
+        - Start / stop / supervisor
+        - Models / profiles / inference
+        - Updates / rollback
+        - Projects / sessions / memory
+        - Benchmarks / diagnostics
+        - Packaging / release
+        - Unsure
+    validations:
+      required: true

@@ -1,5 +1,7 @@
 # Acceptance results
 
+[← Documentation home](README.md) · [Project home](../README.md)
+
 ## 2026-07-29 functional QA
 
 - Release: Hermes Launcher 0.18.1

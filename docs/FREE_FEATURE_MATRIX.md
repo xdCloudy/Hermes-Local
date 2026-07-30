@@ -1,5 +1,7 @@
 # Free and local feature matrix
 
+[← Documentation home](README.md) · [Project home](../README.md)
+
 This matrix is based on the pinned official Hermes source plus the local
 integration at commit `ee683263aaa7f3bca33f785630926350fa119c38`. “Installed”
 means dependencies and UI/tool code are present; runtime availability can

@@ -1,5 +1,8 @@
 # Hermes Launcher design specification
 
+[← Documentation home](../README.md) · [Project home](../../README.md) ·
+[Architecture](../ARCHITECTURE.md)
+
 Status: accepted implementation reference  
 Dark concept: `hermes-launcher-home-dark-concept.png`  
 Light concept: `hermes-launcher-home-light-concept.png`

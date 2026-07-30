@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "currentStage": "reliable-platform",
+  "stages": [
+    {
+      "id": "foundation",
+      "title": "Foundation",
+      "icon": "✅",
+      "stateOverride": "complete",
+      "milestones": [1],
+      "purpose": "Establish a secure, portable Windows workstation around Hermes Agent and llama.cpp.",
+      "successCriteria": "Native launcher, local inference, profiles, diagnostics, recovery, benchmarks and security controls are validated."
+    },
+    {
+      "id": "reliable-platform",
+      "title": "Reliable Platform",
+      "icon": "🚧",
+      "milestones": [5],
+      "purpose": "Remove fatal and opaque failure modes before expanding the control plane.",
+      "successCriteria": "Cold starts, lifecycle transitions and recovery paths fail clearly and recover predictably."
+    },
+    {
+      "id": "operational-control-plane",
+      "title": "Operational Control Plane",
+      "icon": "⏳",
+      "milestones": [6],
+      "purpose": "Make every long-running workstation operation observable, durable and recoverable.",
+      "successCriteria": "Shared task state, update orchestration, focused operational surfaces and failure-path evidence."
+    },
+    {
+      "id": "inference-fabric",
+      "title": "Inference Fabric",
+      "icon": "⏳",
+      "milestones": [8],
+      "purpose": "Create stable contracts for multiple inference runtimes, planning, telemetry and certification.",
+      "successCriteria": "Backends can be compared, selected and recovered through one hardware-aware orchestration layer."
+    },
+    {
+      "id": "intelligent-optimisation",
+      "title": "Intelligent Optimisation",
+      "icon": "⏳",
+      "milestones": [2],
+      "purpose": "Turn hardware telemetry and benchmark evidence into safe, workload-specific tuning.",
+      "successCriteria": "AutoTune improves useful capability, speed or memory use without silently degrading quality or stability."
+    },
+    {
+      "id": "agent-ecosystem",
+      "title": "Agent Ecosystem",
+      "icon": "⏳",
+      "milestones": [3, 4],
+      "purpose": "Expand trusted tools, memory, projects, routing and experimental integrations.",
+      "successCriteria": "New capabilities are permission-scoped, reproducible and promoted through measurable certification gates."
+    },
+    {
+      "id": "version-1",
+      "title": "Version 1.0",
+      "icon": "🎯",
+      "milestones": [7],
+      "purpose": "Deliver a dependable Windows distribution suitable for supported non-technical users.",
+      "successCriteria": "Guided install, verified runtimes, signing, provenance, maintenance and data-preserving recovery are release-ready."
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "repository": {
+    "full_name": "xdCloudy/Hermes-Local"
+  },
+  "releases": [
+    {
+      "tag_name": "v0.18.1",
+      "name": "Hermes Local v0.18.1",
+      "published_at": "2026-07-28T13:41:16Z",
+      "html_url": "https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1"
+    }
+  ],
+  "milestones": [
+    {
+      "number": 1,
+      "title": "Dependable Installation and Maintenance",
+      "open_issues": 0,
+      "closed_issues": 1,
+      "html_url": "https://github.com/xdCloudy/Hermes-Local/milestone/1"
+    },
+    {
+      "number": 2,
+      "title": "Performance, AutoTune and Observability",
+      "open_issues": 0,
+      "closed_issues": 0,
+      "html_url": "https://github.com/xdCloudy/Hermes-Local/milestone/2"
+    },
+    {
+      "number": 3,
+      "title": "Certification, Routing and Recovery",
+      "open_issues": 0,
+      "closed_issues": 0,
+      "html_url": "https://github.com/xdCloudy/Hermes-Local/milestone/3"
+    },
+    {
+      "number": 4,
+      "title": "Expansion, Security and Advanced Optimisation",
+      "open_issues": 0,
+      "closed_issues": 0,
+      "html_url": "https://github.com/xdCloudy/Hermes-Local/milestone/4"
+    },
+    {
+      "number": 5,
+      "title": "v0.18.x – Reliability Patch",
+      "open_issues": 2,
+      "closed_issues": 0,
+      "html_url": "https://github.com/xdCloudy/Hermes-Local/milestone/5"
+    },
+    {
+      "number": 6,
+      "title": "v0.19 – Operational Control Plane",
+      "open_issues": 12,
+      "closed_issues": 1,
+      "html_url": "https://github.com/xdCloudy/Hermes-Local/milestone/6"
+    },
+    {
+      "number": 7,
+      "title": "v1.0 – Dependable Windows Distribution",
+      "open_issues": 5,
+      "closed_issues": 0,
+      "html_url": "https://github.com/xdCloudy/Hermes-Local/milestone/7"
+    },
+    {
+      "number": 8,
+      "title": "Inference Fabric Foundation",
+      "open_issues": 7,
+      "closed_issues": 0,
+      "html_url": "https://github.com/xdCloudy/Hermes-Local/milestone/8"
+    }
+  ],
+  "issues": [
+    {
+      "number": 1,
+      "state": "closed"
+    },
+    {
+      "number": 2,
+      "state": "open"
+    }
+  ],
+  "commits": [
+    {
+      "sha": "0123456789abcdef0123456789abcdef01234567",
+      "html_url": "https://github.com/xdCloudy/Hermes-Local/commit/0123456789abcdef0123456789abcdef01234567",
+      "commit": {
+        "message": "docs: test deterministic README generation"
+      }
+    }
+  ]
+}

@@ -1,5 +1,8 @@
 # Bootstrap and Runtime Smoke Verification
 
+[← Documentation home](../README.md) · [Project home](../../README.md) ·
+[Acceptance results](../ACCEPTANCE_RESULTS.md)
+
 > Historical reference run. The recorded hardware, model and endpoint values
 > are evidence for that run, not requirements enforced by current setup.
 

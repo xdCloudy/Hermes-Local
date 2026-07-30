@@ -2,8 +2,23 @@ name: Feature request
 description: Suggest a Windows-native, local-first improvement
 title: "[Feature]: "
 labels:
-  - enhancement
+  - "type: feature"
+  - "status: needs-triage"
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Explain the capability rather than prescribing a large implementation.
+        Check the live roadmap and existing issues before submitting.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and the roadmap for this request.
+          required: true
+        - label: This preserves the Windows-native, local-first direction.
+          required: true
   - type: textarea
     id: problem
     attributes:
@@ -28,3 +43,10 @@ body:
     id: alternatives
     attributes:
       label: Alternatives considered
+  - type: textarea
+    id: success
+    attributes:
+      label: Success criteria
+      description: What observable outcome would make this feature complete?
+    validations:
+      required: true
