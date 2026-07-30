@@ -5,6 +5,7 @@ Import-Module (Join-Path $PSScriptRoot 'Common-Hermes.psm1') -Force
 
 $script:GatewaySnapshotCache = $null
 $script:GatewaySnapshotCachedAt = [datetime]::MinValue
+$script:GatewayEnabledPlatforms = $null
 
 function Get-HermesGatewayEnvironment {
     [CmdletBinding()]
@@ -51,6 +52,9 @@ function Get-HermesGatewaySnapshot {
     $arguments.Add((Resolve-HermesPath 'scripts\gateway_snapshot.py'))
     if ($Discover) {
         $arguments.Add('--discover')
+    } elseif ($null -ne $script:GatewayEnabledPlatforms) {
+        $arguments.Add('--enabled-platforms-json')
+        $arguments.Add((ConvertTo-Json -InputObject @($script:GatewayEnabledPlatforms) -Compress))
     }
     $output = @(
         Invoke-HermesProcess `
@@ -69,6 +73,7 @@ function Get-HermesGatewaySnapshot {
         $snapshot = $jsonLine | ConvertFrom-Json -Depth 16
         $script:GatewaySnapshotCache = $snapshot
         $script:GatewaySnapshotCachedAt = $now
+        $script:GatewayEnabledPlatforms = @($snapshot.enabledPlatforms)
         return $snapshot
     } catch {
         throw "Hermes gateway inspection returned invalid JSON: $($_.Exception.Message)"
