@@ -141,7 +141,7 @@ jobs:
           }
 
       - name: Upload Stable approval evidence
-        uses: actions/upload-artifact@ea165f8d65b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: stable-promotion-${{ inputs.compatibility_run_id }}
           path: artifacts/stable-promotion
