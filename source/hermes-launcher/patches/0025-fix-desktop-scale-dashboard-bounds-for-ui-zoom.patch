@@ -1,0 +1,105 @@
+From 19760297d57570898b2d4fabe9108c4a61fd6786 Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Fri, 31 Jul 2026 04:20:00 +0100
+Subject: [PATCH] fix(desktop): scale dashboard bounds for UI zoom
+
+---
+ .../electron/hermes-local-control.test.ts     | 26 +++++++++++++++++
+ apps/desktop/electron/hermes-local-control.ts | 29 +++++++++++++++++--
+ 2 files changed, 53 insertions(+), 2 deletions(-)
+
+diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
+index c2d859c..90bb470 100644
+--- a/apps/desktop/electron/hermes-local-control.test.ts
++++ b/apps/desktop/electron/hermes-local-control.test.ts
+@@ -53,6 +53,32 @@ describe('Hermes Local Electron boundary', () => {
+     }
+   })
+ 
++  it('converts zoomed renderer bounds into native Desktop coordinates', () => {
++    const rendererBounds = { height: 780, width: 1430, x: 470, y: 314 }
++
++    expect(hermesLocalControlTest.dashboardBoundsAtZoom(rendererBounds, 0.9)).toEqual({
++      height: 702,
++      width: 1287,
++      x: 423,
++      y: 283
++    })
++    expect(hermesLocalControlTest.dashboardBoundsAtZoom(rendererBounds, 1)).toEqual(rendererBounds)
++    expect(hermesLocalControlTest.dashboardBoundsAtZoom(rendererBounds, 1.25)).toEqual({
++      height: 975,
++      width: 1787,
++      x: 588,
++      y: 393
++    })
++  })
++
++  it('falls back to unscaled dashboard bounds for an invalid zoom factor', () => {
++    const rendererBounds = { height: 780, width: 1430, x: 470, y: 314 }
++
++    expect(hermesLocalControlTest.dashboardBoundsAtZoom(rendererBounds, Number.NaN)).toEqual(rendererBounds)
++    expect(hermesLocalControlTest.dashboardBoundsAtZoom(rendererBounds, 0)).toEqual(rendererBounds)
++    expect(hermesLocalControlTest.dashboardBoundsAtZoom(rendererBounds, -1)).toEqual(rendererBounds)
++  })
++
+   it('rejects relative roots and paths that escape the fixed workstation root', () => {
+     process.env.HERMES_LOCAL_ROOT = 'relative-root'
+     expect(() => hermesLocalControlTest.localRoot()).toThrow(/must be absolute/i)
+diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
+index 5bf3705..8ec12e7 100644
+--- a/apps/desktop/electron/hermes-local-control.ts
++++ b/apps/desktop/electron/hermes-local-control.ts
+@@ -708,6 +708,24 @@ function dashboardConfiguration() {
+   return { token, url: url.toString() }
+ }
+ 
++function dashboardBoundsAtZoom(
++  bounds: HermesLocalDashboardBounds,
++  zoomFactor: number
++): HermesLocalDashboardBounds {
++  const factor = Number.isFinite(zoomFactor) && zoomFactor > 0 ? zoomFactor : 1
++  const left = Math.round(bounds.x * factor)
++  const top = Math.round(bounds.y * factor)
++  const right = Math.round((bounds.x + bounds.width) * factor)
++  const bottom = Math.round((bounds.y + bounds.height) * factor)
++
++  return {
++    height: bottom - top,
++    width: right - left,
++    x: left,
++    y: top
++  }
++}
++
+ function requireDashboardSender(
+   dashboardView: HermesLocalDashboardViewController | undefined,
+   sender: Electron.WebContents
+@@ -743,10 +761,16 @@ export function registerHermesLocalControlIpc(
+     return requireDashboardSender(dashboardView, event.sender).getState()
+   })
+   ipcMain.handle('hermes:local:dashboard:show', (event, bounds: HermesLocalDashboardBounds) => {
+-    return requireDashboardSender(dashboardView, event.sender).show(dashboardConfiguration(), bounds)
++    const controller = requireDashboardSender(dashboardView, event.sender)
++    const nativeBounds = dashboardBoundsAtZoom(bounds, event.sender.getZoomFactor())
++
++    return controller.show(dashboardConfiguration(), nativeBounds)
+   })
+   ipcMain.handle('hermes:local:dashboard:resize', (event, bounds: HermesLocalDashboardBounds) => {
+-    return requireDashboardSender(dashboardView, event.sender).resize(bounds)
++    const controller = requireDashboardSender(dashboardView, event.sender)
++    const nativeBounds = dashboardBoundsAtZoom(bounds, event.sender.getZoomFactor())
++
++    return controller.resize(nativeBounds)
+   })
+   ipcMain.handle('hermes:local:dashboard:hide', event => {
+     return requireDashboardSender(dashboardView, event.sender).hide()
+@@ -771,6 +795,7 @@ export function registerHermesLocalControlIpc(
+ 
+ export const hermesLocalControlTest = {
+   configureHermesLocalDesktopEnvironment,
++  dashboardBoundsAtZoom,
+   localRoot,
+   loginItemExecutable,
+   loginItemStatus,
+-- 
+2.47.3
