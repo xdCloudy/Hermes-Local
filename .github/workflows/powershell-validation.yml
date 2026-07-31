@@ -5,6 +5,7 @@ on:
     paths:
       - '**/*.ps1'
       - '**/*.psm1'
+      - 'models/manifests/*.json'
       - 'scripts/gateway_snapshot.py'
       - 'tests/test_gateway_snapshot.py'
       - '.github/workflows/powershell-validation.yml'
@@ -14,6 +15,7 @@ on:
     paths:
       - '**/*.ps1'
       - '**/*.psm1'
+      - 'models/manifests/*.json'
       - 'scripts/gateway_snapshot.py'
       - 'tests/test_gateway_snapshot.py'
       - '.github/workflows/powershell-validation.yml'
@@ -50,13 +52,14 @@ jobs:
             throw ($failures -join [Environment]::NewLine)
           }
 
-      - name: Test gateway and benchmark lifecycle helpers
+      - name: Test gateway, benchmark and model artifact contracts
         shell: pwsh
         run: |
           python -m unittest discover -s tests -p 'test_gateway_snapshot.py' -v
           python -m py_compile '.\scripts\gateway_snapshot.py' '.\tests\test_gateway_snapshot.py'
           & '.\tests\Test-HermesGatewayModule.ps1'
           & '.\tests\Test-BenchmarkLifecycleContract.ps1'
+          & '.\tests\Test-ModelArtifactContract.ps1'
 
       - name: Verify source override merge
         shell: pwsh
