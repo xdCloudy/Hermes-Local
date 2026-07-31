@@ -74,8 +74,10 @@ jobs:
       - name: Install, test, build and package patched Desktop
         shell: pwsh
         run: |
+          $base = (Get-Content -Raw '.\VERSION.json' | ConvertFrom-Json).sources.hermesAgent.commit
           python '.\scripts\ci\compatibility.py' hermes-agent `
             --repository-root '.' `
+            --candidate-ref $base `
             --work-dir '.\temp\compatibility\issue-29-desktop' `
             --log-dir '.\artifacts\compatibility\issue-29-desktop\logs' `
             --report '.\artifacts\compatibility\issue-29-desktop\report.json' `
