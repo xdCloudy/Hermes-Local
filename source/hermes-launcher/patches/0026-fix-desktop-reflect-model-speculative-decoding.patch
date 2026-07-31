@@ -1,0 +1,96 @@
+From 6f79c749fa9cc38ebfae2847f864fdbca99f3f0b Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Fri, 31 Jul 2026 10:20:00 +0100
+Subject: [PATCH] fix(desktop): reflect model-managed speculative decoding
+
+The profile editor only considered its stored profile boolean when rendering
+speculative decoding. Models that enable self-speculation through their
+manifest therefore appeared disabled even though llama-server was actively
+using MTP.
+
+Combine the profile value with the selected model's effective server
+arguments. Model-managed speculative decoding is highlighted, labelled and
+read-only so the profile editor cannot imply that it can disable a manifest
+requirement. Cover the state in the packaged configuration acceptance flow.
+---
+ .../e2e/hermes-local-configuration.spec.ts    |  7 +++++++
+ .../src/app/local-workstation/index.tsx       | 40 ++++++++++++++++++---------
+ 2 files changed, 34 insertions(+), 13 deletions(-)
+
+diff --git a/apps/desktop/e2e/hermes-local-configuration.spec.ts b/apps/desktop/e2e/hermes-local-configuration.spec.ts
+--- a/apps/desktop/e2e/hermes-local-configuration.spec.ts
++++ b/apps/desktop/e2e/hermes-local-configuration.spec.ts
+@@ -127,3 +127,10 @@ test.describe('Hermes Local portable configuration UI', () => {
+       await workstationNav.getByRole('button', { exact: true, name: 'Profiles' }).click()
+       await expect(page.getByRole('heading', { exact: true, name: 'Profiles' })).toBeVisible()
++      const modelSpeculativeDecoding = page.getByRole('button', {
++        exact: true,
++        name: 'Speculative decoding · model'
++      })
++
++      await expect(modelSpeculativeDecoding).toHaveAttribute('aria-pressed', 'true')
++      await expect(modelSpeculativeDecoding).toBeDisabled()
+       const settingsBeforeProfiles = fs.existsSync(settingsPath)
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -239,3 +239,13 @@ function ProfileEditor({
+   }
+ 
++  const serverArguments = snapshot.model.server.extraArguments
++  const specTypeIndex = serverArguments.indexOf('--spec-type')
++  const specType = specTypeIndex >= 0 ? serverArguments[specTypeIndex + 1]?.toLowerCase() : undefined
++  const modelSpeculativeDecoding =
++    (specType !== undefined && specType !== 'none') ||
++    serverArguments.some(argument =>
++      ['-md', '--model-draft', '--model-draft-url'].includes(argument.toLowerCase())
++    )
++
+   const numeric = (
+@@ -430,20 +440,28 @@ function ProfileEditor({
+               ['Prompt cache', 'promptCache'],
+               ['Speculative decoding', 'speculativeDecoding']
+             ] as const
+-          ).map(([label, key]) => (
+-            <button
+-              aria-pressed={draft[key]}
+-              className={cn(
+-                'rounded-full border px-2.5 py-1 text-[0.6875rem] font-medium',
+-                draft[key]
+-                  ? 'border-(--ui-accent)/40 bg-(--ui-accent)/10 text-(--ui-accent)'
+-                  : 'border-(--ui-stroke-secondary) text-(--ui-text-tertiary)'
+-              )}
+-              key={key}
+-              onClick={() => setDraft({ ...draft, [key]: !draft[key] })}
+-              type="button"
+-            >
+-              {label}
+-            </button>
+-          ))}
++          ).map(([label, key]) => {
++            const modelManaged = key === 'speculativeDecoding' && modelSpeculativeDecoding
++            const active = draft[key] || modelManaged
++
++            return (
++              <button
++                aria-pressed={active}
++                className={cn(
++                  'rounded-full border px-2.5 py-1 text-[0.6875rem] font-medium',
++                  active
++                    ? 'border-(--ui-accent)/40 bg-(--ui-accent)/10 text-(--ui-accent)'
++                    : 'border-(--ui-stroke-secondary) text-(--ui-text-tertiary)',
++                  modelManaged && 'cursor-not-allowed'
++                )}
++                disabled={modelManaged}
++                key={key}
++                onClick={() => setDraft({ ...draft, [key]: !draft[key] })}
++                title={modelManaged ? 'Enabled by the selected model manifest' : undefined}
++                type="button"
++              >
++                {modelManaged ? `${label} · model` : label}
++              </button>
++            )
++          })}
+         </div>
+-- 
+2.47.3
