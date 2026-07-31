@@ -14,15 +14,17 @@ read-only so the profile editor cannot imply that it can disable a manifest
 requirement. Cover the state in the packaged configuration acceptance flow.
 ---
  .../e2e/hermes-local-configuration.spec.ts    |  7 +++++++
- .../src/app/local-workstation/index.tsx       | 50 +++++++++++++++++++---------
- 2 files changed, 40 insertions(+), 17 deletions(-)
+ .../src/app/local-workstation/index.tsx       | 49 ++++++++++++++++++---------
+ 2 files changed, 39 insertions(+), 17 deletions(-)
 
 diff --git a/apps/desktop/e2e/hermes-local-configuration.spec.ts b/apps/desktop/e2e/hermes-local-configuration.spec.ts
+index 72ee002e8..111111111 100644
 --- a/apps/desktop/e2e/hermes-local-configuration.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-configuration.spec.ts
-@@ -127,3 +127,10 @@ test.describe('Hermes Local portable configuration UI', () => {
-       await workstationNav.getByRole('button', { exact: true, name: 'Profiles' }).click()
+@@ -139,4 +139,11 @@ test.describe('Hermes Local portable configuration UI', () => {
+       await openSection('Profiles')
        await expect(page.getByRole('heading', { exact: true, name: 'Profiles' })).toBeVisible()
+ 
 +      const modelSpeculativeDecoding = page.getByRole('button', {
 +        exact: true,
 +        name: 'Speculative decoding · model'
@@ -32,6 +34,7 @@ diff --git a/apps/desktop/e2e/hermes-local-configuration.spec.ts b/apps/desktop/
 +      await expect(modelSpeculativeDecoding).toBeDisabled()
        const settingsBeforeProfiles = fs.existsSync(settingsPath)
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index 9a35816..2222222 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -239,3 +239,12 @@ function ProfileEditor({
