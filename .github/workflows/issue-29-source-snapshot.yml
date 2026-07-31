@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - '.github/workflows/issue-29-source-snapshot.yml'
+      - 'source/hermes-launcher/patches/**'
 
 permissions:
   contents: read
