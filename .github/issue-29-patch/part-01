@@ -1,0 +1,136 @@
+From b8066cef09675b2ae9c927344bace711ab9e0011 Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Fri, 31 Jul 2026 01:36:56 +0000
+Subject: [PATCH] feat(desktop): embed loopback dashboard securely
+
+Add a sandboxed WebContentsView for the configured loopback dashboard, keep authentication in the Electron session boundary, block cross-origin navigation and requests, preserve view state across Desktop routes, and recover from backend or renderer restarts.
+---
+ .../e2e/hermes-local-functional.spec.ts       |   2 +-
+ .../e2e/hermes-local-workstation.spec.ts      |   2 +-
+ .../electron/hermes-local-control.test.ts     |   3 +
+ apps/desktop/electron/hermes-local-control.ts |  53 +-
+ .../hermes-local-dashboard-view.test.ts       | 253 ++++++++
+ .../electron/hermes-local-dashboard-view.ts   | 596 ++++++++++++++++++
+ apps/desktop/electron/main.ts                 |  16 +-
+ apps/desktop/electron/preload.ts              |  13 +
+ .../src/app/local-workstation/index.tsx       | 207 +++++-
+ .../src/app/local-workstation/types.ts        |  23 +
+ apps/desktop/src/global.d.ts                  |  10 +
+ 11 files changed, 1143 insertions(+), 35 deletions(-)
+ create mode 100644 apps/desktop/electron/hermes-local-dashboard-view.test.ts
+ create mode 100644 apps/desktop/electron/hermes-local-dashboard-view.ts
+
+diff --git a/apps/desktop/e2e/hermes-local-functional.spec.ts b/apps/desktop/e2e/hermes-local-functional.spec.ts
+index 85b9342..24c52a9 100644
+--- a/apps/desktop/e2e/hermes-local-functional.spec.ts
++++ b/apps/desktop/e2e/hermes-local-functional.spec.ts
+@@ -245,7 +245,7 @@ test.describe('Hermes Local packaged functional acceptance', () => {
+       }
+ 
+       await nav.getByRole('button', { exact: true, name: 'Web Dashboard' }).click()
+-      await expect(page.getByRole('button', { exact: true, name: 'Open Dashboard' })).toBeEnabled()
++      await expect(page.getByRole('button', { exact: true, name: 'Open externally' })).toBeEnabled()
+ 
+       await nav.getByRole('button', { exact: true, name: 'Models' }).click()
+       await expect(page.getByRole('button', { exact: true, name: 'Register GGUF' })).toBeEnabled()
+diff --git a/apps/desktop/e2e/hermes-local-workstation.spec.ts b/apps/desktop/e2e/hermes-local-workstation.spec.ts
+index dd265c6..c1ac6a2 100644
+--- a/apps/desktop/e2e/hermes-local-workstation.spec.ts
++++ b/apps/desktop/e2e/hermes-local-workstation.spec.ts
+@@ -208,7 +208,7 @@ test.describe('Hermes Local packaged workstation', () => {
+ 
+       await workstationNav.getByRole('button', { name: 'Web Dashboard', exact: true }).click()
+       await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible()
+-      await expect(page.getByRole('button', { name: 'Open Dashboard', exact: true })).toBeEnabled()
++      await expect(page.getByRole('button', { name: 'Open externally', exact: true })).toBeEnabled()
+ 
+       await workstationNav.getByRole('button', { name: 'Sessions', exact: true }).click()
+       await expect(page.getByRole('heading', { name: 'Sessions', exact: true })).toBeVisible()
+diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
+index ae9ca57..c2d859c 100644
+--- a/apps/desktop/electron/hermes-local-control.test.ts
++++ b/apps/desktop/electron/hermes-local-control.test.ts
+@@ -8,9 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ vi.mock('electron', () => ({
+   app: {
+     getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
++    isReady: vi.fn(() => true),
+     setLoginItemSettings: vi.fn()
+   },
+   ipcMain: { handle: vi.fn() },
++  session: { fromPartition: vi.fn() },
++  WebContentsView: vi.fn(),
+   shell: {
+     openExternal: vi.fn(),
+     openPath: vi.fn()
+diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
+index 9c4cfb8..d8c11d5 100644
+--- a/apps/desktop/electron/hermes-local-control.ts
++++ b/apps/desktop/electron/hermes-local-control.ts
+@@ -7,6 +7,12 @@ import { promisify } from 'node:util'
+ 
+ import { app, ipcMain, shell } from 'electron'
+ 
++import {
++  normalizeHermesLocalDashboardUrl,
++  type HermesLocalDashboardBounds,
++  type HermesLocalDashboardViewController
++} from './hermes-local-dashboard-view'
++
+ import {
+   deleteProfile,
+   readLocalConfiguration,
+@@ -691,7 +697,31 @@ export function configureHermesLocalDesktopEnvironment(): boolean {
+   return true
+ }
+ 
+-export function registerHermesLocalControlIpc(): void {
++function dashboardConfiguration() {
++  const configuration = readLocalConfiguration(localRoot(), os.cpus().length)
++  const host = configuration.network.host.includes(':')
++    ? `[${configuration.network.host.replace(/^\[|\]$/g, '')}]`
++    : configuration.network.host
++  const url = normalizeHermesLocalDashboardUrl(`http://${host}:${configuration.network.hermesPort}`)
++  const token = String(process.env.HERMES_DESKTOP_REMOTE_TOKEN || '').trim()
++
++  return { token, url: url.toString() }
++}
++
++function requireDashboardSender(
++  dashboardView: HermesLocalDashboardViewController | undefined,
++  sender: Electron.WebContents
++): HermesLocalDashboardViewController {
++  if (!dashboardView || !dashboardView.isTrustedSender(sender)) {
++    throw new Error('Dashboard controls are available only to the primary Desktop renderer')
++  }
++
++  return dashboardView
++}
++
++export function registerHermesLocalControlIpc(
++  dashboardView?: HermesLocalDashboardViewController
++): void {
+   ipcMain.handle('hermes:local:snapshot', workstationSnapshot)
+   ipcMain.handle('hermes:local:action:start', (_event, action, input) => startActionTask(action, input))
+   ipcMain.handle('hermes:local:action:status', (_event, taskId) => getActionTask(taskId))
+@@ -709,9 +739,24 @@ export function registerHermesLocalControlIpc(): void {
+   ipcMain.handle('hermes:local:settings:save', (_event, settings) =>
+     saveWorkstationSettings(localRoot(), settings, os.cpus().length)
+   )
+-  ipcMain.handle('hermes:local:dashboard:open', async () => {
+-    const configuration = readLocalConfiguration(localRoot(), os.cpus().length)
+-    const url = `http://${configuration.network.host}:${configuration.network.hermesPort}`
++  ipcMain.handle('hermes:local:dashboard:state', event => {
++    return requireDashboardSender(dashboardView, event.sender).getState()
++  })
++  ipcMain.handle('hermes:local:dashboard:show', (event, bounds: HermesLocalDashboardBounds) => {
++    return requireDashboardSender(dashboardView, event.sender).show(dashboardConfiguration(), bounds)
++  })
++  ipcMain.handle('hermes:local:dashboard:resize', (event, bounds: HermesLocalDashboardBounds) => {
++    return requireDashboardSender(dashboardView, event.sender).resize(bounds)
++  })
++  ipcMain.handle('hermes:local:dashboard:hide', event => {
++    return requireDashboardSender(dashboardView, event.sender).hide()
++  })
++  ipcMain.handle('hermes:local:dashboard:reload', event => {
++    return requireDashboardSender(dashboardView, event.sender).reload
