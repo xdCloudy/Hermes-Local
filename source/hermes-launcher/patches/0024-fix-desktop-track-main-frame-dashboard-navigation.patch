@@ -1,22 +1,28 @@
-From 35ad04c6871fb010f5390934226f81b2cb3240cf Mon Sep 17 00:00:00 2001
+From ba7aedf3cdbbafb87bdeaed647dc843fb788f8ed Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
 Date: Fri, 31 Jul 2026 04:50:00 +0100
 Subject: [PATCH] fix(desktop): track main-frame dashboard navigation
 
 ---
- .../hermes-local-dashboard-view.test.ts       | 41 ++++++++++++++++++-
- .../electron/hermes-local-dashboard-view.ts   |  6 ++-
- 2 files changed, 45 insertions(+), 2 deletions(-)
+ .../hermes-local-dashboard-view.test.ts       | 70 ++++++++++++++++++-
+ .../electron/hermes-local-dashboard-view.ts   | 19 ++++-
+ 2 files changed, 86 insertions(+), 3 deletions(-)
 
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.test.ts b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
-index 91612ee11746fea280b8002a912046d0fdf0b417..c6ea264e3882a53b96b9e1562931e1b47b40f2ad 100644
+index 91612ee11746fea280b8002a912046d0fdf0b417..debfa8d107636179c6c8088cc7770ab02206b9dc 100644
 --- a/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
-@@ -29,7 +29,11 @@ class FakeWebContents extends EventEmitter {
+@@ -25,17 +25,24 @@ class FakeWebContents extends EventEmitter {
+   currentUrl = ''
+   domReady = true
+   finishLoad = true
++  loadingMainFrame = false
+   pauseLoad = false
    pendingLoads: Array<() => void> = []
    id = Math.floor(Math.random() * 100_000)
    loadURL = vi.fn(async (url: string) => {
 -    this.emit('did-start-loading')
++    this.loadingMainFrame = true
 +    this.emit('did-start-navigation', {
 +      isMainFrame: true,
 +      isSameDocument: false,
@@ -25,7 +31,25 @@ index 91612ee11746fea280b8002a912046d0fdf0b417..c6ea264e3882a53b96b9e1562931e1b4
  
      if (this.pauseLoad) {
        await new Promise<void>(resolve => this.pendingLoads.push(resolve))
-@@ -310,6 +314,41 @@ describe('Hermes Local embedded dashboard policy', () => {
+     }
+ 
+     this.currentUrl = url
++    this.loadingMainFrame = false
+     this.emit('did-navigate', {}, url, 200, 'OK')
+ 
+     if (this.domReady) {
+@@ -70,6 +77,10 @@ class FakeWebContents extends EventEmitter {
+     return this.closed
+   }
+ 
++  isLoadingMainFrame() {
++    return this.loadingMainFrame
++  }
++
+   setAudioMuted() {}
+ 
+   setWindowOpenHandler(handler: (details: { url: string }) => { action: string }) {
+@@ -310,6 +321,63 @@ describe('Hermes Local embedded dashboard policy', () => {
      expect(views[0].visible).toBe(true)
    })
  
@@ -42,6 +66,28 @@ index 91612ee11746fea280b8002a912046d0fdf0b417..c6ea264e3882a53b96b9e1562931e1b4
 +
 +    expect(controller.getState().phase).toBe('ready')
 +    expect(controller.getState().visible).toBe(true)
++    expect(views[0].visible).toBe(true)
++  })
++
++  it('self-heals a stale loading state when the existing main document is settled', async () => {
++    const { controller, views } = harness()
++    const config = { token: TOKEN, url: 'http://127.0.0.1:9119' }
++    const bounds = { height: 500, width: 800, x: 20, y: 100 }
++
++    await controller.show(config, bounds)
++    views[0].webContents.emit('did-start-navigation', {
++      isMainFrame: true,
++      isSameDocument: false,
++      url: 'http://127.0.0.1:9119/sessions'
++    })
++    views[0].webContents.loadingMainFrame = false
++
++    expect(controller.getState().phase).toBe('loading')
++
++    const recovered = await controller.show(config, bounds)
++
++    expect(recovered.phase).toBe('ready')
++    expect(recovered.visible).toBe(true)
 +    expect(views[0].visible).toBe(true)
 +  })
 +
@@ -68,7 +114,7 @@ index 91612ee11746fea280b8002a912046d0fdf0b417..c6ea264e3882a53b96b9e1562931e1b4
      const { controller, timers, views } = harness()
      const bounds = { height: 500, width: 800, x: 20, y: 100 }
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop/electron/hermes-local-dashboard-view.ts
-index de13c921be21df2b209c8e2281d01032674fee21..8c141fa4a47e3b72303a3dfd76af009a14863d37 100644
+index de13c921be21df2b209c8e2281d01032674fee21..570cae332f63210fbd33786f412538b71038bcbc 100644
 --- a/apps/desktop/electron/hermes-local-dashboard-view.ts
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.ts
 @@ -444,7 +444,11 @@ export function createHermesLocalDashboardViewController(
@@ -84,5 +130,32 @@ index de13c921be21df2b209c8e2281d01032674fee21..8c141fa4a47e3b72303a3dfd76af009a
        lastMainFrameStatus = null
        mainFrameDomReady = false
        setViewVisibility(false)
+@@ -459,7 +463,13 @@ export function createHermesLocalDashboardViewController(
+       markReadyIfUsable()
+     })
+     contents.on('did-stop-loading', () => {
+-      markReadyIfUsable()
++      const mainFrameSettled = !contents.isLoadingMainFrame()
++
++      if (mainFrameSettled) {
++        mainFrameDomReady = true
++      }
++
++      markReadyIfUsable(mainFrameSettled)
+     })
+     contents.on('did-finish-load', () => {
+       mainFrameDomReady = true
+@@ -557,6 +567,11 @@ export function createHermesLocalDashboardViewController(
+         })
+       await loadPromise
+     } else {
++      if (!view.webContents.isLoadingMainFrame()) {
++        mainFrameDomReady = true
++        markReadyIfUsable(true, loadedUrl)
++      }
++
+       attachToCurrentWindow()
+     }
+ 
 -- 
 2.47.3
