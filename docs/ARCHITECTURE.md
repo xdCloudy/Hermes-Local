@@ -134,7 +134,10 @@ replace newer state.
 Profile saves carry both the edited name and the original name. A rename
 replaces the original entry, rejects collisions, and migrates the selected
 profile. Ordinary Unicode letters and numbers are accepted within the same
-length and punctuation constraints.
+length and punctuation constraints. Profile controls combine profile-owned
+settings with effective model-manifest features; manifest-managed speculative
+decoding is shown as active and read-only rather than as a disabled profile
+option.
 
 ## Source and update architecture
 
@@ -145,5 +148,5 @@ on `hermes-local-integration`; the ordered mail patch series is under
 tree from the pinned upstream commit and verifies the tree hash even when
 local Git committer metadata produces different commit IDs.
 
-The current series contains patches 0001–0025 and reconstructs tree
-`95f56e86e28986f258e0bebf662badd1411b510a`.
+The current series contains patches 0001–0026 and reconstructs tree
+`8a6acdf238aff0f2b5cf941dd26dd046a322bb61`.
