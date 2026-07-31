@@ -1,0 +1,238 @@
+ts.on('will-redirect', guardNavigation)
++    contents.on('will-attach-webview', event => event.preventDefault())
++    contents.on('did-start-loading', () => {
++      lastMainFrameStatus = null
++      setViewVisibility(false)
++      publish({
++        canRetry: true,
++        message: 'Loading the protected loopback dashboard.',
++        phase: state.phase === 'restarting' ? 'restarting' : 'loading'
++      })
++    })
++    contents.on('did-finish-load', () => {
++      if (lastMainFrameStatus === 401 || lastMainFrameStatus === 403 || state.phase === 'authentication') {
++        setViewVisibility(false)
++
++        return
++      }
++
++      if (lastMainFrameStatus && lastMainFrameStatus >= 500) {
++        setViewVisibility(false)
++        scheduleRetry()
++
++        return
++      }
++
++      clearRetry()
++      retryCount = 0
++      publish({
++        canRetry: false,
++        message: 'Connected to the protected loopback dashboard.',
++        phase: 'ready',
++        retryCount: 0
++      })
++      attachToCurrentWindow()
++    })
++    contents.on('did-fail-load', (_event, errorCode, _description, _validatedUrl, isMainFrame) => {
++      if (!isMainFrame || errorCode === -3) {
++        return
++      }
++
++      setViewVisibility(false)
++      publish({
++        canRetry: true,
++        message: 'The local dashboard is offline. Hermes Local will reconnect automatically.',
++        phase: 'offline'
++      })
++      scheduleRetry()
++    })
++    contents.on('render-process-gone', () => {
++      if (nextView !== view) {
++        return
++      }
++
++      destroyView()
++      publish({
++        canRetry: true,
++        message: 'The dashboard renderer restarted. Reconnecting without closing Desktop.',
++        phase: 'restarting',
++        visible: false
++      })
++      scheduleRetry()
++    })
++    contents.on('unresponsive', () => {
++      setViewVisibility(false)
++      publish({
++        canRetry: true,
++        message: 'The dashboard stopped responding. Reconnecting without closing Desktop.',
++        phase: 'restarting'
++      })
++      scheduleRetry()
++    })
++  }
++
++  const ensureViewAndLoad = async (forceReload = false): Promise<HermesLocalDashboardState> => {
++    if (disposed || !currentConfig) {
++      return { ...state }
++    }
++
++    if (!app.isReady()) {
++      throw new Error('The dashboard cannot be embedded before Electron is ready')
++    }
++
++    installSessionGuards()
++
++    if (!view || view.webContents.isDestroyed()) {
++      view = createView()
++      wireView(view)
++    }
++
++    attachToCurrentWindow()
++
++    const loadedUrl = view.webContents.getURL()
++
++    if (
++      forceReload ||
++      !loadedUrl ||
++      !dashboardNavigationAllowed(loadedUrl, currentConfig.origin) ||
++      state.phase === 'offline' ||
++      state.phase === 'restarting'
++    ) {
++      setViewVisibility(false)
++      publish({
++        canRetry: true,
++        message: forceReload ? 'Reconnecting to the local dashboard.' : 'Loading the protected loopback dashboard.',
++        phase: forceReload ? 'restarting' : 'loading'
++      })
++
++      try {
++        await view.webContents.loadURL(currentConfig.url)
++      } catch {
++        // did-fail-load owns the recoverable state and retry schedule.
++      }
++    } else {
++      attachToCurrentWindow()
++    }
++
++    return { ...state }
++  }
++
++  const applyConfig = (config: HermesLocalDashboardConfig): boolean => {
++    const url = normalizeHermesLocalDashboardUrl(config.url)
++    const token = String(config.token || '').trim()
++
++    if (!TOKEN_RE.test(token)) {
++      throw new Error('The protected local dashboard session is unavailable')
++    }
++
++    const changed = !currentConfig || currentConfig.origin !== url.origin || currentConfig.token !== token
++
++    if (changed) {
++      destroyView()
++      retryCount = 0
++      currentConfig = { origin: url.origin, token, url: url.toString() }
++      publish({
++        canRetry: true,
++        message: 'Connecting to the configured loopback dashboard.',
++        origin: url.origin,
++        phase: 'loading',
++        retryCount: 0,
++        visible: false
++      })
++    }
++
++    return changed
++  }
++
++  return {
++    dispose() {
++      disposed = true
++      desiredVisible = false
++      currentConfig = null
++      destroyView()
++    },
++    getState() {
++      return { ...state }
++    },
++    handleWindowClosed(window) {
++      if (currentWindow === window) {
++        destroyView()
++      }
++    },
++    hide() {
++      desiredVisible = false
++      clearRetry()
++      setViewVisibility(false)
++      publish({ visible: false })
++
++      return { ...state }
++    },
++    isTrustedSender(sender) {
++      const window = dependencies.getWindow()
++
++      return Boolean(window && !window.isDestroyed() && sender === window.webContents)
++    },
++    async reload(config) {
++      applyConfig(config)
++      desiredVisible = true
++
++      return ensureViewAndLoad(true)
++    },
++    resize(nextBounds) {
++      const window = dependencies.getWindow()
++
++      if (!window || window.isDestroyed()) {
++        return { ...state }
++      }
++
++      bounds = safeDashboardBounds(nextBounds, window.getContentBounds())
++      view?.setBounds(bounds)
++
++      return { ...state }
++    },
++    async show(config, nextBounds) {
++      applyConfig(config)
++      desiredVisible = true
++      const window = dependencies.getWindow()
++
++      if (!window || window.isDestroyed()) {
++        throw new Error('The Desktop window is unavailable')
++      }
++
++      bounds = safeDashboardBounds(nextBounds, window.getContentBounds())
++      const nextState = await ensureViewAndLoad(false)
++      attachToCurrentWindow()
++
++      return nextState
++    }
++  }
++}
+diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
+index b30ea24..e0ceabd 100644
+--- a/apps/desktop/electron/main.ts
++++ b/apps/desktop/electron/main.ts
+@@ -139,6 +139,7 @@ import {
+   hermesLocalTuiLaunch,
+   registerHermesLocalControlIpc
+ } from './hermes-local-control'
++import { createHermesLocalDashboardViewController } from './hermes-local-dashboard-view'
+ import { createLinkTitleWindow, guardLinkTitleSession, readLinkTitleWindowTitle } from './link-title-window'
+ import { ensureMainWindow } from './main-window-lifecycle'
+ import { isTrustedRendererUrl, shouldAllowRendererPermission } from './media-permissions'
+@@ -1042,6 +1043,14 @@ function registerMediaProtocol() {
+ }
+ 
+ let mainWindow = null
++const hermesLocalDashboardView = createHermesLocalDashboardViewController({
++  emitState: state => {
++    if (mainWindow && !mainWindow.isDestroyed()) {
++      mainWindow.webContents.send('hermes:local:dashboard:state', state)
++    }
++  },
++  getWindow: () => mainWindow
++})
+ const backendConnectionState = createBackendConnectionState<ReturnType<typeof spawn>, any>()
+ const remoteLiveness = new RemoteLivenessTracker()
+ const remoteRevalidation = new RemoteRevalidationCoordinator()
+@@ -9222,6 +9231,7 @@ function createWindow() {
+   const createdMainWindow = ma
