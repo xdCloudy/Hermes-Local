@@ -56,8 +56,15 @@ jobs:
       - name: Install Desktop dependencies
         shell: pwsh
         run: |
-          npm.cmd ci --no-audit --fund=false
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $lastExit = 1
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            Write-Host "npm ci attempt $attempt of 3"
+            npm.cmd ci --no-audit --fund=false
+            $lastExit = $LASTEXITCODE
+            if ($lastExit -eq 0) { break }
+            if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) }
+          }
+          if ($lastExit) { exit $lastExit }
         working-directory: temp/issue-73-dashboard/hermes-agent
 
       - name: Validate Desktop types
