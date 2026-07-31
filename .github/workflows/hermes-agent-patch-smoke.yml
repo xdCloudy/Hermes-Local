@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   patch-series:
-    name: Apply complete Hermes Agent patch series
+    name: Produce Hermes Agent patch evidence
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -28,14 +28,43 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Apply patches to current upstream candidate
+      - name: Check current upstream candidate
         shell: pwsh
         run: |
+          $reportPath = '.\artifacts\compatibility\hermes-agent-patch-smoke\hermes-agent-report.json'
           python '.\scripts\ci\compatibility.py' hermes-agent `
             --repository-root '.' `
             --work-dir '.\temp\compatibility\hermes-agent-patch-smoke' `
             --log-dir '.\artifacts\compatibility\hermes-agent-patch-smoke\logs' `
-            --report '.\artifacts\compatibility\hermes-agent-patch-smoke\hermes-agent-report.json'
+            --report $reportPath
+          $checkerExit = $LASTEXITCODE
+
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'Compatibility checker did not produce a report.'
+          }
+
+          $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
+          if ($report.status -eq 'infrastructure-failure') {
+            throw 'Compatibility checker failed because of CI or source infrastructure.'
+          }
+          if (-not $report.metadata.preimageSeedTree) {
+            throw 'Compatibility checker did not reconstruct the pinned integration tree.'
+          }
+          if (@($report.failures | Where-Object { $_.phase -eq 'preimage-seed' }).Count -gt 0) {
+            throw 'Pinned patch reconstruction failed.'
+          }
+
+          @(
+            '# Hermes Agent patch smoke',
+            '',
+            "**Checker exit:** ``$checkerExit``",
+            "**Candidate status:** ``$($report.status)``",
+            "**Pinned preimage tree:** ``$($report.metadata.preimageSeedTree)``"
+          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
+          foreach ($failure in @($report.failures)) {
+            "- **$($failure.stage):** $($failure.message)" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          }
 
       - name: Upload patch application evidence
         if: always()
