@@ -65,8 +65,11 @@ Runtime and network**.
 
 ## Models
 
-The starter manifest downloads Laguna XS 2.1 Q4_K_M with resumable `curl` and
-verifies its published size and SHA-256.
+The starter manifest downloads Qwen3.6 35B-A3B APEX-MTP I-Quality with
+resumable `curl` and verifies its published size and SHA-256. It enables the
+model's bundled MTP self-speculative decoding and configures the matching
+Qwen3.6 vision projector through llama.cpp's `--mmproj-url`, with a 1,024-token
+minimum for image inputs.
 
 To use an existing model before setup, add it to the ignored user settings:
 

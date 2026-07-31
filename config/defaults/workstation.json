@@ -13,7 +13,7 @@
     "pythonVersion": "3.13",
     "verifyModelOnStart": true
   },
-  "selectedModelId": "laguna-xs-2.1-q4km",
+  "selectedModelId": "qwen3.6-35b-a3b-apex-mtp-i-quality",
   "selectedProfile": "Daily",
   "models": []
 }

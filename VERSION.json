@@ -18,21 +18,23 @@
     "llamaCpp": {
       "repository": "https://github.com/ggml-org/llama.cpp.git",
       "branch": "master",
-      "commit": "0e4a0362239713ea95a6864a17a8de4b0ad90d62",
-      "lagunaSupport": {
-        "pullRequest": 25165,
-        "mergedAt": "2026-07-22",
-        "selectionReason": "Official Laguna implementation is merged upstream; do not use the obsolete PR branch."
-      }
+      "commit": "0e4a0362239713ea95a6864a17a8de4b0ad90d62"
     }
   },
   "starterModel": {
-    "repository": "poolside/Laguna-XS-2.1-GGUF",
-    "revision": "1a37c0a5fb8c7a18e6106decb6be6327d1b63fa6",
-    "filename": "Laguna-XS-2.1-Q4_K_M.gguf",
-    "sizeBytes": 20274300032,
-    "sha256": "1ac7079101fca5a6df8c5a7523a3c30ea7d1c0e4b1258090e7d6d4039287f6cb",
-    "license": "OpenMDW-1.1"
+    "repository": "mudler/Qwen3.6-35B-A3B-APEX-MTP-GGUF",
+    "revision": "f902ae81fdde35d15daabe63a94a6cd84e0da1c0",
+    "filename": "Qwen3.6-35B-A3B-APEX-MTP-I-Quality.gguf",
+    "sizeBytes": 23484575328,
+    "sha256": "eb0883790326b76ebf90e791b4c3689e9000f337634456f7569060546b650abe",
+    "license": "Apache-2.0",
+    "visionProjector": {
+      "repository": "mudler/Qwen3.6-35B-A3B-APEX-GGUF",
+      "revision": "db4858ac63057c838009b9b4928e46584f6fd320",
+      "filename": "mmproj.gguf",
+      "sizeBytes": 902822624,
+      "sha256": "356dfaa3111376a4f7165e32e8749713378d1700b37cf52e0c50d9f23322334d"
+    }
   },
   "runtime": {
     "python": "3.13.14",
@@ -43,8 +45,8 @@
     "cudaArchitectureDefault": "auto",
     "configuration": "config/defaults/workstation.json",
     "modelEndpointDefault": "http://127.0.0.1:8011/v1",
-    "modelAliasDefault": "laguna-xs-2.1-q4km",
+    "modelAliasDefault": "qwen3.6-35b-a3b-apex-mtp-i-quality",
     "portableSettings": true
   },
-  "recordedAt": "2026-07-31T04:21:00Z"
+  "recordedAt": "2026-07-31T08:55:00Z"
 }

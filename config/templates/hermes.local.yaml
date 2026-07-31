@@ -4,6 +4,7 @@ model:
   base_url: http://127.0.0.1:8011/v1
   context_length: 65536
   max_tokens: 16384
+  supports_vision: true
 
 agent:
   reasoning_effort: high

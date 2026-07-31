@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "id": "qwen3.6-35b-a3b-apex-mtp-i-quality",
+  "displayName": "Qwen3.6 35B-A3B APEX-MTP I-Quality",
+  "alias": "qwen3.6-35b-a3b-apex-mtp-i-quality",
+  "repository": "mudler/Qwen3.6-35B-A3B-APEX-MTP-GGUF",
+  "revision": "f902ae81fdde35d15daabe63a94a6cd84e0da1c0",
+  "filename": "Qwen3.6-35B-A3B-APEX-MTP-I-Quality.gguf",
+  "localPath": "models\\Qwen3.6-35B-A3B-APEX-MTP\\Qwen3.6-35B-A3B-APEX-MTP-I-Quality.gguf",
+  "sizeBytes": 23484575328,
+  "sha256": "eb0883790326b76ebf90e791b4c3689e9000f337634456f7569060546b650abe",
+  "license": "Apache-2.0",
+  "source": "https://huggingface.co/mudler/Qwen3.6-35B-A3B-APEX-MTP-GGUF/resolve/f902ae81fdde35d15daabe63a94a6cd84e0da1c0/Qwen3.6-35B-A3B-APEX-MTP-I-Quality.gguf",
+  "metadata": {
+    "architecture": "Qwen3.6 35B-A3B",
+    "parametersTotal": 35000000000,
+    "parametersActivePerToken": 3000000000,
+    "layers": 40,
+    "mtpLayers": 1,
+    "experts": 256,
+    "sharedExperts": 1,
+    "activeExpertsPerToken": 8,
+    "modelMaximumContextTokens": 262144,
+    "quantization": "APEX-MTP I-Quality",
+    "reasoning": "interleaved",
+    "nativeToolCalling": true,
+    "vision": true,
+    "visionProjectorRepository": "mudler/Qwen3.6-35B-A3B-APEX-GGUF",
+    "visionProjectorRevision": "db4858ac63057c838009b9b4928e46584f6fd320",
+    "visionProjectorFilename": "mmproj.gguf",
+    "visionProjectorSizeBytes": 902822624,
+    "visionProjectorSha256": "356dfaa3111376a4f7165e32e8749713378d1700b37cf52e0c50d9f23322334d"
+  },
+  "server": {
+    "jinja": true,
+    "extraArguments": [
+      "--mmproj-url",
+      "https://huggingface.co/mudler/Qwen3.6-35B-A3B-APEX-GGUF/resolve/db4858ac63057c838009b9b4928e46584f6fd320/mmproj.gguf",
+      "--spec-type",
+      "draft-mtp",
+      "--spec-draft-n-max",
+      "3",
+      "--image-min-tokens",
+      "1024"
+    ]
+  }
+}
