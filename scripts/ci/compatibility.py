@@ -177,17 +177,40 @@ def prepare_hermes_agent_checkout(
     work: Path,
     log: Path,
 ) -> None:
-    """Clone and hydrate every revision needed by ``git am --3way``.
-
-    Hermes Local's mail patches can reference preimage blobs that are reachable
-    from the recorded integration base but not from the latest upstream branch.
-    Fetching both revisions mirrors the transactional production updater and
-    prevents a missing-object error from being misreported as a patch conflict.
-    """
+    """Clone and fetch every upstream revision needed by compatibility checks."""
     run(["git", "clone", "--no-checkout", repository, source], cwd=work, log=log, timeout=1800)
     for revision in dict.fromkeys((base, candidate)):
         run(["git", "fetch", "origin", revision], cwd=source, log=log, timeout=1800)
-    run(["git", "checkout", "--detach", candidate], cwd=source, log=log)
+    run(["git", "checkout", "--detach", base], cwd=source, log=log)
+
+
+def seed_patch_preimages(
+    source: Path,
+    patches: Sequence[Path],
+    *,
+    expected_tree: str | None,
+    log: Path,
+) -> str:
+    """Reconstruct the pinned integration so three-way preimage blobs exist.
+
+    Mail patches refer to blobs produced by earlier patches in the series. Those
+    objects are not part of the upstream repository, so fetching the base commit
+    alone is insufficient. Replaying the known-good series once on its pinned
+    base creates every intermediate object before the candidate replay begins.
+    """
+    run(["git", "switch", "-c", "hermes-local-preimage-seed"], cwd=source, log=log)
+    run(
+        ["git", "am", "--3way", "--committer-date-is-author-date", *patches],
+        cwd=source,
+        log=log,
+        timeout=1800,
+    )
+    tree = run(["git", "rev-parse", "HEAD^{tree}"], cwd=source, log=log)
+    if expected_tree and tree.lower() != expected_tree.lower():
+        raise RuntimeError(
+            f"Pinned patch reconstruction produced tree {tree}, expected {expected_tree}."
+        )
+    return tree
 
 
 def npm() -> str:
@@ -231,6 +254,10 @@ def hermes_agent(args: argparse.Namespace) -> int:
     shutil.rmtree(work, ignore_errors=True); work.mkdir(parents=True); logs.mkdir(parents=True, exist_ok=True)
     report = base_report("hermes-agent", base, None, logs)
     source = work / "hermes-agent"
+    patches = sorted((root / str(meta["patchSeries"])).glob("*.patch"))
+    if not patches:
+        fail_report(report, stage="patches", message="Ordered Hermes Agent patch series is missing.")
+        return finish(report, output, 1)
     try:
         try:
             candidate = resolve_candidate(repository, reference, root, logs / "resolve.log")
@@ -245,15 +272,36 @@ def hermes_agent(args: argparse.Namespace) -> int:
             )
             run(["git", "config", "user.name", "Hermes Local Compatibility CI"], cwd=source, log=logs / "patches.log")
             run(["git", "config", "user.email", "hermes-local-ci@localhost"], cwd=source, log=logs / "patches.log")
-            run(["git", "switch", "-c", str(meta.get("integrationBranch", "hermes-local-integration"))], cwd=source, log=logs / "patches.log")
         except Exception as exc:
             fail_report(report, stage="patches", message="Unable to resolve or clone Hermes Agent candidate.", error=exc, infrastructure=True)
             return finish(report, output, 1)
 
-        patches = sorted((root / str(meta["patchSeries"])).glob("*.patch"))
-        if not patches:
-            fail_report(report, stage="patches", message="Ordered Hermes Agent patch series is missing.")
+        try:
+            seed_tree = seed_patch_preimages(
+                source,
+                patches,
+                expected_tree=str(meta.get("integrationTree") or "") or None,
+                log=logs / "patches.log",
+            )
+        except Exception as exc:
+            run(["git", "am", "--abort"], cwd=source, log=logs / "patches.log", allow_failure=True)
+            fail_report(
+                report,
+                stage="patches",
+                message="Pinned Hermes Agent patch series could not reconstruct the recorded integration.",
+                error=exc,
+                details={"phase": "preimage-seed"},
+            )
             return finish(report, output, 1)
+
+        try:
+            run(["git", "checkout", "--detach", candidate], cwd=source, log=logs / "patches.log")
+            run(["git", "switch", "-c", str(meta.get("integrationBranch", "hermes-local-integration"))], cwd=source, log=logs / "patches.log")
+            report["metadata"]["preimageSeedTree"] = seed_tree
+        except Exception as exc:
+            fail_report(report, stage="patches", message="Unable to prepare the candidate integration branch.", error=exc, infrastructure=True)
+            return finish(report, output, 1)
+
         applied: list[dict[str, Any]] = []
         for index, patch in enumerate(patches, 1):
             try:
