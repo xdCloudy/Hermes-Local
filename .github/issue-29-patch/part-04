@@ -1,0 +1,232 @@
+tWidth - x, Math.max(1, Math.round(input.width)))
++  const height = Math.min(contentHeight - y, Math.max(1, Math.round(input.height)))
++
++  return { height, width, x, y }
++}
++
++function defaultView(): DashboardViewLike {
++  return new WebContentsView({
++    webPreferences: {
++      allowRunningInsecureContent: false,
++      contextIsolation: true,
++      devTools: false,
++      navigateOnDragDrop: false,
++      nodeIntegration: false,
++      partition: DASHBOARD_PARTITION,
++      safeDialogs: true,
++      sandbox: true,
++      spellcheck: false,
++      webSecurity: true,
++      webviewTag: false
++    }
++  })
++}
++
++function defaultState(): HermesLocalDashboardState {
++  return {
++    canRetry: true,
++    message: 'Preparing the local Hermes dashboard.',
++    origin: '',
++    phase: 'loading',
++    retryCount: 0,
++    visible: false
++  }
++}
++
++export function createHermesLocalDashboardViewController(
++  dependencies: ControllerDependencies
++): HermesLocalDashboardViewController {
++  const createView = dependencies.createView || defaultView
++  const emitState = dependencies.emitState || (() => undefined)
++  const getSession = dependencies.getSession || (() => session.fromPartition(DASHBOARD_PARTITION, { cache: true }))
++  const openExternal = dependencies.openExternal || (url => shell.openExternal(url))
++  const schedule = dependencies.setTimeout || globalThis.setTimeout
++  const cancel = dependencies.clearTimeout || globalThis.clearTimeout
++
++  let currentConfig: null | { origin: string; token: string; url: string } = null
++  let currentWindow: BrowserWindow | null = null
++  let view: DashboardViewLike | null = null
++  let state = defaultState()
++  let bounds: Rectangle = { height: 1, width: 1, x: 0, y: 0 }
++  let retryTimer: ReturnType<typeof globalThis.setTimeout> | null = null
++  let retryCount = 0
++  let sessionInstalled = false
++  let disposed = false
++  let desiredVisible = false
++  let lastMainFrameStatus: null | number = null
++
++  const publish = (next: Partial<HermesLocalDashboardState>): HermesLocalDashboardState => {
++    state = { ...state, ...next }
++    emitState({ ...state })
++
++    return { ...state }
++  }
++
++  const clearRetry = () => {
++    if (retryTimer) {
++      cancel(retryTimer)
++      retryTimer = null
++    }
++  }
++
++  const setViewVisibility = (visible: boolean) => {
++    if (!view) {
++      return
++    }
++
++    view.setVisible(visible)
++    state.visible = visible
++  }
++
++  const attachToCurrentWindow = () => {
++    const window = dependencies.getWindow()
++
++    if (!window || window.isDestroyed() || !view) {
++      return false
++    }
++
++    if (currentWindow !== window) {
++      currentWindow?.contentView.removeChildView(view as never)
++      currentWindow = window
++      currentWindow.contentView.addChildView(view as never)
++    }
++
++    view.setBounds(safeDashboardBounds(bounds, window.getContentBounds()))
++    setViewVisibility(desiredVisible && state.phase === 'ready')
++
++    return true
++  }
++
++  const openExternalIfSafe = (rawUrl: string) => {
++    try {
++      const url = new URL(rawUrl)
++
++      if (url.protocol === 'http:' || url.protocol === 'https:') {
++        void openExternal(url.toString()).catch(() => undefined)
++      }
++    } catch {
++      // Invalid and non-web destinations stay blocked.
++    }
++  }
++
++  const destroyView = () => {
++    clearRetry()
++
++    if (!view) {
++      return
++    }
++
++    currentWindow?.contentView.removeChildView(view as never)
++    const contents = view.webContents
++    view = null
++    currentWindow = null
++
++    if (!contents.isDestroyed()) {
++      contents.close({ waitForBeforeUnload: false })
++    }
++  }
++
++  const scheduleRetry = () => {
++    clearRetry()
++
++    if (!currentConfig || disposed || !desiredVisible || state.phase === 'authentication') {
++      return
++    }
++
++    const delay = RETRY_DELAYS_MS[Math.min(retryCount, RETRY_DELAYS_MS.length - 1)]
++    retryCount += 1
++    publish({ retryCount })
++    retryTimer = schedule(() => {
++      retryTimer = null
++      void ensureViewAndLoad(true)
++    }, delay)
++  }
++
++  const installSessionGuards = () => {
++    if (sessionInstalled) {
++      return
++    }
++
++    const dashboardSession = getSession()
++    sessionInstalled = true
++
++    dashboardSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
++    dashboardSession.setPermissionCheckHandler(() => false)
++    dashboardSession.on('will-download', event => event.preventDefault())
++
++    dashboardSession.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, callback) => {
++      callback({ cancel: !currentConfig || !dashboardRequestAllowed(details.url, currentConfig.origin) })
++    })
++
++    dashboardSession.webRequest.onBeforeSendHeaders({ urls: ['<all_urls>'] }, (details, callback) => {
++      if (!currentConfig || !dashboardAuthenticatedRequestAllowed(details.url, currentConfig.origin)) {
++        callback({ requestHeaders: details.requestHeaders })
++
++        return
++      }
++
++      callback({
++        requestHeaders: {
++          ...details.requestHeaders,
++          Authorization: `Bearer ${currentConfig.token}`
++        }
++      })
++    })
++
++    dashboardSession.webRequest.onCompleted({ urls: ['<all_urls>'] }, details => {
++      if (!currentConfig || !dashboardRequestAllowed(details.url, currentConfig.origin)) {
++        return
++      }
++
++      if (details.resourceType === 'mainFrame') {
++        lastMainFrameStatus = details.statusCode
++      }
++
++      if (details.statusCode === 401 || details.statusCode === 403) {
++        clearRetry()
++        setViewVisibility(false)
++        publish({
++          canRetry: true,
++          message: 'The local dashboard rejected its protected session. Retry after Hermes finishes starting.',
++          phase: 'authentication'
++        })
++      } else if (details.resourceType === 'mainFrame' && details.statusCode >= 500) {
++        setViewVisibility(false)
++        publish({
++          canRetry: true,
++          message: 'The dashboard is restarting or temporarily unavailable.',
++          phase: 'offline'
++        })
++        scheduleRetry()
++      }
++    })
++  }
++
++  const wireView = (nextView: DashboardViewLike) => {
++    const contents = nextView.webContents
++
++    nextView.setBackgroundColor('#111315')
++    nextView.setVisible(false)
++    contents.setAudioMuted(true)
++
++    contents.setWindowOpenHandler(details => {
++      if (currentConfig && dashboardNavigationAllowed(details.url, currentConfig.origin)) {
++        void contents.loadURL(details.url).catch(() => undefined)
++      } else {
++        openExternalIfSafe(details.url)
++      }
++
++      return { action: 'deny' }
++    })
++
++    const guardNavigation = (event: Electron.Event, url: string) => {
++      if (currentConfig && dashboardNavigationAllowed(url, currentConfig.origin)) {
++        return
++      }
++
++      event.preventDefault()
++      openExternalIfSafe(url)
++    }
++
++    contents.on('will-navigate', guardNavigation)
++    conten
