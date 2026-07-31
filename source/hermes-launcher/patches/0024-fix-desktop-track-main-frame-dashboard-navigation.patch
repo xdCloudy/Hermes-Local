@@ -1,0 +1,161 @@
+From ba7aedf3cdbbafb87bdeaed647dc843fb788f8ed Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Fri, 31 Jul 2026 04:50:00 +0100
+Subject: [PATCH] fix(desktop): track main-frame dashboard navigation
+
+---
+ .../hermes-local-dashboard-view.test.ts       | 70 ++++++++++++++++++-
+ .../electron/hermes-local-dashboard-view.ts   | 19 ++++-
+ 2 files changed, 86 insertions(+), 3 deletions(-)
+
+diff --git a/apps/desktop/electron/hermes-local-dashboard-view.test.ts b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
+index 91612ee11746fea280b8002a912046d0fdf0b417..debfa8d107636179c6c8088cc7770ab02206b9dc 100644
+--- a/apps/desktop/electron/hermes-local-dashboard-view.test.ts
++++ b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
+@@ -25,17 +25,24 @@ class FakeWebContents extends EventEmitter {
+   currentUrl = ''
+   domReady = true
+   finishLoad = true
++  loadingMainFrame = false
+   pauseLoad = false
+   pendingLoads: Array<() => void> = []
+   id = Math.floor(Math.random() * 100_000)
+   loadURL = vi.fn(async (url: string) => {
+-    this.emit('did-start-loading')
++    this.loadingMainFrame = true
++    this.emit('did-start-navigation', {
++      isMainFrame: true,
++      isSameDocument: false,
++      url
++    })
+ 
+     if (this.pauseLoad) {
+       await new Promise<void>(resolve => this.pendingLoads.push(resolve))
+     }
+ 
+     this.currentUrl = url
++    this.loadingMainFrame = false
+     this.emit('did-navigate', {}, url, 200, 'OK')
+ 
+     if (this.domReady) {
+@@ -70,6 +77,10 @@ class FakeWebContents extends EventEmitter {
+     return this.closed
+   }
+ 
++  isLoadingMainFrame() {
++    return this.loadingMainFrame
++  }
++
+   setAudioMuted() {}
+ 
+   setWindowOpenHandler(handler: (details: { url: string }) => { action: string }) {
+@@ -310,6 +321,63 @@ describe('Hermes Local embedded dashboard policy', () => {
+     expect(views[0].visible).toBe(true)
+   })
+ 
++  it('keeps a ready dashboard visible during later non-navigation loading activity', async () => {
++    const { controller, views } = harness()
++
++    await controller.show(
++      { token: TOKEN, url: 'http://127.0.0.1:9119' },
++      { height: 500, width: 800, x: 20, y: 100 }
++    )
++
++    views[0].webContents.emit('did-start-loading')
++    views[0].webContents.emit('did-stop-loading')
++
++    expect(controller.getState().phase).toBe('ready')
++    expect(controller.getState().visible).toBe(true)
++    expect(views[0].visible).toBe(true)
++  })
++
++  it('self-heals a stale loading state when the existing main document is settled', async () => {
++    const { controller, views } = harness()
++    const config = { token: TOKEN, url: 'http://127.0.0.1:9119' }
++    const bounds = { height: 500, width: 800, x: 20, y: 100 }
++
++    await controller.show(config, bounds)
++    views[0].webContents.emit('did-start-navigation', {
++      isMainFrame: true,
++      isSameDocument: false,
++      url: 'http://127.0.0.1:9119/sessions'
++    })
++    views[0].webContents.loadingMainFrame = false
++
++    expect(controller.getState().phase).toBe('loading')
++
++    const recovered = await controller.show(config, bounds)
++
++    expect(recovered.phase).toBe('ready')
++    expect(recovered.visible).toBe(true)
++    expect(views[0].visible).toBe(true)
++  })
++
++  it('ignores same-document main-frame navigation starts after readiness', async () => {
++    const { controller, views } = harness()
++
++    await controller.show(
++      { token: TOKEN, url: 'http://127.0.0.1:9119' },
++      { height: 500, width: 800, x: 20, y: 100 }
++    )
++
++    views[0].webContents.emit('did-start-navigation', {
++      isMainFrame: true,
++      isSameDocument: true,
++      url: 'http://127.0.0.1:9119/sessions'
++    })
++
++    expect(controller.getState().phase).toBe('ready')
++    expect(controller.getState().visible).toBe(true)
++    expect(views[0].visible).toBe(true)
++  })
++
+   it('recreates the view after a renderer crash and after a configured connection change', async () => {
+     const { controller, timers, views } = harness()
+     const bounds = { height: 500, width: 800, x: 20, y: 100 }
+diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop/electron/hermes-local-dashboard-view.ts
+index de13c921be21df2b209c8e2281d01032674fee21..570cae332f63210fbd33786f412538b71038bcbc 100644
+--- a/apps/desktop/electron/hermes-local-dashboard-view.ts
++++ b/apps/desktop/electron/hermes-local-dashboard-view.ts
+@@ -444,7 +444,11 @@ export function createHermesLocalDashboardViewController(
+         lastMainFrameStatus = httpResponseCode
+       }
+     })
+-    contents.on('did-start-loading', () => {
++    contents.on('did-start-navigation', details => {
++      if (!details.isMainFrame || details.isSameDocument) {
++        return
++      }
++
+       lastMainFrameStatus = null
+       mainFrameDomReady = false
+       setViewVisibility(false)
+@@ -459,7 +463,13 @@ export function createHermesLocalDashboardViewController(
+       markReadyIfUsable()
+     })
+     contents.on('did-stop-loading', () => {
+-      markReadyIfUsable()
++      const mainFrameSettled = !contents.isLoadingMainFrame()
++
++      if (mainFrameSettled) {
++        mainFrameDomReady = true
++      }
++
++      markReadyIfUsable(mainFrameSettled)
+     })
+     contents.on('did-finish-load', () => {
+       mainFrameDomReady = true
+@@ -557,6 +567,11 @@ export function createHermesLocalDashboardViewController(
+         })
+       await loadPromise
+     } else {
++      if (!view.webContents.isLoadingMainFrame()) {
++        mainFrameDomReady = true
++        markReadyIfUsable(true, loadedUrl)
++      }
++
+       attachToCurrentWindow()
+     }
+ 
+-- 
+2.47.3
