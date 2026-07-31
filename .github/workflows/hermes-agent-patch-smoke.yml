@@ -32,14 +32,33 @@ jobs:
         shell: pwsh
         run: |
           $reportPath = '.\artifacts\compatibility\hermes-agent-patch-smoke\hermes-agent-report.json'
-          $PSNativeCommandUseErrorActionPreference = $false
+          $stdoutPath = Join-Path $env:RUNNER_TEMP 'hermes-agent-patch-smoke.stdout.log'
+          $stderrPath = Join-Path $env:RUNNER_TEMP 'hermes-agent-patch-smoke.stderr.log'
+          $arguments = @(
+            '.\scripts\ci\compatibility.py',
+            'hermes-agent',
+            '--repository-root', '.',
+            '--work-dir', '.\temp\compatibility\hermes-agent-patch-smoke',
+            '--log-dir', '.\artifacts\compatibility\hermes-agent-patch-smoke\logs',
+            '--report', $reportPath
+          )
 
-          python '.\scripts\ci\compatibility.py' hermes-agent `
-            --repository-root '.' `
-            --work-dir '.\temp\compatibility\hermes-agent-patch-smoke' `
-            --log-dir '.\artifacts\compatibility\hermes-agent-patch-smoke\logs' `
-            --report $reportPath
-          $checkerExit = $LASTEXITCODE
+          $process = Start-Process `
+            -FilePath 'python' `
+            -ArgumentList $arguments `
+            -NoNewWindow `
+            -Wait `
+            -PassThru `
+            -RedirectStandardOutput $stdoutPath `
+            -RedirectStandardError $stderrPath
+          $checkerExit = $process.ExitCode
+
+          if (Test-Path -LiteralPath $stdoutPath -PathType Leaf) {
+            Get-Content -LiteralPath $stdoutPath
+          }
+          if (Test-Path -LiteralPath $stderrPath -PathType Leaf) {
+            Get-Content -LiteralPath $stderrPath | ForEach-Object { Write-Host $_ }
+          }
 
           if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
             throw 'Compatibility checker did not produce a report.'
