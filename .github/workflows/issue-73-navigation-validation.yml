@@ -1,0 +1,129 @@
+name: Issue 73 navigation validation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/issue-73-navigation-validation.yml'
+      - 'VERSION.json'
+      - 'source/hermes-launcher/patches/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-73-navigation-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  desktop-validation:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out Hermes Local
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Reconstruct patched Desktop
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = (Get-Content -Raw '.\VERSION.json' | ConvertFrom-Json).sources.hermesAgent.commit
+          $source = Join-Path $PWD 'temp\issue-73-navigation\hermes-agent'
+          New-Item -ItemType Directory -Force (Split-Path $source) | Out-Null
+          git clone --no-checkout https://github.com/NousResearch/hermes-agent.git $source
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          git -C $source checkout --detach $base
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          git -C $source config user.name 'Hermes Local Validation'
+          git -C $source config user.email 'hermes-local-validation@localhost'
+          git -C $source switch -c hermes-local-integration
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $patches = Get-ChildItem '.\source\hermes-launcher\patches\*.patch' | Sort-Object Name
+          foreach ($patch in $patches) {
+            git -C $source am --3way --committer-date-is-author-date $patch.FullName
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+          $commit = (git -C $source rev-parse HEAD).Trim()
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $tree = (git -C $source rev-parse 'HEAD^{tree}').Trim()
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          "INTEGRATION_COMMIT=$commit" | Tee-Object -FilePath "$env:RUNNER_TEMP\issue-73-integration.txt"
+          "INTEGRATION_TREE=$tree" | Tee-Object -FilePath "$env:RUNNER_TEMP\issue-73-integration.txt" -Append
+          @(
+            '## Issue 73 integration',
+            '',
+            "- Commit: ``$commit``",
+            "- Tree: ``$tree``"
+          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Install Desktop dependencies
+        shell: pwsh
+        run: |
+          $lastExit = 1
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            Write-Host "npm ci attempt $attempt of 3"
+            npm.cmd ci --no-audit --fund=false
+            $lastExit = $LASTEXITCODE
+            if ($lastExit -eq 0) { break }
+            if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) }
+          }
+          if ($lastExit) { exit $lastExit }
+        working-directory: temp/issue-73-navigation/hermes-agent
+
+      - name: Validate Desktop types
+        shell: pwsh
+        run: |
+          @'
+          declare module '@tabler/icons-react/dist/esm/icons/*.mjs' {
+            const Icon: any
+            export default Icon
+          }
+          '@ | Set-Content -Encoding utf8 '.\apps\desktop\src\tabler-icons-validation.d.ts'
+          npm.cmd exec -- tsc -p apps/desktop/tsconfig.json --noEmit
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm.cmd exec -- tsc -p apps/desktop/tsconfig.electron.json --noEmit
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm.cmd exec -- tsc -p apps/desktop/tsconfig.e2e.json --noEmit
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+        working-directory: temp/issue-73-navigation/hermes-agent
+
+      - name: Lint dashboard controller
+        shell: pwsh
+        run: |
+          npm.cmd exec -- eslint `
+            electron/hermes-local-dashboard-view.ts `
+            electron/hermes-local-dashboard-view.test.ts
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+        working-directory: temp/issue-73-navigation/hermes-agent/apps/desktop
+
+      - name: Run dashboard regression tests
+        shell: pwsh
+        run: |
+          npm.cmd exec -- vitest run --project electron electron/hermes-local-dashboard-view.test.ts
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+        working-directory: temp/issue-73-navigation/hermes-agent/apps/desktop
+
+      - name: Build and package Desktop
+        shell: pwsh
+        run: |
+          Remove-Item -Force '.\apps\desktop\src\tabler-icons-validation.d.ts'
+          npm.cmd run build --workspace apps/desktop
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm.cmd run pack --workspace apps/desktop
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+        working-directory: temp/issue-73-navigation/hermes-agent
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: issue-73-navigation-validation
+          path: |
+            ${{ runner.temp }}\issue-73-integration.txt
+            temp/issue-73-navigation/hermes-agent/apps/desktop/release
+            temp/issue-73-navigation/hermes-agent/apps/desktop/dist
+          if-no-files-found: warn
+          retention-days: 14
