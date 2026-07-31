@@ -1,0 +1,219 @@
+00, width: 800, x: 20, y: 100 }
++    )
++
++    const view = views[0]
++    expect(view.webContents.windowOpenHandler?.({ url: 'https://example.com/docs' })).toEqual({ action: 'deny' })
++    await Promise.resolve()
++
++    expect(openExternal).toHaveBeenCalledWith('https://example.com/docs')
++    expect(view.webContents.currentUrl).toBe('http://127.0.0.1:9119/')
++  })
++
++  it('preserves a ready view while hidden and reuses it after Desktop navigation', async () => {
++    const { controller, views } = harness()
++    const config = { token: TOKEN, url: 'http://127.0.0.1:9119' }
++    const bounds = { height: 500, width: 800, x: 20, y: 100 }
++
++    await controller.show(config, bounds)
++    expect(views).toHaveLength(1)
++    expect(views[0].visible).toBe(true)
++
++    controller.hide()
++    expect(views[0].visible).toBe(false)
++
++    await controller.show(config, bounds)
++    expect(views).toHaveLength(1)
++    expect(views[0].visible).toBe(true)
++    expect(views[0].webContents.loadURL).toHaveBeenCalledTimes(1)
++  })
++
++  it('recreates the view after a renderer crash and after a configured connection change', async () => {
++    const { controller, timers, views } = harness()
++    const bounds = { height: 500, width: 800, x: 20, y: 100 }
++
++    await controller.show({ token: TOKEN, url: 'http://127.0.0.1:9119' }, bounds)
++    views[0].webContents.emit('render-process-gone')
++    expect(controller.getState().phase).toBe('restarting')
++    expect(timers).toHaveLength(1)
++
++    timers.shift()?.()
++    await Promise.resolve()
++    await Promise.resolve()
++    expect(views).toHaveLength(2)
++
++    await controller.show({ token: 'B'.repeat(48), url: 'http://127.0.0.1:9120' }, bounds)
++    expect(views).toHaveLength(3)
++    expect(views[1].webContents.closed).toBe(true)
++    expect(controller.getState().origin).toBe('http://127.0.0.1:9120')
++  })
++
++  it('rejects IPC calls from anything except the primary Desktop renderer', () => {
++    const { controller, renderer } = harness()
++
++    expect(controller.isTrustedSender(renderer as never)).toBe(true)
++    expect(controller.isTrustedSender({} as never)).toBe(false)
++  })
++})
+diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop/electron/hermes-local-dashboard-view.ts
+new file mode 100644
+index 0000000..ddc518f
+--- /dev/null
++++ b/apps/desktop/electron/hermes-local-dashboard-view.ts
+@@ -0,0 +1,596 @@
++import { app, session, shell, WebContentsView, type BrowserWindow, type Rectangle, type Session } from 'electron'
++
++const DASHBOARD_PARTITION = 'hermes:local-dashboard'
++const RETRY_DELAYS_MS = [750, 1500, 3000, 6000, 10_000]
++const TOKEN_RE = /^[A-Za-z0-9_-]{40,128}$/
++
++export type HermesLocalDashboardPhase =
++  | 'authentication'
++  | 'loading'
++  | 'offline'
++  | 'ready'
++  | 'restarting'
++
++export interface HermesLocalDashboardState {
++  canRetry: boolean
++  message: string
++  origin: string
++  phase: HermesLocalDashboardPhase
++  retryCount: number
++  visible: boolean
++}
++
++export interface HermesLocalDashboardBounds {
++  height: number
++  width: number
++  x: number
++  y: number
++}
++
++export interface HermesLocalDashboardConfig {
++  token: string
++  url: string
++}
++
++export interface HermesLocalDashboardViewController {
++  dispose(): void
++  getState(): HermesLocalDashboardState
++  handleWindowClosed(window: BrowserWindow): void
++  hide(): HermesLocalDashboardState
++  isTrustedSender(sender: Electron.WebContents): boolean
++  reload(config: HermesLocalDashboardConfig): Promise<HermesLocalDashboardState>
++  resize(bounds: HermesLocalDashboardBounds): HermesLocalDashboardState
++  show(config: HermesLocalDashboardConfig, bounds: HermesLocalDashboardBounds): Promise<HermesLocalDashboardState>
++}
++
++interface DashboardViewLike {
++  setBackgroundColor(color: string): void
++  setBounds(bounds: Rectangle): void
++  setVisible(visible: boolean): void
++  webContents: Electron.WebContents
++}
++
++interface ControllerDependencies {
++  createView?: () => DashboardViewLike
++  emitState?: (state: HermesLocalDashboardState) => void
++  getSession?: () => Session
++  getWindow: () => BrowserWindow | null
++  openExternal?: (url: string) => Promise<void>
++  setTimeout?: typeof globalThis.setTimeout
++  clearTimeout?: typeof globalThis.clearTimeout
++}
++
++function loopbackHostname(hostname: string): boolean {
++  const normalized = hostname.toLowerCase()
++
++  if (normalized === '[::1]' || normalized === '::1') {
++    return true
++  }
++
++  const octets = normalized.split('.').map(value => Number(value))
++
++  return (
++    octets.length === 4 &&
++    octets.every(value => Number.isInteger(value) && value >= 0 && value <= 255) &&
++    octets[0] === 127
++  )
++}
++
++export function normalizeHermesLocalDashboardUrl(rawUrl: string): URL {
++  const url = new URL(String(rawUrl || '').trim())
++
++  if (url.protocol !== 'http:' || !loopbackHostname(url.hostname) || !url.port || url.username || url.password) {
++    throw new Error('The embedded dashboard requires an explicit HTTP loopback origin')
++  }
++
++  url.hash = ''
++
++  return url
++}
++
++function comparableOrigin(url: URL): string {
++  if (url.protocol === 'ws:') {
++    return `http://${url.host}`
++  }
++
++  if (url.protocol === 'wss:') {
++    return `https://${url.host}`
++  }
++
++  return url.origin
++}
++
++export function dashboardRequestAllowed(rawUrl: string, allowedOrigin: string): boolean {
++  try {
++    if (rawUrl === 'about:blank') {
++      return true
++    }
++
++    if (rawUrl.startsWith('blob:')) {
++      return comparableOrigin(new URL(rawUrl.slice('blob:'.length))) === allowedOrigin
++    }
++
++    if (rawUrl.startsWith('data:')) {
++      return true
++    }
++
++    return comparableOrigin(new URL(rawUrl)) === allowedOrigin
++  } catch {
++    return false
++  }
++}
++
++export function dashboardAuthenticatedRequestAllowed(rawUrl: string, allowedOrigin: string): boolean {
++  try {
++    const url = new URL(rawUrl)
++
++    return ['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol) && comparableOrigin(url) === allowedOrigin
++  } catch {
++    return false
++  }
++}
++
++export function dashboardNavigationAllowed(rawUrl: string, allowedOrigin: string): boolean {
++  try {
++    const url = new URL(rawUrl)
++
++    return (url.protocol === 'http:' || url.protocol === 'https:') && url.origin === allowedOrigin
++  } catch {
++    return false
++  }
++}
++
++export function safeDashboardBounds(
++  input: HermesLocalDashboardBounds,
++  contentBounds: Pick<Rectangle, 'height' | 'width'>
++): Rectangle {
++  const numbers = [input?.x, input?.y, input?.width, input?.height]
++
++  if (!numbers.every(value => Number.isFinite(value))) {
++    throw new Error('Dashboard bounds must contain finite numbers')
++  }
++
++  const contentWidth = Math.max(1, Math.floor(contentBounds.width))
++  const contentHeight = Math.max(1, Math.floor(contentBounds.height))
++  const x = Math.min(contentWidth - 1, Math.max(0, Math.round(input.x)))
++  const y = Math.min(contentHeight - 1, Math.max(0, Math.round(input.y)))
++  const width = Math.min(conten
