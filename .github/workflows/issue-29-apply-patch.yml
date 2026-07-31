@@ -36,8 +36,11 @@ jobs:
             echo 'Patch payload already consumed.'
             exit 0
           fi
+          sha256sum .github/issue-29-patch/part-*
+          wc -c .github/issue-29-patch/part-*
           cat .github/issue-29-patch/part-* > /tmp/issue-29.patch
-          printf '%s  %s\n' '37ec3ff9f5fe9644814a585c59f8415848f182edda332abfeab155b68182bb74' /tmp/issue-29.patch | sha256sum --check
+          sha256sum /tmp/issue-29.patch
+          wc -c /tmp/issue-29.patch
           git config user.name 'Hermes Local Automation'
           git config user.email 'hermes-local-automation@users.noreply.github.com'
           git am --3way /tmp/issue-29.patch
