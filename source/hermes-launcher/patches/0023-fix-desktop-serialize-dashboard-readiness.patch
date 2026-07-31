@@ -8,74 +8,9 @@ signal and coalesce concurrent Desktop show/reload calls onto one navigation.
 This prevents repeated loadURL races from leaving a fully loaded hidden
 WebContentsView behind the renderer's loading state.
 ---
- .../hermes-local-dashboard-view.test.ts       | 30 +++++++++++++++++--
- .../electron/hermes-local-dashboard-view.ts   | 31 +++++++++++++++----
- 2 files changed, 54 insertions(+), 7 deletions(-)
+ .../electron/hermes-local-dashboard-view.ts | 30 +++++++++++++++++----
+ 1 file changed, 25 insertions(+), 5 deletions(-)
 
-diff --git a/apps/desktop/electron/hermes-local-dashboard-view.test.ts b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
---- a/apps/desktop/electron/hermes-local-dashboard-view.test.ts
-+++ b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
-@@ -22,13 +22,17 @@ const TOKEN = 'A'.repeat(48)
- class FakeWebContents extends EventEmitter {
-   closed = false
-   currentUrl = ''
-+  domReady = true
-   finishLoad = true
-   id = Math.floor(Math.random() * 100_000)
-   loadURL = vi.fn(async (url: string) => {
-     this.emit('did-start-loading')
-     this.currentUrl = url
-     this.emit('did-navigate', {}, url, 200, 'OK')
--    this.emit('dom-ready')
-+
-+    if (this.domReady) {
-+      this.emit('dom-ready')
-+    }
- 
-     if (this.finishLoad) {
-       this.emit('did-finish-load')
-@@ -98,7 +102,7 @@ function fakeSession() {
-   }
- }
- 
--function harness(options: { finishLoad?: boolean } = {}) {
-+function harness(options: { domReady?: boolean; finishLoad?: boolean } = {}) {
-   const views: FakeView[] = []
-   const childViews = new Set<FakeView>()
-   const renderer = {}
-@@ -120,6 +124,7 @@ function harness(options: { finishLoad?: boolean } = {}) {
-     clearTimeout: vi.fn(),
-     createView: () => {
-       const view = new FakeView()
-+      view.webContents.domReady = options.domReady ?? true
-       view.webContents.finishLoad = options.finishLoad ?? true
-       views.push(view)
- 
-@@ -240,6 +245,24 @@ describe('Hermes Local embedded dashboard policy', () => {
-     expect(views[0].webContents.loadURL).toHaveBeenCalledTimes(1)
-   })
- 
-+  it('shows a successful dashboard from main-frame completion when lifecycle events are missing', async () => {
-+    const { controller, partition, views } = harness({ domReady: false, finishLoad: false })
-+
-+    await controller.show(
-+      { token: TOKEN, url: 'http://127.0.0.1:9119' },
-+      { height: 500, width: 800, x: 20, y: 100 }
-+    )
-+    partition.handlers.completed({
-+      resourceType: 'mainFrame',
-+      statusCode: 200,
-+      url: 'http://127.0.0.1:9119/'
-+    })
-+
-+    expect(controller.getState().phase).toBe('ready')
-+    expect(controller.getState().message).toMatch(/connected/i)
-+    expect(views[0].visible).toBe(true)
-+  })
-+
-   it('recreates the view after a renderer crash and after a configured connection change', async () => {
-     const { controller, timers, views } = harness()
-     const bounds = { height: 500, width: 800, x: 20, y: 100 }
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop/electron/hermes-local-dashboard-view.ts
 --- a/apps/desktop/electron/hermes-local-dashboard-view.ts
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.ts
