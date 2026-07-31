@@ -15,7 +15,7 @@ did-finish-load as a compatibility fallback.
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.test.ts b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 --- a/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
-@@ -22,12 +22,18 @@ const TOKEN = 'A'.repeat(48)
+@@ -22,10 +22,16 @@ const TOKEN = 'A'.repeat(48)
  class FakeWebContents extends EventEmitter {
    closed = false
    currentUrl = ''
@@ -83,7 +83,7 @@ diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop
  
    const publish = (next: Partial<HermesLocalDashboardState>): HermesLocalDashboardState => {
      state = { ...state, ...next }
-@@ -239,6 +240,37 @@ export function createHermesLocalDashboardViewController(
+@@ -239,6 +240,42 @@ export function createHermesLocalDashboardViewController(
      }, delay)
    }
  
@@ -126,7 +126,7 @@ diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop
    const installSessionGuards = () => {
      if (sessionInstalled) {
        return
-@@ -323,28 +355,27 @@ export function createHermesLocalDashboardViewController(
+@@ -323,50 +360,44 @@ export function createHermesLocalDashboardViewController(
      contents.on('will-navigate', guardNavigation)
      contents.on('will-redirect', guardNavigation)
      contents.on('will-attach-webview', event => event.preventDefault())
@@ -180,12 +180,18 @@ diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop
      })
      contents.on('did-fail-load', (_event, errorCode, _description, _validatedUrl, isMainFrame) => {
        if (!isMainFrame || errorCode === -3) {
-@@ -352,6 +383,7 @@ export function createHermesLocalDashboardViewController(
+         return
        }
  
 +      mainFrameDomReady = false
        setViewVisibility(false)
        publish({
          canRetry: true,
+         message: 'The local dashboard is offline. Hermes Local will reconnect automatically.',
+         phase: 'offline'
+       })
+       scheduleRetry()
+     })
+     contents.on('render-process-gone', () => {
 -- 
 2.47.3
