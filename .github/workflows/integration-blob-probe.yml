@@ -1,0 +1,45 @@
+name: Integration blob probe
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/integration-blob-probe.yml'
+      - 'source/hermes-launcher/patches/**'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: windows-2025
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Resolve integration blobs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifest = Get-Content -Raw -LiteralPath '.\VERSION.json' | ConvertFrom-Json
+          $source = Join-Path $env:RUNNER_TEMP 'hermes-agent-blob-probe'
+          $patches = @(
+            Get-ChildItem -LiteralPath '.\source\hermes-launcher\patches' -Filter '*.patch' -File |
+              Sort-Object Name |
+              Select-Object -ExpandProperty FullName
+          )
+
+          git clone --no-checkout $manifest.sources.hermesAgent.repository $source
+          git -C $source fetch origin $manifest.sources.hermesAgent.commit
+          git -C $source checkout --detach $manifest.sources.hermesAgent.commit
+          git -C $source config user.name 'Hermes Local Updater'
+          git -C $source config user.email 'hermes-local@localhost'
+          git -C $source switch -c $manifest.sources.hermesAgent.integrationBranch
+          git -C $source am --3way --committer-date-is-author-date @patches
+
+          $configurationBlob = (git -C $source rev-parse 'HEAD:apps/desktop/e2e/hermes-local-configuration.spec.ts').Trim()
+          $workstationBlob = (git -C $source rev-parse 'HEAD:apps/desktop/src/app/local-workstation/index.tsx').Trim()
+
+          Write-Host "CONFIGURATION_BLOB=$configurationBlob"
+          Write-Host "WORKSTATION_BLOB=$workstationBlob"
