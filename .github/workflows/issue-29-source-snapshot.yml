@@ -1,0 +1,57 @@
+name: Issue 29 source snapshot
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/issue-29-source-snapshot.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out Hermes Local
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Reconstruct the integration tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$(python -c "import json; print(json.load(open('VERSION.json', encoding='utf-8'))['sources']['hermesAgent']['commit'])")"
+          git clone --filter=blob:none https://github.com/NousResearch/hermes-agent.git reconstructed
+          git -C reconstructed checkout --detach "$base"
+          git -C reconstructed config user.name 'Hermes Local Snapshot'
+          git -C reconstructed config user.email 'hermes-local-snapshot@localhost'
+          git -C reconstructed switch -c hermes-local-integration
+          git -C reconstructed am --3way --committer-date-is-author-date "$GITHUB_WORKSPACE"/source/hermes-launcher/patches/*.patch
+          mkdir -p artifacts
+          git -C reconstructed archive \
+            --format=tar.gz \
+            --output="$GITHUB_WORKSPACE/artifacts/issue-29-source.tar.gz" \
+            HEAD \
+            apps/desktop/electron \
+            apps/desktop/e2e \
+            apps/desktop/package.json \
+            apps/desktop/src/app/local-workstation \
+            apps/desktop/src/app/routes.ts \
+            apps/desktop/src/global.d.ts
+          {
+            echo "base=$base"
+            echo "commit=$(git -C reconstructed rev-parse HEAD)"
+            echo "tree=$(git -C reconstructed rev-parse 'HEAD^{tree}')"
+          } > artifacts/metadata.txt
+
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: issue-29-source-snapshot
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 1
