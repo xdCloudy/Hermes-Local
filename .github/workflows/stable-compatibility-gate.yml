@@ -1,0 +1,149 @@
+name: Stable compatibility gate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/stable-compatibility-gate.yml'
+      - 'scripts/ci/stable_promotion.py'
+      - 'tests/test_stable_promotion.py'
+      - 'docs/STABLE_PROMOTION.md'
+  workflow_dispatch:
+    inputs:
+      compatibility_run_id:
+        description: Successful Upstream compatibility workflow run containing the trusted CUDA gate
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      compatibility_run_id:
+        description: Successful Upstream compatibility workflow run containing the trusted CUDA gate
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stable-compatibility-${{ inputs.compatibility_run_id || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  tooling-tests:
+    name: Stable gate tooling tests
+    if: github.event_name == 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Validate Stable gate tooling
+        shell: pwsh
+        run: |
+          python -m py_compile '.\scripts\ci\stable_promotion.py' '.\tests\test_stable_promotion.py'
+          python -m unittest '.\tests\test_stable_promotion.py' -v
+
+  promotion-gate:
+    name: Approve Stable compatibility evidence
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    environment: stable
+    steps:
+      - name: Check out trusted promotion code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Validate source workflow run
+        id: source
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        env:
+          COMPATIBILITY_RUN_ID: ${{ inputs.compatibility_run_id }}
+        with:
+          script: |
+            const runId = Number(process.env.COMPATIBILITY_RUN_ID)
+            if (!Number.isSafeInteger(runId) || runId <= 0) {
+              core.setFailed('compatibility_run_id must be a positive workflow run ID')
+              return
+            }
+
+            const { owner, repo } = context.repo
+            const [{ data: run }, { data: repository }] = await Promise.all([
+              github.rest.actions.getWorkflowRun({ owner, repo, run_id: runId }),
+              github.rest.repos.get({ owner, repo })
+            ])
+
+            if (run.name !== 'Upstream compatibility') {
+              core.setFailed(`Run ${runId} belongs to ${run.name}, not Upstream compatibility`)
+              return
+            }
+            if (run.conclusion !== 'success') {
+              core.setFailed(`Run ${runId} concluded ${run.conclusion}; Stable requires success`)
+              return
+            }
+            if (run.head_branch !== repository.default_branch) {
+              core.setFailed(
+                `Run ${runId} used ${run.head_branch}; Stable evidence must run from ${repository.default_branch}`
+              )
+              return
+            }
+            if (!['workflow_dispatch', 'repository_dispatch'].includes(run.event)) {
+              core.setFailed(
+                `Run ${runId} used event ${run.event}; Stable evidence must be an explicit candidate run`
+              )
+              return
+            }
+
+            core.setOutput('head_sha', run.head_sha)
+            core.setOutput('run_url', run.html_url)
+
+      - name: Download aggregate compatibility evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: compatibility-aggregate
+          path: downloaded/compatibility
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.compatibility_run_id }}
+
+      - name: Enforce Hermes Agent, CPU and trusted CUDA gates
+        shell: pwsh
+        run: |
+          python '.\scripts\ci\stable_promotion.py' `
+            --report '.\downloaded\compatibility\compatibility-report.json' `
+            --compatibility-run-id '${{ inputs.compatibility_run_id }}' `
+            --manifest '.\artifacts\stable-promotion\stable-promotion.json'
+
+      - name: Add Stable gate summary
+        shell: pwsh
+        env:
+          SOURCE_RUN_URL: ${{ steps.source.outputs.run_url }}
+          SOURCE_HEAD_SHA: ${{ steps.source.outputs.head_sha }}
+        run: |
+          $manifest = Get-Content -Raw '.\artifacts\stable-promotion\stable-promotion.json' | ConvertFrom-Json
+          @(
+            '# Stable compatibility approval',
+            '',
+            "**Status:** ``$($manifest.status)``",
+            "**Compatibility run:** [$($manifest.compatibility.workflowRunId)]($env:SOURCE_RUN_URL)",
+            "**Hermes Local revision:** ``$env:SOURCE_HEAD_SHA``",
+            '',
+            '| Component | Candidate | Status |',
+            '|---|---|---|'
+          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          foreach ($component in @($manifest.components)) {
+            "| $($component.component) | ``$($component.candidate)`` | ``$($component.status)`` |" |
+              Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          }
+
+      - name: Upload Stable approval evidence
+        uses: actions/upload-artifact@ea165f8d65b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: stable-promotion-${{ inputs.compatibility_run_id }}
+          path: artifacts/stable-promotion
+          if-no-files-found: error
+          retention-days: 90
