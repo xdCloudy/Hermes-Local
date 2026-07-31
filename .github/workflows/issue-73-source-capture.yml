@@ -1,0 +1,58 @@
+name: Issue 73 source capture
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/issue-73-source-capture.yml'
+      - 'source/hermes-launcher/patches/**'
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out Hermes Local
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Reconstruct integration through patch 0022
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = (Get-Content -Raw '.\VERSION.json' | ConvertFrom-Json).sources.hermesAgent.commit
+          $source = Join-Path $PWD 'temp\issue-73-source\hermes-agent'
+          New-Item -ItemType Directory -Force (Split-Path $source) | Out-Null
+          git clone --no-checkout https://github.com/NousResearch/hermes-agent.git $source
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          git -C $source checkout --detach $base
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          git -C $source config user.name 'Hermes Local Source Capture'
+          git -C $source config user.email 'source-capture@localhost'
+          git -C $source switch -c hermes-local-integration
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $patches = Get-ChildItem '.\source\hermes-launcher\patches\*.patch' |
+            Where-Object { $_.Name -lt '0023-' } |
+            Sort-Object Name
+          foreach ($patch in $patches) {
+            git -C $source am --3way --committer-date-is-author-date $patch.FullName
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+          New-Item -ItemType Directory -Force '.\artifacts\issue-73-source' | Out-Null
+          Copy-Item "$source\apps\desktop\electron\hermes-local-dashboard-view.ts" '.\artifacts\issue-73-source\'
+          Copy-Item "$source\apps\desktop\electron\hermes-local-dashboard-view.test.ts" '.\artifacts\issue-73-source\'
+          git -C $source rev-parse HEAD | Set-Content '.\artifacts\issue-73-source\integration-commit.txt'
+          git -C $source rev-parse 'HEAD^{tree}' | Set-Content '.\artifacts\issue-73-source\integration-tree.txt'
+
+      - name: Upload exact source
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: issue-73-source
+          path: artifacts/issue-73-source
+          if-no-files-found: error
+          retention-days: 2
