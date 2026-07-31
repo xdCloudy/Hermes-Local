@@ -38,7 +38,10 @@ flowchart LR
   Dashboard navigation is serialized so repeated renderer layout or show calls
   share one in-flight load. A completed successful same-origin main-frame
   request is authoritative readiness evidence, with DOM and Electron load
-  lifecycle events retained as fallbacks.
+  lifecycle events retained as fallbacks. Only a cross-document main-frame
+  navigation resets readiness; later generic loading activity and same-document
+  route changes cannot hide an already usable dashboard. A settled same-origin
+  document also repairs stale loading state on the next show or stop event.
 - **TUI:** node-pty/ConPTY runs the actual managed Hermes executable. Renderer
   IPC cannot open an arbitrary shell command.
 - **Supervisor:** starts, health-checks and stops services in dependency order.
@@ -137,5 +140,5 @@ on `hermes-local-integration`; the ordered mail patch series is under
 tree from the pinned upstream commit and verifies the tree hash even when
 local Git committer metadata produces different commit IDs.
 
-The current series contains patches 0001–0023 and reconstructs tree
-`b4b1e8e67fa5de42eef8ae093a86a3e368c3a921`.
+The current series contains patches 0001–0024 and reconstructs tree
+`8860e931408ee28c0c656b63eabfbeaab2084125`.
