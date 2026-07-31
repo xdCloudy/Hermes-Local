@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "product": {
     "name": "Hermes Launcher",
-    "version": "0.18.3",
+    "version": "0.18.4",
     "status": "accepted-with-documented-limitations"
   },
   "sources": {
@@ -11,8 +11,8 @@
       "branch": "main",
       "commit": "a0222295666558c72cc2b03d69f932801dcf96e6",
       "integrationBranch": "hermes-local-integration",
-      "integrationCommit": "ea73b6c5d88fafbe4ef623e2fedeed34d8c48d01",
-      "integrationTree": "12578b0d6b7a8aa6ab302d0a79a8439dfff0190c",
+      "integrationCommit": "e4c5c39ae29559ffac106ff0b0455360f81bf8a5",
+      "integrationTree": "2ae41de04502b1ac070400416e562c08bd9a0662",
       "patchSeries": "source/hermes-launcher/patches"
     },
     "llamaCpp": {
@@ -46,5 +46,5 @@
     "modelAliasDefault": "laguna-xs-2.1-q4km",
     "portableSettings": true
   },
-  "recordedAt": "2026-07-30T22:15:00Z"
+  "recordedAt": "2026-07-31T02:15:00Z"
 }

@@ -10,11 +10,11 @@ flowchart LR
   R -->|"narrow validated IPC"| E["Electron main<br/>context isolation + sandbox"]
   E --> P["Process supervisor<br/>PowerShell + Windows Job Object"]
   E --> T["ConPTY / node-pty<br/>real Hermes TUI"]
-  E --> D["Embedded official Web Dashboard"]
+  E --> D["Isolated WebContentsView<br/>official Web Dashboard"]
   P --> L["llama-server<br/>selected GGUF model"]
   P --> H["Hermes serve/dashboard"]
   T --> H
-  D --> H
+  D -->|"exact loopback origin<br/>Electron-owned authentication"| H
   H --> A["Hermes Agent core<br/>tools, memory, skills, cron, delegation"]
   A -->|"authenticated OpenAI-compatible API"| L
   A --> S[("Local SQLite / files<br/>sessions, memory, skills, cron")]
@@ -24,11 +24,17 @@ flowchart LR
 ## Components
 
 - **React renderer:** official Hermes Desktop plus local workstation views. It
-  has no Node integration and never receives the persistent model token in its
-  normal workstation snapshot.
+  has no Node integration and never receives persistent model or dashboard
+  credentials in its normal workstation snapshot.
 - **Electron main/preload:** owns process and filesystem operations. The
   context bridge exposes a narrow typed API; actions, profiles, paths, log
-  reads and sizes are validated in the main process.
+  reads, view bounds and sizes are validated in the main process.
+- **Embedded dashboard:** a dedicated sandboxed `WebContentsView` loads only
+  the configured HTTP loopback origin. Electron injects the protected session
+  header only for that exact origin, denies permissions, downloads and
+  cross-origin requests, and sends external links to the system browser.
+  Hiding the Dashboard route preserves the embedded renderer and its page
+  state; backend outages and renderer crashes use bounded reconnect states.
 - **TUI:** node-pty/ConPTY runs the actual managed Hermes executable. Renderer
   IPC cannot open an arbitrary shell command.
 - **Supervisor:** starts, health-checks and stops services in dependency order.
@@ -52,20 +58,30 @@ During model startup, the supervisor writes a short-lived, user-only token
 file, passes its path through `--api-key-file`, and removes the file after
 health is established. The token itself is absent from process command lines.
 
+The embedded dashboard does not receive its protected token through renderer
+JavaScript, query parameters or persisted browser storage. Electron attaches
+it at the isolated session's request boundary only when the request maps to the
+active configured loopback origin. Changing the configured host, port or token
+destroys the old embedded view before a new connection is made.
+
 ## Trust boundaries
 
 1. **Renderer to Electron:** the renderer is untrusted relative to native
    authority. CSP, sandbox, context isolation, navigation denial and
    schema-validated IPC enforce the boundary.
-2. **Browser/network content to Hermes tools:** URLs, origins, response sizes
+2. **Embedded dashboard to Electron and network:** the dashboard runs in a
+   separate sandboxed renderer/session. Only its exact configured loopback
+   origin and matching WebSocket origin are allowed; permissions, downloads,
+   new native windows and cross-origin navigation are denied.
+3. **Browser/network content to Hermes tools:** URLs, origins, response sizes
    and filesystem destinations are validated. Browser automation remains an
    explicit, security-sensitive local tool.
-3. **Model to host tools:** model-generated commands and writes are untrusted.
+4. **Model to host tools:** model-generated commands and writes are untrusted.
    Dangerous commands, memory writes and skill writes require approval;
    destructive operations targeting the installation are denied by default.
-4. **Local services to host network:** listeners are loopback-only. No LAN
+5. **Local services to host network:** listeners are loopback-only. No LAN
    listener or public gateway is enabled.
-5. **Updates to active runtime:** candidate source is fetched and built in
+6. **Updates to active runtime:** candidate source is fetched and built in
    staging, integrity is checked and smoke tests run before a switch. User
    data is outside replaceable build locations.
 
@@ -111,11 +127,11 @@ length and punctuation constraints.
 ## Source and update architecture
 
 The official checkout retains `upstream` and pins upstream commit
-`3be565fbdee3115ab5b9338551768b8e5e655c56`. Local integration commits live
+`a0222295666558c72cc2b03d69f932801dcf96e6`. Local integration commits live
 on `hermes-local-integration`; the ordered mail patch series is under
 `source\hermes-launcher\patches`. Setup can reconstruct the exact recorded
 tree from the pinned upstream commit and verifies the tree hash even when
 local Git committer metadata produces different commit IDs.
 
-The current series contains patches 0001–0018 and reconstructs tree
-`7bb0c8193032541edfd45cdc3802bd85d6b195b0`.
+The current series contains patches 0001–0021 and reconstructs tree
+`2ae41de04502b1ac070400416e562c08bd9a0662`.
