@@ -40,7 +40,7 @@ benchmarking and orchestrating local models—without Docker, WSL or a paid infe
 <!-- BEGIN GENERATED STATUS -->
 | Release | Delivery | Repository |
 |---|---|---|
-| **Current build:** v0.18.4<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x – Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Remove fatal and opaque failure modes before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 47 open · 8 closed<br>**Overall completion:** 15%<br>**Recent commit:** [`19b9e9b`](https://github.com/xdCloudy/Hermes-Local/commit/19b9e9b7e7a0ea8204d5051d804743568dcb98c3) docs: refresh project dashboard |
+| **Current build:** v0.18.5<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x – Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Remove fatal and opaque failure modes before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 46 open · 9 closed<br>**Overall completion:** 16%<br>**Recent commit:** [`3b44484`](https://github.com/xdCloudy/Hermes-Local/commit/3b44484453e6d51511baa3b6b6ee6ddcc8722660) fix(desktop): complete embedded dashboard on DOM readiness (#74) |
 
 > Status is generated from GitHub issues, milestones, releases and commits.
 <!-- END GENERATED STATUS -->
