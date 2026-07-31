@@ -32,6 +32,8 @@ jobs:
         shell: pwsh
         run: |
           $reportPath = '.\artifacts\compatibility\hermes-agent-patch-smoke\hermes-agent-report.json'
+          $PSNativeCommandUseErrorActionPreference = $false
+
           python '.\scripts\ci\compatibility.py' hermes-agent `
             --repository-root '.' `
             --work-dir '.\temp\compatibility\hermes-agent-patch-smoke' `
