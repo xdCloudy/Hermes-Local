@@ -78,7 +78,7 @@ class CompatibilityReportTests(unittest.TestCase):
         self.assertNotIn("--filter=blob:none", commands[0])
         self.assertIn(["git", "fetch", "origin", base], commands)
         self.assertIn(["git", "fetch", "origin", candidate], commands)
-        self.assertEqual(commands[-1], ["git", "checkout", "--detach", candidate])
+        self.assertEqual(commands[-1], ["git", "checkout", "--detach", base])
 
     def test_prepare_agent_checkout_fetches_identical_revision_once(self) -> None:
         revision = "a" * 40
@@ -97,6 +97,46 @@ class CompatibilityReportTests(unittest.TestCase):
             if call.args[0][:2] == ["git", "fetch"]
         ]
         self.assertEqual(fetches, [["git", "fetch", "origin", revision]])
+
+    def test_seed_patch_preimages_replays_series_and_verifies_tree(self) -> None:
+        patches = [Path("0001.patch"), Path("0002.patch")]
+        expected_tree = "c" * 40
+
+        def fake_run(command, **kwargs):
+            if command[:3] == ["git", "rev-parse", "HEAD^{tree}"]:
+                return expected_tree
+            return ""
+
+        with mock.patch.object(compatibility, "run", side_effect=fake_run) as run_mock:
+            tree = compatibility.seed_patch_preimages(
+                Path("work/hermes-agent"),
+                patches,
+                expected_tree=expected_tree,
+                log=Path("logs/patches.log"),
+            )
+
+        commands = [call.args[0] for call in run_mock.call_args_list]
+        self.assertIn(
+            [
+                "git",
+                "am",
+                "--3way",
+                "--committer-date-is-author-date",
+                *patches,
+            ],
+            commands,
+        )
+        self.assertEqual(tree, expected_tree)
+
+    def test_seed_patch_preimages_rejects_tree_mismatch(self) -> None:
+        with mock.patch.object(compatibility, "run", side_effect=["", "", "d" * 40]):
+            with self.assertRaisesRegex(RuntimeError, "expected"):
+                compatibility.seed_patch_preimages(
+                    Path("work/hermes-agent"),
+                    [Path("0001.patch")],
+                    expected_tree="c" * 40,
+                    log=Path("logs/patches.log"),
+                )
 
     def test_verify_requires_named_component_reports(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
