@@ -220,19 +220,61 @@ if ($gatewaySnapshot.required) {
                 }
             }
         )
-        tool_choice = [ordered]@{ type = 'function'; function = [ordered]@{ name = 'get_timezone' } }
+        tool_choice = 'required'
         temperature = 0
+        reasoning_effort = 'none'
+        parse_tool_calls = $true
         seed = 3407
-        max_tokens = 96
+        max_tokens = 256
     }
       $toolResponse = Invoke-RestMethod -Method Post -Uri "$modelBase/v1/chat/completions" `
         -Headers $headers -ContentType 'application/json' -Body ($request | ConvertTo-Json -Depth 16 -Compress) `
         -TimeoutSec 180
-    $call = @($toolResponse.choices[0].message.tool_calls)[0]
-    $arguments = $call.function.arguments | ConvertFrom-Json
-      Add-TestResult -Name 'Native tool-call schema' -Passed (
-        $call.function.name -eq 'get_timezone' -and $arguments.timezone -eq 'Europe/London'
-      ) -Detail "$($selectedModel.displayName) returned one schema-valid native function call."
+    $toolMessage = $toolResponse.choices[0].message
+    $toolCallsProperty = $toolMessage.PSObject.Properties['tool_calls']
+    $toolCalls = @(
+        if ($toolCallsProperty) {
+            $toolCallsProperty.Value
+        }
+    )
+
+    $call = if ($toolCalls.Count -gt 0) {
+        $toolCalls[0]
+    } else {
+        $null
+    }
+
+    $arguments = $null
+    if ($call -and
+        $call.PSObject.Properties['function'] -and
+        $call.function -and
+        $call.function.PSObject.Properties['arguments']) {
+        try {
+            $arguments = $call.function.arguments | ConvertFrom-Json
+        } catch {
+            $arguments = $null
+        }
+    }
+
+    $validToolCall = (
+        $call -and
+        $call.function -and
+        $call.function.name -eq 'get_timezone' -and
+        $arguments -and
+        $arguments.timezone -eq 'Europe/London'
+    )
+
+    $toolDetail = if ($validToolCall) {
+        "$($selectedModel.displayName) returned one schema-valid native function call."
+    } else {
+        $finishReason = [string]$toolResponse.choices[0].finish_reason
+        $rawMessage = $toolMessage | ConvertTo-Json -Depth 12 -Compress
+        "$($selectedModel.displayName) did not return a schema-valid native function call. Finish reason: $finishReason. Message: $rawMessage"
+    }
+
+    Add-TestResult -Name 'Native tool-call schema' `
+        -Passed $validToolCall `
+        -Detail $toolDetail
     }
 
     if (-not $SkipAgentTool) {
