@@ -23,6 +23,20 @@ Optional:
 CPU-only inference is supported. Performance and memory requirements depend
 mostly on the selected GGUF, context length and cache type.
 
+### Default model capacity
+
+The tracked starter configuration uses Qwen3.6 35B-A3B APEX-MTP I-Quality.
+Its main GGUF is approximately 23.5 GB and its vision projector is approximately
+903 MB. Allow at least 30 GB of free disk space for those two artifacts alone;
+40 GB or more is recommended once build products, dependency caches and logs are
+included.
+
+The starter profile is aimed at capable enthusiast hardware. A 12 GB NVIDIA GPU
+with 32 GB system RAM is a practical minimum for mixed CPU/GPU execution;
+64 GB system RAM provides substantially more headroom for 64K context, vision,
+background tools and recovery operations. Lower-spec systems should register a
+smaller GGUF before running full setup.
+
 ## Clone anywhere
 
 Use a normal, non-elevated PowerShell 7 window:
@@ -65,11 +79,24 @@ Runtime and network**.
 
 ## Models
 
-The starter manifest downloads Qwen3.6 35B-A3B APEX-MTP I-Quality with
-resumable `curl` and verifies its published size and SHA-256. It enables the
-model's bundled MTP self-speculative decoding and configures the matching
-Qwen3.6 vision projector through llama.cpp's `--mmproj-url`, with a 1,024-token
-minimum for image inputs.
+The starter manifest downloads Qwen3.6 35B-A3B APEX-MTP I-Quality and its
+matching Qwen3.6 vision projector with resumable `curl`. Setup verifies the
+published size and SHA-256 of each artifact before completing. llama-server is
+then given the provisioned local projector path, so vision does not depend on
+llama.cpp being compiled with HTTPS support.
+
+The model enables its bundled MTP self-speculative decoding and uses a
+1,024-token minimum for image inputs. The projector is stored beside the model:
+
+```text
+models\Qwen3.6-35B-A3B-APEX-MTP\
+├── Qwen3.6-35B-A3B-APEX-MTP-I-Quality.gguf
+└── mmproj.gguf
+```
+
+`-SkipModel` skips both the selected GGUF and any required sidecar artifacts,
+including the vision projector. Use that switch only when every required file
+is already installed at the paths recorded by the selected manifest.
 
 To use an existing model before setup, add it to the ignored user settings:
 
@@ -112,10 +139,29 @@ Setup is idempotent. It:
 3. reconstructs the pinned official Hermes integration;
 4. builds llama.cpp for CPU or the detected CUDA architecture;
 5. installs the configured Python runtime and locked Hermes dependencies;
-6. downloads the selected model only when it is missing and has a source URL;
+6. downloads and verifies the selected model plus required sidecar artifacts
+   only when they are missing or invalid;
 7. merges the selected provider/model/context into the user's Hermes YAML
    while preserving unrelated settings;
 8. builds the launcher and runs schema/bootstrap checks.
+
+### Rebuilding an existing installation
+
+Stop Hermes Local before running setup without `-SkipLlamaBuild`:
+
+```powershell
+& '.\Stop-Hermes-Local.ps1' -NonInteractive
+& '.\Setup-Hermes-Local.ps1' -SkipModel -NonInteractive
+```
+
+A running `llama-server`, `llama-cli` or `llama-bench` process can keep native
+DLLs locked and prevent MSBuild from replacing them. Setup now detects those
+processes before configuration and exits with a direct instruction instead of
+allowing an opaque `LNK1104` linker failure.
+
+`-SkipLlamaBuild` retains the existing native binaries. Use it only when that
+build already matches the pinned llama.cpp revision and supports every argument
+required by the selected model manifest.
 
 ## First start
 
@@ -132,8 +178,8 @@ configuration.
 ## Installer and portable launcher
 
 The release installer and portable executable contain only the control
-centre. They do not bundle model weights, the source checkout or the native
-runtime. Provision the clone first.
+centre. They do not bundle model weights, the vision projector, the source
+checkout or the native runtime. Provision the clone first.
 
 When the root cannot be discovered by walking upward from the portable
 executable, set it for that launch:

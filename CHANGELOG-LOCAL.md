@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Provisioned and SHA-256 verified the starter model's vision projector during setup, then passed its portable local path to llama.cpp instead of depending on an HTTPS-enabled native build.
+- Blocked llama.cpp rebuilds while `llama-server`, `llama-cli` or `llama-bench` is running, replacing opaque locked-DLL linker failures with a direct stop instruction.
 - Corrected messaging-gateway health to treat Hermes Agent's persisted `updated_at` value as a state-change timestamp rather than a periodic heartbeat, preventing a live connected gateway from being restarted merely because it has been idle or the model is leased to a benchmark.
 - Checkpointed completed native benchmark cases before model restoration and added replacement-supervisor recovery so valid measurements survive an unrelated restoration failure.
 - Fixed benchmark startup on PowerShell by allowing newly created empty argument and case accumulator lists to bind before they are populated, with a real construction-path self-test.

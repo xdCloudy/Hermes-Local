@@ -206,6 +206,17 @@ function Build-LlamaCpp {
         [pscustomobject] $Configuration
     )
 
+    $blockingProcesses = @(
+        Get-Process -Name 'llama-server', 'llama-cli', 'llama-bench' -ErrorAction SilentlyContinue |
+            Sort-Object ProcessName, Id
+    )
+    if ($blockingProcesses.Count -gt 0) {
+        $processSummary = @($blockingProcesses | ForEach-Object {
+            "$($_.ProcessName) PID $($_.Id)"
+        }) -join ', '
+        throw "Cannot rebuild llama.cpp while its native tools are running. Stop Hermes Local first with '.\Stop-Hermes-Local.ps1 -NonInteractive'. Running: $processSummary"
+    }
+
     $acceleration = Get-HermesEffectiveAcceleration -Configuration $Configuration
     $buildEnvironment = @{}
     $configureArguments = [System.Collections.Generic.List[string]]::new()
@@ -345,25 +356,66 @@ function Install-HermesDependencies {
     }
 }
 
-function Install-SelectedModel {
+function Test-HermesModelArtifact {
+    [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [pscustomobject] $Configuration
+        [string] $Destination,
+        [object] $SizeBytes,
+        [string] $Sha256,
+        [switch] $Hash
     )
 
-    $model = $Configuration.selectedModel
-    $destination = [string]$model.resolvedPath
-    $verifyHash = [bool]$Configuration.runtime.verifyModelOnStart
-    if (Test-HermesSelectedModel -Model $model -Hash:$verifyHash) {
-        Write-HermesLog -Component setup -Message "Model '$($model.displayName)' is already present and valid."
+    if (-not (Test-Path -LiteralPath $Destination -PathType Leaf)) {
+        return $false
+    }
+    $item = Get-Item -LiteralPath $Destination
+    if ($SizeBytes -and $item.Length -ne [int64]$SizeBytes) {
+        return $false
+    }
+    if ($Hash -and -not [string]::IsNullOrWhiteSpace($Sha256)) {
+        return (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash.ToLowerInvariant() -eq
+            $Sha256.ToLowerInvariant()
+    }
+    return $true
+}
+
+function Install-HermesModelArtifact {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string] $Name,
+        [Parameter(Mandatory)]
+        [string] $Destination,
+        [Parameter(Mandatory)]
+        [string] $Source,
+        [object] $SizeBytes,
+        [string] $Sha256,
+        [switch] $VerifyExistingHash
+    )
+
+    if (Test-HermesModelArtifact `
+            -Destination $Destination `
+            -SizeBytes $SizeBytes `
+            -Sha256 $Sha256 `
+            -Hash:$VerifyExistingHash) {
+        Write-HermesLog -Component setup -Message "$Name is already present and valid."
         return
     }
-
-    $url = [string]$model.source
-    if (-not $url) {
-        throw "Model '$($model.displayName)' is not installed and has no download source. Register an existing GGUF path or add a source URL."
+    if ([string]::IsNullOrWhiteSpace($Source)) {
+        throw "$Name is not installed and has no download source."
     }
-    [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($destination)) | Out-Null
+
+    if (Test-Path -LiteralPath $Destination -PathType Leaf) {
+        $item = Get-Item -LiteralPath $Destination
+        $restartDownload = (-not $SizeBytes) -or $item.Length -ge [int64]$SizeBytes
+        if ($restartDownload) {
+            Write-HermesLog -Component setup -Level WARN -Message "$Name is complete-sized or oversized but invalid; restarting its download."
+            Remove-Item -LiteralPath $Destination -Force
+        }
+    }
+
+    [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($Destination)) | Out-Null
     Invoke-HermesProcess -FilePath curl.exe -ArgumentList @(
         '--location',
         '--fail',
@@ -371,13 +423,69 @@ function Install-SelectedModel {
         '--retry', '8',
         '--retry-all-errors',
         '--continue-at', '-',
-        '--output', $destination,
-        $url
+        '--output', $Destination,
+        $Source
     ) -LogComponent setup
+
+    $verifyDownloadedHash = -not [string]::IsNullOrWhiteSpace($Sha256)
+    if (-not (Test-HermesModelArtifact `
+            -Destination $Destination `
+            -SizeBytes $SizeBytes `
+            -Sha256 $Sha256 `
+            -Hash:$verifyDownloadedHash)) {
+        throw "$Name verification failed after download."
+    }
+    Write-HermesLog -Component setup -Message "$Name downloaded and verified."
+}
+
+function Install-SelectedModel {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject] $Configuration
+    )
+
+    $model = $Configuration.selectedModel
+    $verifyHash = [bool]$Configuration.runtime.verifyModelOnStart
+    Install-HermesModelArtifact `
+        -Name "Model '$($model.displayName)'" `
+        -Destination ([string]$model.resolvedPath) `
+        -Source ([string]$model.source) `
+        -SizeBytes $model.sizeBytes `
+        -Sha256 ([string]$model.sha256) `
+        -VerifyExistingHash:$verifyHash
+
+    $metadata = $model.metadata
+    $projectorSourceProperty = if ($metadata) {
+        $metadata.PSObject.Properties['visionProjectorSource']
+    } else {
+        $null
+    }
+    if ($projectorSourceProperty -and -not [string]::IsNullOrWhiteSpace([string]$projectorSourceProperty.Value)) {
+        $projectorLocalPathProperty = $metadata.PSObject.Properties['visionProjectorLocalPath']
+        $projectorSizeProperty = $metadata.PSObject.Properties['visionProjectorSizeBytes']
+        $projectorHashProperty = $metadata.PSObject.Properties['visionProjectorSha256']
+        if (-not $projectorLocalPathProperty -or
+            [string]::IsNullOrWhiteSpace([string]$projectorLocalPathProperty.Value) -or
+            -not $projectorSizeProperty -or
+            -not $projectorHashProperty -or
+            [string]::IsNullOrWhiteSpace([string]$projectorHashProperty.Value)) {
+            throw "Model '$($model.displayName)' has incomplete vision-projector artifact metadata."
+        }
+
+        $projectorName = "Vision projector for '$($model.displayName)'"
+        $projectorDestination = Resolve-HermesModelPath ([string]$projectorLocalPathProperty.Value)
+        Install-HermesModelArtifact `
+            -Name $projectorName `
+            -Destination $projectorDestination `
+            -Source ([string]$projectorSourceProperty.Value) `
+            -SizeBytes $projectorSizeProperty.Value `
+            -Sha256 ([string]$projectorHashProperty.Value) `
+            -VerifyExistingHash:$verifyHash
+    }
 
     $refreshed = Get-HermesConfiguration
     if (-not (Test-HermesSelectedModel -Model $refreshed.selectedModel -Hash:$verifyHash)) {
-        throw "Model '$($model.displayName)' verification failed after download."
+        throw "Model '$($model.displayName)' verification failed after provisioning."
     }
 }
 
