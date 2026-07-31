@@ -28,7 +28,7 @@ jobs:
           persist-credentials: true
           ref: agent/issue-29-embedded-dashboard
 
-      - name: Apply generated integration patch
+      - name: Commit generated integration patch
         shell: bash
         run: |
           set -euo pipefail
@@ -36,14 +36,13 @@ jobs:
             echo 'Patch payload already consumed.'
             exit 0
           fi
-          sha256sum .github/issue-29-patch/part-*
-          wc -c .github/issue-29-patch/part-*
-          cat .github/issue-29-patch/part-* > /tmp/issue-29.patch
-          sha256sum /tmp/issue-29.patch
-          wc -c /tmp/issue-29.patch
+          target='source/hermes-launcher/patches/0020-feat-desktop-embed-loopback-dashboard-securely.patch'
+          cat .github/issue-29-patch/part-* > "$target"
+          printf '\n' >> "$target"
+          printf '%s  %s\n' '37ec3ff9f5fe9644814a585c59f8415848f182edda332abfeab155b68182bb74' "$target" | sha256sum --check
           git config user.name 'Hermes Local Automation'
           git config user.email 'hermes-local-automation@users.noreply.github.com'
-          git am --3way /tmp/issue-29.patch
+          git add "$target"
           git rm -r .github/issue-29-patch
-          git commit -m 'chore: remove issue 29 patch payload'
+          git commit -m 'feat(desktop): embed loopback dashboard securely'
           git push origin HEAD:agent/issue-29-embedded-dashboard
