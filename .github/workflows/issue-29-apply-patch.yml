@@ -1,0 +1,42 @@
+name: Issue 29 patch applicator
+
+on:
+  push:
+    branches:
+      - agent/issue-29-embedded-dashboard
+    paths:
+      - '.github/issue-29-patch/APPLY'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: issue-29-patch-applicator
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply generated integration patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f .github/issue-29-patch/APPLY ]]; then
+            echo 'Patch payload already consumed.'
+            exit 0
+          fi
+          cat .github/issue-29-patch/part-* > /tmp/issue-29.patch
+          git config user.name 'Hermes Local Automation'
+          git config user.email 'hermes-local-automation@users.noreply.github.com'
+          git am --3way /tmp/issue-29.patch
+          git rm -r .github/issue-29-patch
+          git commit -m 'chore: remove issue 29 patch payload'
+          git push origin HEAD:agent/issue-29-embedded-dashboard
