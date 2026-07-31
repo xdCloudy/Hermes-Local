@@ -1,0 +1,146 @@
+From 2222222222222222222222222222222222222222 Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Fri, 31 Jul 2026 03:08:00 +0000
+Subject: [PATCH] fix(desktop): serialize dashboard readiness
+
+Use the completed successful main-frame request as an authoritative readiness
+signal and coalesce concurrent Desktop show/reload calls onto one navigation.
+This prevents repeated loadURL races from leaving a fully loaded hidden
+WebContentsView behind the renderer's loading state.
+---
+ .../hermes-local-dashboard-view.test.ts       | 30 +++++++++++++++++--
+ .../electron/hermes-local-dashboard-view.ts   | 31 +++++++++++++++----
+ 2 files changed, 54 insertions(+), 7 deletions(-)
+
+diff --git a/apps/desktop/electron/hermes-local-dashboard-view.test.ts b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
+--- a/apps/desktop/electron/hermes-local-dashboard-view.test.ts
++++ b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
+@@ -22,13 +22,17 @@ const TOKEN = 'A'.repeat(48)
+ class FakeWebContents extends EventEmitter {
+   closed = false
+   currentUrl = ''
++  domReady = true
+   finishLoad = true
+   id = Math.floor(Math.random() * 100_000)
+   loadURL = vi.fn(async (url: string) => {
+     this.emit('did-start-loading')
+     this.currentUrl = url
+     this.emit('did-navigate', {}, url, 200, 'OK')
+-    this.emit('dom-ready')
++
++    if (this.domReady) {
++      this.emit('dom-ready')
++    }
+ 
+     if (this.finishLoad) {
+       this.emit('did-finish-load')
+@@ -98,7 +102,7 @@ function fakeSession() {
+   }
+ }
+ 
+-function harness(options: { finishLoad?: boolean } = {}) {
++function harness(options: { domReady?: boolean; finishLoad?: boolean } = {}) {
+   const views: FakeView[] = []
+   const childViews = new Set<FakeView>()
+   const renderer = {}
+@@ -120,6 +124,7 @@ function harness(options: { finishLoad?: boolean } = {}) {
+     clearTimeout: vi.fn(),
+     createView: () => {
+       const view = new FakeView()
++      view.webContents.domReady = options.domReady ?? true
+       view.webContents.finishLoad = options.finishLoad ?? true
+       views.push(view)
+ 
+@@ -240,6 +245,24 @@ describe('Hermes Local embedded dashboard policy', () => {
+     expect(views[0].webContents.loadURL).toHaveBeenCalledTimes(1)
+   })
+ 
++  it('shows a successful dashboard from main-frame completion when lifecycle events are missing', async () => {
++    const { controller, partition, views } = harness({ domReady: false, finishLoad: false })
++
++    await controller.show(
++      { token: TOKEN, url: 'http://127.0.0.1:9119' },
++      { height: 500, width: 800, x: 20, y: 100 }
++    )
++    partition.handlers.completed({
++      resourceType: 'mainFrame',
++      statusCode: 200,
++      url: 'http://127.0.0.1:9119/'
++    })
++
++    expect(controller.getState().phase).toBe('ready')
++    expect(controller.getState().message).toMatch(/connected/i)
++    expect(views[0].visible).toBe(true)
++  })
++
+   it('recreates the view after a renderer crash and after a configured connection change', async () => {
+     const { controller, timers, views } = harness()
+     const bounds = { height: 500, width: 800, x: 20, y: 100 }
+diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop/electron/hermes-local-dashboard-view.ts
+--- a/apps/desktop/electron/hermes-local-dashboard-view.ts
++++ b/apps/desktop/electron/hermes-local-dashboard-view.ts
+@@ -154,6 +154,7 @@ export function createHermesLocalDashboardViewController(
+   let desiredVisible = false
+   let lastMainFrameStatus: null | number = null
+   let mainFrameDomReady = false
++  let loadPromise: Promise<void> | null = null
+ 
+   const publish = (next: Partial<HermesLocalDashboardState>): HermesLocalDashboardState => {
+     state = { ...state, ...next }
+@@ -207,6 +208,7 @@ export function createHermesLocalDashboardViewController(
+ 
+   const destroyView = () => {
+     clearRetry()
++    loadPromise = null
+ 
+     if (!view) {
+       return
+@@ -300,6 +302,11 @@ export function createHermesLocalDashboardViewController(
+ 
+     if (details.resourceType === 'mainFrame') {
+       lastMainFrameStatus = details.statusCode
++
++      if (details.statusCode >= 200 && details.statusCode < 400) {
++        mainFrameDomReady = true
++        markReadyIfUsable(true)
++      }
+     }
+ 
+     if (details.statusCode === 401 || details.statusCode === 403) {
+@@ -426,5 +434,12 @@ export function createHermesLocalDashboardViewController(
+       state.phase === 'restarting'
+     ) {
++      if (loadPromise) {
++        await loadPromise
++        attachToCurrentWindow()
++
++        return { ...state }
++      }
++
+       setViewVisibility(false)
+       publish({
+         canRetry: true,
+@@ -435,10 +449,16 @@ export function createHermesLocalDashboardViewController(
+       })
+ 
+-      try {
+-        await view.webContents.loadURL(currentConfig.url)
+-      } catch {
+-        // did-fail-load owns the recoverable state and retry schedule.
+-      }
++      const loadingView = view
++      loadPromise = loadingView.webContents
++        .loadURL(currentConfig.url)
++        .then(() => undefined)
++        .catch(() => undefined)
++        .finally(() => {
++          if (view === loadingView) {
++            loadPromise = null
++          }
++        })
++      await loadPromise
+     } else {
+       attachToCurrentWindow()
+     }
+-- 
+2.47.3
