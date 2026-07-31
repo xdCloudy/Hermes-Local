@@ -42,6 +42,11 @@ flowchart LR
   navigation resets readiness; later generic loading activity and same-document
   route changes cannot hide an already usable dashboard. A settled same-origin
   document also repairs stale loading state on the next show or stop event.
+  Renderer DOM rectangles are converted from the active UI zoom's CSS-pixel
+  coordinate space into BrowserWindow device-independent coordinates at the
+  trusted Electron IPC boundary. The trusted sender supplies its actual zoom
+  factor; scaled edges are rounded before width and height are derived so all
+  four native view edges remain confined to the renderer host at every UI scale.
 - **TUI:** node-pty/ConPTY runs the actual managed Hermes executable. Renderer
   IPC cannot open an arbitrary shell command.
 - **Supervisor:** starts, health-checks and stops services in dependency order.
@@ -140,5 +145,5 @@ on `hermes-local-integration`; the ordered mail patch series is under
 tree from the pinned upstream commit and verifies the tree hash even when
 local Git committer metadata produces different commit IDs.
 
-The current series contains patches 0001–0024 and reconstructs tree
-`8860e931408ee28c0c656b63eabfbeaab2084125`.
+The current series contains patches 0001–0025 and reconstructs tree
+`95f56e86e28986f258e0bebf662badd1411b510a`.
