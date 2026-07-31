@@ -1,0 +1,164 @@
+origin}
++                </span>
++              )}
++            </div>
++            <h3 className="mt-3 text-base font-semibold">Hermes Web Dashboard</h3>
++            <p className="mt-1 max-w-3xl text-sm leading-6 text-(--ui-text-secondary)">
++              Embedded from the active loopback configuration with an isolated sandboxed renderer. Authentication is
++              attached in Electron and is never exposed to this page or the Desktop renderer.
++            </p>
++          </div>
++          <div className="flex shrink-0 flex-wrap gap-2">
++            <Button
++              className="gap-2"
++              disabled={!dashboard || !state.canRetry}
++              onClick={() => void dashboard?.reload().then(setState).catch(() => undefined)}
++              variant="outline"
++            >
++              <IconRefresh className={cn('size-4', loading && 'animate-spin motion-reduce:animate-none')} />
++              Retry
++            </Button>
++            <Button
++              className="gap-2"
++              disabled={!snapshot.health.dashboard}
++              onClick={() => void window.hermesDesktop.localWorkstation.openDashboard()}
++              variant="outline"
++            >
++              <IconExternalLink className="size-4" />
++              Open externally
++            </Button>
++          </div>
++        </div>
++      </Surface>
++
++      <Surface className="overflow-hidden">
++        <div
++          className="relative h-[min(68vh,52rem)] min-h-[28rem] bg-[#111315]"
++          data-testid="dashboard-embed-host"
++          ref={hostRef}
++        >
++          {state.phase !== 'ready' && (
++            <div className="absolute inset-0 grid place-items-center p-6 text-center">
++              <div className="max-w-md">
++                <PhaseIcon
++                  className={cn(
++                    'mx-auto size-7 text-(--ui-accent)',
++                    loading && 'animate-spin motion-reduce:animate-none'
++                  )}
++                  stroke={1.7}
++                />
++                <h4 className="mt-4 text-sm font-semibold">{phaseLabel}</h4>
++                <p className="mt-2 text-xs leading-5 text-(--ui-text-secondary)">{state.message}</p>
++                {state.retryCount > 0 && (
++                  <p className="mt-2 text-[0.6875rem] text-(--ui-text-tertiary)">
++                    Automatic reconnect attempt {state.retryCount}
++                  </p>
++                )}
++              </div>
++            </div>
++          )}
++        </div>
++      </Surface>
++    </div>
++  )
++}
++
+ function SectionContent({
+   onCreateProfile,
+   onDeleteProfile,
+@@ -1274,33 +1451,7 @@ function SectionContent({
+   }
+ 
+   if (section === 'dashboard') {
+-    return (
+-      <Surface>
+-        <div className="grid gap-5 p-5 md:grid-cols-[1fr_auto] md:items-center">
+-          <div>
+-            <div className="mb-3">
+-              <StatusPill
+-                label={snapshot.health.dashboard ? 'Dashboard online' : 'Dashboard offline'}
+-                ok={snapshot.health.dashboard}
+-              />
+-            </div>
+-            <h3 className="text-base font-semibold">Hermes Web Dashboard</h3>
+-            <p className="mt-1 max-w-2xl text-sm leading-6 text-(--ui-text-secondary)">
+-              The official browser management surface and Hermes API share one hardened process on loopback port{' '}
+-              {snapshot.settings.network.hermesPort}. This avoids competing state owners and never binds to the LAN.
+-            </p>
+-          </div>
+-          <Button
+-            className="gap-2"
+-            disabled={!snapshot.health.dashboard}
+-            onClick={() => void window.hermesDesktop.localWorkstation.openDashboard()}
+-          >
+-            <IconExternalLink className="size-4" />
+-            Open Dashboard
+-          </Button>
+-        </div>
+-      </Surface>
+-    )
++    return <DashboardContent snapshot={snapshot} />
+   }
+ 
+   if (section === 'tasks') {
+diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
+index cfa9be5..cd42876 100644
+--- a/apps/desktop/src/app/local-workstation/types.ts
++++ b/apps/desktop/src/app/local-workstation/types.ts
+@@ -1,3 +1,26 @@
++export type HermesLocalDashboardPhase =
++  | 'authentication'
++  | 'loading'
++  | 'offline'
++  | 'ready'
++  | 'restarting'
++
++export interface HermesLocalDashboardState {
++  canRetry: boolean
++  message: string
++  origin: string
++  phase: HermesLocalDashboardPhase
++  retryCount: number
++  visible: boolean
++}
++
++export interface HermesLocalDashboardBounds {
++  height: number
++  width: number
++  x: number
++  y: number
++}
++
+ export type LocalAction =
+   | 'backup'
+   | 'benchmark'
+diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
+index 3af5913..c286d03 100644
+--- a/apps/desktop/src/global.d.ts
++++ b/apps/desktop/src/global.d.ts
+@@ -1,6 +1,8 @@
+ import type { GatewayWsUrlResult } from '@hermes/shared'
+ 
+ import type {
++  HermesLocalDashboardBounds,
++  HermesLocalDashboardState,
+   LocalAction,
+   LocalActionTask,
+   LocalInferenceProfile,
+@@ -128,6 +130,14 @@ declare global {
+         }
+         logs: (name: LocalLog, lines?: number) => Promise<LocalLogResult>
+         deleteProfile: (name: string) => Promise<{ name: string; selected: string }>
++        dashboard?: {
++          hide: () => Promise<HermesLocalDashboardState>
++          onState: (callback: (state: HermesLocalDashboardState) => void) => () => void
++          reload: () => Promise<HermesLocalDashboardState>
++          resize: (bounds: HermesLocalDashboardBounds) => Promise<HermesLocalDashboardState>
++          show: (bounds: HermesLocalDashboardBounds) => Promise<HermesLocalDashboardState>
++          state: () => Promise<HermesLocalDashboardState>
++        }
+         openDashboard: () => Promise<{ url: string }>
+         openRoot: () => Promise<{ error: string; ok: boolean }>
+         registerModel: (model: Partial<LocalModel> & { localPath: string }) => Promise<LocalModel>
+-- 
+2.47.3
