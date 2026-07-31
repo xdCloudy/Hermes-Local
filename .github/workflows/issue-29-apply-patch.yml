@@ -1,10 +1,11 @@
 name: Issue 29 patch applicator
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/issue-29-embedded-dashboard
+      - main
     paths:
+      - '.github/workflows/issue-29-apply-patch.yml'
       - '.github/issue-29-patch/APPLY'
 
 permissions:
@@ -16,6 +17,7 @@ concurrency:
 
 jobs:
   apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -24,6 +26,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true
+          ref: agent/issue-29-embedded-dashboard
 
       - name: Apply generated integration patch
         shell: bash
@@ -34,6 +37,7 @@ jobs:
             exit 0
           fi
           cat .github/issue-29-patch/part-* > /tmp/issue-29.patch
+          printf '%s  %s\n' '37ec3ff9f5fe9644814a585c59f8415848f182edda332abfeab155b68182bb74' /tmp/issue-29.patch | sha256sum --check
           git config user.name 'Hermes Local Automation'
           git config user.email 'hermes-local-automation@users.noreply.github.com'
           git am --3way /tmp/issue-29.patch
