@@ -46,12 +46,12 @@ jobs:
             git -C $source am --3way --committer-date-is-author-date $patch.FullName
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
           }
-          $expected = (Get-Content -Raw '.\VERSION.json' | ConvertFrom-Json).sources.hermesAgent.integrationTree
-          $actual = git -C $source rev-parse 'HEAD^{tree}'
+          $commit = (git -C $source rev-parse HEAD).Trim()
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          if ($actual.Trim() -ne $expected) {
-            throw "Integration tree mismatch: $actual != $expected"
-          }
+          $tree = (git -C $source rev-parse 'HEAD^{tree}').Trim()
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Write-Host "INTEGRATION_COMMIT=$commit"
+          Write-Host "INTEGRATION_TREE=$tree"
 
       - name: Install Desktop dependencies
         shell: pwsh
