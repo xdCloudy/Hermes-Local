@@ -35,9 +35,10 @@ flowchart LR
   cross-origin requests, and sends external links to the system browser.
   Hiding the Dashboard route preserves the embedded renderer and its page
   state; backend outages and renderer crashes use bounded reconnect states.
-  A successful same-origin main-frame response becomes visible at DOM
-  readiness, so long-running page resources cannot leave Desktop stuck behind
-  its loading surface.
+  Dashboard navigation is serialized so repeated renderer layout or show calls
+  share one in-flight load. A completed successful same-origin main-frame
+  request is authoritative readiness evidence, with DOM and Electron load
+  lifecycle events retained as fallbacks.
 - **TUI:** node-pty/ConPTY runs the actual managed Hermes executable. Renderer
   IPC cannot open an arbitrary shell command.
 - **Supervisor:** starts, health-checks and stops services in dependency order.
@@ -136,5 +137,5 @@ on `hermes-local-integration`; the ordered mail patch series is under
 tree from the pinned upstream commit and verifies the tree hash even when
 local Git committer metadata produces different commit IDs.
 
-The current series contains patches 0001–0022 and reconstructs tree
-`6df753e80aba265e8b40c4602a94a4c7a7ad5ff7`.
+The current series contains patches 0001–0023 and reconstructs tree
+`b4b1e8e67fa5de42eef8ae093a86a3e368c3a921`.
