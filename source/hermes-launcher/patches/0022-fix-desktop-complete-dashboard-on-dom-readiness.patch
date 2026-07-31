@@ -15,7 +15,7 @@ did-finish-load as a compatibility fallback.
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.test.ts b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 --- a/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
-@@ -22,10 +22,16 @@ const TOKEN = 'A'.repeat(48)
+@@ -22,11 +22,17 @@ const TOKEN = 'A'.repeat(48)
  class FakeWebContents extends EventEmitter {
    closed = false
    currentUrl = ''
