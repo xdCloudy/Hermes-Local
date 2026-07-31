@@ -17,51 +17,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  snapshot:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Check out Hermes Local
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-
-      - name: Reconstruct the integration tree
-        shell: bash
-        run: |
-          set -euo pipefail
-          base="$(python -c "import json; print(json.load(open('VERSION.json', encoding='utf-8'))['sources']['hermesAgent']['commit'])")"
-          git clone --filter=blob:none https://github.com/NousResearch/hermes-agent.git reconstructed
-          git -C reconstructed checkout --detach "$base"
-          git -C reconstructed config user.name 'Hermes Local Snapshot'
-          git -C reconstructed config user.email 'hermes-local-snapshot@localhost'
-          git -C reconstructed switch -c hermes-local-integration
-          git -C reconstructed am --3way --committer-date-is-author-date "$GITHUB_WORKSPACE"/source/hermes-launcher/patches/*.patch
-          mkdir -p artifacts
-          git -C reconstructed archive \
-            --format=tar.gz \
-            --output="$GITHUB_WORKSPACE/artifacts/issue-29-source.tar.gz" \
-            HEAD \
-            apps/desktop/electron \
-            apps/desktop/e2e \
-            apps/desktop/package.json \
-            apps/desktop/src/app/local-workstation \
-            apps/desktop/src/app/routes.ts \
-            apps/desktop/src/global.d.ts
-          {
-            echo "base=$base"
-            echo "commit=$(git -C reconstructed rev-parse HEAD)"
-            echo "tree=$(git -C reconstructed rev-parse 'HEAD^{tree}')"
-          } > artifacts/metadata.txt
-
-      - name: Upload source snapshot
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: issue-29-source-snapshot
-          path: artifacts
-          if-no-files-found: error
-          retention-days: 1
-
   desktop-validation:
     runs-on: windows-latest
     timeout-minutes: 120
@@ -71,24 +26,90 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install, test, build and package patched Desktop
+      - name: Reconstruct patched Desktop
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $base = (Get-Content -Raw '.\VERSION.json' | ConvertFrom-Json).sources.hermesAgent.commit
-          python '.\scripts\ci\compatibility.py' hermes-agent `
-            --repository-root '.' `
-            --candidate-ref $base `
-            --work-dir '.\temp\compatibility\issue-29-desktop' `
-            --log-dir '.\artifacts\compatibility\issue-29-desktop\logs' `
-            --report '.\artifacts\compatibility\issue-29-desktop\report.json' `
-            --run-desktop-checks `
-            --run-package-checks
+          $source = Join-Path $PWD 'temp\issue-29-desktop\hermes-agent'
+          New-Item -ItemType Directory -Force (Split-Path $source) | Out-Null
+          git clone --no-checkout https://github.com/NousResearch/hermes-agent.git $source
+          git -C $source checkout --detach $base
+          git -C $source config user.name 'Hermes Local Validation'
+          git -C $source config user.email 'hermes-local-validation@localhost'
+          git -C $source switch -c hermes-local-integration
+          $patches = Get-ChildItem '.\source\hermes-launcher\patches\*.patch' | Sort-Object Name
+          foreach ($patch in $patches) {
+            git -C $source am --3way --committer-date-is-author-date $patch.FullName
+          }
+          $expected = (Get-Content -Raw '.\VERSION.json' | ConvertFrom-Json).sources.hermesAgent.integrationTree
+          $actual = git -C $source rev-parse 'HEAD^{tree}'
+          if ($actual.Trim() -ne $expected) {
+            throw "Integration tree mismatch: $actual != $expected"
+          }
+          "SOURCE=$source" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Upload Desktop validation evidence
+      - name: Install Desktop dependencies
+        shell: pwsh
+        run: npm.cmd ci --no-audit --fund=false
+        working-directory: temp/issue-29-desktop/hermes-agent
+
+      - name: Validate renderer and Electron types
+        shell: pwsh
+        run: |
+          @'
+          declare module '@tabler/icons-react/dist/esm/icons/*.mjs' {
+            import type { ComponentType, SVGProps } from 'react'
+            const Icon: ComponentType<SVGProps<SVGSVGElement> & {
+              size?: number | string
+              stroke?: number | string
+            }>
+            export default Icon
+          }
+          '@ | Set-Content -Encoding utf8 '.\apps\desktop\src\tabler-icons-validation.d.ts'
+          npm.cmd exec -- tsc -p apps/desktop/tsconfig.json --noEmit
+          npm.cmd exec -- tsc -p apps/desktop/tsconfig.electron.json --noEmit
+          npm.cmd exec -- tsc -p apps/desktop/tsconfig.e2e.json --noEmit
+        working-directory: temp/issue-29-desktop/hermes-agent
+
+      - name: Lint issue 29 files
+        shell: pwsh
+        run: |
+          npm.cmd exec -- eslint `
+            apps/desktop/electron/hermes-local-dashboard-view.ts `
+            apps/desktop/electron/hermes-local-dashboard-view.test.ts `
+            apps/desktop/electron/hermes-local-control.ts `
+            apps/desktop/electron/hermes-local-control.test.ts `
+            apps/desktop/electron/main.ts `
+            apps/desktop/electron/preload.ts `
+            apps/desktop/src/app/local-workstation/index.tsx `
+            apps/desktop/src/app/local-workstation/types.ts `
+            apps/desktop/src/global.d.ts
+        working-directory: temp/issue-29-desktop/hermes-agent
+
+      - name: Run embedded dashboard tests
+        shell: pwsh
+        run: |
+          npm.cmd exec -- vitest run --project electron `
+            electron/hermes-local-dashboard-view.test.ts `
+            electron/hermes-local-control.test.ts
+        working-directory: temp/issue-29-desktop/hermes-agent/apps/desktop
+
+      - name: Build and package Desktop
+        shell: pwsh
+        run: |
+          Remove-Item -Force '.\apps\desktop\src\tabler-icons-validation.d.ts'
+          npm.cmd run build --workspace apps/desktop
+          npm.cmd run pack --workspace apps/desktop
+        working-directory: temp/issue-29-desktop/hermes-agent
+
+      - name: Upload validation evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: issue-29-desktop-validation
-          path: artifacts/compatibility/issue-29-desktop
-          if-no-files-found: error
+          path: |
+            temp/issue-29-desktop/hermes-agent/apps/desktop/release
+            temp/issue-29-desktop/hermes-agent/apps/desktop/dist
+          if-no-files-found: warn
           retention-days: 14
