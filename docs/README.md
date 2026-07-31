@@ -18,6 +18,7 @@ the operational detail, design contracts and validation evidence.
 | Diagnose a problem | [Troubleshooting](TROUBLESHOOTING.md) | [Security and safe diagnostics](SECURITY.md) |
 | Understand the system | [Architecture](ARCHITECTURE.md) | [Launcher design](design/DESIGN_SPEC.md) |
 | Contribute code or docs | [Contributor guide](../CONTRIBUTING.md) | [Development](DEVELOPMENT.md) |
+| Validate upstream or Stable candidates | [Upstream compatibility](UPSTREAM_COMPATIBILITY.md) | [Stable promotion](STABLE_PROMOTION.md) |
 | Evaluate maturity | [Acceptance results](ACCEPTANCE_RESULTS.md) | [QA reports](../reports/qa/FULL_FUNCTIONAL_QA_REPORT.md) |
 | Follow future work | [Live roadmap](../README.md#roadmap) | [Project views](PROJECT-VIEWS.md) |
 
@@ -43,6 +44,10 @@ the operational detail, design contracts and validation evidence.
   trust boundaries.
 - [Development](DEVELOPMENT.md) — source reconstruction, testing and packaging.
 - [Security](SECURITY.md) — local threat model, controls and reporting.
+- [Upstream compatibility](UPSTREAM_COMPATIBILITY.md) — scheduled candidate
+  validation, report schema and intervention handling.
+- [Stable promotion](STABLE_PROMOTION.md) — mandatory trusted GPU evidence and
+  fail-closed Stable compatibility approval.
 - [Free/local feature matrix](FREE_FEATURE_MATRIX.md) — present capabilities
   and boundaries.
 - [Project views](PROJECT-VIEWS.md) — maintainer planning conventions.
