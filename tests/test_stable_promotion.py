@@ -17,6 +17,9 @@ SPEC.loader.exec_module(stable_promotion)
 
 
 class StablePromotionTests(unittest.TestCase):
+    candidate_sha = "c" * 40
+    matrix = {"schemaVersion": 1, "scenarios": [{"id": "fixture"}]}
+
     def component(self, name: str, *, run_id: str = "123", acceleration: str | None = None):
         metadata = {"workflowRunId": run_id}
         if acceleration is not None:
@@ -48,16 +51,61 @@ class StablePromotionTests(unittest.TestCase):
             "failures": [],
         }
 
+    def lifecycle_report(self):
+        def scenario(scenario_id: str, runner_class: str):
+            environment = {
+                "runnerClass": runner_class,
+                "os": "Windows",
+                "release": "11",
+                "architecture": "AMD64",
+            }
+            if runner_class == "physical-nvidia":
+                environment["gpu"] = {"name": "NVIDIA fixture", "driver": "999.1"}
+            return {
+                "schemaVersion": 1,
+                "component": "windows-lifecycle-scenario",
+                "scenarioId": scenario_id,
+                "candidate": self.candidate_sha,
+                "status": "passed",
+                "environment": environment,
+            }
+
+        return {
+            "schemaVersion": 1,
+            "component": "windows-lifecycle",
+            "candidate": self.candidate_sha,
+            "status": "passed-with-warnings",
+            "stableEvaluation": True,
+            "generatedAt": "2026-08-01T00:00:00Z",
+            "matrixSha256": stable_promotion.canonical_digest(self.matrix),
+            "summary": {"total": 40, "passed": 35, "failed": 0, "skipped": 5},
+            "scenarios": [
+                scenario("physical-cpu", "physical-cpu"),
+                scenario("physical-nvidia", "physical-nvidia"),
+            ],
+            "metadata": {"workflowRunId": "456"},
+            "warnings": [{"stage": "optional", "message": "Explicit skip"}],
+            "failures": [],
+        }
+
     def test_valid_report_emits_stable_manifest(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             report_path = root / "compatibility-report.json"
+            lifecycle_path = root / "windows-lifecycle-report.json"
+            matrix_path = root / "windows-lifecycle-matrix.json"
             manifest_path = root / "stable-promotion.json"
             report_path.write_text(json.dumps(self.report()), encoding="utf-8")
+            lifecycle_path.write_text(json.dumps(self.lifecycle_report()), encoding="utf-8")
+            matrix_path.write_text(json.dumps(self.matrix), encoding="utf-8")
 
             exit_code = stable_promotion.main([
                 "--report", str(report_path),
                 "--compatibility-run-id", "123",
+                "--lifecycle-report", str(lifecycle_path),
+                "--lifecycle-run-id", "456",
+                "--candidate-sha", self.candidate_sha,
+                "--matrix", str(matrix_path),
                 "--manifest", str(manifest_path),
             ])
 
@@ -66,6 +114,8 @@ class StablePromotionTests(unittest.TestCase):
             self.assertEqual(manifest["channel"], "stable")
             self.assertEqual(manifest["status"], "approved")
             self.assertEqual(manifest["compatibility"]["workflowRunId"], "123")
+            self.assertEqual(manifest["lifecycle"]["workflowRunId"], "456")
+            self.assertEqual(manifest["lifecycle"]["candidate"], self.candidate_sha)
             self.assertEqual(
                 [component["component"] for component in manifest["components"]],
                 list(stable_promotion.REQUIRED_COMPONENTS),
@@ -101,6 +151,43 @@ class StablePromotionTests(unittest.TestCase):
         report["components"][1]["status"] = "blocked-build"
         errors = stable_promotion.validate_report(report, "123")
         self.assertIn("component llama-cpp-cpu has non-promotable status 'blocked-build'", errors)
+
+    def test_lifecycle_report_must_enforce_stable_inventory(self):
+        report = self.lifecycle_report()
+        report["stableEvaluation"] = False
+
+        errors = stable_promotion.validate_lifecycle_report(report, "456", self.candidate_sha)
+
+        self.assertIn("lifecycle report did not enforce the Stable scenario inventory", errors)
+
+    def test_lifecycle_candidate_must_match_selected_revision(self):
+        report = self.lifecycle_report()
+
+        errors = stable_promotion.validate_lifecycle_report(report, "456", "e" * 40)
+
+        self.assertIn("lifecycle candidate does not match the selected Hermes Local revision", errors)
+
+    def test_both_physical_lifecycle_lanes_are_mandatory(self):
+        report = self.lifecycle_report()
+        report["scenarios"] = [
+            scenario for scenario in report["scenarios"]
+            if scenario["scenarioId"] != "physical-nvidia"
+        ]
+
+        errors = stable_promotion.validate_lifecycle_report(report, "456", self.candidate_sha)
+
+        self.assertIn("lifecycle report is missing physical-nvidia evidence", errors)
+
+    def test_lifecycle_matrix_must_match_trusted_checkout(self):
+        report = self.lifecycle_report()
+
+        errors = stable_promotion.validate_lifecycle_report(
+            report, "456", self.candidate_sha, "e" * 64
+        )
+
+        self.assertIn(
+            "lifecycle report matrix digest does not match the trusted matrix", errors
+        )
 
 
 if __name__ == "__main__":

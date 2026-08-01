@@ -6,11 +6,18 @@ on:
       - '.github/workflows/stable-compatibility-gate.yml'
       - 'scripts/ci/stable_promotion.py'
       - 'tests/test_stable_promotion.py'
+      - 'scripts/ci/windows_lifecycle.py'
+      - 'tests/test_windows_lifecycle.py'
+      - 'config/validation/windows-lifecycle-matrix.json'
       - 'docs/STABLE_PROMOTION.md'
   workflow_dispatch:
     inputs:
       compatibility_run_id:
         description: Successful Upstream compatibility workflow run containing the trusted CUDA gate
+        required: true
+        type: string
+      lifecycle_run_id:
+        description: Successful Stable-evaluated Windows lifecycle workflow run
         required: true
         type: string
   workflow_call:
@@ -19,13 +26,17 @@ on:
         description: Successful Upstream compatibility workflow run containing the trusted CUDA gate
         required: true
         type: string
+      lifecycle_run_id:
+        description: Successful Stable-evaluated Windows lifecycle workflow run
+        required: true
+        type: string
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: stable-compatibility-${{ inputs.compatibility_run_id || github.event.pull_request.number }}
+  group: stable-compatibility-${{ inputs.compatibility_run_id || github.event.pull_request.number }}-${{ inputs.lifecycle_run_id || 'pr' }}
   cancel-in-progress: false
 
 jobs:
@@ -43,8 +54,12 @@ jobs:
       - name: Validate Stable gate tooling
         shell: pwsh
         run: |
-          python -m py_compile '.\scripts\ci\stable_promotion.py' '.\tests\test_stable_promotion.py'
+          python -m py_compile `
+            '.\scripts\ci\stable_promotion.py' '.\tests\test_stable_promotion.py' `
+            '.\scripts\ci\windows_lifecycle.py' '.\tests\test_windows_lifecycle.py'
+          python '.\scripts\ci\windows_lifecycle.py' validate
           python -m unittest '.\tests\test_stable_promotion.py' -v
+          python -m unittest '.\tests\test_windows_lifecycle.py' -v
 
   promotion-gate:
     name: Approve Stable compatibility evidence
@@ -58,22 +73,25 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate source workflow run
+      - name: Validate source workflow runs
         id: source
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
         env:
           COMPATIBILITY_RUN_ID: ${{ inputs.compatibility_run_id }}
+          LIFECYCLE_RUN_ID: ${{ inputs.lifecycle_run_id }}
         with:
           script: |
             const runId = Number(process.env.COMPATIBILITY_RUN_ID)
-            if (!Number.isSafeInteger(runId) || runId <= 0) {
-              core.setFailed('compatibility_run_id must be a positive workflow run ID')
+            const lifecycleRunId = Number(process.env.LIFECYCLE_RUN_ID)
+            if (!Number.isSafeInteger(runId) || runId <= 0 || !Number.isSafeInteger(lifecycleRunId) || lifecycleRunId <= 0) {
+              core.setFailed('both source run IDs must be positive integers')
               return
             }
 
             const { owner, repo } = context.repo
-            const [{ data: run }, { data: repository }] = await Promise.all([
+            const [{ data: run }, { data: lifecycleRun }, { data: repository }] = await Promise.all([
               github.rest.actions.getWorkflowRun({ owner, repo, run_id: runId }),
+              github.rest.actions.getWorkflowRun({ owner, repo, run_id: lifecycleRunId }),
               github.rest.repos.get({ owner, repo })
             ])
 
@@ -97,9 +115,34 @@ jobs:
               )
               return
             }
+            if (lifecycleRun.name !== 'Windows lifecycle validation') {
+              core.setFailed(`Run ${lifecycleRunId} belongs to ${lifecycleRun.name}, not Windows lifecycle validation`)
+              return
+            }
+            if (lifecycleRun.conclusion !== 'success') {
+              core.setFailed(`Lifecycle run ${lifecycleRunId} concluded ${lifecycleRun.conclusion}; Stable requires success`)
+              return
+            }
+            if (lifecycleRun.head_branch !== repository.default_branch || lifecycleRun.event !== 'workflow_dispatch') {
+              core.setFailed('Lifecycle evidence must be an explicit run from the default branch')
+              return
+            }
+            if (lifecycleRun.head_sha !== run.head_sha) {
+              core.setFailed(
+                `Compatibility and lifecycle evidence target different revisions: ${run.head_sha} vs ${lifecycleRun.head_sha}`
+              )
+              return
+            }
+            if (run.head_sha !== context.sha) {
+              core.setFailed(
+                `Source evidence targets ${run.head_sha}, but this trusted gate checkout targets ${context.sha}`
+              )
+              return
+            }
 
             core.setOutput('head_sha', run.head_sha)
             core.setOutput('run_url', run.html_url)
+            core.setOutput('lifecycle_run_url', lifecycleRun.html_url)
 
       - name: Download aggregate compatibility evidence
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -110,18 +153,32 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ inputs.compatibility_run_id }}
 
-      - name: Enforce Hermes Agent, CPU and trusted CUDA gates
+      - name: Download aggregate Windows lifecycle evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: windows-lifecycle-aggregate
+          path: downloaded/lifecycle
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.lifecycle_run_id }}
+
+      - name: Enforce compatibility, lifecycle and physical hardware gates
         shell: pwsh
         run: |
           python '.\scripts\ci\stable_promotion.py' `
             --report '.\downloaded\compatibility\compatibility-report.json' `
             --compatibility-run-id '${{ inputs.compatibility_run_id }}' `
+            --lifecycle-report '.\downloaded\lifecycle\windows-lifecycle-report.json' `
+            --lifecycle-run-id '${{ inputs.lifecycle_run_id }}' `
+            --candidate-sha '${{ steps.source.outputs.head_sha }}' `
+            --matrix '.\config\validation\windows-lifecycle-matrix.json' `
             --manifest '.\artifacts\stable-promotion\stable-promotion.json'
 
       - name: Add Stable gate summary
         shell: pwsh
         env:
           SOURCE_RUN_URL: ${{ steps.source.outputs.run_url }}
+          LIFECYCLE_RUN_URL: ${{ steps.source.outputs.lifecycle_run_url }}
           SOURCE_HEAD_SHA: ${{ steps.source.outputs.head_sha }}
         run: |
           $manifest = Get-Content -Raw '.\artifacts\stable-promotion\stable-promotion.json' | ConvertFrom-Json
@@ -130,7 +187,9 @@ jobs:
             '',
             "**Status:** ``$($manifest.status)``",
             "**Compatibility run:** [$($manifest.compatibility.workflowRunId)]($env:SOURCE_RUN_URL)",
+            "**Lifecycle run:** [$($manifest.lifecycle.workflowRunId)]($env:LIFECYCLE_RUN_URL)",
             "**Hermes Local revision:** ``$env:SOURCE_HEAD_SHA``",
+            "**Lifecycle status:** ``$($manifest.lifecycle.status)``",
             '',
             '| Component | Candidate | Status |',
             '|---|---|---|'

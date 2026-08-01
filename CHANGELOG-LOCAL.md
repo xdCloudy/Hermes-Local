@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added a versioned 49-scenario Windows install, upgrade, repair, rollback,
+  uninstall and adverse-condition matrix with deterministic preservation
+  fixtures, retained machine-readable evidence, disposable and trusted physical
+  runner lanes, and a Stable gate that fails closed on missing CPU or NVIDIA
+  lifecycle proof.
 - Replaced the Desktop implementation-ledger placeholder with an authoritative
   Task Centre for active, queued, completed, failed, interrupted and cancelled
   work, including capability-gated controls, bounded redacted output, result

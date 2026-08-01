@@ -130,6 +130,12 @@ change. Playwright should target the unpacked or installed executable; the
 portable executable is a self-extractor and receives a recorded native smoke
 test.
 
+The versioned install, upgrade, repair, rollback, uninstall, adverse-condition
+and physical hardware inventory is documented in
+[Windows lifecycle validation](WINDOWS_LIFECYCLE_VALIDATION.md). Candidate runs
+may report explicit skips; Stable evaluation requires all mandatory scenarios
+and both trusted physical runner classes to pass for the exact revision.
+
 ## Release gates
 
 Before promotion:
@@ -146,6 +152,11 @@ Before promotion:
    source;
 10. package hashes and the clean source stamp are recorded;
 11. docs and known limitations are current.
+
+Stable promotion additionally requires a successful `Windows lifecycle
+validation` run and a successful `Upstream compatibility` run for the same
+commit. See [Stable promotion](STABLE_PROMOTION.md) for the retained evidence
+contract.
 
 The current Windows full desktop and UI Vitest projects are green. Do not
 suppress future platform failures: classify and fix a first-party portability

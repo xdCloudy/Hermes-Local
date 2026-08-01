@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": 1,
+  "retentionDays": 90,
+  "requiredCategories": ["clean-install", "upgrade", "repair", "rollback", "uninstall", "adverse", "hardware"],
+  "requiredRunnerClasses": ["hosted-windows", "physical-cpu", "physical-nvidia"],
+  "blockingConditions": [
+    "clean-standard-failure",
+    "unexpected-user-data-change",
+    "rollback-service-not-restored",
+    "invalid-artifact-promoted",
+    "default-uninstall-data-loss",
+    "unsupported-hardware-promoted",
+    "security-critical-lifecycle-failure"
+  ],
+  "scenarios": [
+    {"id":"clean-standard","category":"clean-install","tier":"hosted","runnerClass":"hosted-windows","automation":"package-shell","critical":true,"preservationRequired":false,"stableRequired":true},
+    {"id":"clean-portable","category":"clean-install","tier":"hosted","runnerClass":"hosted-windows","automation":"package-shell","critical":true,"preservationRequired":false,"stableRequired":true},
+    {"id":"clean-developer","category":"clean-install","tier":"hosted","runnerClass":"hosted-windows","automation":"package-shell","critical":false,"preservationRequired":false,"stableRequired":false},
+    {"id":"clean-offline","category":"clean-install","tier":"hosted","runnerClass":"hosted-windows","automation":"package-shell","critical":true,"preservationRequired":false,"stableRequired":true},
+    {"id":"clean-cpu","category":"clean-install","tier":"hosted","runnerClass":"hosted-windows","automation":"package-shell","critical":true,"preservationRequired":false,"stableRequired":true},
+    {"id":"clean-gpu-mocked","category":"clean-install","tier":"fast","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":false,"stableRequired":true},
+    {"id":"clean-path-spaces","category":"clean-install","tier":"hosted","runnerClass":"hosted-windows","automation":"package-shell","critical":true,"preservationRequired":false,"stableRequired":true},
+    {"id":"clean-path-unicode","category":"clean-install","tier":"hosted","runnerClass":"hosted-windows","automation":"package-shell","critical":true,"preservationRequired":false,"stableRequired":true},
+    {"id":"clean-secondary-drive","category":"clean-install","tier":"hosted","runnerClass":"hosted-windows","automation":"package-shell","critical":false,"preservationRequired":false,"stableRequired":false},
+    {"id":"clean-no-dev-tools","category":"clean-install","tier":"hosted","runnerClass":"hosted-windows","automation":"package-shell","critical":true,"preservationRequired":false,"stableRequired":true},
+    {"id":"clean-interrupted-download","category":"clean-install","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+
+    {"id":"upgrade-stable","category":"upgrade","tier":"hosted","runnerClass":"hosted-windows","automation":"package-shell","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"upgrade-candidate","category":"upgrade","tier":"hosted","runnerClass":"hosted-windows","automation":"package-shell","critical":false,"preservationRequired":true,"stableRequired":false},
+    {"id":"upgrade-old-schema","category":"upgrade","tier":"fast","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"upgrade-launcher","category":"upgrade","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":false,"preservationRequired":true,"stableRequired":false},
+    {"id":"upgrade-agent","category":"upgrade","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":false,"preservationRequired":true,"stableRequired":false},
+    {"id":"upgrade-runtime","category":"upgrade","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":false,"preservationRequired":true,"stableRequired":false},
+    {"id":"upgrade-active-service","category":"upgrade","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"upgrade-custom-config","category":"upgrade","tier":"fast","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+
+    {"id":"repair-launcher","category":"repair","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"repair-python","category":"repair","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"repair-browser","category":"repair","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":false,"preservationRequired":true,"stableRequired":false},
+    {"id":"repair-runtime","category":"repair","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"repair-provider","category":"repair","tier":"fast","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"repair-stale-marker","category":"repair","tier":"fast","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"repair-patched-source","category":"repair","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+
+    {"id":"rollback-pre-promotion","category":"rollback","tier":"fast","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"rollback-atomic-promotion","category":"rollback","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"rollback-service-restart","category":"rollback","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"rollback-model-health","category":"rollback","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"rollback-launcher-health","category":"rollback","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"rollback-component","category":"rollback","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":false,"preservationRequired":true,"stableRequired":false},
+    {"id":"rollback-last-known-good","category":"rollback","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+
+    {"id":"uninstall-app-only","category":"uninstall","tier":"hosted","runnerClass":"hosted-windows","automation":"package-shell","critical":false,"preservationRequired":true,"stableRequired":false},
+    {"id":"uninstall-preserve-data","category":"uninstall","tier":"hosted","runnerClass":"hosted-windows","automation":"package-shell","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"uninstall-full-confirmed","category":"uninstall","tier":"hosted","runnerClass":"hosted-windows","automation":"package-shell","critical":false,"preservationRequired":false,"stableRequired":false},
+    {"id":"reinstall-preserved","category":"uninstall","tier":"hosted","runnerClass":"hosted-windows","automation":"package-shell","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"side-by-side","category":"uninstall","tier":"hosted","runnerClass":"hosted-windows","automation":"package-shell","critical":false,"preservationRequired":true,"stableRequired":false},
+    {"id":"migrate-legacy","category":"uninstall","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+
+    {"id":"adverse-port-conflict","category":"adverse","tier":"fast","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"adverse-disk-space","category":"adverse","tier":"fast","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"adverse-read-only","category":"adverse","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"adverse-antivirus","category":"adverse","tier":"trusted","runnerClass":"physical-cpu","automation":"manual-evidence","critical":false,"preservationRequired":true,"stableRequired":false},
+    {"id":"adverse-controlled-folder","category":"adverse","tier":"trusted","runnerClass":"physical-cpu","automation":"manual-evidence","critical":false,"preservationRequired":true,"stableRequired":false},
+    {"id":"adverse-pending-reboot","category":"adverse","tier":"trusted","runnerClass":"physical-cpu","automation":"manual-evidence","critical":false,"preservationRequired":true,"stableRequired":false},
+    {"id":"adverse-offline","category":"adverse","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"adverse-interrupted-promotion","category":"adverse","tier":"hosted","runnerClass":"hosted-windows","automation":"fault-fixture","critical":true,"preservationRequired":true,"stableRequired":true},
+
+    {"id":"physical-cpu","category":"hardware","tier":"trusted","runnerClass":"physical-cpu","automation":"physical-smoke","critical":true,"preservationRequired":true,"stableRequired":true},
+    {"id":"physical-nvidia","category":"hardware","tier":"trusted","runnerClass":"physical-nvidia","automation":"physical-smoke","critical":true,"preservationRequired":true,"stableRequired":true}
+  ]
+}

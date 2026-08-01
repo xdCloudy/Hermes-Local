@@ -4,13 +4,13 @@
 [Project home](../README.md)
 
 Hermes Local treats Stable as a fail-closed release channel. A candidate cannot
-receive Stable compatibility approval unless one explicit `Upstream
-compatibility` workflow run passes every mandatory component gate and the
-separate `Stable compatibility gate` validates that evidence.
+receive approval unless explicit `Upstream compatibility` and `Windows
+lifecycle validation` workflow runs pass for the same commit and the separate
+`Stable compatibility gate` validates both evidence sets.
 
 ## Mandatory evidence
 
-Stable approval requires one aggregate compatibility report containing all of:
+Stable approval requires an aggregate compatibility report containing all of:
 
 - `hermes-agent`;
 - `llama-cpp-cpu`;
@@ -22,6 +22,13 @@ report must identify CUDA acceleration and Windows test evidence.
 
 A missing GPU report is a hard failure. CPU-only evidence can support development
 or candidate testing but cannot approve Stable.
+
+It also requires a Stable-evaluated
+[Windows lifecycle report](WINDOWS_LIFECYCLE_VALIDATION.md). Every mandatory
+install, upgrade, repair, rollback, uninstall, adverse-condition and
+preservation scenario must pass. The report must include successful trusted
+physical CPU-only and NVIDIA hardware records. Missing or skipped lifecycle
+evidence is a hard failure.
 
 ## Trusted GPU runner
 
@@ -41,7 +48,7 @@ The initial hardware requirement is a supported NVIDIA CUDA system with `nvcc`,
 CMake, Git, and the normal workflow prerequisites. Additional trusted runner
 labels can be introduced when more runtime backends are added.
 
-## Produce a Stable-eligible compatibility run
+## Produce Stable-eligible source runs
 
 1. Open **Actions → Upstream compatibility → Run workflow**.
 2. Run the workflow from the repository default branch.
@@ -51,6 +58,15 @@ labels can be introduced when more runtime backends are added.
 5. Confirm that the complete workflow concludes successfully.
 6. Record its numeric workflow run ID.
 
+Then open **Actions → Windows lifecycle validation → Run workflow** from the
+same default-branch commit:
+
+1. enable the disposable and physical lanes;
+2. enable Stable evaluation;
+3. supply the HTTPS URL and SHA-256 of the immutable previous-Stable installer;
+4. wait for every hosted, CPU-only and NVIDIA job to pass;
+5. record the lifecycle workflow run ID.
+
 A run cannot become Stable evidence when:
 
 - the trusted GPU runner is unavailable or skipped;
@@ -59,21 +75,27 @@ A run cannot become Stable evidence when:
 - the source run did not execute from the default branch;
 - the source run was not an explicit workflow or repository dispatch.
 
+Lifecycle evidence is ineligible when any mandatory scenario is absent,
+failed or skipped, when either physical runner is unavailable, when the matrix
+digest differs from the trusted checkout, or when its candidate commit differs
+from the compatibility run.
+
 ## Approve the evidence
 
-Open **Actions → Stable compatibility gate → Run workflow** and enter the
-successful compatibility run ID.
+Open **Actions → Stable compatibility gate → Run workflow** and enter both
+successful run IDs.
 
 The gate:
 
 1. verifies that the source run is the repository's `Upstream compatibility`
    workflow;
 2. requires a successful explicit run from the default branch;
-3. downloads the source run's `compatibility-aggregate` artifact;
-4. verifies aggregate and per-component statuses;
-5. requires Hermes Agent, CPU runtime, and trusted CUDA runtime reports;
-6. verifies that every component belongs to the selected workflow run;
-7. rejects a GPU report that is not CUDA or lacks Windows evidence;
+3. verifies that both source runs target the same commit;
+4. downloads `compatibility-aggregate` and `windows-lifecycle-aggregate`;
+5. verifies aggregate and per-component statuses;
+6. requires Hermes Agent, CPU runtime, and trusted CUDA runtime reports;
+7. verifies the lifecycle matrix, mandatory scenario inventory and physical
+   CPU/NVIDIA evidence;
 8. emits `stable-promotion.json` as the retained approval artifact.
 
 The gate uses the `stable` GitHub environment. Repository administrators should
@@ -85,15 +107,15 @@ workflow becomes part of a public release process.
 `.github/workflows/stable-compatibility-gate.yml` is both manually dispatchable
 and reusable through `workflow_call`. Any workflow that publishes a Stable
 release, Stable update manifest, or Stable Update Centre entry must call this
-gate with the compatibility run ID and proceed only after it succeeds.
+gate with both source run IDs and proceed only after it succeeds.
 
 No release or updater workflow may infer Stable compatibility from branch state,
-a successful build alone, or an unverified JSON file. The retained
+a successful build alone, historical QA, or an unverified JSON file. The retained
 `stable-promotion-<run-id>` artifact is the machine-readable approval record.
 
 ## Boundaries
 
-This gate approves compatibility evidence only. Artifact signing, checksums,
-SBOMs, provenance, installer validation, and transactional updater promotion are
-covered by their respective release and Update Centre work. Those systems must
-consume this gate rather than duplicate or weaken it.
+This gate approves compatibility and lifecycle evidence only. Artifact signing,
+SBOMs, provenance and transactional updater publication remain separate release
+responsibilities. Those systems must consume this gate rather than duplicate or
+weaken it.
