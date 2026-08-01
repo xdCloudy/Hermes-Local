@@ -1,0 +1,1169 @@
+From 92d2f46ba0fbb35f832bc47be5489b71948ca7e3 Mon Sep 17 00:00:00 2001
+From: Hermes Local Compatibility CI <hermes-local-ci@localhost>
+Date: Sat, 1 Aug 2026 19:14:29 +0100
+Subject: [PATCH] feat(desktop): persist and recover background tasks
+
+---
+ .../electron/hermes-local-control.test.ts     |  39 ++-
+ apps/desktop/electron/hermes-local-control.ts | 310 ++++++++++++++++++
+ .../electron/hermes-local-task-model.test.ts  |  67 ++++
+ .../electron/hermes-local-task-model.ts       | 189 ++++++++++-
+ .../electron/hermes-local-task-store.test.ts  | 106 ++++++
+ .../electron/hermes-local-task-store.ts       | 134 ++++++++
+ apps/desktop/electron/preload.ts              |   1 +
+ .../src/app/local-workstation/index.tsx       |   6 +
+ .../src/app/local-workstation/types.ts        |   5 +
+ apps/desktop/src/global.d.ts                  |   1 +
+ 10 files changed, 855 insertions(+), 3 deletions(-)
+ create mode 100644 apps/desktop/electron/hermes-local-task-store.test.ts
+ create mode 100644 apps/desktop/electron/hermes-local-task-store.ts
+
+diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
+index 1f72dbf64..fbedb48b4 100644
+--- a/apps/desktop/electron/hermes-local-control.test.ts
++++ b/apps/desktop/electron/hermes-local-control.test.ts
+@@ -1,4 +1,5 @@
+ import { EventEmitter } from 'node:events'
++import fs from 'node:fs'
+ import os from 'node:os'
+ import path from 'node:path'
+ 
+@@ -23,7 +24,7 @@ vi.mock('electron', () => ({
+ import { hermesLocalControlTest } from './hermes-local-control'
+ 
+ const originalRoot = process.env.HERMES_LOCAL_ROOT
+-const testRoot = path.resolve(os.tmpdir(), 'hermes-local-control-test')
++let testRoot = ''
+ 
+ function validProfile() {
+   return {
+@@ -42,10 +43,13 @@ function validProfile() {
+ 
+ describe('Hermes Local Electron boundary', () => {
+   beforeEach(() => {
++    testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-local-control-test-'))
+     process.env.HERMES_LOCAL_ROOT = testRoot
+   })
+ 
+   afterEach(() => {
++    fs.rmSync(testRoot, { force: true, recursive: true })
++
+     if (originalRoot === undefined) {
+       delete process.env.HERMES_LOCAL_ROOT
+     } else {
+@@ -155,6 +159,7 @@ describe('Hermes Local Electron boundary', () => {
+       owner: { kind: 'desktop-child-process', pid: null },
+       queuedAt: new Date().toISOString(),
+       resources: [{ mode: 'shared', resource: 'workstation' }],
++      result: null,
+       schemaVersion: 1,
+       startedAt: new Date().toISOString(),
+       status: 'running',
+@@ -196,6 +201,38 @@ describe('Hermes Local Electron boundary', () => {
+     expect(taskMap.has('completed-54')).toBe(true)
+   })
+ 
++  it('recovers authoritative report and runtime completion evidence', () => {
++    const diagnostics = path.join(testRoot, 'logs', 'diagnostics')
++    const runtime = path.join(testRoot, 'data', 'runtime')
++    fs.mkdirSync(diagnostics, { recursive: true })
++    fs.mkdirSync(runtime, { recursive: true })
++    fs.writeFileSync(
++      path.join(diagnostics, 'latest-test.json'),
++      JSON.stringify({ generatedAt: new Date().toISOString(), passed: true, schemaVersion: 1 })
++    )
++    fs.writeFileSync(
++      path.join(runtime, 'status.json'),
++      JSON.stringify({ controllerPid: process.pid, phase: 'running', updatedAt: new Date().toISOString() })
++    )
++
++    const task = {
++      action: 'test',
++      createdAt: new Date(Date.now() - 2000).toISOString(),
++      startedAt: new Date(Date.now() - 1000).toISOString()
++    }
++
++    const start = { ...task, action: 'start' }
++
++    expect(hermesLocalControlTest.taskCompletionEvidence(task as never)).toMatchObject({
++      result: { kind: 'report', path: 'logs/diagnostics/latest-test.json' },
++      status: 'succeeded'
++    })
++    expect(hermesLocalControlTest.taskCompletionEvidence(start as never)).toMatchObject({
++      result: { kind: 'runtime-state', path: 'data/runtime/status.json' },
++      status: 'succeeded'
++    })
++  })
++
+   it('checks the model, API, and dashboard using distinct health URLs', async () => {
+     const urls: string[] = []
+ 
+diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
+index 1f79fadee..fb915b16a 100644
+--- a/apps/desktop/electron/hermes-local-control.ts
++++ b/apps/desktop/electron/hermes-local-control.ts
+@@ -31,14 +31,19 @@ import {
+   boundedTaskOutput,
+   createTaskRecord,
+   isTaskTerminal,
++  reconcileRecoveredTask,
+   type TaskAction,
++  type TaskCompletionEvidence,
+   type TaskRecord,
+   transitionTask
+ } from './hermes-local-task-model'
++import { loadTaskStore, saveTaskStore } from './hermes-local-task-store'
+ 
+ const execFileAsync = promisify(execFile)
+ const MAX_TASK_OUTPUT = 128 * 1024
+ const MAX_COMPLETED_TASKS = 50
++const TASK_RECONCILE_INTERVAL_MS = 1000
++const TASK_STORE_RELATIVE_PATH = 'data\\runtime\\desktop-tasks.json'
+ const MAX_LOG_BYTES = 512 * 1024
+ const LOGIN_ITEM_ARGUMENTS = ['--hermes-local-autostart']
+ 
+@@ -74,6 +79,9 @@ interface ActionTask extends TaskRecord {
+ }
+ 
+ const tasks = new Map<string, ActionTask>()
++let taskRegistryLoaded = false
++let taskPersistTimer: null | NodeJS.Timeout = null
++let taskReconcileTimer: null | NodeJS.Timeout = null
+ 
+ function powershellExecutable(): string {
+   const systemRoot = process.env.SystemRoot || 'C:\\Windows'
+@@ -203,6 +211,15 @@ function appendTaskOutput(task: ActionTask, chunk: Buffer | string): void {
+   task.output = result.output
+   task.outputTruncated ||= result.truncated
+   task.updatedAt = new Date().toISOString()
++  scheduleTaskRegistryPersistence()
++}
++
++function safeReadJson<T>(relativePath: string): null | T {
++  try {
++    return readJson<T>(relativePath)
++  } catch {
++    return null
++  }
+ }
+ 
+ function publicTask(task: ActionTask): TaskRecord {
+@@ -215,6 +232,271 @@ function replaceTaskRecord(task: ActionTask, record: TaskRecord): void {
+   Object.assign(task, record)
+ }
+ 
++function taskStorePath(): string {
++  return resolveUnderRoot(TASK_STORE_RELATIVE_PATH)
++}
++
++function persistTaskRegistry(): void {
++  saveTaskStore(
++    taskStorePath(),
++    [...tasks.values()].map(task => publicTask(task)),
++    new Date().toISOString(),
++    MAX_COMPLETED_TASKS
++  )
++}
++
++function persistTaskRegistrySafely(): void {
++  try {
++    persistTaskRegistry()
++  } catch (error) {
++    console.error('Failed to persist Hermes Local task registry', error)
++  }
++}
++
++function scheduleTaskRegistryPersistence(): void {
++  if (taskPersistTimer) {
++    return
++  }
++
++  taskPersistTimer = setTimeout(() => {
++    taskPersistTimer = null
++    persistTaskRegistrySafely()
++  }, 100)
++  taskPersistTimer.unref()
++}
++
++function flushScheduledTaskPersistence(): void {
++  if (taskPersistTimer) {
++    clearTimeout(taskPersistTimer)
++    taskPersistTimer = null
++  }
++
++  persistTaskRegistrySafely()
++}
++
++function fileEvidence(
++  relativePath: string,
++  status: TaskCompletionEvidence['status'] = 'succeeded',
++  failure: TaskCompletionEvidence['failure'] = null,
++  kind: NonNullable<TaskCompletionEvidence['result']>['kind'] = 'report'
++): null | TaskCompletionEvidence {
++  const filePath = resolveUnderRoot(relativePath)
++
++  try {
++    return {
++      exitCode: status === 'succeeded' ? 0 : 1,
++      failure,
++      observedAt: fs.statSync(filePath).mtime.toISOString(),
++      result: { kind, path: relativePath.replaceAll('\\', '/') },
++      status
++    }
++  } catch {
++    return null
++  }
++}
++
++function jsonEvidence(
++  relativePath: string,
++  outcome: (document: Record<string, any>) => {
++    failure?: TaskCompletionEvidence['failure']
++    status: TaskCompletionEvidence['status']
++  }
++): null | TaskCompletionEvidence {
++  const document = safeReadJson<Record<string, any>>(relativePath)
++  const evidence = fileEvidence(relativePath)
++
++  if (!document || !evidence) {
++    return null
++  }
++
++  const result = outcome(document)
++
++  return {
++    ...evidence,
++    exitCode: result.status === 'succeeded' ? 0 : 1,
++    failure: result.failure || null,
++    status: result.status
++  }
++}
++
++function newestArchiveEvidence(relativeDirectory: string, prefix: string): null | TaskCompletionEvidence {
++  const directory = resolveUnderRoot(relativeDirectory)
++
++  try {
++    const archive = fs
++      .readdirSync(directory, { withFileTypes: true })
++      .filter(entry => entry.isFile() && entry.name.startsWith(prefix) && entry.name.endsWith('.zip'))
++      .map(entry => ({
++        modified: fs.statSync(path.join(directory, entry.name)).mtimeMs,
++        relativePath: path.join(relativeDirectory, entry.name)
++      }))
++      .sort((left, right) => right.modified - left.modified)[0]
++
++    return archive ? fileEvidence(archive.relativePath, 'succeeded', null, 'archive') : null
++  } catch {
++    return null
++  }
++}
++
++function taskCompletionEvidence(task: TaskRecord): null | TaskCompletionEvidence {
++  if (task.action === 'benchmark') {
++    return jsonEvidence('benchmarks\\results\\latest.json', document => {
++      const complete = document.lifecycle?.state === 'complete'
++      const failed = Array.isArray(document.cases) && document.cases.some((entry: any) => entry?.succeeded === false)
++
++      return complete && !failed
++        ? { status: 'succeeded' }
++        : {
++            failure: { code: 'benchmark-report-failed', message: 'Recovered benchmark report is not successful' },
++            status: 'failed'
++          }
++    })
++  }
++
++  if (task.action === 'security') {
++    return jsonEvidence('security\\reports\\latest-scan.json', document =>
++      String(document.status || '').startsWith('pass')
++        ? { status: 'succeeded' }
++        : {
++            failure: { code: 'security-report-failed', message: 'Recovered security report records a failure' },
++            status: 'failed'
++          }
++    )
++  }
++
++  if (task.action === 'test') {
++    return jsonEvidence('logs\\diagnostics\\latest-test.json', document =>
++      document.passed === true
++        ? { status: 'succeeded' }
++        : {
++            failure: { code: 'test-report-failed', message: 'Recovered diagnostics report records a failure' },
++            status: 'failed'
++          }
++    )
++  }
++
++  if (task.action === 'update') {
++    return jsonEvidence('build\\updates\\LATEST.json', document =>
++      typeof document.checkedAt === 'string'
++        ? { status: 'succeeded' }
++        : {
++            failure: { code: 'update-report-invalid', message: 'Recovered update report is incomplete' },
++            status: 'failed'
++          }
++    )
++  }
++
++  if (task.action === 'backup') {
++    return newestArchiveEvidence('backups', 'Hermes-Local-')
++  }
++
++  if (task.action === 'diagnostics') {
++    return newestArchiveEvidence('logs\\diagnostics', 'Hermes-Local-Diagnostics-')
++  }
++
++  if (task.action === 'start' || task.action === 'restart' || task.action === 'repair') {
++    const runtime = safeReadJson<Record<string, any>>('data\\runtime\\status.json')
++    const phase = String(runtime?.phase || '')
++
++    if (runtime && ['benchmark-preparing', 'benchmarking', 'running', 'starting-model'].includes(phase)) {
++      const evidence = fileEvidence('data\\runtime\\status.json', 'succeeded', null, 'runtime-state')
++
++      return processAlive(runtime.controllerPid) ? evidence : null
++    }
++  }
++
++  if (task.action === 'stop') {
++    const runtime = safeReadJson<Record<string, any>>('data\\runtime\\status.json')
++
++    if (!runtime || !processAlive(runtime.controllerPid)) {
++      return {
++        exitCode: 0,
++        failure: null,
++        observedAt: new Date().toISOString(),
++        result: { kind: 'runtime-state', path: 'data/runtime/status.json' },
++        status: 'succeeded'
++      }
++    }
++  }
++
++  return null
++}
++
++function reconcileTaskRegistry(): void {
++  hydrateTaskRegistry()
++
++  let changed = false
++  const at = new Date().toISOString()
++
++  for (const task of tasks.values()) {
++    if (isTaskTerminal(task.status) || task.child) {
++      continue
++    }
++
++    const recovered = reconcileRecoveredTask(
++      task,
++      processAlive(task.owner.pid),
++      taskCompletionEvidence(task),
++      at
++    )
++
++    if (recovered !== task) {
++      replaceTaskRecord(task, recovered)
++      changed = true
++
++      if (isTaskTerminal(task.status)) {
++        task.events.emit('terminal', task)
++      }
++    }
++  }
++
++  if (changed) {
++    pruneCompletedTasks()
++    drainQueuedTasks()
++    persistTaskRegistrySafely()
++  }
++}
++
++function hydrateTaskRegistry(): void {
++  if (taskRegistryLoaded) {
++    return
++  }
++
++  taskRegistryLoaded = true
++  const loaded = loadTaskStore(taskStorePath(), MAX_TASK_OUTPUT, MAX_COMPLETED_TASKS)
++
++  for (const warning of loaded.warnings) {
++    console.warn(warning)
++  }
++
++  for (const record of loaded.records) {
++    tasks.set(record.id, {
++      ...record,
++      child: null,
++      events: new EventEmitter(),
++      input: {}
++    })
++  }
++}
++
++function startTaskReconciliation(): void {
++  hydrateTaskRegistry()
++  reconcileTaskRegistry()
++
++  if (taskReconcileTimer) {
++    return
++  }
++
++  taskReconcileTimer = setInterval(() => {
++    try {
++      reconcileTaskRegistry()
++    } catch (error) {
++      console.error('Failed to reconcile Hermes Local task registry', error)
++    }
++  }, TASK_RECONCILE_INTERVAL_MS)
++  taskReconcileTimer.unref()
++}
++
+ function completeTask(
+   task: ActionTask,
+   status: 'cancelled' | 'failed' | 'interrupted' | 'succeeded',
+@@ -231,6 +513,7 @@ function completeTask(
+   task.events.emit('terminal', task)
+   pruneCompletedTasks()
+   drainQueuedTasks()
++  flushScheduledTaskPersistence()
+ }
+ 
+ function actionArguments(action: ActionName, input: Record<string, unknown>): string[] {
+@@ -277,6 +560,7 @@ function spawnActionTask(task: ActionTask): void {
+         owner: { kind: 'desktop-child-process', pid: child.pid ?? null }
+       })
+     )
++    persistTaskRegistrySafely()
+     child.stdout.on('data', chunk => appendTaskOutput(task, chunk))
+     child.stderr.on('data', chunk => appendTaskOutput(task, chunk))
+     child.on('error', error => appendTaskOutput(task, `\n${error.message}\n`))
+@@ -334,6 +618,8 @@ function pruneCompletedTasks(taskMap: Map<string, ActionTask> = tasks, maximum =
+ }
+ 
+ function startActionTask(actionValue: unknown, input: unknown) {
++  reconcileTaskRegistry()
++
+   const action = String(actionValue || '') as ActionName
+   const scriptRelative = ACTION_SCRIPTS[action]
+ 
+@@ -372,6 +658,13 @@ function startActionTask(actionValue: unknown, input: unknown) {
+ 
+   tasks.set(id, task)
+ 
++  try {
++    persistTaskRegistry()
++  } catch (error) {
++    tasks.delete(id)
++    throw error
++  }
++
+   if (admission.kind === 'start') {
+     spawnActionTask(task)
+   }
+@@ -380,6 +673,8 @@ function startActionTask(actionValue: unknown, input: unknown) {
+ }
+ 
+ function getActionTask(taskId: unknown) {
++  reconcileTaskRegistry()
++
+   const task = tasks.get(String(taskId || ''))
+ 
+   if (!task) {
+@@ -389,6 +684,12 @@ function getActionTask(taskId: unknown) {
+   return publicTask(task)
+ }
+ 
++function listActionTasks(): TaskRecord[] {
++  reconcileTaskRegistry()
++
++  return [...tasks.values()].map(task => publicTask(task))
++}
++
+ function waitForActionTask(task: ActionTask): Promise<ActionTask> {
+   if (isTaskTerminal(task.status)) {
+     return Promise.resolve(task)
+@@ -548,6 +849,8 @@ function setLoginItem(enabledValue: unknown) {
+ }
+ 
+ async function buildWorkstationSnapshot() {
++  reconcileTaskRegistry()
++
+   const state = readJson<Record<string, any>>('data\\runtime\\status.json')
+   const version = readJson<Record<string, any>>('VERSION.json')
+   const gpu = await gpuSnapshot()
+@@ -611,6 +914,7 @@ async function buildWorkstationSnapshot() {
+     taskLedger: fs.existsSync(resolveUnderRoot('TASKS.md'))
+       ? fs.readFileSync(resolveUnderRoot('TASKS.md'), 'utf8').slice(0, 128 * 1024)
+       : '',
++    tasks: [...tasks.values()].map(task => publicTask(task)),
+     runtime: {
+       ...state,
+       controllerAlive: processAlive(state?.controllerPid),
+@@ -776,9 +1080,14 @@ function requireDashboardSender(
+ export function registerHermesLocalControlIpc(
+   dashboardView?: HermesLocalDashboardViewController
+ ): void {
++  if (process.env.HERMES_LOCAL_ROOT) {
++    startTaskReconciliation()
++  }
++
+   ipcMain.handle('hermes:local:snapshot', workstationSnapshot)
+   ipcMain.handle('hermes:local:action:start', (_event, action, input) => startActionTask(action, input))
+   ipcMain.handle('hermes:local:action:status', (_event, taskId) => getActionTask(taskId))
++  ipcMain.handle('hermes:local:action:list', listActionTasks)
+   ipcMain.handle('hermes:local:logs', (_event, name, lines) => readLog(name, lines))
+   ipcMain.handle('hermes:local:login-item:get', loginItemStatus)
+   ipcMain.handle('hermes:local:login-item:set', (_event, enabled) => setLoginItem(enabled))
+@@ -842,5 +1151,6 @@ export const hermesLocalControlTest = {
+   sanitizeEditableProfile,
+   serviceHealth,
+   setLoginItem,
++  taskCompletionEvidence,
+   waitForActionTask
+ }
+diff --git a/apps/desktop/electron/hermes-local-task-model.test.ts b/apps/desktop/electron/hermes-local-task-model.test.ts
+index a780d2de9..1d52fe7c8 100644
+--- a/apps/desktop/electron/hermes-local-task-model.test.ts
++++ b/apps/desktop/electron/hermes-local-task-model.test.ts
+@@ -4,6 +4,7 @@ import {
+   admitTask,
+   boundedTaskOutput,
+   createTaskRecord,
++  reconcileRecoveredTask,
+   reconcileTaskOwner,
+   requestTaskCancellation,
+   type TaskAction,
+@@ -106,6 +107,72 @@ describe('Hermes Local task model', () => {
+     expect(admitTask('restart', [interrupted])).toMatchObject({ kind: 'start' })
+   })
+ 
++  it('recovers a live owner as external work without releasing its locks', () => {
++    const task = running('benchmark')
++    const recovered = reconcileRecoveredTask(task, true, null, '2026-08-01T10:01:00.000Z')
++
++    expect(recovered).toMatchObject({
++      owner: { kind: 'external-process', pid: 4242 },
++      status: 'running'
++    })
++    expect(admitTask('restart', [recovered])).toMatchObject({ kind: 'reject' })
++  })
++
++  it('uses fresh authoritative evidence after a recovered owner exits', () => {
++    const task = running('security')
++
++    const recovered = reconcileRecoveredTask(
++      task,
++      false,
++      {
++        exitCode: 0,
++        failure: null,
++        observedAt: '2026-08-01T10:01:00.000Z',
++        result: { kind: 'report', path: 'security/reports/latest-scan.json' },
++        status: 'succeeded'
++      },
++      '2026-08-01T10:01:01.000Z'
++    )
++
++    expect(recovered).toMatchObject({
++      exitCode: 0,
++      result: { kind: 'report', path: 'security/reports/latest-scan.json' },
++      status: 'succeeded'
++    })
++  })
++
++  it('interrupts recovered work when result evidence is stale', () => {
++    const task = running('security')
++
++    const recovered = reconcileRecoveredTask(
++      task,
++      false,
++      {
++        exitCode: 0,
++        failure: null,
++        observedAt: '2026-08-01T09:59:00.000Z',
++        result: null,
++        status: 'succeeded'
++      },
++      '2026-08-01T10:01:00.000Z'
++    )
++
++    expect(recovered).toMatchObject({
++      failure: { code: 'owner-exited-without-result' },
++      status: 'interrupted'
++    })
++  })
++
++  it('marks queued work interrupted after a Desktop restart', () => {
++    const queued = createTaskRecord('start', 'queued', { kind: 'desktop-child-process', pid: null }, createdAt)
++    const recovered = reconcileRecoveredTask(queued, false, null, '2026-08-01T10:01:00.000Z')
++
++    expect(recovered).toMatchObject({
++      failure: { code: 'desktop-restarted-before-start' },
++      status: 'interrupted'
++    })
++  })
++
+   it('bounds output from the tail and reports truncation', () => {
+     expect(boundedTaskOutput('1234', '5678', 6)).toEqual({ output: '345678', truncated: true })
+     expect(boundedTaskOutput('12', '34', 6)).toEqual({ output: '1234', truncated: false })
+diff --git a/apps/desktop/electron/hermes-local-task-model.ts b/apps/desktop/electron/hermes-local-task-model.ts
+index 546dc7a33..af7fb705a 100644
+--- a/apps/desktop/electron/hermes-local-task-model.ts
++++ b/apps/desktop/electron/hermes-local-task-model.ts
+@@ -40,6 +40,11 @@ export interface TaskFailure {
+   message: string
+ }
+ 
++export interface TaskResult {
++  kind: 'archive' | 'report' | 'runtime-state'
++  path: string
++}
++
+ export interface TaskRecord {
+   action: TaskAction
+   completedAt: null | string
+@@ -53,6 +58,7 @@ export interface TaskRecord {
+   owner: TaskOwner
+   queuedAt: string
+   resources: TaskResourceClaim[]
++  result: null | TaskResult
+   schemaVersion: typeof TASK_SCHEMA_VERSION
+   startedAt: null | string
+   status: TaskState
+@@ -65,6 +71,14 @@ export interface TaskPolicy {
+   resources: readonly TaskResourceClaim[]
+ }
+ 
++export interface TaskCompletionEvidence {
++  exitCode: null | number
++  failure: null | TaskFailure
++  observedAt: string
++  result: null | TaskResult
++  status: 'failed' | 'succeeded'
++}
++
+ const sharedWorkstation = { mode: 'shared', resource: 'workstation' } as const
+ const exclusiveWorkstation = { mode: 'exclusive', resource: 'workstation' } as const
+ 
+@@ -98,7 +112,7 @@ const TASK_TRANSITIONS: Readonly<Record<TaskState, readonly TaskState[]>> = {
+   cancelling: ['cancelled', 'failed', 'interrupted'],
+   failed: [],
+   interrupted: [],
+-  queued: ['cancelled', 'failed', 'running'],
++  queued: ['cancelled', 'failed', 'interrupted', 'running'],
+   running: ['cancelling', 'failed', 'interrupted', 'succeeded'],
+   succeeded: []
+ }
+@@ -135,6 +149,7 @@ export function createTaskRecord(
+     owner,
+     queuedAt: createdAt,
+     resources: policy.resources.map(claim => ({ ...claim })),
++    result: null,
+     schemaVersion: TASK_SCHEMA_VERSION,
+     startedAt: null,
+     status: 'queued',
+@@ -146,7 +161,7 @@ export function transitionTask(
+   task: TaskRecord,
+   status: TaskState,
+   at: string,
+-  details: Partial<Pick<TaskRecord, 'exitCode' | 'failure' | 'owner'>> = {}
++  details: Partial<Pick<TaskRecord, 'exitCode' | 'failure' | 'owner' | 'result'>> = {}
+ ): TaskRecord {
+   if (task.status === status) {
+     return task
+@@ -199,6 +214,176 @@ export function reconcileTaskOwner(task: TaskRecord, ownerAlive: boolean, at: st
+   })
+ }
+ 
++export function reconcileRecoveredTask(
++  task: TaskRecord,
++  ownerAlive: boolean,
++  evidence: null | TaskCompletionEvidence,
++  at: string
++): TaskRecord {
++  if (isTaskTerminal(task.status)) {
++    return task
++  }
++
++  if (task.status === 'queued') {
++    return transitionTask(task, 'interrupted', at, {
++      failure: {
++        code: 'desktop-restarted-before-start',
++        message: 'Desktop restarted before the queued task acquired its resources'
++      }
++    })
++  }
++
++  if (ownerAlive) {
++    if (task.owner.kind === 'external-process') {
++      return task
++    }
++
++    return {
++      ...task,
++      owner: { kind: 'external-process', pid: task.owner.pid },
++      updatedAt: at
++    }
++  }
++
++  if (task.status === 'cancelling') {
++    return transitionTask(task, 'cancelled', at)
++  }
++
++  const taskStart = Date.parse(task.startedAt || task.createdAt)
++  const evidenceTime = evidence ? Date.parse(evidence.observedAt) : Number.NaN
++
++  if (evidence && Number.isFinite(evidenceTime) && evidenceTime >= taskStart) {
++    return transitionTask(task, evidence.status, at, {
++      exitCode: evidence.exitCode,
++      failure: evidence.failure,
++      result: evidence.result
++    })
++  }
++
++  return transitionTask(task, 'interrupted', at, {
++    failure: {
++      code: 'owner-exited-without-result',
++      message: task.owner.pid
++        ? `Recovered task owner process ${task.owner.pid} exited without authoritative result evidence`
++        : 'Recovered task has no live owner or authoritative result evidence'
++    }
++  })
++}
++
++const taskActions = new Set<TaskAction>(Object.keys(TASK_POLICIES) as TaskAction[])
++const taskStates = new Set<TaskState>(Object.keys(TASK_TRANSITIONS) as TaskState[])
++
++function validTimestamp(value: unknown, nullable = false): null | string {
++  if (nullable && value === null) {
++    return null
++  }
++
++  return typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null
++}
++
++export function restoreTaskRecord(value: unknown, maximumOutput: number): null | TaskRecord {
++  if (!value || typeof value !== 'object') {
++    return null
++  }
++
++  const candidate = value as Record<string, unknown>
++  const action = candidate.action as TaskAction
++  const status = candidate.status as TaskState
++  const createdAt = validTimestamp(candidate.createdAt)
++  const queuedAt = validTimestamp(candidate.queuedAt)
++  const updatedAt = validTimestamp(candidate.updatedAt)
++  const startedAt = validTimestamp(candidate.startedAt, true)
++  const completedAt = validTimestamp(candidate.completedAt, true)
++
++  if (
++    candidate.schemaVersion !== TASK_SCHEMA_VERSION ||
++    typeof candidate.id !== 'string' ||
++    candidate.id.length < 1 ||
++    !taskActions.has(action) ||
++    !taskStates.has(status) ||
++    !createdAt ||
++    !queuedAt ||
++    !updatedAt ||
++    (candidate.startedAt !== null && !startedAt) ||
++    (candidate.completedAt !== null && !completedAt) ||
++    typeof candidate.output !== 'string' ||
++    typeof candidate.outputTruncated !== 'boolean' ||
++    (!isTaskTerminal(status) && completedAt !== null) ||
++    ((status === 'running' || status === 'cancelling') && !startedAt) ||
++    (status === 'succeeded' && !startedAt) ||
++    (isTaskTerminal(status) && !completedAt)
++  ) {
++    return null
++  }
++
++  const ownerValue = candidate.owner as undefined | Record<string, unknown>
++  const ownerKind = ownerValue?.kind
++  const ownerPid = ownerValue?.pid
++
++  if (
++    (ownerKind !== 'desktop-child-process' && ownerKind !== 'external-process') ||
++    (ownerPid !== null && (!Number.isSafeInteger(ownerPid) || Number(ownerPid) <= 0))
++  ) {
++    return null
++  }
++
++  const exitCodeValue = candidate.exitCode
++
++  if (exitCodeValue !== null && !Number.isSafeInteger(exitCodeValue)) {
++    return null
++  }
++
++  const failureValue = candidate.failure as null | undefined | Record<string, unknown>
++
++  const failure =
++    failureValue === null
++      ? null
++      : failureValue && typeof failureValue.code === 'string' && typeof failureValue.message === 'string'
++        ? { code: failureValue.code, message: failureValue.message }
++        : null
++
++  if (candidate.failure !== null && !failure) {
++    return null
++  }
++
++  const bounded = boundedTaskOutput('', candidate.output, maximumOutput)
++  const policy = TASK_POLICIES[action]
++  const resultValue = candidate.result as null | undefined | Record<string, unknown>
++
++  const result: null | TaskResult =
++    resultValue === null
++      ? null
++      : resultValue &&
++          (resultValue.kind === 'archive' || resultValue.kind === 'report' || resultValue.kind === 'runtime-state') &&
++          typeof resultValue.path === 'string'
++        ? { kind: resultValue.kind, path: resultValue.path }
++        : null
++
++  if (candidate.result !== null && !result) {
++    return null
++  }
++
++  return {
++    action,
++    completedAt,
++    conflictPolicy: policy.conflictPolicy,
++    createdAt,
++    exitCode: exitCodeValue as null | number,
++    failure,
++    id: candidate.id,
++    output: bounded.output,
++    outputTruncated: candidate.outputTruncated || bounded.truncated,
++    owner: { kind: ownerKind, pid: ownerPid as null | number },
++    queuedAt,
++    resources: policy.resources.map(claim => ({ ...claim })),
++    result,
++    schemaVersion: TASK_SCHEMA_VERSION,
++    startedAt,
++    status,
++    updatedAt
++  }
++}
++
+ export function boundedTaskOutput(current: string, addition: string, maximum: number) {
+   if (!Number.isInteger(maximum) || maximum < 1) {
+     throw new Error('Task output bound must be a positive integer')
+diff --git a/apps/desktop/electron/hermes-local-task-store.test.ts b/apps/desktop/electron/hermes-local-task-store.test.ts
+new file mode 100644
+index 000000000..5b4e0e356
+--- /dev/null
++++ b/apps/desktop/electron/hermes-local-task-store.test.ts
+@@ -0,0 +1,106 @@
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++
++import { afterEach, describe, expect, it } from 'vitest'
++
++import { createTaskRecord, transitionTask } from './hermes-local-task-model'
++import { loadTaskStore, parseTaskStore, saveTaskStore, serializeTaskStore } from './hermes-local-task-store'
++
++const roots: string[] = []
++const createdAt = '2026-08-01T10:00:00.000Z'
++
++afterEach(() => {
++  for (const root of roots.splice(0)) {
++    fs.rmSync(root, { force: true, recursive: true })
++  }
++})
++
++function terminal(id: string) {
++  const running = transitionTask(
++    createTaskRecord('benchmark', id, { kind: 'desktop-child-process', pid: 4242 }, createdAt),
++    'running',
++    '2026-08-01T10:00:01.000Z'
++  )
++
++  return transitionTask(running, 'succeeded', '2026-08-01T10:01:00.000Z', { exitCode: 0 })
++}
++
++describe('Hermes Local durable task store', () => {
++  it('round-trips records atomically without serializing process handles', () => {
++    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-task-store-'))
++    const filePath = path.join(root, 'data', 'runtime', 'desktop-tasks.json')
++    roots.push(root)
++
++    const task = transitionTask(
++      createTaskRecord('start', 'startup', { kind: 'desktop-child-process', pid: 4242 }, createdAt),
++      'running',
++      '2026-08-01T10:00:01.000Z'
++    )
++
++    saveTaskStore(filePath, [task], '2026-08-01T10:00:02.000Z', 50)
++    saveTaskStore(filePath, [task], '2026-08-01T10:00:03.000Z', 50)
++
++    expect(loadTaskStore(filePath, 128 * 1024, 50)).toEqual({ records: [task], warnings: [] })
++    expect(fs.readdirSync(path.dirname(filePath))).toEqual(['desktop-tasks.json'])
++  })
++
++  it('keeps all active work while bounding terminal history', () => {
++    const active = transitionTask(
++      createTaskRecord('start', 'active', { kind: 'desktop-child-process', pid: 4242 }, createdAt),
++      'running',
++      '2026-08-01T10:00:01.000Z'
++    )
++
++    const records = [terminal('old'), terminal('new'), active]
++
++    const parsed = parseTaskStore(
++      serializeTaskStore(records, '2026-08-01T10:02:00.000Z', 1),
++      128 * 1024,
++      1
++    )
++
++    expect(parsed.records.map(record => record.id)).toEqual(['new', 'active'])
++
++    const activeOnly = parseTaskStore(
++      serializeTaskStore(records, '2026-08-01T10:02:00.000Z', 0),
++      128 * 1024,
++      0
++    )
++
++    expect(activeOnly.records.map(record => record.id)).toEqual(['active'])
++  })
++
++  it('rejects malformed records and restores canonical resource policy', () => {
++    const task = createTaskRecord('benchmark', 'benchmark', { kind: 'desktop-child-process', pid: null }, createdAt)
++
++    const tampered = {
++      ...task,
++      conflictPolicy: 'queue',
++      resources: []
++    }
++
++    const parsed = parseTaskStore(
++      JSON.stringify({ schemaVersion: 1, tasks: [tampered, { id: 'invalid' }], updatedAt: createdAt }),
++      128 * 1024,
++      50
++    )
++
++    expect(parsed.records).toHaveLength(1)
++    expect(parsed.records[0]).toMatchObject({
++      conflictPolicy: 'reject',
++      resources: [
++        { mode: 'shared', resource: 'workstation' },
++        { mode: 'exclusive', resource: 'model-runtime' }
++      ]
++    })
++    expect(parsed.warnings).toEqual(['Ignored an invalid persisted task record'])
++  })
++
++  it('fails closed on invalid JSON', () => {
++    const parsed = parseTaskStore('{broken', 128 * 1024, 50)
++
++    expect(parsed.records).toEqual([])
++    expect(parsed.warnings[0]).toMatch(/invalid/i)
++  })
++})
+diff --git a/apps/desktop/electron/hermes-local-task-store.ts b/apps/desktop/electron/hermes-local-task-store.ts
+new file mode 100644
+index 000000000..3b9e07d6a
+--- /dev/null
++++ b/apps/desktop/electron/hermes-local-task-store.ts
+@@ -0,0 +1,134 @@
++import fs from 'node:fs'
++import path from 'node:path'
++
++import { isTaskTerminal, restoreTaskRecord, type TaskRecord } from './hermes-local-task-model'
++
++export const TASK_STORE_SCHEMA_VERSION = 1 as const
++
++export interface TaskStoreLoadResult {
++  records: TaskRecord[]
++  warnings: string[]
++}
++
++function boundedRecords(records: Iterable<TaskRecord>, maximumTerminal: number): TaskRecord[] {
++  if (!Number.isInteger(maximumTerminal) || maximumTerminal < 0) {
++    throw new Error('Task history bound must be a non-negative integer')
++  }
++
++  const all = [...records]
++  const terminal = all.filter(record => isTaskTerminal(record.status))
++  const retainedTerminalIds = new Set(
++    (maximumTerminal === 0 ? [] : terminal.slice(-maximumTerminal)).map(record => record.id)
++  )
++
++  return all.filter(record => !isTaskTerminal(record.status) || retainedTerminalIds.has(record.id))
++}
++
++export function serializeTaskStore(
++  records: Iterable<TaskRecord>,
++  updatedAt: string,
++  maximumTerminal: number
++): string {
++  return `${JSON.stringify(
++    {
++      schemaVersion: TASK_STORE_SCHEMA_VERSION,
++      tasks: boundedRecords(records, maximumTerminal),
++      updatedAt
++    },
++    null,
++    2
++  )}\n`
++}
++
++export function parseTaskStore(text: string, maximumOutput: number, maximumTerminal: number): TaskStoreLoadResult {
++  const warnings: string[] = []
++  let document: unknown
++
++  try {
++    document = JSON.parse(text)
++  } catch (error) {
++    return {
++      records: [],
++      warnings: [`Task store JSON is invalid: ${error instanceof Error ? error.message : String(error)}`]
++    }
++  }
++
++  if (!document || typeof document !== 'object') {
++    return { records: [], warnings: ['Task store must be a JSON object'] }
++  }
++
++  const candidate = document as Record<string, unknown>
++
++  if (candidate.schemaVersion !== TASK_STORE_SCHEMA_VERSION || !Array.isArray(candidate.tasks)) {
++    return { records: [], warnings: ['Task store schema is unsupported or missing its task list'] }
++  }
++
++  const records: TaskRecord[] = []
++  const ids = new Set<string>()
++
++  for (const value of candidate.tasks) {
++    const record = restoreTaskRecord(value, maximumOutput)
++
++    if (!record) {
++      warnings.push('Ignored an invalid persisted task record')
++
++      continue
++    }
++
++    if (ids.has(record.id)) {
++      warnings.push(`Ignored duplicate persisted task '${record.id}'`)
++
++      continue
++    }
++
++    ids.add(record.id)
++    records.push(record)
++  }
++
++  return { records: boundedRecords(records, maximumTerminal), warnings }
++}
++
++export function loadTaskStore(
++  filePath: string,
++  maximumOutput: number,
++  maximumTerminal: number
++): TaskStoreLoadResult {
++  try {
++    return parseTaskStore(fs.readFileSync(filePath, 'utf8'), maximumOutput, maximumTerminal)
++  } catch (error) {
++    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
++      return { records: [], warnings: [] }
++    }
++
++    return {
++      records: [],
++      warnings: [`Task store could not be read: ${error instanceof Error ? error.message : String(error)}`]
++    }
++  }
++}
++
++export function saveTaskStore(
++  filePath: string,
++  records: Iterable<TaskRecord>,
++  updatedAt: string,
++  maximumTerminal: number
++): void {
++  const directory = path.dirname(filePath)
++  const temporary = `${filePath}.${process.pid}.tmp`
++
++  fs.mkdirSync(directory, { recursive: true })
++
++  try {
++    fs.writeFileSync(temporary, serializeTaskStore(records, updatedAt, maximumTerminal), {
++      encoding: 'utf8',
++      mode: 0o600
++    })
++    fs.renameSync(temporary, filePath)
++  } finally {
++    try {
++      fs.rmSync(temporary, { force: true })
++    } catch {
++      // Preserve the successful write or original error if temporary cleanup fails.
++    }
++  }
++}
+diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
+index 04abcd4a2..13795cc31 100644
+--- a/apps/desktop/electron/preload.ts
++++ b/apps/desktop/electron/preload.ts
+@@ -102,6 +102,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
+     },
+     startAction: (action, input) => ipcRenderer.invoke('hermes:local:action:start', action, input),
+     actionStatus: taskId => ipcRenderer.invoke('hermes:local:action:status', taskId),
++    listActions: () => ipcRenderer.invoke('hermes:local:action:list'),
+     logs: (name, lines) => ipcRenderer.invoke('hermes:local:logs', name, lines),
+     saveProfile: (profile, originalName) => ipcRenderer.invoke('hermes:local:profile:save', profile, originalName),
+     deleteProfile: name => ipcRenderer.invoke('hermes:local:profile:delete', name),
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index daf689616..ed8997711 100644
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -1694,7 +1694,13 @@ export function LocalWorkstationView() {
+           return
+         }
+ 
++        const recoveredTask = next.tasks.findLast(
++          candidate =>
++            candidate.status === 'queued' || candidate.status === 'running' || candidate.status === 'cancelling'
++        )
++
+         setSnapshot(next)
++        setTask(recoveredTask || next.tasks.at(-1) || null)
+         setProfileView(current =>
+           next.profiles?.profiles.some(profile => profile.name === current) ? current : next.profiles?.selected || ''
+         )
+diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
+index c1531b127..95bcc5948 100644
+--- a/apps/desktop/src/app/local-workstation/types.ts
++++ b/apps/desktop/src/app/local-workstation/types.ts
+@@ -57,6 +57,10 @@ export interface LocalActionTask {
+     mode: 'exclusive' | 'shared'
+     resource: 'model-runtime' | 'user-data' | 'workstation'
+   }[]
++  result: null | {
++    kind: 'archive' | 'report' | 'runtime-state'
++    path: string
++  }
+   schemaVersion: 1
+   startedAt: null | string
+   status: 'cancelled' | 'cancelling' | 'failed' | 'interrupted' | 'queued' | 'running' | 'succeeded'
+@@ -199,6 +203,7 @@ export interface LocalWorkstationSnapshot {
+   startup: LocalLoginItemStatus
+   settings: LocalWorkstationSettings
+   taskLedger: string
++  tasks: LocalActionTask[]
+   runtime: {
+     controllerAlive: boolean
+     controllerPid?: null | number
+diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
+index 604ed5242..ef09979b6 100644
+--- a/apps/desktop/src/global.d.ts
++++ b/apps/desktop/src/global.d.ts
+@@ -124,6 +124,7 @@ declare global {
+       }
+       localWorkstation: {
+         actionStatus: (taskId: string) => Promise<LocalActionTask>
++        listActions: () => Promise<LocalActionTask[]>
+         loginItem: {
+           get: () => Promise<LocalLoginItemStatus>
+           set: (enabled: boolean) => Promise<LocalLoginItemStatus>
+-- 
+2.55.0.windows.3
+

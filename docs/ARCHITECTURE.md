@@ -130,10 +130,16 @@ workstation, and automatic readiness queues only when its shared workstation
 claim conflicts. Benchmarking owns the model runtime but remains compatible
 with gateway readiness, while observational health and reconnect work never
 acquires task locks. Completed task history is bounded at 50 without pruning
-active work. Concurrent snapshot requests share one in-flight read and probe
-the model at `/health`, Hermes at `/api/health`, and the dashboard at `/`.
-Renderer polling uses request generations and mounted-state guards so stale or
-late results cannot replace newer state.
+active work. The registry is atomically persisted at
+`data/runtime/desktop-tasks.json`; restart reconciliation checks recorded owner
+PIDs and action-specific reports, archives or runtime state before assigning a
+terminal outcome. A surviving child becomes an externally owned task, while
+ambiguous or stale records become `interrupted` instead of remaining falsely
+active. Concurrent snapshot requests share one in-flight read and probe the
+model at `/health`, Hermes at `/api/health`, and the dashboard at `/`. Renderer
+polling uses request generations and mounted-state guards so stale or late
+results cannot replace newer state, and renderer reloads select the newest
+authoritative task from the snapshot.
 
 Profile saves carry both the edited name and the original name. A rename
 replaces the original entry, rejects collisions, and migrates the selected
@@ -152,5 +158,5 @@ on `hermes-local-integration`; the ordered mail patch series is under
 tree from the pinned upstream commit and verifies the tree hash even when
 local Git committer metadata produces different commit IDs.
 
-The current series contains patches 0001–0028 and reconstructs tree
-`9120b2340daa7b4127983bebb6c41931a6970ef6`.
+The current series contains patches 0001–0029 and reconstructs tree
+`db1a225a1844bd07514a196211a4f91c8942f149`.

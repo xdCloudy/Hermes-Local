@@ -32,7 +32,7 @@ record contains:
 |---|---|
 | Identity | `schemaVersion`, UUID `id`, `action` |
 | Time | `createdAt`, `queuedAt`, nullable `startedAt` and `completedAt`, `updatedAt` |
-| Lifecycle | `status`, `exitCode`, structured `failure` |
+| Lifecycle | `status`, `exitCode`, structured `failure`, nullable `result` |
 | Ownership | owner kind and nullable process ID |
 | Admission | conflict policy and explicit shared/exclusive resource claims |
 | Evidence | redacted `output` and `outputTruncated` |
@@ -47,7 +47,7 @@ Tasks begin in `queued`. The allowed transitions are:
 
 | From | To |
 |---|---|
-| `queued` | `running`, `cancelled`, `failed` |
+| `queued` | `running`, `cancelled`, `failed`, `interrupted` |
 | `running` | `succeeded`, `failed`, `cancelling`, `interrupted` |
 | `cancelling` | `cancelled`, `failed`, `interrupted` |
 | `cancelled`, `failed`, `interrupted`, `succeeded` | none |
@@ -90,12 +90,33 @@ not cancellable after admission.
 
 Task output is redacted before storage, keeps only the newest 128 KiB, and sets
 `outputTruncated` when earlier content has been discarded. The controller keeps
-at most 50 terminal records in memory without pruning queued or running work.
+at most 50 terminal records without pruning active work.
 
-An active record whose non-null owner PID is no longer alive transitions to
-`interrupted` with an `owner-exited` failure and releases its locks. Issue #47
-will persist these records and run that reconciliation after desktop restarts;
-this ADR and the state-machine implementation define the recovery contract now.
+### Persistence and restart reconciliation
+
+Serializable task records are stored in schema-versioned JSON at
+`data/runtime/desktop-tasks.json`. Writes use a same-directory temporary file
+and atomic rename. A task is durably queued before its process is spawned;
+output writes are coalesced, while ownership and terminal transitions flush
+immediately. Loading rejects malformed records and reconstructs resource claims
+from the canonical action policy, so persisted data cannot forge locks. Active
+records are always retained and only terminal history is bounded.
+
+On Desktop startup and before task admission or status reads, the controller
+reconciles every recovered non-terminal record:
+
+- a live recorded PID becomes an `external-process` owner and keeps its locks;
+- a queued task that never started becomes `interrupted`;
+- a completed action with fresh, action-specific report, archive or runtime
+  evidence becomes `succeeded` or `failed` and records the evidence path;
+- a cancelling task whose owner exited becomes `cancelled`; and
+- an ownerless or stale ambiguous record becomes `interrupted` and releases its
+  locks.
+
+Reconciliation repeats once per second so an externally owned process that
+exits is classified promptly. Snapshots and the task-list IPC return the same
+authoritative records, and renderer reloads restore the newest active or recent
+task instead of starting with an empty in-memory view.
 
 ## Consequences
 
@@ -105,14 +126,15 @@ this ADR and the state-machine implementation define the recovery contract now.
   UI work.
 - The renderer polls queued, running and cancelling tasks and leaves conflict
   enforcement to the main process.
-- Schema persistence, external-process discovery and restart reconciliation
-  remain scoped to #47. Task Centre controls and history presentation remain
-  scoped to #48.
+- Task Centre controls and richer history presentation remain scoped to #48.
 
 ## Verification
 
 Behavior tests cover valid and invalid transitions, duplicate starts,
 benchmark/readiness compatibility, maintenance conflicts, observational access,
 queue versus reject decisions, cancellation, stale ownership and bounded
-output. Electron boundary tests verify terminal waiting and retention of active
-tasks while completed history is pruned.
+output. Store tests cover atomic replacement, malformed input, canonical lock
+restoration and terminal-history bounds. Recovery tests cover live external
+owners, fresh and stale evidence, queued restart interruption and action report
+classification. Electron boundary tests verify terminal waiting and retention
+of active tasks while completed history is pruned.

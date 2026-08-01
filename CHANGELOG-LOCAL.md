@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Persisted Desktop background-task records in a bounded, atomic store and
+  reconciled live owners and action-specific completion evidence after renderer
+  reloads, Desktop restarts and unexpected process exits.
 - Replaced the desktop's action-name exception with a versioned task schema,
   explicit state machine and deterministic shared/exclusive resource policy;
   automatic readiness now queues behind maintenance without blocking benchmark
