@@ -240,6 +240,9 @@ def aggregate(
         indexed[scenario_id] = evidence
         errors.extend(validate_evidence(evidence, scenarios[scenario_id], candidate))
 
+    if not indexed:
+        errors.append("no Windows lifecycle scenario evidence was supplied")
+
     required = [scenario for scenario in scenarios.values() if scenario.get("stableRequired")] if stable else []
     if stable:
         for scenario in required:

@@ -136,6 +136,14 @@ class WindowsLifecycleTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         self.assertIn("critical scenario failed: clean-standard", errors)
 
+    def test_candidate_aggregate_rejects_empty_evidence(self) -> None:
+        report, errors = windows_lifecycle.aggregate(
+            self.matrix, [], candidate=self.candidate, stable=False, workflow_run_id="123"
+        )
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertIn("no Windows lifecycle scenario evidence was supplied", errors)
+
     def test_candidate_aggregate_retains_noncritical_skip_reason_as_warning(self) -> None:
         evidence = self.evidence("clean-secondary-drive", status="skipped")
         evidence["skipReason"] = "No secondary volume is attached to this hosted runner."

@@ -85,8 +85,11 @@ jobs:
       - name: Reconstruct, test and package the pinned candidate
         shell: pwsh
         run: |
+          $manifest = Get-Content -Raw '.\VERSION.json' | ConvertFrom-Json
+          $pinnedAgent = [string]$manifest.sources.hermesAgent.commit
           python '.\scripts\ci\compatibility.py' hermes-agent `
             --repository-root '.' `
+            --candidate-ref $pinnedAgent `
             --work-dir '.\temp\windows-lifecycle\candidate' `
             --log-dir '.\artifacts\windows-lifecycle\package-logs' `
             --report '.\artifacts\windows-lifecycle\package-report.json' `
