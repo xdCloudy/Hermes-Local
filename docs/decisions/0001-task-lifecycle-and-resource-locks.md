@@ -118,15 +118,37 @@ exits is classified promptly. Snapshots and the task-list IPC return the same
 authoritative records, and renderer reloads restore the newest active or recent
 task instead of starting with an empty in-memory view.
 
+### Task Centre and control authority
+
+The Task Centre never reconstructs lifecycle state in the renderer. Its all,
+active, queued, completed, failed and cancelled views filter the task records
+returned by the snapshot, and selection is view state only. Stage, elapsed
+time, project, model/profile association, owner, resource claims, bounded
+redacted output, result paths and recovery details are presentations of that
+record. Navigation links return to the owning feature, while result links ask
+the main process to resolve and open a path under the Hermes Local root.
+
+The main process adds non-persisted `cancel`, `pause`, `resume` and `retry`
+capabilities to public task views. Queued cancellable work may be cancelled
+immediately. Running cancellation is exposed only while the current Desktop
+retains the exact child-process handle and PID; recovered external processes
+are never signalled. Pause and resume remain false until an action implements a
+durable protocol. A retry creates a new admission through the same policy
+instead of mutating terminal history. The sidebar active count also comes from
+the task-list IPC rather than a second renderer-owned registry.
+
+Filter buttons implement tab, arrow, Home and End keyboard navigation. The
+master/detail layout stacks below the large breakpoint, so task controls,
+output and recovery evidence remain reachable in narrow Desktop windows.
+
 ## Consequences
 
 - The benchmark and gateway-recovery case from #26 follows general resource
   rules instead of a named-action exception.
-- Admission decisions are deterministic and explainable to future Task Centre
-  UI work.
-- The renderer polls queued, running and cancelling tasks and leaves conflict
-  enforcement to the main process.
-- Task Centre controls and richer history presentation remain scoped to #48.
+- Admission decisions and Task Centre controls are deterministic and
+  explainable from one main-process policy.
+- The renderer polls authoritative task views and leaves lifecycle transitions,
+  process ownership and conflict enforcement to the main process.
 
 ## Verification
 
@@ -137,4 +159,7 @@ output. Store tests cover atomic replacement, malformed input, canonical lock
 restoration and terminal-history bounds. Recovery tests cover live external
 owners, fresh and stale evidence, queued restart interruption and action report
 classification. Electron boundary tests verify terminal waiting and retention
-of active tasks while completed history is pruned.
+of active tasks while completed history is pruned. Task Centre tests cover
+filtering without state mutation, elapsed time, empty filtered selection,
+keyboard navigation and capability-gated retry controls; browser QA covers the
+failed-task recovery flow and desktop/narrow layouts.

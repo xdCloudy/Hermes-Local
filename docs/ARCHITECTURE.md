@@ -138,8 +138,13 @@ ambiguous or stale records become `interrupted` instead of remaining falsely
 active. Concurrent snapshot requests share one in-flight read and probe the
 model at `/health`, Hermes at `/api/health`, and the dashboard at `/`. Renderer
 polling uses request generations and mounted-state guards so stale or late
-results cannot replace newer state, and renderer reloads select the newest
-authoritative task from the snapshot.
+results cannot replace newer state. The Task Centre filters and selects only
+records from each authoritative snapshot, shows bounded redacted output and
+result or recovery evidence, and exposes only capabilities computed by the
+main process. Running cancellation is limited to the exact live child process
+owned by the current Desktop; recovered external owners remain observable but
+cannot be signalled. Terminal tasks can be retried as new admissions, and the
+sidebar derives its active count from the same task-list boundary.
 
 Profile saves carry both the edited name and the original name. A rename
 replaces the original entry, rejects collisions, and migrates the selected

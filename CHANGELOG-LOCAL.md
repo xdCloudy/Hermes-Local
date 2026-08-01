@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Replaced the Desktop implementation-ledger placeholder with an authoritative
+  Task Centre for active, queued, completed, failed, interrupted and cancelled
+  work, including capability-gated controls, bounded redacted output, result
+  and recovery links, keyboard filters, narrow-window layout and a sidebar
+  active-task indicator.
 - Persisted Desktop background-task records in a bounded, atomic store and
   reconciled live owners and action-specific completion evidence after renderer
   reloads, Desktop restarts and unexpected process exits.

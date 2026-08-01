@@ -1,0 +1,1325 @@
+From 7c511d57757d7d5a2601d20bb719989f6b1e81bd Mon Sep 17 00:00:00 2001
+From: Hermes Local Compatibility CI <hermes-local-ci@localhost>
+Date: Sat, 1 Aug 2026 20:25:51 +0100
+Subject: [PATCH] feat(desktop): build authoritative Task Centre
+
+---
+ apps/desktop/electron/hermes-local-control.ts | 106 +++-
+ .../electron/hermes-local-task-model.test.ts  |  13 +
+ .../electron/hermes-local-task-model.ts       |  24 +
+ apps/desktop/electron/preload.ts              |   3 +
+ apps/desktop/src/app/chat/sidebar/index.tsx   |  39 ++
+ .../src/app/local-workstation/index.tsx       | 128 ++---
+ .../local-workstation/task-centre.test.tsx    | 136 +++++
+ .../src/app/local-workstation/task-centre.tsx | 484 ++++++++++++++++++
+ .../src/app/local-workstation/types.ts        |   6 +
+ apps/desktop/src/global.d.ts                  |   3 +
+ 10 files changed, 867 insertions(+), 75 deletions(-)
+ create mode 100644 apps/desktop/src/app/local-workstation/task-centre.test.tsx
+ create mode 100644 apps/desktop/src/app/local-workstation/task-centre.tsx
+
+diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
+index fb915b16a..1922d9218 100644
+--- a/apps/desktop/electron/hermes-local-control.ts
++++ b/apps/desktop/electron/hermes-local-control.ts
+@@ -32,9 +32,12 @@ import {
+   createTaskRecord,
+   isTaskTerminal,
+   reconcileRecoveredTask,
++  requestTaskCancellation,
+   type TaskAction,
++  taskCapabilities,
+   type TaskCompletionEvidence,
+   type TaskRecord,
++  type TaskView,
+   transitionTask
+ } from './hermes-local-task-model'
+ import { loadTaskStore, saveTaskStore } from './hermes-local-task-store'
+@@ -222,12 +225,16 @@ function safeReadJson<T>(relativePath: string): null | T {
+   }
+ }
+ 
+-function publicTask(task: ActionTask): TaskRecord {
++function taskRecord(task: ActionTask): TaskRecord {
+   const { child: _child, events: _events, input: _input, ...record } = task
+ 
+   return record
+ }
+ 
++function publicTask(task: ActionTask): TaskView {
++  return { ...taskRecord(task), capabilities: taskCapabilities(task) }
++}
++
+ function replaceTaskRecord(task: ActionTask, record: TaskRecord): void {
+   Object.assign(task, record)
+ }
+@@ -239,7 +246,7 @@ function taskStorePath(): string {
+ function persistTaskRegistry(): void {
+   saveTaskStore(
+     taskStorePath(),
+-    [...tasks.values()].map(task => publicTask(task)),
++    [...tasks.values()].map(task => taskRecord(task)),
+     new Date().toISOString(),
+     MAX_COMPLETED_TASKS
+   )
+@@ -684,12 +691,102 @@ function getActionTask(taskId: unknown) {
+   return publicTask(task)
+ }
+ 
+-function listActionTasks(): TaskRecord[] {
++function listActionTasks(): TaskView[] {
+   reconcileTaskRegistry()
+ 
+   return [...tasks.values()].map(task => publicTask(task))
+ }
+ 
++function cancelActionTask(taskId: unknown): TaskView {
++  reconcileTaskRegistry()
++
++  const task = tasks.get(String(taskId || ''))
++
++  if (!task) {
++    throw new Error('Hermes Local task not found')
++  }
++
++  if (!taskCapabilities(task).cancel) {
++    throw new Error(`Task '${task.id}' cannot be safely cancelled in its current state`)
++  }
++
++  if (task.status === 'queued') {
++    replaceTaskRecord(task, requestTaskCancellation(task, new Date().toISOString()))
++    task.events.emit('terminal', task)
++    pruneCompletedTasks()
++    drainQueuedTasks()
++    flushScheduledTaskPersistence()
++
++    return publicTask(task)
++  }
++
++  if (!task.child || task.owner.kind !== 'desktop-child-process' || task.owner.pid !== task.child.pid) {
++    throw new Error(`Task '${task.id}' no longer has a cancellable Desktop-owned process`)
++  }
++
++  replaceTaskRecord(task, requestTaskCancellation(task, new Date().toISOString()))
++  flushScheduledTaskPersistence()
++
++  try {
++    if (process.platform === 'win32' && task.owner.pid) {
++      const taskkill = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe')
++
++      execFileSync(taskkill, ['/PID', String(task.owner.pid), '/T', '/F'], {
++        stdio: 'ignore',
++        timeout: 15_000,
++        windowsHide: true
++      })
++    } else {
++      task.child.kill('SIGTERM')
++    }
++  } catch (error) {
++    if (processAlive(task.owner.pid)) {
++      const message = error instanceof Error ? error.message : String(error)
++
++      appendTaskOutput(task, `\nCancellation failed: ${message}\n`)
++      completeTask(task, 'failed', null, { code: 'cancel-failed', message })
++    }
++  }
++
++  return publicTask(task)
++}
++
++function retryActionTask(taskId: unknown): TaskView {
++  reconcileTaskRegistry()
++
++  const task = tasks.get(String(taskId || ''))
++
++  if (!task) {
++    throw new Error('Hermes Local task not found')
++  }
++
++  if (!taskCapabilities(task).retry) {
++    throw new Error(`Task '${task.id}' is not ready to retry`)
++  }
++
++  return startActionTask(task.action, task.input)
++}
++
++async function openActionTaskResult(taskId: unknown) {
++  reconcileTaskRegistry()
++
++  const task = tasks.get(String(taskId || ''))
++
++  if (!task?.result) {
++    throw new Error('Hermes Local task has no result to open')
++  }
++
++  const resultPath = resolveUnderRoot(task.result.path)
++
++  if (!fs.existsSync(resultPath)) {
++    throw new Error(`Task result is no longer available: ${task.result.path}`)
++  }
++
++  const error = await shell.openPath(resultPath)
++
++  return { error, ok: !error, path: task.result.path }
++}
++
+ function waitForActionTask(task: ActionTask): Promise<ActionTask> {
+   if (isTaskTerminal(task.status)) {
+     return Promise.resolve(task)
+@@ -1088,6 +1185,9 @@ export function registerHermesLocalControlIpc(
+   ipcMain.handle('hermes:local:action:start', (_event, action, input) => startActionTask(action, input))
+   ipcMain.handle('hermes:local:action:status', (_event, taskId) => getActionTask(taskId))
+   ipcMain.handle('hermes:local:action:list', listActionTasks)
++  ipcMain.handle('hermes:local:action:cancel', (_event, taskId) => cancelActionTask(taskId))
++  ipcMain.handle('hermes:local:action:retry', (_event, taskId) => retryActionTask(taskId))
++  ipcMain.handle('hermes:local:action:open-result', (_event, taskId) => openActionTaskResult(taskId))
+   ipcMain.handle('hermes:local:logs', (_event, name, lines) => readLog(name, lines))
+   ipcMain.handle('hermes:local:login-item:get', loginItemStatus)
+   ipcMain.handle('hermes:local:login-item:set', (_event, enabled) => setLoginItem(enabled))
+diff --git a/apps/desktop/electron/hermes-local-task-model.test.ts b/apps/desktop/electron/hermes-local-task-model.test.ts
+index 1d52fe7c8..e76f82aec 100644
+--- a/apps/desktop/electron/hermes-local-task-model.test.ts
++++ b/apps/desktop/electron/hermes-local-task-model.test.ts
+@@ -8,6 +8,7 @@ import {
+   reconcileTaskOwner,
+   requestTaskCancellation,
+   type TaskAction,
++  taskCapabilities,
+   type TaskRecord,
+   transitionTask
+ } from './hermes-local-task-model'
+@@ -177,4 +178,16 @@ describe('Hermes Local task model', () => {
+     expect(boundedTaskOutput('1234', '5678', 6)).toEqual({ output: '345678', truncated: true })
+     expect(boundedTaskOutput('12', '34', 6)).toEqual({ output: '1234', truncated: false })
+   })
++
++  it('offers only controls that are safe for the current owner and state', () => {
++    const queued = createTaskRecord('benchmark', 'queued', { kind: 'desktop-child-process', pid: null }, createdAt)
++    const local = running('benchmark', 'local')
++    const external = { ...running('benchmark', 'external'), owner: { kind: 'external-process', pid: 4242 } } as const
++    const failed = transitionTask(external, 'failed', '2026-08-01T10:02:00.000Z')
++
++    expect(taskCapabilities(queued)).toEqual({ cancel: true, pause: false, resume: false, retry: false })
++    expect(taskCapabilities(local)).toEqual({ cancel: true, pause: false, resume: false, retry: false })
++    expect(taskCapabilities(external).cancel).toBe(false)
++    expect(taskCapabilities(failed)).toEqual({ cancel: false, pause: false, resume: false, retry: true })
++  })
+ })
+diff --git a/apps/desktop/electron/hermes-local-task-model.ts b/apps/desktop/electron/hermes-local-task-model.ts
+index af7fb705a..49e642b79 100644
+--- a/apps/desktop/electron/hermes-local-task-model.ts
++++ b/apps/desktop/electron/hermes-local-task-model.ts
+@@ -45,6 +45,13 @@ export interface TaskResult {
+   path: string
+ }
+ 
++export interface TaskCapabilities {
++  cancel: boolean
++  pause: boolean
++  resume: boolean
++  retry: boolean
++}
++
+ export interface TaskRecord {
+   action: TaskAction
+   completedAt: null | string
+@@ -65,6 +72,10 @@ export interface TaskRecord {
+   updatedAt: string
+ }
+ 
++export interface TaskView extends TaskRecord {
++  capabilities: TaskCapabilities
++}
++
+ export interface TaskPolicy {
+   cancellable: boolean
+   conflictPolicy: TaskConflictPolicy
+@@ -128,6 +139,19 @@ export function taskOwnsResources(state: TaskState): boolean {
+   return lockOwningStates.has(state)
+ }
+ 
++export function taskCapabilities(task: TaskRecord): TaskCapabilities {
++  const cancellableOwner =
++    task.status === 'queued' ||
++    (task.status === 'running' && task.owner.kind === 'desktop-child-process' && task.owner.pid !== null)
++
++  return {
++    cancel: TASK_POLICIES[task.action].cancellable && cancellableOwner,
++    pause: false,
++    resume: false,
++    retry: isTaskTerminal(task.status)
++  }
++}
++
+ export function createTaskRecord(
+   action: TaskAction,
+   id: string,
+diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
+index 13795cc31..651ca32a0 100644
+--- a/apps/desktop/electron/preload.ts
++++ b/apps/desktop/electron/preload.ts
+@@ -103,6 +103,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
+     startAction: (action, input) => ipcRenderer.invoke('hermes:local:action:start', action, input),
+     actionStatus: taskId => ipcRenderer.invoke('hermes:local:action:status', taskId),
+     listActions: () => ipcRenderer.invoke('hermes:local:action:list'),
++    cancelAction: taskId => ipcRenderer.invoke('hermes:local:action:cancel', taskId),
++    retryAction: taskId => ipcRenderer.invoke('hermes:local:action:retry', taskId),
++    openActionResult: taskId => ipcRenderer.invoke('hermes:local:action:open-result', taskId),
+     logs: (name, lines) => ipcRenderer.invoke('hermes:local:logs', name, lines),
+     saveProfile: (profile, originalName) => ipcRenderer.invoke('hermes:local:profile:save', profile, originalName),
+     deleteProfile: name => ipcRenderer.invoke('hermes:local:profile:delete', name),
+diff --git a/apps/desktop/src/app/chat/sidebar/index.tsx b/apps/desktop/src/app/chat/sidebar/index.tsx
+index aad405012..d1c5f70d2 100644
+--- a/apps/desktop/src/app/chat/sidebar/index.tsx
++++ b/apps/desktop/src/app/chat/sidebar/index.tsx
+@@ -380,6 +380,37 @@ export function ChatSidebar({
+     [navContributions]
+   )
+ 
++  const [activeTaskCount, setActiveTaskCount] = useState(0)
++
++  useEffect(() => {
++    let mounted = true
++
++    const loadActiveTasks = async () => {
++      try {
++        const tasks = await window.hermesDesktop.localWorkstation.listActions()
++
++        if (mounted) {
++          setActiveTaskCount(
++            tasks.filter(task => task.status === 'queued' || task.status === 'running' || task.status === 'cancelling')
++              .length
++          )
++        }
++      } catch {
++        if (mounted) {
++          setActiveTaskCount(0)
++        }
++      }
++    }
++
++    void loadActiveTasks()
++    const timer = window.setInterval(() => void loadActiveTasks(), 2000)
++
++    return () => {
++      mounted = false
++      window.clearInterval(timer)
++    }
++  }, [])
++
+   const panesFlipped = useStore($panesFlipped)
+   const agentsGrouped = useStore($sidebarAgentsGrouped)
+   const pinnedSessionIds = useStore($pinnedSessionIds)
+@@ -1275,6 +1306,14 @@ export function ChatSidebar({
+                   >
+                     <item.icon className="size-4 shrink-0 text-[color-mix(in_srgb,currentColor_72%,transparent)]" />
+                     <span className="min-w-0 flex-1 truncate">{s.nav[item.id] ?? item.label}</span>
++                    {item.id === 'tasks' && activeTaskCount > 0 && (
++                      <span
++                        aria-label={`${activeTaskCount} active task${activeTaskCount === 1 ? '' : 's'}`}
++                        className="grid min-w-5 place-items-center rounded-md bg-(--ui-accent) px-1.5 font-mono text-[0.625rem] font-semibold text-white"
++                      >
++                        {activeTaskCount > 99 ? '99+' : activeTaskCount}
++                      </span>
++                    )}
+                     {isNewSession && (
+                       <KbdGroup
+                         className={cn('ml-auto opacity-55', newSessionKbdFlash && 'opacity-100!')}
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index ed8997711..6ef487692 100644
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -33,6 +33,7 @@ import { Button } from '@/components/ui/button'
+ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+ import { cn } from '@/lib/utils'
+ 
++import { TaskCentre } from './task-centre'
+ import type {
+   HermesLocalDashboardBounds,
+   HermesLocalDashboardState,
+@@ -59,7 +60,7 @@ const SECTION_COPY = {
+   security: ['Security', 'Loopback trust boundaries, audits and remediation evidence.'],
+   sessions: ['Sessions', 'Resume and manage persistent local Hermes conversations.'],
+   services: ['Services', 'Structured health, process ownership and lifecycle controls.'],
+-  tasks: ['Tasks', 'The live implementation and release ledger.']
++  tasks: ['Tasks', 'Background operations, progress and recovery history.']
+ } as const
+ 
+ type Section = keyof typeof SECTION_COPY
+@@ -153,18 +154,19 @@ function ActionButton({
+   available,
+   children,
+   onRun,
+-  task,
++  tasks,
+   variant = 'outline'
+ }: {
+   action: LocalAction
+   available: boolean
+   children: ReactNode
+   onRun: (action: LocalAction) => void
+-  task: LocalActionTask | null
++  tasks: LocalActionTask[]
+   variant?: 'default' | 'destructive' | 'outline'
+ }) {
+-  const active = task?.status === 'queued' || task?.status === 'running' || task?.status === 'cancelling'
+-  const busy = task?.action === action && active
++  const busy = tasks.some(
++    task => task.action === action && (task.status === 'queued' || task.status === 'running' || task.status === 'cancelling')
++  )
+ 
+   return (
+     <Button
+@@ -860,13 +862,11 @@ function LogViewer() {
+ function HomeContent({
+   onNavigate,
+   onRun,
+-  snapshot,
+-  task
++  snapshot
+ }: {
+   onNavigate: (path: string) => void
+   onRun: (action: LocalAction) => void
+   snapshot: LocalWorkstationSnapshot
+-  task: LocalActionTask | null
+ }) {
+   const status = deriveLocalWorkstationStatus(snapshot)
+   const stackRunning = status.stackRunning
+@@ -897,7 +897,7 @@ function HomeContent({
+           <div className="flex flex-wrap gap-2 md:justify-end">
+             {stackRunning ? (
+               <>
+-                <ActionButton action="restart" available={snapshot.actions.restart} onRun={onRun} task={task}>
++                <ActionButton action="restart" available={snapshot.actions.restart} onRun={onRun} tasks={snapshot.tasks}>
+                   <IconRefresh className="size-3.5" />
+                   Restart
+                 </ActionButton>
+@@ -905,7 +905,7 @@ function HomeContent({
+                   action="stop"
+                   available={snapshot.actions.stop}
+                   onRun={onRun}
+-                  task={task}
++                  tasks={snapshot.tasks}
+                   variant="destructive"
+                 >
+                   <IconSquare className="size-3.5" />
+@@ -917,7 +917,7 @@ function HomeContent({
+                 action="start"
+                 available={snapshot.actions.start}
+                 onRun={onRun}
+-                task={task}
++                tasks={snapshot.tasks}
+                 variant="default"
+               >
+                 <IconPlayerPlay className="size-3.5" />
+@@ -1212,37 +1212,39 @@ function SectionContent({
+   onCreateProfile,
+   onDeleteProfile,
+   onNavigate,
++  onRefresh,
+   onRegisterModel,
+   onRemoveModel,
+   onRun,
+   onSaveProfile,
+   onSaveSettings,
+   onSetLaunchAtLogin,
++  onTaskError,
+   onSelectModel,
+   onSelectProfile,
+   section,
+   selectedProfile,
+-  snapshot,
+-  task
++  snapshot
+ }: {
+   onCreateProfile: (profile: LocalInferenceProfile) => Promise<void>
+   onDeleteProfile: (name: string) => Promise<void>
+   onNavigate: (path: string) => void
++  onRefresh: () => void
+   onRegisterModel: (model: Partial<LocalModel> & { localPath: string }) => Promise<void>
+   onRemoveModel: (id: string) => Promise<void>
+   onRun: (action: LocalAction) => void
+   onSaveProfile: (profile: LocalInferenceProfile, originalName: string) => Promise<void>
+   onSaveSettings: (settings: Partial<LocalWorkstationSettings>) => Promise<void>
+   onSetLaunchAtLogin: (enabled: boolean) => Promise<void>
++  onTaskError: (message: string) => void
+   onSelectModel: (id: string) => Promise<void>
+   onSelectProfile: (name: string) => Promise<void>
+   section: Section
+   selectedProfile: string
+   snapshot: LocalWorkstationSnapshot
+-  task: LocalActionTask | null
+ }) {
+   if (section === 'home') {
+-    return <HomeContent onNavigate={onNavigate} onRun={onRun} snapshot={snapshot} task={task} />
++    return <HomeContent onNavigate={onNavigate} onRun={onRun} snapshot={snapshot} />
+   }
+ 
+   if (section === 'sessions' || section === 'projects') {
+@@ -1290,6 +1292,11 @@ function SectionContent({
+   }
+ 
+   if (section === 'services') {
++    const latestTask =
++      snapshot.tasks.findLast(
++        candidate => candidate.status === 'queued' || candidate.status === 'running' || candidate.status === 'cancelling'
++      ) || snapshot.tasks.at(-1)
++
+     return (
+       <div className="space-y-4">
+         <Surface>
+@@ -1314,45 +1321,45 @@ function SectionContent({
+         </Surface>
+         <Surface>
+           <div className="flex flex-wrap gap-2 p-4">
+-            <ActionButton action="start" available={snapshot.actions.start} onRun={onRun} task={task}>
++            <ActionButton action="start" available={snapshot.actions.start} onRun={onRun} tasks={snapshot.tasks}>
+               <IconPlayerPlay className="size-3.5" /> Start
+             </ActionButton>
+-            <ActionButton action="restart" available={snapshot.actions.restart} onRun={onRun} task={task}>
++            <ActionButton action="restart" available={snapshot.actions.restart} onRun={onRun} tasks={snapshot.tasks}>
+               <IconRefresh className="size-3.5" /> Restart
+             </ActionButton>
+             <ActionButton
+               action="stop"
+               available={snapshot.actions.stop}
+               onRun={onRun}
+-              task={task}
++              tasks={snapshot.tasks}
+               variant="destructive"
+             >
+               <IconSquare className="size-3.5" /> Stop
+             </ActionButton>
+-            <ActionButton action="repair" available={snapshot.actions.repair} onRun={onRun} task={task}>
++            <ActionButton action="repair" available={snapshot.actions.repair} onRun={onRun} tasks={snapshot.tasks}>
+               <IconRestore className="size-3.5" /> Repair
+             </ActionButton>
+-            <ActionButton action="test" available={snapshot.actions.test} onRun={onRun} task={task}>
++            <ActionButton action="test" available={snapshot.actions.test} onRun={onRun} tasks={snapshot.tasks}>
+               <IconActivityHeartbeat className="size-3.5" /> Run tests
+             </ActionButton>
+-            <ActionButton action="diagnostics" available={snapshot.actions.diagnostics} onRun={onRun} task={task}>
++            <ActionButton action="diagnostics" available={snapshot.actions.diagnostics} onRun={onRun} tasks={snapshot.tasks}>
+               <IconFileAnalytics className="size-3.5" /> Export diagnostics
+             </ActionButton>
+-            <ActionButton action="update" available={snapshot.actions.update} onRun={onRun} task={task}>
++            <ActionButton action="update" available={snapshot.actions.update} onRun={onRun} tasks={snapshot.tasks}>
+               <IconRefresh className="size-3.5" /> Check updates
+             </ActionButton>
+-            <ActionButton action="backup" available={snapshot.actions.backup} onRun={onRun} task={task}>
++            <ActionButton action="backup" available={snapshot.actions.backup} onRun={onRun} tasks={snapshot.tasks}>
+               <IconDatabase className="size-3.5" /> Back up
+             </ActionButton>
+           </div>
+-          {task && (
++          {latestTask && (
+             <div className="border-t border-(--ui-stroke-secondary) px-4 py-3">
+               <p className="text-xs font-semibold">
+-                {task.action} · {task.status}
++                {latestTask.action} · {latestTask.status}
+               </p>
+-              {task.output && (
++              {latestTask.output && (
+                 <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-[#111315] p-3 font-mono text-[0.6875rem] text-[#d9dde3]">
+-                  {task.output}
++                  {latestTask.output}
+                 </pre>
+               )}
+             </div>
+@@ -1478,33 +1485,25 @@ function SectionContent({
+   }
+ 
+   if (section === 'tasks') {
+-    const rows = snapshot.taskLedger.split(/\r?\n/).filter(line => /^- \[[ x]\]/i.test(line.trim()))
+-
+     return (
+-      <Surface title="Implementation ledger">
+-        <div className="divide-y divide-(--ui-stroke-secondary)">
+-          {rows.map((line, index) => {
+-            const done = /^- \[x\]/i.test(line.trim())
+-            const label = line.replace(/^- \[[ x]\]\s*/i, '')
+-
+-            return (
+-              <div className="flex items-start gap-3 px-4 py-3" key={`${index}-${label}`}>
+-                <span
+-                  className={cn(
+-                    'mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border',
+-                    done
+-                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-500'
+-                      : 'border-(--ui-stroke-primary) text-(--ui-text-tertiary)'
+-                  )}
+-                >
+-                  {done && <IconCheck className="size-2.5" stroke={2.5} />}
+-                </span>
+-                <span className={cn('text-xs leading-5', done && 'text-(--ui-text-tertiary)')}>{label}</span>
+-              </div>
+-            )
+-          })}
+-        </div>
+-      </Surface>
++      <TaskCentre
++        modelName={snapshot.model.displayName}
++        onCancel={async taskId => {
++          await window.hermesDesktop.localWorkstation.cancelAction(taskId)
++          onRefresh()
++        }}
++        onError={onTaskError}
++        onNavigate={onNavigate}
++        onOpenResult={async taskId => {
++          await window.hermesDesktop.localWorkstation.openActionResult(taskId)
++        }}
++        onRetry={async taskId => {
++          await window.hermesDesktop.localWorkstation.retryAction(taskId)
++          onRefresh()
++        }}
++        profileName={snapshot.runtime.profile || snapshot.profiles?.selected || ''}
++        tasks={snapshot.tasks}
++      />
+     )
+   }
+ 
+@@ -1535,7 +1534,7 @@ function SectionContent({
+             </p>
+             <div className="mt-4 flex items-center gap-2">
+               <StatusPill label={reportReady ? 'Latest report available' : 'Report pending'} ok={reportReady} />
+-              <ActionButton action={action} available={snapshot.actions[action]} onRun={onRun} task={task}>
++              <ActionButton action={action} available={snapshot.actions[action]} onRun={onRun} tasks={snapshot.tasks}>
+                 {isSecurity ? <IconShieldCheck className="size-3.5" /> : <IconBolt className="size-3.5" />}
+                 Run {isSecurity ? 'scan' : 'benchmark'}
+               </ActionButton>
+@@ -1670,7 +1669,6 @@ export function LocalWorkstationView() {
+   const section: Section = routeSection in SECTION_COPY ? routeSection : 'home'
+   const [snapshot, setSnapshot] = useState<LocalWorkstationSnapshot | null>(null)
+   const [error, setError] = useState('')
+-  const [task, setTask] = useState<LocalActionTask | null>(null)
+   const [profileView, setProfileView] = useState('')
+   const [refreshing, setRefreshing] = useState(false)
+   const [refreshVersion, setRefreshVersion] = useState(0)
+@@ -1694,13 +1692,7 @@ export function LocalWorkstationView() {
+           return
+         }
+ 
+-        const recoveredTask = next.tasks.findLast(
+-          candidate =>
+-            candidate.status === 'queued' || candidate.status === 'running' || candidate.status === 'cancelling'
+-        )
+-
+         setSnapshot(next)
+-        setTask(recoveredTask || next.tasks.at(-1) || null)
+         setProfileView(current =>
+           next.profiles?.profiles.some(profile => profile.name === current) ? current : next.profiles?.selected || ''
+         )
+@@ -1730,18 +1722,9 @@ export function LocalWorkstationView() {
+       }
+ 
+       try {
+-        let next = await window.hermesDesktop.localWorkstation.startAction(action, {
++        await window.hermesDesktop.localWorkstation.startAction(action, {
+           profile: snapshot.profiles?.selected
+         })
+-
+-        setTask(next)
+-
+-        while (next.status === 'queued' || next.status === 'running' || next.status === 'cancelling') {
+-          await new Promise(resolve => window.setTimeout(resolve, 800))
+-          next = await window.hermesDesktop.localWorkstation.actionStatus(next.id)
+-          setTask(next)
+-        }
+-
+         refresh()
+       } catch (nextError) {
+         setError(nextError instanceof Error ? nextError.message : String(nextError))
+@@ -1930,6 +1913,7 @@ export function LocalWorkstationView() {
+             onCreateProfile={createProfile}
+             onDeleteProfile={deleteProfile}
+             onNavigate={navigate}
++            onRefresh={refresh}
+             onRegisterModel={registerModel}
+             onRemoveModel={removeModel}
+             onRun={action => void run(action)}
+@@ -1938,10 +1922,10 @@ export function LocalWorkstationView() {
+             onSelectModel={selectModel}
+             onSelectProfile={selectProfile}
+             onSetLaunchAtLogin={setLaunchAtLogin}
++            onTaskError={setError}
+             section={section}
+             selectedProfile={profileView}
+             snapshot={snapshot}
+-            task={task}
+           />
+         </div>
+       </div>
+diff --git a/apps/desktop/src/app/local-workstation/task-centre.test.tsx b/apps/desktop/src/app/local-workstation/task-centre.test.tsx
+new file mode 100644
+index 000000000..095c62b23
+--- /dev/null
++++ b/apps/desktop/src/app/local-workstation/task-centre.test.tsx
+@@ -0,0 +1,136 @@
++import { fireEvent, render, screen, waitFor } from '@testing-library/react'
++import { describe, expect, it, vi } from 'vitest'
++
++import { filterTasks, TaskCentre, taskElapsed } from './task-centre'
++import type { LocalActionTask } from './types'
++
++function task(overrides: Partial<LocalActionTask> = {}): LocalActionTask {
++  return {
++    action: 'benchmark',
++    capabilities: { cancel: true, pause: false, resume: false, retry: false },
++    completedAt: null,
++    conflictPolicy: 'reject',
++    createdAt: '2026-08-01T10:00:00.000Z',
++    exitCode: null,
++    failure: null,
++    id: 'benchmark-running',
++    output: 'Preparing benchmark',
++    outputTruncated: false,
++    owner: { kind: 'desktop-child-process', pid: 4242 },
++    queuedAt: '2026-08-01T10:00:00.000Z',
++    resources: [{ mode: 'exclusive', resource: 'model-runtime' }],
++    result: null,
++    schemaVersion: 1,
++    startedAt: '2026-08-01T10:00:01.000Z',
++    status: 'running',
++    updatedAt: '2026-08-01T10:00:02.000Z',
++    ...overrides
++  }
++}
++
++describe('Task Centre', () => {
++  it('filters authoritative task records without changing their state', () => {
++    const tasks = [
++      task(),
++      task({ id: 'queued', startedAt: null, status: 'queued' }),
++      task({
++        capabilities: { cancel: false, pause: false, resume: false, retry: true },
++        completedAt: '2026-08-01T10:02:00.000Z',
++        failure: { code: 'process-exit', message: 'Process failed' },
++        id: 'failed',
++        status: 'failed'
++      })
++    ]
++
++    expect(filterTasks(tasks, 'active').map(item => item.id)).toEqual(['benchmark-running', 'queued'])
++    expect(filterTasks(tasks, 'failed').map(item => item.id)).toEqual(['failed'])
++    expect(tasks.map(item => item.status)).toEqual(['running', 'queued', 'failed'])
++  })
++
++  it('formats elapsed time from authoritative lifecycle timestamps', () => {
++    expect(taskElapsed(task(), Date.parse('2026-08-01T10:01:12.000Z'))).toBe('1m 11s')
++    expect(
++      taskElapsed(
++        task({ completedAt: '2026-08-01T12:05:00.000Z', status: 'succeeded' }),
++        Date.parse('2026-08-01T15:00:00.000Z')
++      )
++    ).toBe('2h 4m')
++  })
++
++  it('keeps an empty filtered list and detail pane consistent', () => {
++    render(
++      <TaskCentre
++        modelName="Portable model"
++        onCancel={vi.fn(async () => undefined)}
++        onError={vi.fn()}
++        onNavigate={vi.fn()}
++        onOpenResult={vi.fn(async () => undefined)}
++        onRetry={vi.fn(async () => undefined)}
++        profileName="Balanced"
++        tasks={[task()]}
++      />
++    )
++
++    fireEvent.click(screen.getByRole('tab', { name: 'Failed (0)' }))
++
++    expect(screen.getAllByText('No failed tasks')).toHaveLength(2)
++    expect(screen.queryByRole('heading', { name: 'Benchmark' })).toBeNull()
++  })
++
++  it('supports arrow-key navigation across task filters', () => {
++    render(
++      <TaskCentre
++        modelName="Portable model"
++        onCancel={vi.fn(async () => undefined)}
++        onError={vi.fn()}
++        onNavigate={vi.fn()}
++        onOpenResult={vi.fn(async () => undefined)}
++        onRetry={vi.fn(async () => undefined)}
++        profileName="Balanced"
++        tasks={[task()]}
++      />
++    )
++
++    fireEvent.keyDown(screen.getByRole('tab', { name: 'All (1)' }), { key: 'ArrowRight' })
++
++    expect(screen.getByRole('tab', { name: 'Active (1)' }).getAttribute('aria-selected')).toBe('true')
++    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe('task-filter-active')
++  })
++
++  it('shows capability-gated controls and retries a selected failed task', async () => {
++    const retry = vi.fn(async () => undefined)
++
++    const failed = task({
++      action: 'security',
++      capabilities: { cancel: false, pause: false, resume: false, retry: true },
++      completedAt: '2026-08-01T10:02:00.000Z',
++      createdAt: '2026-08-01T10:01:00.000Z',
++      failure: { code: 'scan-failed', message: 'Scan found a blocking issue' },
++      id: 'security-failed',
++      status: 'failed'
++    })
++
++    render(
++      <TaskCentre
++        modelName="Portable model"
++        onCancel={vi.fn(async () => undefined)}
++        onError={vi.fn()}
++        onNavigate={vi.fn()}
++        onOpenResult={vi.fn(async () => undefined)}
++        onRetry={retry}
++        profileName="Balanced"
++        tasks={[task(), failed]}
++      />
++    )
++
++    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Cancel' }).disabled).toBe(false)
++    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Pause' }).disabled).toBe(true)
++    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Resume' }).disabled).toBe(true)
++
++    fireEvent.click(screen.getByRole('button', { name: /Security scan/ }))
++    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Cancel' }).disabled).toBe(true)
++    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
++
++    await waitFor(() => expect(retry).toHaveBeenCalledWith('security-failed'))
++  })
++})
+diff --git a/apps/desktop/src/app/local-workstation/task-centre.tsx b/apps/desktop/src/app/local-workstation/task-centre.tsx
+new file mode 100644
+index 000000000..97d765547
+--- /dev/null
++++ b/apps/desktop/src/app/local-workstation/task-centre.tsx
+@@ -0,0 +1,484 @@
++import {
++  IconAlertTriangle,
++  IconBan,
++  IconCheck,
++  IconClock,
++  IconExternalLink,
++  IconFile,
++  IconLoader2,
++  IconPlayerPause,
++  IconPlayerPlay,
++  IconRefresh,
++  IconServer,
++  IconStack2,
++  IconX
++} from '@tabler/icons-react'
++import { useMemo, useState } from 'react'
++
++import { Button } from '@/components/ui/button'
++import { cn } from '@/lib/utils'
++
++import type { LocalActionTask } from './types'
++
++export type TaskFilter = 'active' | 'all' | 'cancelled' | 'completed' | 'failed' | 'queued'
++
++export const TASK_FILTERS: { id: TaskFilter; label: string }[] = [
++  { id: 'all', label: 'All' },
++  { id: 'active', label: 'Active' },
++  { id: 'queued', label: 'Queued' },
++  { id: 'completed', label: 'Completed' },
++  { id: 'failed', label: 'Failed' },
++  { id: 'cancelled', label: 'Cancelled' }
++]
++
++const activeStates = new Set<LocalActionTask['status']>(['cancelling', 'queued', 'running'])
++
++const ACTION_COPY: Record<LocalActionTask['action'], { feature: string; label: string; route: string }> = {
++  backup: { feature: 'Services', label: 'Backup', route: '/services' },
++  benchmark: { feature: 'Benchmarks', label: 'Benchmark', route: '/benchmarks' },
++  diagnostics: { feature: 'Services', label: 'Diagnostics', route: '/services' },
++  repair: { feature: 'Services', label: 'Repair', route: '/services' },
++  restart: { feature: 'Services', label: 'Restart', route: '/services' },
++  security: { feature: 'Security', label: 'Security scan', route: '/security' },
++  start: { feature: 'Services', label: 'Start', route: '/services' },
++  stop: { feature: 'Services', label: 'Stop', route: '/services' },
++  test: { feature: 'Services', label: 'Tests', route: '/services' },
++  update: { feature: 'Services', label: 'Update check', route: '/services' }
++}
++
++const STATUS_COPY: Record<LocalActionTask['status'], string> = {
++  cancelled: 'Cancelled',
++  cancelling: 'Cancelling',
++  failed: 'Failed',
++  interrupted: 'Interrupted',
++  queued: 'Queued',
++  running: 'Running',
++  succeeded: 'Completed'
++}
++
++function timestamp(value: null | string): number {
++  const parsed = Date.parse(value || '')
++
++  return Number.isFinite(parsed) ? parsed : 0
++}
++
++function taskMatchesFilter(task: LocalActionTask, filter: TaskFilter): boolean {
++  if (filter === 'active') {return activeStates.has(task.status)}
++
++  if (filter === 'queued') {return task.status === 'queued'}
++
++  if (filter === 'completed') {return task.status === 'succeeded'}
++
++  if (filter === 'failed') {return task.status === 'failed' || task.status === 'interrupted'}
++
++  if (filter === 'cancelled') {return task.status === 'cancelled'}
++
++  return true
++}
++
++export function filterTasks(tasks: LocalActionTask[], filter: TaskFilter): LocalActionTask[] {
++  return [...tasks]
++    .filter(task => taskMatchesFilter(task, filter))
++    .sort((left, right) => timestamp(right.createdAt) - timestamp(left.createdAt))
++}
++
++export function taskElapsed(task: LocalActionTask, now = Date.now()): string {
++  const start = timestamp(task.startedAt || task.queuedAt || task.createdAt)
++  const end = timestamp(task.completedAt) || now
++  const seconds = Math.max(0, Math.floor((end - start) / 1000))
++  const hours = Math.floor(seconds / 3600)
++  const minutes = Math.floor((seconds % 3600) / 60)
++  const remainder = seconds % 60
++
++  if (hours) {return `${hours}h ${minutes}m`}
++
++  if (minutes) {return `${minutes}m ${remainder}s`}
++
++  return `${remainder}s`
++}
++
++function relativeTime(value: string, now = Date.now()): string {
++  const seconds = Math.max(0, Math.floor((now - timestamp(value)) / 1000))
++
++  if (seconds < 60) {return `${seconds}s ago`}
++
++  if (seconds < 3600) {return `${Math.floor(seconds / 60)}m ago`}
++
++  if (seconds < 86_400) {return `${Math.floor(seconds / 3600)}h ago`}
++
++  return `${Math.floor(seconds / 86_400)}d ago`
++}
++
++function taskStage(task: LocalActionTask): string {
++  if (task.status === 'queued') {return 'Waiting for resources'}
++
++  if (task.status === 'cancelling') {return 'Stopping owned process'}
++
++  if (task.status === 'running') {return `${ACTION_COPY[task.action].label} in progress`}
++
++  if (task.status === 'interrupted') {return 'Owner exited without a conclusive result'}
++
++  if (task.status === 'failed') {return task.failure?.message || 'Operation failed'}
++
++  if (task.status === 'cancelled') {return 'Cancelled safely'}
++
++  return 'Operation completed'
++}
++
++function taskSummary(task: LocalActionTask): string {
++  if (task.failure?.message) {return task.failure.message}
++
++  if (task.result?.path) {return task.result.path}
++
++  const line = task.output
++    .split(/\r?\n/)
++    .map(value => value.trim())
++    .filter(Boolean)
++    .at(-1)
++
++  return line || taskStage(task)
++}
++
++function statusTone(status: LocalActionTask['status']): string {
++  if (status === 'succeeded') {return 'text-emerald-500'}
++
++  if (status === 'failed') {return 'text-red-500'}
++
++  if (status === 'interrupted' || status === 'cancelled') {return 'text-amber-500'}
++
++  if (status === 'queued' || status === 'cancelling') {return 'text-amber-500'}
++
++  return 'text-(--ui-accent)'
++}
++
++function StatusIcon({ status }: { status: LocalActionTask['status'] }) {
++  if (status === 'running' || status === 'cancelling') {
++    return <IconLoader2 className="size-4 animate-spin motion-reduce:animate-none" />
++  }
++
++  if (status === 'succeeded') {return <IconCheck className="size-4" />}
++
++  if (status === 'failed' || status === 'interrupted') {return <IconAlertTriangle className="size-4" />}
++
++  if (status === 'cancelled') {return <IconBan className="size-4" />}
++
++  return <IconClock className="size-4" />
++}
++
++function DetailRow({ children, icon: Icon, label }: { children: React.ReactNode; icon: typeof IconClock; label: string }) {
++  return (
++    <div className="grid gap-1 border-b border-(--ui-stroke-secondary) px-4 py-3 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center">
++      <div className="flex items-center gap-2 text-xs font-medium text-(--ui-text-tertiary)">
++        <Icon className="size-3.5" stroke={1.7} />
++        {label}
++      </div>
++      <div className="min-w-0 text-xs text-(--ui-text-secondary)">{children}</div>
++    </div>
++  )
++}
++
++interface TaskCentreProps {
++  modelName: string
++  onCancel: (taskId: string) => Promise<void>
++  onError: (message: string) => void
++  onNavigate: (path: string) => void
++  onOpenResult: (taskId: string) => Promise<void>
++  onRetry: (taskId: string) => Promise<void>
++  profileName: string
++  tasks: LocalActionTask[]
++}
++
++export function TaskCentre({
++  modelName,
++  onCancel,
++  onError,
++  onNavigate,
++  onOpenResult,
++  onRetry,
++  profileName,
++  tasks
++}: TaskCentreProps) {
++  const [filter, setFilter] = useState<TaskFilter>('all')
++  const [pendingControl, setPendingControl] = useState('')
++  const [selectedTaskId, setSelectedTaskId] = useState('')
++  const visibleTasks = useMemo(() => filterTasks(tasks, filter), [filter, tasks])
++
++  const filterCounts = useMemo(
++    () => Object.fromEntries(TASK_FILTERS.map(item => [item.id, tasks.filter(task => taskMatchesFilter(task, item.id)).length])),
++    [tasks]
++  )
++
++  const selected =
++    visibleTasks.find(task => task.id === selectedTaskId) ||
++    visibleTasks.find(task => task.status === 'running' || task.status === 'cancelling') ||
++    visibleTasks[0]
++
++  const moveFilterFocus = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
++    let nextIndex = index
++
++    if (event.key === 'ArrowRight') {
++      nextIndex = (index + 1) % TASK_FILTERS.length
++    } else if (event.key === 'ArrowLeft') {
++      nextIndex = (index - 1 + TASK_FILTERS.length) % TASK_FILTERS.length
++    } else if (event.key === 'Home') {
++      nextIndex = 0
++    } else if (event.key === 'End') {
++      nextIndex = TASK_FILTERS.length - 1
++    } else {
++      return
++    }
++
++    event.preventDefault()
++    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus()
++    setFilter(TASK_FILTERS[nextIndex].id)
++  }
++
++  const invoke = async (key: string, operation: () => Promise<void>) => {
++    setPendingControl(key)
++
++    try {
++      await operation()
++    } catch (error) {
++      onError(error instanceof Error ? error.message : String(error))
++    } finally {
++      setPendingControl('')
++    }
++  }
++
++  return (
++    <div className="space-y-4">
++      <div className="flex gap-1 overflow-x-auto border-b border-(--ui-stroke-secondary)" role="tablist">
++        {TASK_FILTERS.map((item, index) => {
++          const count = filterCounts[item.id]
++
++          return (
++            <button
++              aria-controls="task-centre-panel"
++              aria-label={`${item.label} (${count})`}
++              aria-selected={filter === item.id}
++              className={cn(
++                'relative shrink-0 px-3 py-2.5 text-xs font-medium text-(--ui-text-tertiary) transition-colors hover:text-(--ui-text-primary)',
++                filter === item.id && 'text-(--ui-text-primary) after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:bg-(--ui-accent)'
++              )}
++              id={`task-filter-${item.id}`}
++              key={item.id}
++              onClick={() => setFilter(item.id)}
++              onKeyDown={event => moveFilterFocus(event, index)}
++              role="tab"
++              tabIndex={filter === item.id ? 0 : -1}
++              type="button"
++            >
++              {item.label}
++              {count > 0 && <span className="ml-1.5 font-mono text-[0.625rem] text-(--ui-text-tertiary)">{count}</span>}
++            </button>
++          )
++        })}
++      </div>
++
++      <div
++        aria-labelledby={`task-filter-${filter}`}
++        className="grid min-h-[34rem] gap-4 lg:grid-cols-[minmax(18rem,0.78fr)_minmax(0,1.5fr)]"
++        id="task-centre-panel"
++        role="tabpanel"
++      >
++        <section className="overflow-hidden rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-panel-surface-background)">
++          <header className="border-b border-(--ui-stroke-secondary) px-4 py-3 text-xs text-(--ui-text-tertiary)">
++            {visibleTasks.length} task{visibleTasks.length === 1 ? '' : 's'}
++          </header>
++          <div className="max-h-[32rem] overflow-y-auto lg:max-h-none">
++            {visibleTasks.length === 0 ? (
++              <div className="grid min-h-52 place-items-center px-6 text-center">
++                <div>
++                  <IconStack2 className="mx-auto size-6 text-(--ui-text-tertiary)" stroke={1.5} />
++                  <p className="mt-3 text-sm font-medium">No {TASK_FILTERS.find(item => item.id === filter)?.label.toLowerCase()} tasks</p>
++                  <p className="mt-1 text-xs text-(--ui-text-tertiary)">Task history will appear here automatically.</p>
++                </div>
++              </div>
++            ) : (
++              visibleTasks.map(task => {
++                const active = selected?.id === task.id
++
++                return (
++                  <button
++                    aria-current={active ? 'true' : undefined}
++                    className={cn(
++                      'block w-full border-b border-(--ui-stroke-secondary) px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-(--ui-control-hover-background)',
++                      active && 'bg-(--ui-control-active-background) shadow-[inset_2px_0_var(--ui-accent)]'
++                    )}
++                    key={task.id}
++                    onClick={() => setSelectedTaskId(task.id)}
++                    type="button"
++                  >
++                    <div className="flex items-center gap-2">
++                      <span className={cn('shrink-0', statusTone(task.status))}>
++                        <StatusIcon status={task.status} />
++                      </span>
++                      <span className="min-w-0 flex-1 truncate text-[0.8125rem] font-semibold">
++                        {ACTION_COPY[task.action].label}
++                      </span>
++                      <span className={cn('text-[0.6875rem] font-medium', statusTone(task.status))}>
++                        {STATUS_COPY[task.status]}
++                      </span>
++                      <span className="shrink-0 font-mono text-[0.625rem] text-(--ui-text-tertiary)">
++                        {activeStates.has(task.status) ? taskElapsed(task) : relativeTime(task.completedAt || task.updatedAt)}
++                      </span>
++                    </div>
++                    <p className="mt-1 truncate pl-6 text-[0.6875rem] text-(--ui-text-tertiary)">{taskSummary(task)}</p>
++                  </button>
++                )
++              })
++            )}
++          </div>
++        </section>
++
++        <section className="overflow-hidden rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-panel-surface-background)">
++          {!selected ? (
++            <div className="grid min-h-[34rem] place-items-center px-6 text-center">
++              <div>
++                <IconStack2 className="mx-auto size-7 text-(--ui-text-tertiary)" stroke={1.5} />
++                <h3 className="mt-3 text-sm font-semibold">
++                  {tasks.length ? `No ${filter === 'all' ? 'matching' : filter} tasks` : 'No task history yet'}
++                </h3>
++                <p className="mt-1 max-w-sm text-xs leading-5 text-(--ui-text-tertiary)">
++                  {tasks.length
++                    ? 'Choose another filter to inspect task progress, output and recovery evidence.'
++                    : 'Workstation actions will publish progress, output and recovery evidence here.'}
++                </p>
++              </div>
++            </div>
++          ) : (
++            <>
++              <header className="flex flex-wrap items-center gap-3 border-b border-(--ui-stroke-secondary) px-4 py-4">
++                <span className={cn('grid size-8 place-items-center rounded-lg bg-(--ui-control-background)', statusTone(selected.status))}>
++                  <StatusIcon status={selected.status} />
++                </span>
++                <div className="min-w-0 flex-1">
++                  <div className="flex flex-wrap items-center gap-2">
++                    <h3 className="text-base font-semibold">{ACTION_COPY[selected.action].label}</h3>
++                    <span className={cn('text-xs font-medium', statusTone(selected.status))}>{STATUS_COPY[selected.status]}</span>
++                  </div>
++                  <p className="mt-0.5 truncate text-xs text-(--ui-text-tertiary)">{taskStage(selected)}</p>
++                </div>
++                <div className="flex flex-wrap gap-2">
++                  <Button
++                    className="h-8 gap-1.5 px-3 text-xs"
++                    disabled={!selected.capabilities.cancel || Boolean(pendingControl)}
++                    onClick={() => void invoke('cancel', () => onCancel(selected.id))}
++                    size="sm"
++                    title={selected.capabilities.cancel ? 'Cancel this owned process' : 'Cancellation is unavailable for this owner or state'}
++                    variant="outline"
++                  >
++                    {pendingControl === 'cancel' ? <IconLoader2 className="size-3.5 animate-spin" /> : <IconX className="size-3.5" />}
++                    Cancel
++                  </Button>
++                  <Button className="h-8 gap-1.5 px-3 text-xs" disabled size="sm" title="Pause is not supported by this action" variant="outline">
++                    <IconPlayerPause className="size-3.5" /> Pause
++                  </Button>
++                  <Button className="h-8 gap-1.5 px-3 text-xs" disabled size="sm" title="Resume is not supported by this action" variant="outline">
++                    <IconPlayerPlay className="size-3.5" /> Resume
++                  </Button>
++                  {selected.capabilities.retry && (
++                    <Button
++                      className="h-8 gap-1.5 px-3 text-xs"
++                      disabled={Boolean(pendingControl)}
++                      onClick={() => void invoke('retry', () => onRetry(selected.id))}
++                      size="sm"
++                    >
++                      {pendingControl === 'retry' ? <IconLoader2 className="size-3.5 animate-spin" /> : <IconRefresh className="size-3.5" />}
++                      Retry
++                    </Button>
++                  )}
++                </div>
++              </header>
++
++              <div className="h-1 bg-(--ui-control-background)">
++                <div
++                  className={cn(
++                    'h-full bg-(--ui-accent)',
++                    activeStates.has(selected.status) && 'w-1/3 animate-pulse motion-reduce:animate-none',
++                    selected.status === 'succeeded' && 'w-full bg-emerald-500',
++                    (selected.status === 'failed' || selected.status === 'interrupted') && 'w-full bg-red-500',
++                    selected.status === 'cancelled' && 'w-full bg-amber-500'
++                  )}
++                />
++              </div>
++
++              <DetailRow icon={IconClock} label="Stage">
++                {taskStage(selected)}
++              </DetailRow>
++              <DetailRow icon={IconClock} label="Elapsed">
++                <span className="font-mono">{taskElapsed(selected)}</span>
++              </DetailRow>
++              <DetailRow icon={IconServer} label="Owner">
++                <span className="font-mono">
++                  {selected.owner.kind === 'external-process' ? 'External process' : 'Desktop process'}
++                  {selected.owner.pid ? ` · PID ${selected.owner.pid}` : ''}
++                </span>
++              </DetailRow>
++              <DetailRow icon={IconStack2} label="Project">
++                Hermes Local workstation
++              </DetailRow>
++              <DetailRow icon={IconStack2} label="Model / profile">
++                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
++                  <span>{selected.resources.some(claim => claim.resource === 'model-runtime') ? modelName : 'Not model-bound'}</span>
++                  <span className="text-(--ui-text-tertiary)">/</span>
++                  <span>{profileName || 'Default profile'}</span>
++                </div>
++              </DetailRow>
++              <DetailRow icon={IconStack2} label="Resources">
++                <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[0.6875rem]">
++                  {selected.resources.length
++                    ? selected.resources.map(claim => (
++                        <span key={`${claim.resource}-${claim.mode}`}>{claim.resource} · {claim.mode}</span>
++                      ))
++                    : 'Observational — no exclusive resources'}
++                </div>
++              </DetailRow>
++              <DetailRow icon={IconExternalLink} label="Owner feature">
++                <button
++                  className="inline-flex items-center gap-1 font-medium text-(--ui-accent) hover:underline"
++                  onClick={() => onNavigate(ACTION_COPY[selected.action].route)}
++                  type="button"
++                >
++                  Open {ACTION_COPY[selected.action].feature} <IconExternalLink className="size-3" />
++                </button>
++              </DetailRow>
++
++              <div className="p-4">
++                <div className="flex items-center gap-2">
++                  <h4 className="text-xs font-semibold">Output</h4>
++                  {selected.outputTruncated && <span className="text-[0.625rem] text-amber-500">Earlier output discarded</span>}
++                </div>
++                <pre className="mt-2 max-h-56 min-h-28 overflow-auto whitespace-pre-wrap rounded-lg bg-[#111315] p-3 font-mono text-[0.6875rem] leading-5 text-[#d9dde3]">
++                  {selected.output || 'No output has been recorded for this task.'}
++                </pre>
++              </div>
++
++              <div className="border-t border-(--ui-stroke-secondary) px-4 py-3">
++                <div className="flex flex-wrap items-center gap-3">
++                  <div className="min-w-0 flex-1">
++                    <h4 className="text-xs font-semibold">Result / recovery</h4>
++                    <p className="mt-1 truncate text-[0.6875rem] text-(--ui-text-tertiary)">
++                      {selected.result?.path || selected.failure?.message || 'No result yet. Recovery options appear when the task terminates.'}
++                    </p>
++                  </div>
++                  {selected.result && (
++                    <Button
++                      className="h-8 gap-1.5 px-3 text-xs"
++                      disabled={Boolean(pendingControl)}
++                      onClick={() => void invoke('result', () => onOpenResult(selected.id))}
++                      size="sm"
++                      variant="outline"
++                    >
++                      <IconFile className="size-3.5" /> Open result
++                    </Button>
++                  )}
++                </div>
++              </div>
++            </>
++          )}
++        </section>
++      </div>
++    </div>
++  )
++}
+diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
+index 95bcc5948..095a6279b 100644
+--- a/apps/desktop/src/app/local-workstation/types.ts
++++ b/apps/desktop/src/app/local-workstation/types.ts
+@@ -37,6 +37,12 @@ export type LocalLog = 'dashboard' | 'hermes' | 'launcher' | 'model' | 'security
+ 
+ export interface LocalActionTask {
+   action: LocalAction
++  capabilities: {
++    cancel: boolean
++    pause: boolean
++    resume: boolean
++    retry: boolean
++  }
+   completedAt: null | string
+   conflictPolicy: 'queue' | 'reject'
+   createdAt: string
+diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
+index ef09979b6..b07971eec 100644
+--- a/apps/desktop/src/global.d.ts
++++ b/apps/desktop/src/global.d.ts
+@@ -124,7 +124,9 @@ declare global {
+       }
+       localWorkstation: {
+         actionStatus: (taskId: string) => Promise<LocalActionTask>
++        cancelAction: (taskId: string) => Promise<LocalActionTask>
+         listActions: () => Promise<LocalActionTask[]>
++        openActionResult: (taskId: string) => Promise<{ error: string; ok: boolean; path: string }>
+         loginItem: {
+           get: () => Promise<LocalLoginItemStatus>
+           set: (enabled: boolean) => Promise<LocalLoginItemStatus>
+@@ -149,6 +151,7 @@ declare global {
+         selectProfile: (name: string) => Promise<{ name: string }>
+         snapshot: () => Promise<LocalWorkstationSnapshot>
+         startAction: (action: LocalAction, input?: { profile?: string }) => Promise<LocalActionTask>
++        retryAction: (taskId: string) => Promise<LocalActionTask>
+       }
+       api: <T>(request: HermesApiRequest) => Promise<T>
+       notify: (payload: HermesNotification) => Promise<boolean>
+-- 
+2.55.0.windows.3
+
