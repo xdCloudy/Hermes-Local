@@ -123,13 +123,17 @@ The supervisor checks health every two seconds, requires three consecutive
 failures before recovery and uses exponential backoff with restart-loop
 protection. PID files are treated as hints and checked for staleness.
 
-The Electron workstation controller serializes native actions globally:
-repeating the same action reuses its task, while a different action receives a
-clear busy response. Completed task history is bounded at 50. Concurrent
-snapshot requests share one in-flight read and probe the model at `/health`,
-Hermes at `/api/health`, and the dashboard at `/`. Renderer polling uses
-request generations and mounted-state guards so stale or late results cannot
-replace newer state.
+The Electron workstation controller admits native actions through the
+[versioned task lifecycle and resource-lock model](decisions/0001-task-lifecycle-and-resource-locks.md).
+Repeated non-terminal actions join one task, exclusive maintenance locks the
+workstation, and automatic readiness queues only when its shared workstation
+claim conflicts. Benchmarking owns the model runtime but remains compatible
+with gateway readiness, while observational health and reconnect work never
+acquires task locks. Completed task history is bounded at 50 without pruning
+active work. Concurrent snapshot requests share one in-flight read and probe
+the model at `/health`, Hermes at `/api/health`, and the dashboard at `/`.
+Renderer polling uses request generations and mounted-state guards so stale or
+late results cannot replace newer state.
 
 Profile saves carry both the edited name and the original name. A rename
 replaces the original entry, rejects collisions, and migrates the selected
@@ -142,11 +146,11 @@ option.
 ## Source and update architecture
 
 The official checkout retains `upstream` and pins upstream commit
-`a0222295666558c72cc2b03d69f932801dcf96e6`. Local integration commits live
+`85148f79f78af6c5dafdf0fa4e7545ec7f7a1731`. Local integration commits live
 on `hermes-local-integration`; the ordered mail patch series is under
 `source\hermes-launcher\patches`. Setup can reconstruct the exact recorded
 tree from the pinned upstream commit and verifies the tree hash even when
 local Git committer metadata produces different commit IDs.
 
-The current series contains patches 0001–0026 and reconstructs tree
-`8a6acdf238aff0f2b5cf941dd26dd046a322bb61`.
+The current series contains patches 0001–0028 and reconstructs tree
+`9120b2340daa7b4127983bebb6c41931a6970ef6`.

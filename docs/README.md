@@ -42,6 +42,8 @@ the operational detail, design contracts and validation evidence.
 
 - [Architecture](ARCHITECTURE.md) — components, process ownership, data flow and
   trust boundaries.
+- [Task lifecycle and resource locks](decisions/0001-task-lifecycle-and-resource-locks.md)
+  — authoritative task schema, state machine and admission policy.
 - [Development](DEVELOPMENT.md) — source reconstruction, testing and packaging.
 - [Security](SECURITY.md) — local threat model, controls and reporting.
 - [Upstream compatibility](UPSTREAM_COMPATIBILITY.md) — scheduled candidate

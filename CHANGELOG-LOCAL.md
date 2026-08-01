@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Replaced the desktop's action-name exception with a versioned task schema,
+  explicit state machine and deterministic shared/exclusive resource policy;
+  automatic readiness now queues behind maintenance without blocking benchmark
+  recovery, health reads or reconnects.
 - Rebased the complete Hermes Local integration patch series onto Hermes Agent
   `85148f79` while preserving the newer upstream Desktop architecture and
   dependency locks.
