@@ -93,6 +93,7 @@ jobs:
             --work-dir '.\temp\windows-lifecycle\candidate' `
             --log-dir '.\artifacts\windows-lifecycle\package-logs' `
             --report '.\artifacts\windows-lifecycle\package-report.json' `
+            --keep-workspace `
             --run-desktop-checks `
             --run-python-checks `
             --run-package-checks
