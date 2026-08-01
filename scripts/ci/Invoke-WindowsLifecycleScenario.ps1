@@ -27,6 +27,7 @@ $sandbox = [IO.Path]::GetFullPath($sandboxBase)
 $fixtureRoot = Join-Path $sandbox 'user-owned-data'
 $fixtureManifest = Join-Path $fixtureRoot '.lifecycle-fixture.json'
 $logPath = Join-Path $resolvedEvidence "$Scenario.log"
+$transcriptPath = Join-Path $resolvedEvidence "$Scenario.transcript.log"
 $evidencePath = Join-Path $resolvedEvidence "$Scenario.json"
 $startedAt = (Get-Date).ToUniversalTime().ToString('o')
 $checks = [Collections.Generic.List[string]]::new()
@@ -220,7 +221,7 @@ function Invoke-PhysicalSmoke {
 $null = New-Item -ItemType Directory -Path $resolvedEvidence -Force
 $null = New-Item -ItemType Directory -Path $sandbox -Force
 Set-Content -LiteralPath (Join-Path $sandbox '.hermes-lifecycle-sandbox') -Value $Scenario -Encoding utf8NoBOM
-Start-Transcript -LiteralPath $logPath -Force | Out-Null
+Start-Transcript -LiteralPath $transcriptPath -Force | Out-Null
 
 try {
     Invoke-LifecycleTool -Arguments @('validate')
@@ -305,6 +306,7 @@ if ((Test-Path -LiteralPath $fixtureRoot) -and (Test-Path -LiteralPath $fixtureM
 }
 foreach ($check in $checks) { $arguments += @('--check', $check) }
 foreach ($failure in $failures) { $arguments += @('--failure', $failure) }
+$arguments += @('--log', $transcriptPath)
 if ($skipReason) { $arguments += @('--skip-reason', $skipReason) }
 if ($gpuName) { $arguments += @('--gpu-name', $gpuName) }
 if ($gpuDriver) { $arguments += @('--gpu-driver', $gpuDriver) }
