@@ -1,11 +1,11 @@
-From a001cd0ee3eb0c3335f8aaf2c8393dac868d48f1 Mon Sep 17 00:00:00 2001
+From 91b2f8b4883ee36e05b4dcbf977f9b8fb7e22b01 Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Thu, 30 Jul 2026 05:05:40 +0100
-Subject: [PATCH] fix(desktop): add per-chat project controls
+Subject: [PATCH 16/26] fix(desktop): add per-chat project controls
 
 ---
  apps/desktop/src/app/chat/composer/index.tsx  |  20 +++
- .../composer/status-stack/coding-row.test.tsx |  32 ++++-
+ .../composer/status-stack/coding-row.test.tsx |  33 ++++-
  .../chat/composer/status-stack/coding-row.tsx | 132 ++++++++++++------
  apps/desktop/src/app/chat/composer/types.ts   |   1 +
  apps/desktop/src/app/chat/index.tsx           |   3 +
@@ -27,10 +27,10 @@ Subject: [PATCH] fix(desktop): add per-chat project controls
  tests/test_tui_gateway_server.py              |  55 ++++++++
  tui_gateway/methods_session.py                |  29 ++--
  tui_gateway/server.py                         |  26 +++-
- 23 files changed, 360 insertions(+), 66 deletions(-)
+ 23 files changed, 360 insertions(+), 67 deletions(-)
 
 diff --git a/apps/desktop/src/app/chat/composer/index.tsx b/apps/desktop/src/app/chat/composer/index.tsx
-index cfb5e7518..347f75efb 100644
+index 747177592..f04749039 100644
 --- a/apps/desktop/src/app/chat/composer/index.tsx
 +++ b/apps/desktop/src/app/chat/composer/index.tsx
 @@ -8,6 +8,7 @@ import { Slot as ContribSlot } from '@/contrib/react/slot'
@@ -41,7 +41,7 @@ index cfb5e7518..347f75efb 100644
  import { DATA_IMAGE_URL_RE } from '@/lib/embedded-images'
  import { triggerHaptic } from '@/lib/haptics'
  import { cn } from '@/lib/utils'
-@@ -84,6 +85,7 @@ export function ChatBar({
+@@ -87,6 +88,7 @@ export function ChatBar({
    sessionId,
    state,
    onCancel,
@@ -49,7 +49,7 @@ index cfb5e7518..347f75efb 100644
    onAddUrl,
    onAttachDroppedItems,
    onAttachImageBlob,
-@@ -190,6 +192,22 @@ export function ChatBar({
+@@ -197,6 +199,22 @@ export function ChatBar({
    const reconnecting = gatewayState === 'closed' || gatewayState === 'error'
    const inputDisabled = disabled && !reconnecting
  
@@ -72,30 +72,27 @@ index cfb5e7518..347f75efb 100644
    // The draft engine — detached source of truth (DOM + draftRef + edge
    // selectors); typing never re-renders the chrome. ChatBar owns `queueEditRef`
    // and threads it in so the draft↔queue coupling is an explicit dep, not a tangle.
-@@ -1140,10 +1158,12 @@ export function ChatBar({
-               />
-               <CodingStatusRow
-                 onBranchOff={handleBranchOff}
-+                onChangeProject={onChangeSessionCwd ? changeProject : undefined}
-                 onConvertBranch={handleConvertBranch}
-                 onListBranches={handleListBranches}
-                 onOpen={toggleReview}
-                 onOpenWorktree={openInWorktree}
-+                onRemoveProject={onChangeSessionCwd && cwd ? () => onChangeSessionCwd('') : undefined}
-                 onSwitchBranch={handleSwitchBranch}
-                 repoPath={cwd}
-               />
+@@ -1187,6 +1205,7 @@ export function ChatBar({
+                 />
+                 <CodingStatusRow
+                   onBranchOff={handleBranchOff}
++                  onChangeProject={onChangeSessionCwd ? changeProject : undefined}
+                   onConvertBranch={handleConvertBranch}
+                   onListBranches={handleListBranches}
+                   // A tile's rail reviews ITS worktree: pin the pane's scope to
+@@ -1194,6 +1213,7 @@ export function ChatBar({
+                   // active-session scope (null).
+                   onOpen={() => toggleReview(scope.target === 'main' ? null : (cwd ?? null))}
+                   onOpenWorktree={openInWorktree}
++                  onRemoveProject={onChangeSessionCwd && cwd ? () => onChangeSessionCwd('') : undefined}
+                   onSwitchBranch={handleSwitchBranch}
+                   repoPath={cwd}
+                 />
 diff --git a/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx b/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
-index c92182510..7fbb30b86 100644
+index 279d533bb..2b950b248 100644
 --- a/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
 +++ b/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
-@@ -1,4 +1,4 @@
--import { cleanup, render, screen } from '@testing-library/react'
-+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
- import { afterEach, describe, expect, it, vi } from 'vitest'
- 
- import { $repoStatus } from '@/store/coding-status'
-@@ -8,8 +8,12 @@ import { CodingStatusRow } from './coding-row'
+@@ -25,8 +25,12 @@ vi.mock('@/store/coding-status', () => ({
  vi.mock('@/i18n', () => ({
    useI18n: () => ({
      t: {
@@ -110,15 +107,21 @@ index c92182510..7fbb30b86 100644
        statusStack: { coding: {} }
      }
    })
-@@ -37,4 +41,26 @@ describe('CodingStatusRow projectless state', () => {
+@@ -77,9 +81,30 @@ describe('CodingStatusRow', () => {
+   })
+ 
+   it('does not mislabel an explicitly attached non-Git folder as projectless', () => {
+-    const { container } = render(<CodingStatusRow repoPath="/selected/folder" />)
++    render(<CodingStatusRow repoPath="/selected/folder" />)
  
      expect(screen.queryByText('No project')).toBeNull()
-   })
+-    expect(container.firstChild).toBeNull()
++    expect(screen.getByText('folder')).not.toBeNull()
++  })
 +
 +  it('offers change and remove actions for an attached folder', async () => {
 +    const onChangeProject = vi.fn()
 +    const onRemoveProject = vi.fn()
-+    $repoStatus.set(null)
 +
 +    render(
 +      <CodingStatusRow
@@ -135,10 +138,10 @@ index c92182510..7fbb30b86 100644
 +    fireEvent.contextMenu(screen.getByText('folder'))
 +    fireEvent.click(await screen.findByText('Remove project'))
 +    expect(onRemoveProject).toHaveBeenCalledOnce()
-+  })
+   })
  })
 diff --git a/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx b/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
-index a8d587a0f..401d10c12 100644
+index fb4ce4391..512903786 100644
 --- a/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
 +++ b/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
 @@ -38,8 +38,12 @@ interface CodingStatusRowProps {
@@ -166,10 +169,10 @@ index a8d587a0f..401d10c12 100644
    onSwitchBranch,
    repoPath
  }: CodingStatusRowProps) {
-@@ -73,6 +79,25 @@ export const CodingStatusRow = memo(function CodingStatusRow({
+@@ -83,6 +89,25 @@ export const CodingStatusRow = memo(function CodingStatusRow({
+   // dropdown menu's "branch off" items and the global ⌘⇧B hotkey.
    const [worktreeOpen, setWorktreeOpen] = useState(false)
    const [worktreeBase, setWorktreeBase] = useState<string | undefined>(undefined)
-   const resolvedRepoPath = repoPath?.trim() || undefined
 +  const hasMenu = Boolean(onBranchOff || onChangeProject || onRemoveProject)
 +
 +  const renderProjectItems = (kit: MenuKit) => (
@@ -192,7 +195,7 @@ index a8d587a0f..401d10c12 100644
  
    const switchToBranch = async (branch: string) => {
      if (!onSwitchBranch) {
-@@ -115,20 +140,43 @@ export const CodingStatusRow = memo(function CodingStatusRow({
+@@ -125,20 +150,43 @@ export const CodingStatusRow = memo(function CodingStatusRow({
      setTimeout(() => setWorktreeOpen(true), 0)
    }
  
@@ -248,7 +251,7 @@ index a8d587a0f..401d10c12 100644
      )
    }
  
-@@ -186,37 +234,43 @@ export const CodingStatusRow = memo(function CodingStatusRow({
+@@ -196,37 +244,43 @@ export const CodingStatusRow = memo(function CodingStatusRow({
  
      return (
        <>
@@ -317,7 +320,7 @@ index a8d587a0f..401d10c12 100644
          <StatusRow
            // The base "where am I working" strip is part of the composer surface
            // itself, so it inherits the composer's width and clipped top radius.
-@@ -240,7 +294,7 @@ export const CodingStatusRow = memo(function CodingStatusRow({
+@@ -257,7 +311,7 @@ export const CodingStatusRow = memo(function CodingStatusRow({
                  ALWAYS laid out; only its opacity flips on hover/focus/open, so
                  revealing it never reflows the row (no layout shift). pointer-events
                  follow opacity so the invisible trigger isn't clickable at rest. */}
@@ -326,15 +329,15 @@ index a8d587a0f..401d10c12 100644
                <ActionsMenu
                  align="end"
                  contentClassName="w-60"
-@@ -250,7 +304,7 @@ export const CodingStatusRow = memo(function CodingStatusRow({
+@@ -267,7 +321,7 @@ export const CodingStatusRow = memo(function CodingStatusRow({
                  side="top"
                >
                  <Button
 -                  aria-label={s.newBranch}
 +                  aria-label={p.menu}
                    className="pointer-events-none size-4 shrink-0 text-muted-foreground/60 opacity-0 transition hover:text-foreground group-hover/status-row:pointer-events-auto group-hover/status-row:opacity-100 group-focus-within/status-row:pointer-events-auto group-focus-within/status-row:opacity-100 data-[state=open]:pointer-events-auto data-[state=open]:opacity-100"
-                   onClick={event => event.stopPropagation()}
-                   onKeyDown={event => {
+                   size="icon-xs"
+                   variant="ghost"
 diff --git a/apps/desktop/src/app/chat/composer/types.ts b/apps/desktop/src/app/chat/composer/types.ts
 index 24abcf373..77187d35e 100644
 --- a/apps/desktop/src/app/chat/composer/types.ts
@@ -348,10 +351,10 @@ index 24abcf373..77187d35e 100644
    onAddUrl?: (url: string) => void
    onAttachImageBlob?: (blob: Blob) => Promise<boolean | void> | boolean | void
 diff --git a/apps/desktop/src/app/chat/index.tsx b/apps/desktop/src/app/chat/index.tsx
-index 40a8922d4..b0692de03 100644
+index 3d72bf341..78f4106e5 100644
 --- a/apps/desktop/src/app/chat/index.tsx
 +++ b/apps/desktop/src/app/chat/index.tsx
-@@ -69,6 +69,7 @@ interface ChatViewProps extends Omit<React.ComponentProps<'div'>, 'onSubmit'> {
+@@ -70,6 +70,7 @@ interface ChatViewProps extends Omit<React.ComponentProps<'div'>, 'onSubmit'> {
    onToggleSelectedPin: () => void
    onDeleteSelectedSession: () => void
    onCancel: () => Promise<void> | void
@@ -359,7 +362,7 @@ index 40a8922d4..b0692de03 100644
    onAddContextRef: (refText: string, label?: string, detail?: string) => void
    onAddUrl: (url: string) => void
    onBranchInNewChat?: (messageId: string) => void
-@@ -246,6 +247,7 @@ export function ChatView({
+@@ -247,6 +248,7 @@ export function ChatView({
    onToggleSelectedPin,
    onDeleteSelectedSession,
    onCancel,
@@ -367,7 +370,7 @@ index 40a8922d4..b0692de03 100644
    onAddContextRef,
    onAddUrl,
    onAttachImageBlob,
-@@ -573,6 +575,7 @@ export function ChatView({
+@@ -579,6 +581,7 @@ export function ChatView({
                onAttachDroppedItems={onAttachDroppedItems}
                onAttachImageBlob={onAttachImageBlob}
                onCancel={onCancel}
@@ -400,10 +403,10 @@ index 1e2c60ac7..947026d56 100644
    | 'onDismissError'
    | 'onEdit'
 diff --git a/apps/desktop/src/app/contrib/wiring.tsx b/apps/desktop/src/app/contrib/wiring.tsx
-index 190e4b4ac..22592ea0c 100644
+index e5802d051..a52d25441 100644
 --- a/apps/desktop/src/app/contrib/wiring.tsx
 +++ b/apps/desktop/src/app/contrib/wiring.tsx
-@@ -261,7 +261,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
+@@ -269,7 +269,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
      [activeSessionIdRef, updateSessionState]
    )
  
@@ -412,7 +415,7 @@ index 190e4b4ac..22592ea0c 100644
      activeSessionIdRef,
      onSessionRuntimeInfo: updateActiveSessionRuntimeInfo,
      requestGateway
-@@ -833,6 +833,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
+@@ -852,6 +852,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
      onBranchInNewChat: messageId => void branchInNewChat(messageId),
      onBranchSession: sessionId => void branchStoredSession(sessionId),
      onCancel: cancelRun,
@@ -558,10 +561,10 @@ index 0943131d0..742537993 100644
          setCurrentBranch('')
          notify({
 diff --git a/apps/desktop/src/i18n/ar.ts b/apps/desktop/src/i18n/ar.ts
-index 004ef79a2..fa0db559f 100644
+index 9ff42169a..fb7e19768 100644
 --- a/apps/desktop/src/i18n/ar.ts
 +++ b/apps/desktop/src/i18n/ar.ts
-@@ -2121,6 +2121,7 @@ export const ar = defineLocale({
+@@ -2125,6 +2125,7 @@ export const ar = defineLocale({
      terminal: 'الطرفية',
      noFolderSelected: 'لم يتم اختيار مجلد',
      changeCwdTitle: 'تغيير مجلد العمل',
@@ -570,10 +573,10 @@ index 004ef79a2..fa0db559f 100644
      remotePickerDescription: 'استعرض المجلدات على الخادم الخلفي المتصل.',
      remotePickerSelect: 'تحديد المجلد',
 diff --git a/apps/desktop/src/i18n/en.ts b/apps/desktop/src/i18n/en.ts
-index 5d12c016c..d167d97ca 100644
+index d9f2596c9..7a897598e 100644
 --- a/apps/desktop/src/i18n/en.ts
 +++ b/apps/desktop/src/i18n/en.ts
-@@ -2514,6 +2514,7 @@ export const en: Translations = {
+@@ -2539,6 +2539,7 @@ export const en: Translations = {
      terminal: 'Terminal',
      noFolderSelected: 'No folder selected',
      changeCwdTitle: 'Change working directory',
@@ -582,10 +585,10 @@ index 5d12c016c..d167d97ca 100644
      remotePickerDescription: 'Browse folders on the connected backend.',
      remotePickerSelect: 'Select folder',
 diff --git a/apps/desktop/src/i18n/ja.ts b/apps/desktop/src/i18n/ja.ts
-index 798dfe739..8f7cbf316 100644
+index 36556e608..47b8ee49c 100644
 --- a/apps/desktop/src/i18n/ja.ts
 +++ b/apps/desktop/src/i18n/ja.ts
-@@ -2364,6 +2364,7 @@ export const ja = defineLocale({
+@@ -2368,6 +2368,7 @@ export const ja = defineLocale({
      terminal: 'ターミナル',
      noFolderSelected: 'フォルダーが選択されていません',
      changeCwdTitle: '作業ディレクトリを変更',
@@ -594,10 +597,10 @@ index 798dfe739..8f7cbf316 100644
      remotePickerDescription: '接続中のバックエンド上のフォルダーを参照します。',
      remotePickerSelect: 'フォルダーを選択',
 diff --git a/apps/desktop/src/i18n/types.ts b/apps/desktop/src/i18n/types.ts
-index 8ccc8a034..16bf96e2c 100644
+index 303bd421c..36aeb17bd 100644
 --- a/apps/desktop/src/i18n/types.ts
 +++ b/apps/desktop/src/i18n/types.ts
-@@ -2101,6 +2101,7 @@ export interface Translations {
+@@ -2125,6 +2125,7 @@ export interface Translations {
      terminal: string
      noFolderSelected: string
      changeCwdTitle: string
@@ -606,10 +609,10 @@ index 8ccc8a034..16bf96e2c 100644
      remotePickerDescription: string
      remotePickerSelect: string
 diff --git a/apps/desktop/src/i18n/zh-hant.ts b/apps/desktop/src/i18n/zh-hant.ts
-index 999aa228b..37a576948 100644
+index 8ddd059e9..ec3f6ed25 100644
 --- a/apps/desktop/src/i18n/zh-hant.ts
 +++ b/apps/desktop/src/i18n/zh-hant.ts
-@@ -2288,6 +2288,7 @@ export const zhHant = defineLocale({
+@@ -2291,6 +2291,7 @@ export const zhHant = defineLocale({
      terminal: '終端機',
      noFolderSelected: '未選擇資料夾',
      changeCwdTitle: '變更工作目錄',
@@ -618,10 +621,10 @@ index 999aa228b..37a576948 100644
      remotePickerDescription: '瀏覽已連線後端上的資料夾。',
      remotePickerSelect: '選擇資料夾',
 diff --git a/apps/desktop/src/i18n/zh.ts b/apps/desktop/src/i18n/zh.ts
-index d30e9ce8c..b9169c002 100644
+index 270aa9d0c..590b46352 100644
 --- a/apps/desktop/src/i18n/zh.ts
 +++ b/apps/desktop/src/i18n/zh.ts
-@@ -2695,6 +2695,7 @@ export const zh: Translations = {
+@@ -2720,6 +2720,7 @@ export const zh: Translations = {
      terminal: '终端',
      noFolderSelected: '未选择文件夹',
      changeCwdTitle: '更改工作目录',
@@ -668,10 +671,10 @@ index 2464e6a82..0fe6eaafd 100644
  // The contract check runs on every session.resume (applyRuntimeInfo), so
  // without a snooze the warning re-popped on every thread the user opened, even
 diff --git a/hermes_state.py b/hermes_state.py
-index 727edfce6..fec619999 100644
+index 4f7b64534..c06340efb 100644
 --- a/hermes_state.py
 +++ b/hermes_state.py
-@@ -3010,6 +3010,19 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
+@@ -3482,6 +3482,19 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
  
          self._execute_write(_do)
  
@@ -692,10 +695,10 @@ index 727edfce6..fec619999 100644
          """Persist resolved git repo roots for cwds that don't have one yet.
  
 diff --git a/tests/test_hermes_state.py b/tests/test_hermes_state.py
-index 1aad825fe..53baf8a8f 100644
+index dd54682ef..067ff9fe8 100644
 --- a/tests/test_hermes_state.py
 +++ b/tests/test_hermes_state.py
-@@ -139,6 +139,22 @@ class TestSessionLifecycle:
+@@ -108,6 +108,22 @@ class TestSessionLifecycle:
          assert session["cwd"] == "/work/repo"
          assert session["git_branch"] == "pets-feature"
  
@@ -715,14 +718,14 @@ index 1aad825fe..53baf8a8f 100644
 +        assert session["git_branch"] is None
 +        assert session["git_repo_root"] is None
 +
-     def test_child_session_inherits_cwd_and_git_repo_root_from_parent(self, db):
-         """A parent_session_id child born without cwd/git_repo_root (e.g. the
-         compression-fork path) must inherit both from its parent, so it
+ 
+ 
+ 
 diff --git a/tests/test_tui_gateway_server.py b/tests/test_tui_gateway_server.py
-index 53f8215a0..28bfb435d 100644
+index 01c2df85e..3f382eb65 100644
 --- a/tests/test_tui_gateway_server.py
 +++ b/tests/test_tui_gateway_server.py
-@@ -2896,6 +2896,61 @@ def test_session_cwd_set_profile_session_updates_profile_db(monkeypatch, tmp_pat
+@@ -2965,6 +2965,61 @@ def test_session_cwd_set_profile_session_updates_profile_db(monkeypatch, tmp_pat
      assert "launch_update" not in captured
  
  
@@ -785,10 +788,10 @@ index 53f8215a0..28bfb435d 100644
      """A bare billing bucket ("custom"/"auto"/"openrouter") must not be restored as the
      provider identity on resume. A custom endpoint that never used `/model` persists only
 diff --git a/tui_gateway/methods_session.py b/tui_gateway/methods_session.py
-index 1c0fd3fc2..0b353fedb 100644
+index a6ef44ace..a45a2a88a 100644
 --- a/tui_gateway/methods_session.py
 +++ b/tui_gateway/methods_session.py
-@@ -715,18 +715,25 @@ def _(rid, params: dict) -> dict:
+@@ -716,18 +716,25 @@ def _(rid, params: dict) -> dict:
          return _err(rid, 4009, "session busy")
      raw = str(params.get("cwd", "") or "").strip()
      if not raw:
@@ -826,10 +829,10 @@ index 1c0fd3fc2..0b353fedb 100644
      return _ok(rid, info)
  
 diff --git a/tui_gateway/server.py b/tui_gateway/server.py
-index f8d3d627c..d215f2820 100644
+index f808a82fb..2d2345852 100644
 --- a/tui_gateway/server.py
 +++ b/tui_gateway/server.py
-@@ -2632,6 +2632,29 @@ def _set_session_cwd(session: dict, cwd: str) -> str:
+@@ -2679,6 +2679,29 @@ def _set_session_cwd(session: dict, cwd: str) -> str:
      return resolved
  
  
@@ -859,7 +862,7 @@ index f8d3d627c..d215f2820 100644
  # ── Config I/O ────────────────────────────────────────────────────────
  
  
-@@ -4604,7 +4627,8 @@ def _current_profile_name() -> str:
+@@ -4736,7 +4759,8 @@ def _current_profile_name() -> str:
  # v4: session.create fast=false is an explicit per-session normal-tier override.
  # v5: uvicorn ws_max_size raised for one-shot base64 file.attach frames (>16 MiB).
  # v6: implicit desktop execution cwd is never reported as an attached workspace.

@@ -42,7 +42,8 @@ The gate:
    `source/hermes-launcher/patches` one at a time with `git am --3way`;
 5. records each patch, application mode, failed patch, conflicting files, and
    skipped later patches;
-6. installs locked Node and Python dependencies when requested;
+6. installs locked Node and Python dependencies when requested, using the
+   repository's exact supported npm CLI;
 7. runs the documented Windows-critical Python selection;
 8. runs Desktop type checking, linting, and the focused Electron control test;
 9. builds the Desktop workspace;
@@ -62,9 +63,10 @@ release certification.
 
 ## llama.cpp gates
 
-The hosted CPU gate configures and builds with CUDA disabled, runs CTest, locates
-`llama-cli` and `llama-server`, records their SHA-256 digests, and executes
-binary `--version` smoke tests.
+The hosted CPU gate installs the exact Python dependency used by llama.cpp's
+Jinja comparison test, configures and builds with CUDA disabled, runs CTest,
+locates `llama-cli` and `llama-server`, records their SHA-256 digests, and
+executes binary `--version` smoke tests.
 
 The optional trusted CUDA gate uses the same process with `GGML_CUDA=ON` and
 requires `nvcc`. A licensed tiny-model API/authentication smoke test remains a

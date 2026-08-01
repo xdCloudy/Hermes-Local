@@ -1,7 +1,7 @@
-From c3726e9df079b2128bc7fd9afb65be3b3416e82b Mon Sep 17 00:00:00 2001
+From 6ae0c5dbcc6ebba8bc44c9e0ffffa3099509c65d Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Wed, 29 Jul 2026 23:58:34 +0100
-Subject: [PATCH 14/14] fix(desktop): use authoritative gateway status in
+Subject: [PATCH 14/26] fix(desktop): use authoritative gateway status in
  global chrome
 
 ---
@@ -16,7 +16,7 @@ Subject: [PATCH 14/14] fix(desktop): use authoritative gateway status in
 
 diff --git a/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.test.ts b/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..bb72682a579dd2ef2c8a144e3547cd5d65ed7a66
+index 000000000..bb72682a5
 --- /dev/null
 +++ b/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.test.ts
 @@ -0,0 +1,114 @@
@@ -137,7 +137,7 @@ index 0000000000000000000000000000000000000000..bb72682a579dd2ef2c8a144e3547cd5d
 \ No newline at end of file
 diff --git a/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.ts b/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..17043696d7bbe7bba46f843a78fb5595912654d2
+index 000000000..17043696d
 --- /dev/null
 +++ b/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.ts
 @@ -0,0 +1,59 @@
@@ -202,7 +202,7 @@ index 0000000000000000000000000000000000000000..17043696d7bbe7bba46f843a78fb5595
 +}
 \ No newline at end of file
 diff --git a/apps/desktop/src/app/shell/hooks/use-status-snapshot.test.ts b/apps/desktop/src/app/shell/hooks/use-status-snapshot.test.ts
-index 1c05ac05822a044a0ae9c428ff4557362445c9dd..5acb66a101ee73f12e9880b8c9503922815168a9 100644
+index 1c05ac058..5acb66a10 100644
 --- a/apps/desktop/src/app/shell/hooks/use-status-snapshot.test.ts
 +++ b/apps/desktop/src/app/shell/hooks/use-status-snapshot.test.ts
 @@ -2,6 +2,7 @@ import { act, cleanup, renderHook } from '@testing-library/react'
@@ -381,7 +381,7 @@ index 1c05ac05822a044a0ae9c428ff4557362445c9dd..5acb66a101ee73f12e9880b8c9503922
 +})
 \ No newline at end of file
 diff --git a/apps/desktop/src/app/shell/hooks/use-status-snapshot.ts b/apps/desktop/src/app/shell/hooks/use-status-snapshot.ts
-index d2b714904b8b90640197db2baac44960fc34471e..7d75c48cc4864ce822accd0f41fde0ebb19994a0 100644
+index d2b714904..7d75c48cc 100644
 --- a/apps/desktop/src/app/shell/hooks/use-status-snapshot.ts
 +++ b/apps/desktop/src/app/shell/hooks/use-status-snapshot.ts
 @@ -4,11 +4,8 @@ import { getStatus } from '@/hermes'
@@ -536,7 +536,7 @@ index d2b714904b8b90640197db2baac44960fc34471e..7d75c48cc4864ce822accd0f41fde0eb
 +}
 \ No newline at end of file
 diff --git a/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx b/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
-index 0aa3c69fe3b6dbed9f0774f40d71d4d9bcd903ea..198edad1bf079323e29feafa7ffc7fd27aea05fb 100644
+index adedab3fa..5a9c7c451 100644
 --- a/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
 +++ b/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
 @@ -47,7 +47,7 @@ import type { StatusResponse, UsageStats } from '@/types/hermes'
@@ -548,7 +548,7 @@ index 0aa3c69fe3b6dbed9f0774f40d71d4d9bcd903ea..198edad1bf079323e29feafa7ffc7fd2
  const EMPTY_USAGE = { calls: 0, input: 0, output: 0, total: 0 } as const
  
  function workspaceLabel(cwd: string): string {
-@@ -197,22 +197,26 @@ export function useStatusbarItems({
+@@ -200,22 +200,26 @@ export function useStatusbarItems({
      [gatewayState, inferenceStatus, openCommandCenterSection, statusSnapshot]
    )
  
@@ -587,7 +587,7 @@ index 0aa3c69fe3b6dbed9f0774f40d71d4d9bcd903ea..198edad1bf079323e29feafa7ffc7fd2
      ? undefined
      : gatewayDegraded
        ? 'text-amber-600 hover:text-amber-600'
-@@ -348,7 +352,7 @@ export function useStatusbarItems({
+@@ -351,7 +355,7 @@ export function useStatusbarItems({
          detail: gatewayRestarting ? copy.gatewayRestarting : gatewayDetail,
          icon: gatewayRestarting ? (
            <GlyphSpinner ariaLabel={copy.gatewayRestarting} className="size-3" />
@@ -596,7 +596,7 @@ index 0aa3c69fe3b6dbed9f0774f40d71d4d9bcd903ea..198edad1bf079323e29feafa7ffc7fd2
            <Activity className="size-3" />
          ) : (
            <AlertCircle className="size-3" />
-@@ -358,7 +362,7 @@ export function useStatusbarItems({
+@@ -361,7 +365,7 @@ export function useStatusbarItems({
          menuClassName: 'w-72',
          menuContent: gatewayMenuContent,
          // Tip only when there's a real status reason — not "gateway status" restating the label.
@@ -605,7 +605,7 @@ index 0aa3c69fe3b6dbed9f0774f40d71d4d9bcd903ea..198edad1bf079323e29feafa7ffc7fd2
          toggleLabel: copy.gateway,
          variant: 'menu'
        },
-@@ -451,8 +455,9 @@ export function useStatusbarItems({
+@@ -454,8 +458,9 @@ export function useStatusbarItems({
        gatewayMenuContent,
        gatewayClassName,
        gatewayDetail,
@@ -616,3 +616,6 @@ index 0aa3c69fe3b6dbed9f0774f40d71d4d9bcd903ea..198edad1bf079323e29feafa7ffc7fd2
        inferenceStatus?.reason,
        openAgents,
        projectName,
+-- 
+2.55.0.windows.3
+

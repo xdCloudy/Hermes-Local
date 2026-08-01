@@ -1,0 +1,129 @@
+From 00cca1c2ef5e7336b5e547b465e97c90e26cb29f Mon Sep 17 00:00:00 2001
+From: Hermes Local Compatibility CI <hermes-local-ci@localhost>
+Date: Sat, 1 Aug 2026 17:31:50 +0100
+Subject: [PATCH] fix(desktop): align launcher with upstream modules
+
+---
+ .../composer/status-stack/coding-row.test.tsx |  2 +-
+ .../src/app/local-workstation/index.tsx       | 57 ++++++++++---------
+ .../src/app/local-workstation/tui-panel.tsx   |  4 +-
+ .../app/shell/hooks/use-statusbar-items.tsx   |  2 +
+ 4 files changed, 34 insertions(+), 31 deletions(-)
+
+diff --git a/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx b/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
+index 2b950b248..8fe686324 100644
+--- a/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
++++ b/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
+@@ -31,7 +31,7 @@ vi.mock('@/i18n', () => ({
+         removeProject: 'Remove project'
+       },
+       sidebar: { projects: { menu: 'Project actions', sectionLabel: 'Projects' } },
+-      statusStack: { coding: {} }
++      statusStack: { coding: { branchOffFrom: (base: string) => `New branch from ${base}` } }
+     }
+   })
+ }))
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index a5e2bd213..aa91f80e0 100644
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -1,31 +1,33 @@
+-import IconActivityHeartbeat from '@tabler/icons-react/dist/esm/icons/IconActivityHeartbeat.mjs'
+-import IconAlertTriangle from '@tabler/icons-react/dist/esm/icons/IconAlertTriangle.mjs'
+-import IconBolt from '@tabler/icons-react/dist/esm/icons/IconBolt.mjs'
+-import IconBrain from '@tabler/icons-react/dist/esm/icons/IconBrain.mjs'
+-import IconBrandWindows from '@tabler/icons-react/dist/esm/icons/IconBrandWindows.mjs'
+-import IconCheck from '@tabler/icons-react/dist/esm/icons/IconCheck.mjs'
+-import IconChevronRight from '@tabler/icons-react/dist/esm/icons/IconChevronRight.mjs'
+-import IconCpu from '@tabler/icons-react/dist/esm/icons/IconCpu.mjs'
+-import IconDatabase from '@tabler/icons-react/dist/esm/icons/IconDatabase.mjs'
+-import IconExternalLink from '@tabler/icons-react/dist/esm/icons/IconExternalLink.mjs'
+-import IconFileAnalytics from '@tabler/icons-react/dist/esm/icons/IconFileAnalytics.mjs'
+-import IconFolder from '@tabler/icons-react/dist/esm/icons/IconFolder.mjs'
+-import IconGauge from '@tabler/icons-react/dist/esm/icons/IconGauge.mjs'
+-import IconKey from '@tabler/icons-react/dist/esm/icons/IconKey.mjs'
+-import IconLoader2 from '@tabler/icons-react/dist/esm/icons/IconLoader2.mjs'
+-import IconPlayerPlay from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs'
+-import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs'
+-import IconRefresh from '@tabler/icons-react/dist/esm/icons/IconRefresh.mjs'
+-import IconRestore from '@tabler/icons-react/dist/esm/icons/IconRestore.mjs'
+-import IconRocket from '@tabler/icons-react/dist/esm/icons/IconRocket.mjs'
+-import IconServer2 from '@tabler/icons-react/dist/esm/icons/IconServer2.mjs'
+-import IconShieldCheck from '@tabler/icons-react/dist/esm/icons/IconShieldCheck.mjs'
+-import IconSquare from '@tabler/icons-react/dist/esm/icons/IconSquare.mjs'
+-import IconTerminal2 from '@tabler/icons-react/dist/esm/icons/IconTerminal2.mjs'
+-import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs'
+-import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs'
++import {
++  IconActivityHeartbeat,
++  IconAlertTriangle,
++  IconBolt,
++  IconBrain,
++  IconBrandWindows,
++  IconCheck,
++  IconChevronRight,
++  IconCpu,
++  IconDatabase,
++  IconExternalLink,
++  IconFileAnalytics,
++  IconFolder,
++  IconGauge,
++  IconKey,
++  IconLoader2,
++  IconPlayerPlay,
++  IconPlus,
++  IconRefresh,
++  IconRestore,
++  IconRocket,
++  IconServer2,
++  IconShieldCheck,
++  IconSquare,
++  IconTerminal2,
++  IconTrash,
++  IconX
++} from '@tabler/icons-react'
+ import { type ComponentType, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+-import { useLocation, useNavigate } from 'react-router-dom'
++import { useLocation, useNavigate } from 'react-router'
+ 
+ import { Button } from '@/components/ui/button'
+ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+@@ -243,6 +245,7 @@ function ProfileEditor({
+   const serverArguments = snapshot.model.server.extraArguments
+   const specTypeIndex = serverArguments.indexOf('--spec-type')
+   const specType = specTypeIndex >= 0 ? serverArguments[specTypeIndex + 1]?.toLowerCase() : undefined
++
+   const modelSpeculativeDecoding =
+     (specType !== undefined && specType !== 'none') ||
+     serverArguments.some(argument =>
+diff --git a/apps/desktop/src/app/local-workstation/tui-panel.tsx b/apps/desktop/src/app/local-workstation/tui-panel.tsx
+index 67a2ed251..c3bd8292b 100644
+--- a/apps/desktop/src/app/local-workstation/tui-panel.tsx
++++ b/apps/desktop/src/app/local-workstation/tui-panel.tsx
+@@ -1,8 +1,6 @@
+ import '@xterm/xterm/css/xterm.css'
+ 
+-import IconPlayerPlay from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs'
+-import IconRefresh from '@tabler/icons-react/dist/esm/icons/IconRefresh.mjs'
+-import IconTerminal2 from '@tabler/icons-react/dist/esm/icons/IconTerminal2.mjs'
++import { IconPlayerPlay, IconRefresh, IconTerminal2 } from '@tabler/icons-react'
+ import { FitAddon } from '@xterm/addon-fit'
+ import { Unicode11Addon } from '@xterm/addon-unicode11'
+ import { Terminal } from '@xterm/xterm'
+diff --git a/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx b/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
+index 5a9c7c451..b2f5ff820 100644
+--- a/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
++++ b/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
+@@ -47,7 +47,9 @@ import type { StatusResponse, UsageStats } from '@/types/hermes'
+ 
+ import { CRON_ROUTE, SETTINGS_ROUTE, WEBHOOKS_ROUTE } from '../../routes'
+ import type { StatusbarItem } from '../statusbar-controls'
++
+ import { resolveGatewayStatusbarState } from './gateway-statusbar-state'
++
+ const EMPTY_USAGE = { calls: 0, input: 0, output: 0, total: 0 } as const
+ 
+ function workspaceLabel(cwd: string): string {
+-- 
+2.55.0.windows.3
+

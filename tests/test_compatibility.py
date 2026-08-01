@@ -58,6 +58,79 @@ class CompatibilityReportTests(unittest.TestCase):
             )
             self.assertEqual(compatibility.package_script(package), "package:win")
 
+    def test_llama_cpp_python_test_requirements_are_exactly_pinned(self) -> None:
+        self.assertEqual(
+            compatibility.LLAMA_CPP_TEST_PYTHON_REQUIREMENTS,
+            ("jinja2==3.1.6",),
+        )
+        with mock.patch.object(compatibility, "run") as run_mock:
+            compatibility.install_python_requirements(
+                compatibility.LLAMA_CPP_TEST_PYTHON_REQUIREMENTS,
+                cwd=Path("work/llama.cpp"),
+                log=Path("logs/dependencies.log"),
+            )
+        run_mock.assert_called_once_with(
+            [
+                compatibility.sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--disable-pip-version-check",
+                "jinja2==3.1.6",
+            ],
+            cwd=Path("work/llama.cpp"),
+            log=Path("logs/dependencies.log"),
+            timeout=900,
+        )
+
+    def test_hermes_agent_uses_exact_supported_npm_cli(self) -> None:
+        expected_executable = "npx.cmd" if compatibility.os.name == "nt" else "npx"
+        self.assertEqual(
+            compatibility.npm_command("ci", "--no-audit"),
+            [expected_executable, "--yes", "npm@12.0.0", "ci", "--no-audit"],
+        )
+
+    def test_existing_uv_is_reused_without_installation(self) -> None:
+        with (
+            mock.patch.object(compatibility, "uv", return_value="C:/tools/uv.exe"),
+            mock.patch.object(compatibility, "install_python_requirements") as install_mock,
+        ):
+            executable = compatibility.ensure_uv(
+                cwd=Path("work/hermes-agent"),
+                log=Path("logs/dependencies.log"),
+            )
+        self.assertEqual(executable, "C:/tools/uv.exe")
+        install_mock.assert_not_called()
+
+    def test_missing_uv_uses_exact_fallback(self) -> None:
+        with (
+            mock.patch.object(
+                compatibility,
+                "uv",
+                side_effect=[RuntimeError("missing"), "C:/Python/Scripts/uv.exe"],
+            ),
+            mock.patch.object(compatibility, "install_python_requirements") as install_mock,
+        ):
+            executable = compatibility.ensure_uv(
+                cwd=Path("work/hermes-agent"),
+                log=Path("logs/dependencies.log"),
+            )
+        self.assertEqual(executable, "C:/Python/Scripts/uv.exe")
+        install_mock.assert_called_once_with(
+            ("uv==0.11.32",),
+            cwd=Path("work/hermes-agent"),
+            log=Path("logs/dependencies.log"),
+        )
+
+    def test_uv_sync_installs_declared_test_extra_and_honors_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary)
+            (source / "uv.lock").touch()
+            self.assertEqual(
+                compatibility.uv_sync_command("uv", source),
+                ["uv", "sync", "--extra", "all", "--extra", "dev", "--frozen"],
+            )
+
     def test_prepare_agent_checkout_fetches_base_and_candidate_objects(self) -> None:
         base = "a" * 40
         candidate = "b" * 40

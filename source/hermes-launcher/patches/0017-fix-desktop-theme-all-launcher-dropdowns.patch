@@ -1,7 +1,7 @@
-From b99b40258b55900d2177e2baf98b48102b874eda Mon Sep 17 00:00:00 2001
+From e0e763c1dc61ca342d4a788a27be64761328a868 Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Thu, 30 Jul 2026 05:36:36 +0100
-Subject: [PATCH] fix(desktop): theme all launcher dropdowns
+Subject: [PATCH 17/26] fix(desktop): theme all launcher dropdowns
 
 ---
  .../e2e/hermes-local-configuration.spec.ts    |  67 +++++++---

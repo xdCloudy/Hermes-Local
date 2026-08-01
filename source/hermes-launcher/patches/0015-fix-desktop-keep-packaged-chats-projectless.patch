@@ -1,16 +1,16 @@
-From 091bdd71d5c6bb4a14816ee3f18ec0edf6cb8ede Mon Sep 17 00:00:00 2001
+From 37d57784d3bbe2816ab45e29eca1077673c8212f Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Thu, 30 Jul 2026 04:47:48 +0100
-Subject: [PATCH] fix(desktop): keep packaged chats projectless
+Subject: [PATCH 15/26] fix(desktop): keep packaged chats projectless
 
 ---
  .../e2e/hermes-local-functional.spec.ts       |  51 ++++++++
- .../composer/status-stack/coding-row.test.tsx |  40 +++++++
+ .../composer/status-stack/coding-row.test.tsx |  50 ++++++--
  .../chat/composer/status-stack/coding-row.tsx |  20 +++-
  .../src/app/gateway/hooks/use-gateway-boot.ts |  16 +--
  .../hooks/use-session-actions.test.tsx        |   4 +-
  apps/desktop/src/store/projects.test.ts       |  17 ++-
- apps/desktop/src/store/projects.ts            |  20 +---
+ apps/desktop/src/store/projects.ts            |  19 +--
  apps/desktop/src/store/session.test.ts        |  29 ++++-
  apps/desktop/src/store/session.ts             |  34 +++---
  apps/desktop/src/store/updates.test.ts        |   6 +-
@@ -19,8 +19,7 @@ Subject: [PATCH] fix(desktop): keep packaged chats projectless
  tests/tui_gateway/test_session_cwd_follow.py  |   7 +-
  tui_gateway/methods_session.py                |  23 ++--
  tui_gateway/server.py                         |  35 ++++--
- 15 files changed, 344 insertions(+), 74 deletions(-)
- create mode 100644 apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
+ 15 files changed, 343 insertions(+), 84 deletions(-)
 
 diff --git a/apps/desktop/e2e/hermes-local-functional.spec.ts b/apps/desktop/e2e/hermes-local-functional.spec.ts
 index f4edde2ef..84b50002d 100644
@@ -99,18 +98,42 @@ index f4edde2ef..84b50002d 100644
        await expect(page.getByRole('button', { name: 'Refresh workstation' })).toBeEnabled({ timeout: 30_000 })
        await page.screenshot({ fullPage: true, path: path.join(evidence, 'packaged-home.png') })
 diff --git a/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx b/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
-new file mode 100644
-index 000000000..c92182510
---- /dev/null
+index 018862fc3..279d533bb 100644
+--- a/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
 +++ b/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
-@@ -0,0 +1,40 @@
-+import { cleanup, render, screen } from '@testing-library/react'
-+import { afterEach, describe, expect, it, vi } from 'vitest'
-+
-+import { $repoStatus } from '@/store/coding-status'
-+
-+import { CodingStatusRow } from './coding-row'
-+
+@@ -4,20 +4,34 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
+ 
+ vi.mock('@/store/coding-status', () => ({
+   registerRepoStatusCwd: () => undefined,
+-  repoStatusForCwd: () =>
+-    atom({
+-      added: 12,
+-      ahead: 0,
+-      behind: 0,
+-      branch: 'bb/hitbox',
+-      defaultBranch: 'main',
+-      detached: false,
+-      removed: 3,
+-      untracked: 0
+-    }),
++  repoStatusForCwd: (cwd?: string) =>
++    atom(
++      cwd === '/repo'
++        ? {
++            added: 12,
++            ahead: 0,
++            behind: 0,
++            branch: 'bb/hitbox',
++            defaultBranch: 'main',
++            detached: false,
++            removed: 3,
++            untracked: 0
++          }
++        : null
++    ),
+   repoWorktreesForCwd: () => atom([])
+ }))
+ 
 +vi.mock('@/i18n', () => ({
 +  useI18n: () => ({
 +    t: {
@@ -121,15 +144,15 @@ index 000000000..c92182510
 +  })
 +}))
 +
-+describe('CodingStatusRow projectless state', () => {
-+  afterEach(() => {
-+    cleanup()
-+    $repoStatus.set(null)
-+  })
+ const { CodingStatusRow } = await import('./coding-row')
+ 
+ describe('CodingStatusRow', () => {
+@@ -54,4 +68,18 @@ describe('CodingStatusRow', () => {
+     // The glyph button fills the row's existing 3.5 leading slot exactly.
+     expect(container.querySelector('button[class~="size-3.5"]')).not.toBeNull()
+   })
 +
 +  it('shows No project when the chat has no attached workspace', () => {
-+    $repoStatus.set(null)
-+
 +    render(<CodingStatusRow repoPath="" />)
 +
 +    expect(screen.getByText('No project')).not.toBeNull()
@@ -137,15 +160,14 @@ index 000000000..c92182510
 +  })
 +
 +  it('does not mislabel an explicitly attached non-Git folder as projectless', () => {
-+    $repoStatus.set(null)
-+
-+    render(<CodingStatusRow repoPath="/selected/folder" />)
++    const { container } = render(<CodingStatusRow repoPath="/selected/folder" />)
 +
 +    expect(screen.queryByText('No project')).toBeNull()
++    expect(container.firstChild).toBeNull()
 +  })
-+})
+ })
 diff --git a/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx b/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
-index 14cb89d3d..a8d587a0f 100644
+index 1296b3fb1..fb4ce4391 100644
 --- a/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
 +++ b/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
 @@ -22,6 +22,9 @@ import { $newWorktreeRequest } from '@/store/projects'
@@ -158,7 +180,7 @@ index 14cb89d3d..a8d587a0f 100644
  interface CodingStatusRowProps {
    /** Branch the current draft off into a fresh worktree + session, based on
     *  `base` (a branch name; omitted = current HEAD). The composer owns the
-@@ -112,10 +115,23 @@ export const CodingStatusRow = memo(function CodingStatusRow({
+@@ -122,10 +125,23 @@ export const CodingStatusRow = memo(function CodingStatusRow({
      setTimeout(() => setWorktreeOpen(true), 0)
    }
  
@@ -183,7 +205,7 @@ index 14cb89d3d..a8d587a0f 100644
    const branchLabel = status.detached ? s.detached : status.branch || s.noBranch
    // The kebab offers branching off the trunk and/or the current branch. The
    // worktree-add bases the new branch on `base` (a branch name; undefined =
-@@ -204,7 +220,7 @@ export const CodingStatusRow = memo(function CodingStatusRow({
+@@ -214,7 +230,7 @@ export const CodingStatusRow = memo(function CodingStatusRow({
          <StatusRow
            // The base "where am I working" strip is part of the composer surface
            // itself, so it inherits the composer's width and clipped top radius.
@@ -290,11 +312,11 @@ index 190c3d834..6fbe72af4 100644
    })
  })
 diff --git a/apps/desktop/src/store/projects.ts b/apps/desktop/src/store/projects.ts
-index 8b0f9cbc9..f958cfe29 100644
+index ca4511e61..7184c8ed7 100644
 --- a/apps/desktop/src/store/projects.ts
 +++ b/apps/desktop/src/store/projects.ts
-@@ -161,12 +161,11 @@ export function exitProjectScope(): void {
-   $projectScope.set(ALL_PROJECTS)
+@@ -191,12 +191,11 @@ export function goToProject(id: string, options?: { newSession?: boolean }): voi
+   }
  }
  
 -// The cwd a NEW chat should start in. The "active project" is just an atom
@@ -311,13 +333,12 @@ index 8b0f9cbc9..f958cfe29 100644
  export function resolveNewSessionCwd(): string {
    const scope = $projectScope.get()
  
-@@ -176,15 +175,6 @@ export function resolveNewSessionCwd(): string {
+@@ -206,14 +205,6 @@ export function resolveNewSessionCwd(): string {
      return ''
    }
  
 -  if (scope !== ALL_PROJECTS) {
--    const project = $projectTree.get().find(node => node.id === scope)
--    const cwd = (project?.path || project?.repos.find(repo => repo.path)?.path || '').trim()
+-    const cwd = projectRootCwd($projectTree.get().find(node => node.id === scope))
 -
 -    if (cwd) {
 -      return cwd
@@ -328,7 +349,7 @@ index 8b0f9cbc9..f958cfe29 100644
  }
  
 diff --git a/apps/desktop/src/store/session.test.ts b/apps/desktop/src/store/session.test.ts
-index b44c17b2b..9a60a5827 100644
+index 415c167a1..a7dca1dec 100644
 --- a/apps/desktop/src/store/session.test.ts
 +++ b/apps/desktop/src/store/session.test.ts
 @@ -12,6 +12,7 @@ import {
@@ -339,7 +360,7 @@ index b44c17b2b..9a60a5827 100644
    getRememberedRoute,
    getRememberedSessionId,
    mergeSessionPage,
-@@ -281,6 +282,7 @@ describe('workspaceCwdForNewSession', () => {
+@@ -311,6 +312,7 @@ describe('workspaceCwdForNewSession', () => {
      window.localStorage.removeItem('hermes.desktop.workspace-cwd')
      window.localStorage.removeItem('hermes.desktop.workspace-cwd.remote.http%3A%2F%2Fbackend-a.default')
      window.localStorage.removeItem('hermes.desktop.workspace-cwd.remote.http%3A%2F%2Fbackend-b.default')
@@ -347,7 +368,7 @@ index b44c17b2b..9a60a5827 100644
    })
  
    it('prefers the configured default over the sticky remembered workspace', () => {
-@@ -309,6 +311,27 @@ describe('workspaceCwdForNewSession', () => {
+@@ -339,6 +341,27 @@ describe('workspaceCwdForNewSession', () => {
      expect(workspaceCwdForNewSession()).toBe('')
    })
  
@@ -375,7 +396,7 @@ index b44c17b2b..9a60a5827 100644
    it('does not rewrite the live cwd while a session is active', () => {
      $activeSessionId.set('sess-1')
      $currentCwd.set('/live/session/path')
-@@ -318,7 +341,7 @@ describe('workspaceCwdForNewSession', () => {
+@@ -348,7 +371,7 @@ describe('workspaceCwdForNewSession', () => {
      expect(workspaceCwdForNewSession()).toBe('/home/user/configured')
    })
  
@@ -384,7 +405,7 @@ index b44c17b2b..9a60a5827 100644
      window.localStorage.setItem('hermes.desktop.workspace-cwd', '/local/project')
      $currentCwd.set('/live/session/path')
      $connection.set({ baseUrl: 'http://backend-a', mode: 'remote' } as never)
-@@ -326,13 +349,13 @@ describe('workspaceCwdForNewSession', () => {
+@@ -356,13 +379,13 @@ describe('workspaceCwdForNewSession', () => {
      expect(workspaceCwdForNewSession()).toBe('')
  
      setCurrentCwd('/backend/project-a')
@@ -401,7 +422,7 @@ index b44c17b2b..9a60a5827 100644
      // Back on local with no configured default: a bare new chat is detached and
      // never reads the remote keys (nor inherits the sticky local workspace).
 diff --git a/apps/desktop/src/store/session.ts b/apps/desktop/src/store/session.ts
-index c9d7c1904..9e194fba8 100644
+index 19e56b2c1..7042e9092 100644
 --- a/apps/desktop/src/store/session.ts
 +++ b/apps/desktop/src/store/session.ts
 @@ -125,9 +125,14 @@ export async function syncConfiguredDefaultProjectDir(): Promise<string> {
@@ -463,7 +484,7 @@ index c9d7c1904..9e194fba8 100644
  }
  
  export function applyConfiguredDefaultProjectDir(dir: null | string | undefined): void {
-@@ -543,7 +545,7 @@ export const setNewChatWorkspaceTarget = (next: NewChatWorkspaceTarget): number
+@@ -579,7 +581,7 @@ export const setNewChatWorkspaceTarget = (next: NewChatWorkspaceTarget): number
  
  export const workspaceCwdForNewSession = (): string => {
    if ($connection.get()?.mode === 'remote') {
@@ -511,10 +532,10 @@ index c5e7b8587..2464e6a82 100644
  // The contract check runs on every session.resume (applyRuntimeInfo), so
  // without a snooze the warning re-popped on every thread the user opened, even
 diff --git a/tests/test_tui_gateway_server.py b/tests/test_tui_gateway_server.py
-index 7456f116b..53f8215a0 100644
+index 24f1b72de..01c2df85e 100644
 --- a/tests/test_tui_gateway_server.py
 +++ b/tests/test_tui_gateway_server.py
-@@ -4876,6 +4876,110 @@ def test_ensure_session_db_row_defaults_desktop_to_no_workspace(monkeypatch, tmp
+@@ -4945,6 +4945,110 @@ def test_ensure_session_db_row_defaults_desktop_to_no_workspace(monkeypatch, tmp
      ]
  
  
@@ -625,7 +646,7 @@ index 7456f116b..53f8215a0 100644
  def test_ensure_session_db_row_persists_session_model_override(monkeypatch):
      """The session's composer pick (model + effort + fast) must own the DB row.
  
-@@ -10786,6 +10890,7 @@ def test_session_branch_writes_to_parent_profile_db(monkeypatch, tmp_path):
+@@ -10915,6 +11019,7 @@ def test_session_branch_writes_to_parent_profile_db(monkeypatch, tmp_path):
              seen["created"] = new_key
              seen["parent"] = kwargs.get("parent_session_id")
              seen["profile_name"] = kwargs.get("profile_name")
@@ -633,7 +654,7 @@ index 7456f116b..53f8215a0 100644
  
          def append_message(self, **kwargs):
              seen["msgs"].append(kwargs)
-@@ -10795,7 +10900,7 @@ def test_session_branch_writes_to_parent_profile_db(monkeypatch, tmp_path):
+@@ -10924,7 +11029,7 @@ def test_session_branch_writes_to_parent_profile_db(monkeypatch, tmp_path):
              return True
  
          def get_session(self, key):
@@ -642,7 +663,7 @@ index 7456f116b..53f8215a0 100644
  
          def update_session_cwd(self, *a, **k):
              return None
-@@ -10815,7 +10920,8 @@ def test_session_branch_writes_to_parent_profile_db(monkeypatch, tmp_path):
+@@ -10944,7 +11049,8 @@ def test_session_branch_writes_to_parent_profile_db(monkeypatch, tmp_path):
          "running": False,
          "cols": 80,
          "profile_home": str(profile_home),
@@ -652,7 +673,7 @@ index 7456f116b..53f8215a0 100644
          "agent": FakeAgent(),
          "created_at": 1.0,
          "last_active": 1.0,
-@@ -10851,12 +10957,15 @@ def test_session_branch_writes_to_parent_profile_db(monkeypatch, tmp_path):
+@@ -10980,12 +11086,15 @@ def test_session_branch_writes_to_parent_profile_db(monkeypatch, tmp_path):
          # The branch row is self-describing: stamped with the parent's owning
          # profile, not left NULL for aggregators to mis-tag as "default".
          assert seen.get("profile_name") == "mlperf"
@@ -669,7 +690,7 @@ index 7456f116b..53f8215a0 100644
          # not just the row. Otherwise its own flushes (and a later compression
          # rotation) land on the launch db, splitting the lineage again.
 diff --git a/tests/tui_gateway/test_session_cwd_follow.py b/tests/tui_gateway/test_session_cwd_follow.py
-index e5fa5a7c2..aeb313037 100644
+index 64dc4100e..552f2922f 100644
 --- a/tests/tui_gateway/test_session_cwd_follow.py
 +++ b/tests/tui_gateway/test_session_cwd_follow.py
 @@ -48,7 +48,12 @@ def session(repo_with_worktree):
@@ -687,7 +708,7 @@ index e5fa5a7c2..aeb313037 100644
  
  
 diff --git a/tui_gateway/methods_session.py b/tui_gateway/methods_session.py
-index ea0e1720f..1c0fd3fc2 100644
+index 68210a4c8..a6ef44ace 100644
 --- a/tui_gateway/methods_session.py
 +++ b/tui_gateway/methods_session.py
 @@ -124,6 +124,8 @@ def _(rid, params: dict) -> dict:
@@ -712,7 +733,7 @@ index ea0e1720f..1c0fd3fc2 100644
                  "lazy": True,
                  "desktop_contract": DESKTOP_BACKEND_CONTRACT,
                  "profile_name": _response_profile_name(profile),
-@@ -368,7 +370,8 @@ def _(rid, params: dict) -> dict:
+@@ -369,7 +371,8 @@ def _(rid, params: dict) -> dict:
              target = tip
              found = db.get_session(target) or found
  
@@ -722,7 +743,7 @@ index ea0e1720f..1c0fd3fc2 100644
          profile_home
      )
  
-@@ -430,6 +433,7 @@ def _(rid, params: dict) -> dict:
+@@ -431,6 +434,7 @@ def _(rid, params: dict) -> dict:
              close_on_disconnect=is_truthy_value(params.get("close_on_disconnect", False)),
              profile_home=profile_home,
              lazy=True,
@@ -730,7 +751,7 @@ index ea0e1720f..1c0fd3fc2 100644
          )
          if (live := _claim_or_reuse_live(sid, target, record, lease)) is not None:
              return _ok(rid, _reuse_live_payload(*live))
-@@ -457,7 +461,9 @@ def _(rid, params: dict) -> dict:
+@@ -458,7 +462,9 @@ def _(rid, params: dict) -> dict:
                  "resumed": target,
                  "message_count": len(messages),
                  "messages": messages,
@@ -741,7 +762,7 @@ index ea0e1720f..1c0fd3fc2 100644
                  "inflight": None,
                  "running": child_running,
                  "session_key": target,
-@@ -519,6 +525,7 @@ def _(rid, params: dict) -> dict:
+@@ -520,6 +526,7 @@ def _(rid, params: dict) -> dict:
              close_on_disconnect=is_truthy_value(params.get("close_on_disconnect", False)),
              display_history_prefix=prefix,
              profile_home=profile_home,
@@ -749,7 +770,7 @@ index ea0e1720f..1c0fd3fc2 100644
              model_override=overrides.get("model_override"),
              resume_runtime_overrides=overrides or None,
          )
-@@ -536,7 +543,7 @@ def _(rid, params: dict) -> dict:
+@@ -537,7 +544,7 @@ def _(rid, params: dict) -> dict:
              "message_count": len(messages),
              "messages": messages,
              "info": _lazy_resume_info(
@@ -758,7 +779,7 @@ index ea0e1720f..1c0fd3fc2 100644
                  model=model_override.get("model") or "",
                  provider=overrides.get("provider_override") or "",
                  profile=profile,
-@@ -655,6 +662,7 @@ def _(rid, params: dict) -> dict:
+@@ -656,6 +663,7 @@ def _(rid, params: dict) -> dict:
                      cwd=profile_resume_cwd,
                      session_db=db,
                      source=source,
@@ -766,7 +787,7 @@ index ea0e1720f..1c0fd3fc2 100644
                  )
              finally:
                  if init_home_token is not None:
-@@ -2561,7 +2569,7 @@ def _(rid, params: dict) -> dict:
+@@ -2615,7 +2623,7 @@ def _(rid, params: dict) -> dict:
                  # thing that surfaces TUI branches. See issue #20856.
                  model_config={"_branched_from": old_key},
                  parent_session_id=old_key,
@@ -775,7 +796,7 @@ index ea0e1720f..1c0fd3fc2 100644
                  # The branch stays on its parent's profile. Explicit stamp (not
                  # just the parent-backfill) so it holds even when the parent row
                  # predates the profile_name column.
-@@ -2624,6 +2632,7 @@ def _(rid, params: dict) -> dict:
+@@ -2678,6 +2686,7 @@ def _(rid, params: dict) -> dict:
                  session_db=branch_db,
                  source=source,
                  profile_home=parent_home,
@@ -784,10 +805,10 @@ index ea0e1720f..1c0fd3fc2 100644
          finally:
              if home_token is not None:
 diff --git a/tui_gateway/server.py b/tui_gateway/server.py
-index fdef04968..f8d3d627c 100644
+index f99171670..f808a82fb 100644
 --- a/tui_gateway/server.py
 +++ b/tui_gateway/server.py
-@@ -2250,10 +2250,21 @@ def _is_local_terminal_backend() -> bool:
+@@ -2286,10 +2286,21 @@ def _is_local_terminal_backend() -> bool:
  def _display_session_cwd(session: dict | None) -> str:
      """Session cwd for display/probe surfaces, healed past deleted worktrees.
  
@@ -809,7 +830,7 @@ index fdef04968..f8d3d627c 100644
      cwd = _session_cwd(session)
      if not _is_local_terminal_backend():
          return cwd
-@@ -4592,7 +4603,8 @@ def _current_profile_name() -> str:
+@@ -4724,7 +4735,8 @@ def _current_profile_name() -> str:
  # v3: adds approvals.mode config RPCs and session.info reconciliation.
  # v4: session.create fast=false is an explicit per-session normal-tier override.
  # v5: uvicorn ws_max_size raised for one-shot base64 file.attach frames (>16 MiB).
@@ -819,7 +840,7 @@ index fdef04968..f8d3d627c 100644
  
  
  def _session_usage_snapshot(session: dict | None) -> dict:
-@@ -6093,6 +6105,7 @@ def _init_session(
+@@ -6234,6 +6246,7 @@ def _init_session(
      session_db=None,
      source: str | None = None,
      profile_home: str | None = None,
@@ -827,7 +848,7 @@ index fdef04968..f8d3d627c 100644
  ):
      now = time.time()
      with _sessions_lock:
-@@ -6109,6 +6122,7 @@ def _init_session(
+@@ -6250,6 +6263,7 @@ def _init_session(
              "attached_images": [],
              "image_counter": 0,
              "cwd": cwd or _completion_cwd(),
@@ -835,7 +856,7 @@ index fdef04968..f8d3d627c 100644
              "cols": cols,
              "slash_worker": None,
              "show_reasoning": _load_show_reasoning(),
-@@ -6148,13 +6162,15 @@ def _init_session(
+@@ -6289,13 +6303,15 @@ def _init_session(
                  with _sessions_lock:
                      if sid in _sessions:
                          _sessions[sid]["cwd"] = row["cwd"]
@@ -856,7 +877,7 @@ index fdef04968..f8d3d627c 100644
                  except Exception:
                      logger.debug(
                          "failed to persist resumed session cwd", exc_info=True
-@@ -7204,6 +7220,7 @@ def _deferred_session_record(
+@@ -7352,6 +7368,7 @@ def _deferred_session_record(
      display_history_prefix: list | None = None,
      profile_home: Path | None = None,
      lazy: bool = False,
@@ -864,7 +885,7 @@ index fdef04968..f8d3d627c 100644
      model_override=None,
      resume_runtime_overrides: dict | None = None,
  ) -> dict:
-@@ -7222,7 +7239,7 @@ def _deferred_session_record(
+@@ -7370,7 +7387,7 @@ def _deferred_session_record(
          "cwd": cwd,
          "display_history_prefix": display_history_prefix or [],
          "edit_snapshots": {},
@@ -873,7 +894,7 @@ index fdef04968..f8d3d627c 100644
          "history": history,
          "history_lock": threading.Lock(),
          "history_version": 0,
-@@ -7371,9 +7388,11 @@ def _fallback_session_info(session: dict) -> dict:
+@@ -7519,9 +7536,11 @@ def _fallback_session_info(session: dict) -> dict:
      agent = session.get("agent")
      if agent is not None:
          return _session_info(agent)

@@ -38,6 +38,9 @@ STATUS_PRIORITY = {
     "infrastructure-failure": 8,
 }
 HEX_SHA = re.compile(r"^[0-9a-fA-F]{40}$")
+LLAMA_CPP_TEST_PYTHON_REQUIREMENTS = ("jinja2==3.1.6",)
+HERMES_AGENT_NPM_VERSION = "12.0.0"
+HERMES_AGENT_UV_FALLBACK = "uv==0.11.32"
 
 
 class CommandError(RuntimeError):
@@ -214,7 +217,11 @@ def seed_patch_preimages(
 
 
 def npm() -> str:
-    return "npm.cmd" if os.name == "nt" else "npm"
+    return "npx.cmd" if os.name == "nt" else "npx"
+
+
+def npm_command(*arguments: str) -> list[str]:
+    return [npm(), "--yes", f"npm@{HERMES_AGENT_NPM_VERSION}", *arguments]
 
 
 def uv() -> str:
@@ -223,6 +230,30 @@ def uv() -> str:
     if not found:
         raise RuntimeError("uv executable unavailable after installation")
     return found
+
+
+def install_python_requirements(requirements: Sequence[str], *, cwd: Path, log: Path) -> None:
+    run(
+        [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", *requirements],
+        cwd=cwd,
+        log=log,
+        timeout=900,
+    )
+
+
+def ensure_uv(*, cwd: Path, log: Path) -> str:
+    try:
+        return uv()
+    except RuntimeError:
+        install_python_requirements((HERMES_AGENT_UV_FALLBACK,), cwd=cwd, log=log)
+        return uv()
+
+
+def uv_sync_command(executable: str, source: Path) -> list[str]:
+    command = [executable, "sync", "--extra", "all", "--extra", "dev"]
+    if (source / "uv.lock").exists():
+        command.append("--frozen")
+    return command
 
 
 def package_script(path: Path) -> str | None:
@@ -334,10 +365,10 @@ def hermes_agent(args: argparse.Namespace) -> int:
         try:
             done = []
             if args.run_desktop_checks and desktop:
-                run([npm(), "ci", "--no-audit", "--fund=false"], cwd=source, log=logs / "dependencies.log", timeout=3600); done.append("node")
+                run(npm_command("ci", "--no-audit", "--fund=false"), cwd=source, log=logs / "dependencies.log", timeout=3600); done.append("node")
             if args.run_python_checks and python:
-                run([sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "uv"], cwd=source, log=logs / "dependencies.log", timeout=900)
-                cmd = [uv(), "sync"] + (["--frozen"] if (source / "uv.lock").exists() else [])
+                uv_executable = ensure_uv(cwd=source, log=logs / "dependencies.log")
+                cmd = uv_sync_command(uv_executable, source)
                 run(cmd, cwd=source, log=logs / "dependencies.log", timeout=3600); done.append("python")
             stage_pass(report, "dependencies", ecosystems=done) if done else stage_warning(report, "dependencies", "No dependency installation requested or supported.")
         except Exception as exc:
@@ -361,8 +392,8 @@ def hermes_agent(args: argparse.Namespace) -> int:
                 run([uv(), "run", "python", "-m", "pytest", *selected, "-q"], cwd=source, log=logs / "tests.log", timeout=3600)
                 done.append(f"python:{len(selected)} files")
             if args.run_desktop_checks and desktop:
-                run([npm(), "run", "typecheck", "--workspace", "apps/desktop"], cwd=source, log=logs / "tests.log")
-                run([npm(), "run", "lint", "--workspace", "apps/desktop"], cwd=source, log=logs / "tests.log")
+                run(npm_command("run", "typecheck", "--workspace", "apps/desktop"), cwd=source, log=logs / "tests.log")
+                run(npm_command("run", "lint", "--workspace", "apps/desktop"), cwd=source, log=logs / "tests.log")
                 vitest = source / "node_modules/.bin" / ("vitest.cmd" if os.name == "nt" else "vitest")
                 if vitest.exists():
                     run([vitest, "run", "--project", "electron", "electron/hermes-local-control.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")
@@ -375,7 +406,7 @@ def hermes_agent(args: argparse.Namespace) -> int:
         try:
             done = []
             if args.run_desktop_checks and desktop:
-                run([npm(), "run", "build", "--workspace", "apps/desktop"], cwd=source, log=logs / "build.log", timeout=3600); done.append("desktop")
+                run(npm_command("run", "build", "--workspace", "apps/desktop"), cwd=source, log=logs / "build.log", timeout=3600); done.append("desktop")
             if args.run_python_checks and python and (source / "hermes_cli").exists():
                 run([uv(), "run", "python", "-m", "compileall", "-q", "hermes_cli"], cwd=source, log=logs / "build.log"); done.append("python-bytecode")
             stage_pass(report, "build", checks=done) if done else stage_warning(report, "build", "No candidate build requested.")
@@ -386,7 +417,7 @@ def hermes_agent(args: argparse.Namespace) -> int:
         script = package_script(source / "apps/desktop/package.json") if desktop else None
         if args.run_package_checks and script:
             try:
-                run([npm(), "run", script, "--workspace", "apps/desktop"], cwd=source, log=logs / "package.log", timeout=5400)
+                run(npm_command("run", script, "--workspace", "apps/desktop"), cwd=source, log=logs / "package.log", timeout=5400)
                 stage_pass(report, "package", script=script)
             except Exception as exc:
                 fail_report(report, stage="package", message=f"Desktop packaging script {script!r} failed.", error=exc)
@@ -422,7 +453,19 @@ def llama_cpp(args: argparse.Namespace) -> int:
         try:
             if not shutil.which("cmake") or (args.cuda and not shutil.which("nvcc")):
                 raise RuntimeError("Required CMake/CUDA build tools are unavailable")
-            stage_pass(report, "dependencies", cmake=run(["cmake", "--version"], cwd=source, log=logs / "dependencies.log").splitlines()[0])
+            dependency_log = logs / "dependencies.log"
+            cmake_version = run(["cmake", "--version"], cwd=source, log=dependency_log).splitlines()[0]
+            install_python_requirements(
+                LLAMA_CPP_TEST_PYTHON_REQUIREMENTS,
+                cwd=source,
+                log=dependency_log,
+            )
+            stage_pass(
+                report,
+                "dependencies",
+                cmake=cmake_version,
+                pythonRequirements=list(LLAMA_CPP_TEST_PYTHON_REQUIREMENTS),
+            )
         except Exception as exc:
             fail_report(report, stage="dependencies", message="llama.cpp build dependencies unavailable.", error=exc, infrastructure=True)
             return finish(report, output, 1)

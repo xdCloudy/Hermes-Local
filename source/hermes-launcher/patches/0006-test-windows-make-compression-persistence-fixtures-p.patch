@@ -1,7 +1,7 @@
-From 47dcdcdd83831f56a588813057aca640c6abab5b Mon Sep 17 00:00:00 2001
+From c6f9a7e2320c9360b86e5f86af5f4ca74437db89 Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Tue, 28 Jul 2026 10:40:36 +0100
-Subject: [PATCH 06/12] test(windows): make compression persistence fixtures
+Subject: [PATCH 06/26] test(windows): make compression persistence fixtures
  portable
 
 ---
@@ -9,7 +9,7 @@ Subject: [PATCH 06/12] test(windows): make compression persistence fixtures
  1 file changed, 10 insertions(+), 2 deletions(-)
 
 diff --git a/tests/run_agent/test_compression_persistence.py b/tests/run_agent/test_compression_persistence.py
-index c21afa1f35e7da6dd18922e96fee16ea6c149ade..f21c86df0cbd04de10c7150e6c184aea1f135183 100644
+index 6af2248f8..87cb4b76d 100644
 --- a/tests/run_agent/test_compression_persistence.py
 +++ b/tests/run_agent/test_compression_persistence.py
 @@ -99,6 +99,7 @@ class TestFlushAfterCompression:
@@ -36,7 +36,7 @@ index c21afa1f35e7da6dd18922e96fee16ea6c149ade..f21c86df0cbd04de10c7150e6c184aea
  
      def test_abort_after_in_place_compaction_preserves_flush_baseline(self):
          """An aborted retry must survive flush, restart, and resume."""
-@@ -490,7 +493,11 @@ class TestStoredPromptCwdDrift:
+@@ -421,7 +424,11 @@ class TestStoredPromptCwdDrift:
          from agent.conversation_loop import _stored_prompt_matches_runtime
  
          agent = self._make_agent()
@@ -49,7 +49,7 @@ index c21afa1f35e7da6dd18922e96fee16ea6c149ade..f21c86df0cbd04de10c7150e6c184aea
          stored_prompt = (
              self._host_block(current_cwd)
              + "Model: test/model\n"
-@@ -518,7 +525,7 @@ class TestStoredPromptCwdDrift:
+@@ -449,7 +456,7 @@ class TestStoredPromptCwdDrift:
          from agent.conversation_loop import _stored_prompt_matches_runtime
  
          agent = self._make_agent()
@@ -58,8 +58,11 @@ index c21afa1f35e7da6dd18922e96fee16ea6c149ade..f21c86df0cbd04de10c7150e6c184aea
          stored_prompt = (
              self._host_block(current_cwd)
              + "\n# AGENTS.md\n\n"
-@@ -661,3 +668,4 @@ class TestStoredPromptCwdDrift:
+@@ -524,3 +531,4 @@ class TestStoredPromptCwdDrift:
              assert "Platform: cli" in parts["volatile"], (
                  "Built prompt missing 'Platform: cli' — drift detection cannot read it"
              )
 +            db.close()
+-- 
+2.55.0.windows.3
+

@@ -1,7 +1,7 @@
-From b8066cef09675b2ae9c927344bace711ab9e0011 Mon Sep 17 00:00:00 2001
+From 33d1215e82c46969e52fd7e067f98f5f8ece4bd0 Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
 Date: Fri, 31 Jul 2026 01:36:56 +0000
-Subject: [PATCH] feat(desktop): embed loopback dashboard securely
+Subject: [PATCH 20/26] feat(desktop): embed loopback dashboard securely
 
 Add a sandboxed WebContentsView for the configured loopback dashboard, keep authentication in the Electron session boundary, block cross-origin navigation and requests, preserve view state across Desktop routes, and recover from backend or renderer restarts.
 ---
@@ -21,7 +21,7 @@ Add a sandboxed WebContentsView for the configured loopback dashboard, keep auth
  create mode 100644 apps/desktop/electron/hermes-local-dashboard-view.ts
 
 diff --git a/apps/desktop/e2e/hermes-local-functional.spec.ts b/apps/desktop/e2e/hermes-local-functional.spec.ts
-index 85b9342..24c52a9 100644
+index 85b9342bd..24c52a969 100644
 --- a/apps/desktop/e2e/hermes-local-functional.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-functional.spec.ts
 @@ -245,7 +245,7 @@ test.describe('Hermes Local packaged functional acceptance', () => {
@@ -34,7 +34,7 @@ index 85b9342..24c52a9 100644
        await nav.getByRole('button', { exact: true, name: 'Models' }).click()
        await expect(page.getByRole('button', { exact: true, name: 'Register GGUF' })).toBeEnabled()
 diff --git a/apps/desktop/e2e/hermes-local-workstation.spec.ts b/apps/desktop/e2e/hermes-local-workstation.spec.ts
-index dd265c6..c1ac6a2 100644
+index dd265c6d9..c1ac6a2dc 100644
 --- a/apps/desktop/e2e/hermes-local-workstation.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-workstation.spec.ts
 @@ -208,7 +208,7 @@ test.describe('Hermes Local packaged workstation', () => {
@@ -47,7 +47,7 @@ index dd265c6..c1ac6a2 100644
        await workstationNav.getByRole('button', { name: 'Sessions', exact: true }).click()
        await expect(page.getByRole('heading', { name: 'Sessions', exact: true })).toBeVisible()
 diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
-index ae9ca57..c2d859c 100644
+index ae9ca57f7..c2d859cfb 100644
 --- a/apps/desktop/electron/hermes-local-control.test.ts
 +++ b/apps/desktop/electron/hermes-local-control.test.ts
 @@ -8,9 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -64,7 +64,7 @@ index ae9ca57..c2d859c 100644
      openExternal: vi.fn(),
      openPath: vi.fn()
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index 9c4cfb8..d8c11d5 100644
+index 9c4cfb8c2..d8c11d545 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -7,6 +7,12 @@ import { promisify } from 'node:util'
@@ -143,7 +143,7 @@ index 9c4cfb8..d8c11d5 100644
  
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.test.ts b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 new file mode 100644
-index 0000000..5cbbb05
+index 000000000..5cbbb0595
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 @@ -0,0 +1,253 @@
@@ -402,7 +402,7 @@ index 0000000..5cbbb05
 +})
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop/electron/hermes-local-dashboard-view.ts
 new file mode 100644
-index 0000000..ddc518f
+index 000000000..ddc518f72
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.ts
 @@ -0,0 +1,596 @@
@@ -1003,10 +1003,10 @@ index 0000000..ddc518f
 +  }
 +}
 diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
-index b30ea24..e0ceabd 100644
+index cc357f486..621a005fc 100644
 --- a/apps/desktop/electron/main.ts
 +++ b/apps/desktop/electron/main.ts
-@@ -139,6 +139,7 @@ import {
+@@ -140,6 +140,7 @@ import {
    hermesLocalTuiLaunch,
    registerHermesLocalControlIpc
  } from './hermes-local-control'
@@ -1014,7 +1014,7 @@ index b30ea24..e0ceabd 100644
  import { createLinkTitleWindow, guardLinkTitleSession, readLinkTitleWindowTitle } from './link-title-window'
  import { ensureMainWindow } from './main-window-lifecycle'
  import { isTrustedRendererUrl, shouldAllowRendererPermission } from './media-permissions'
-@@ -1042,6 +1043,14 @@ function registerMediaProtocol() {
+@@ -1059,6 +1060,14 @@ function registerMediaProtocol() {
  }
  
  let mainWindow = null
@@ -1029,7 +1029,7 @@ index b30ea24..e0ceabd 100644
  const backendConnectionState = createBackendConnectionState<ReturnType<typeof spawn>, any>()
  const remoteLiveness = new RemoteLivenessTracker()
  const remoteRevalidation = new RemoteRevalidationCoordinator()
-@@ -9222,6 +9231,7 @@ function createWindow() {
+@@ -9280,6 +9289,7 @@ function createWindow() {
    const createdMainWindow = mainWindow
    mainWindow.on('closed', () => {
      closePetOverlay()
@@ -1037,7 +1037,7 @@ index b30ea24..e0ceabd 100644
  
      if (mainWindow === createdMainWindow) {
        mainWindow = null
-@@ -9335,7 +9345,7 @@ function createWindow() {
+@@ -9394,7 +9404,7 @@ function createWindow() {
    })
  }
  
@@ -1046,7 +1046,7 @@ index b30ea24..e0ceabd 100644
  
  ipcMain.handle('hermes:connection', async (_event, profile) => ensureBackend(profile))
  // Reconnect-after-wake recovery. A REMOTE primary backend has no child process,
-@@ -11821,6 +11831,10 @@ app.on('before-quit', event => {
+@@ -11925,6 +11935,10 @@ app.on('before-quit', event => {
      }
    }
  
@@ -1058,7 +1058,7 @@ index b30ea24..e0ceabd 100644
    // pet can't keep the process alive or float over a quit app.
    closePetOverlay()
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
-index 2380a87..2cef017 100644
+index ac22b927d..04abcd4a2 100644
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
 @@ -110,6 +110,19 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
@@ -1082,7 +1082,7 @@ index 2380a87..2cef017 100644
      openRoot: () => ipcRenderer.invoke('hermes:local:root:open')
    },
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index b47a7a7..a4187b8 100644
+index b47a7a72d..a4187b821 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -24,7 +24,7 @@ import IconSquare from '@tabler/icons-react/dist/esm/icons/IconSquare.mjs'
@@ -1321,7 +1321,7 @@ index b47a7a7..a4187b8 100644
  
    if (section === 'tasks') {
 diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
-index cfa9be5..cd42876 100644
+index cfa9be5b6..cd428766d 100644
 --- a/apps/desktop/src/app/local-workstation/types.ts
 +++ b/apps/desktop/src/app/local-workstation/types.ts
 @@ -1,3 +1,26 @@
@@ -1352,7 +1352,7 @@ index cfa9be5..cd42876 100644
    | 'backup'
    | 'benchmark'
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index 3af5913..c286d03 100644
+index 86ef0fcba..604ed5242 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
 @@ -1,6 +1,8 @@
@@ -1380,5 +1380,5 @@ index 3af5913..c286d03 100644
          openRoot: () => Promise<{ error: string; ok: boolean }>
          registerModel: (model: Partial<LocalModel> & { localPath: string }) => Promise<LocalModel>
 -- 
-2.47.3
+2.55.0.windows.3
 

@@ -1,7 +1,7 @@
-From aa2e4345b882899cffff350126d85d98faf8dc21 Mon Sep 17 00:00:00 2001
+From 64ae15c2a59b7bdbc9123a878c8a65e2bde0249b Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
 Date: Fri, 31 Jul 2026 02:09:50 +0000
-Subject: [PATCH] style(desktop): satisfy embedded dashboard lint rules
+Subject: [PATCH 21/26] style(desktop): satisfy embedded dashboard lint rules
 
 ---
  apps/desktop/electron/hermes-local-control.ts          | 10 +++++-----
@@ -12,7 +12,7 @@ Subject: [PATCH] style(desktop): satisfy embedded dashboard lint rules
  5 files changed, 24 insertions(+), 6 deletions(-)
 
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index d8c11d5..5bf3705 100644
+index d8c11d545..5bf3705fe 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -8,11 +8,11 @@ import { promisify } from 'node:util'
@@ -52,7 +52,7 @@ index d8c11d5..5bf3705 100644
    const token = String(process.env.HERMES_DESKTOP_REMOTE_TOKEN || '').trim()
  
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.test.ts b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
-index 5cbbb05..98551f7 100644
+index 5cbbb0595..98551f7b1 100644
 --- a/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 @@ -95,6 +95,7 @@ function harness() {
@@ -91,7 +91,7 @@ index 5cbbb05..98551f7 100644
        partition.handlers.beforeRequest({ url: 'https://example.com/' }, resolve)
      )
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop/electron/hermes-local-dashboard-view.ts
-index ddc518f..be14a0c 100644
+index ddc518f72..be14a0c8a 100644
 --- a/apps/desktop/electron/hermes-local-dashboard-view.ts
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.ts
 @@ -1,4 +1,12 @@
@@ -109,10 +109,10 @@ index ddc518f..be14a0c 100644
  const DASHBOARD_PARTITION = 'hermes:local-dashboard'
  const RETRY_DELAYS_MS = [750, 1500, 3000, 6000, 10_000]
 diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
-index e0ceabd..1dfc4eb 100644
+index 621a005fc..563502412 100644
 --- a/apps/desktop/electron/main.ts
 +++ b/apps/desktop/electron/main.ts
-@@ -1043,6 +1043,7 @@ function registerMediaProtocol() {
+@@ -1060,6 +1060,7 @@ function registerMediaProtocol() {
  }
  
  let mainWindow = null
@@ -120,7 +120,7 @@ index e0ceabd..1dfc4eb 100644
  const hermesLocalDashboardView = createHermesLocalDashboardViewController({
    emitState: state => {
      if (mainWindow && !mainWindow.isDestroyed()) {
-@@ -1051,6 +1052,7 @@ const hermesLocalDashboardView = createHermesLocalDashboardViewController({
+@@ -1068,6 +1069,7 @@ const hermesLocalDashboardView = createHermesLocalDashboardViewController({
    },
    getWindow: () => mainWindow
  })
@@ -129,7 +129,7 @@ index e0ceabd..1dfc4eb 100644
  const remoteLiveness = new RemoteLivenessTracker()
  const remoteRevalidation = new RemoteRevalidationCoordinator()
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index a4187b8..9a35816 100644
+index a4187b821..9a35816e8 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -1013,6 +1013,7 @@ function HomeContent({
@@ -157,4 +157,5 @@ index a4187b8..9a35816 100644
    const loading = state.phase === 'loading' || state.phase === 'restarting'
  
 -- 
-2.47.3
+2.55.0.windows.3
+

@@ -1,7 +1,7 @@
-From ba7aedf3cdbbafb87bdeaed647dc843fb788f8ed Mon Sep 17 00:00:00 2001
+From 22c32f25252f84abcc912235e4fd35d5ec568021 Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
 Date: Fri, 31 Jul 2026 04:50:00 +0100
-Subject: [PATCH] fix(desktop): track main-frame dashboard navigation
+Subject: [PATCH 24/26] fix(desktop): track main-frame dashboard navigation
 
 ---
  .../hermes-local-dashboard-view.test.ts       | 70 ++++++++++++++++++-
@@ -9,7 +9,7 @@ Subject: [PATCH] fix(desktop): track main-frame dashboard navigation
  2 files changed, 86 insertions(+), 3 deletions(-)
 
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.test.ts b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
-index 91612ee11746fea280b8002a912046d0fdf0b417..debfa8d107636179c6c8088cc7770ab02206b9dc 100644
+index 91612ee11..debfa8d10 100644
 --- a/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 @@ -25,17 +25,24 @@ class FakeWebContents extends EventEmitter {
@@ -114,7 +114,7 @@ index 91612ee11746fea280b8002a912046d0fdf0b417..debfa8d107636179c6c8088cc7770ab0
      const { controller, timers, views } = harness()
      const bounds = { height: 500, width: 800, x: 20, y: 100 }
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop/electron/hermes-local-dashboard-view.ts
-index de13c921be21df2b209c8e2281d01032674fee21..570cae332f63210fbd33786f412538b71038bcbc 100644
+index de13c921b..570cae332 100644
 --- a/apps/desktop/electron/hermes-local-dashboard-view.ts
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.ts
 @@ -444,7 +444,11 @@ export function createHermesLocalDashboardViewController(
@@ -158,4 +158,5 @@ index de13c921be21df2b209c8e2281d01032674fee21..570cae332f63210fbd33786f412538b7
      }
  
 -- 
-2.47.3
+2.55.0.windows.3
+

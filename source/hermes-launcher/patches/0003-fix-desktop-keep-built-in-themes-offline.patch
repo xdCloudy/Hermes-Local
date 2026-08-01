@@ -1,16 +1,16 @@
-From a23177398b6dc5dc34bc158a26578012b4b52d60 Mon Sep 17 00:00:00 2001
+From 2d8139e98e6a01d11853b44ddc8a91cffca46be6 Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Tue, 28 Jul 2026 09:44:01 +0100
-Subject: [PATCH 03/12] fix(desktop): keep built-in themes offline
+Subject: [PATCH 03/26] fix(desktop): keep built-in themes offline
 
 ---
  apps/desktop/src/themes/context.tsx     |  4 ++--
  apps/desktop/src/themes/presets.test.ts |  6 ++++++
- apps/desktop/src/themes/presets.ts      | 14 ++++++++------
- 3 files changed, 16 insertions(+), 8 deletions(-)
+ apps/desktop/src/themes/presets.ts      | 17 ++++++++++-------
+ 3 files changed, 18 insertions(+), 9 deletions(-)
 
 diff --git a/apps/desktop/src/themes/context.tsx b/apps/desktop/src/themes/context.tsx
-index e618534c3107a51331fe116ddcf6c433e8f2c464..62cdc8bcebc1725bfc98c11ad195e211a80d271a 100644
+index e618534c3..62cdc8bce 100644
 --- a/apps/desktop/src/themes/context.tsx
 +++ b/apps/desktop/src/themes/context.tsx
 @@ -237,14 +237,14 @@ function applyTheme(theme: DesktopTheme, mode: 'light' | 'dark') {
@@ -31,7 +31,7 @@ index e618534c3107a51331fe116ddcf6c433e8f2c464..62cdc8bcebc1725bfc98c11ad195e211
    }
  
 diff --git a/apps/desktop/src/themes/presets.test.ts b/apps/desktop/src/themes/presets.test.ts
-index 9cb1b86efb051497eed5f89138f06ff087b29e80..56ab2c46eb87404a21da4ce90738d066103ea3be 100644
+index 9cb1b86ef..56ab2c46e 100644
 --- a/apps/desktop/src/themes/presets.test.ts
 +++ b/apps/desktop/src/themes/presets.test.ts
 @@ -30,4 +30,10 @@ describe('theme typography emoji fallback (#40364)', () => {
@@ -46,14 +46,24 @@ index 9cb1b86efb051497eed5f89138f06ff087b29e80..56ab2c46eb87404a21da4ce90738d066
 +  })
  })
 diff --git a/apps/desktop/src/themes/presets.ts b/apps/desktop/src/themes/presets.ts
-index 9cfb880c660feb8f82f9a5f1fda6bc697e4cae9d..c0effc11f5047584939b81ddf52a25b122afaf9f 100644
+index 464381819..c0effc11f 100644
 --- a/apps/desktop/src/themes/presets.ts
 +++ b/apps/desktop/src/themes/presets.ts
-@@ -92,8 +92,10 @@ export const nousTheme: DesktopTheme = {
+@@ -15,7 +15,8 @@ const SYSTEM_SANS =
+   '"Segoe WPC", "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif, ' +
+   EMOJI_FALLBACK
+ 
+-const SYSTEM_MONO = 'Menlo, Monaco, "SF Mono", "Courier Prime", monospace, ' + EMOJI_FALLBACK
++const SYSTEM_MONO =
++  '"Cascadia Code", "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Monaco, Consolas, monospace, ' + EMOJI_FALLBACK
+ 
+ export const DEFAULT_TYPOGRAPHY: DesktopThemeTypography = { fontSans: SYSTEM_SANS, fontMono: SYSTEM_MONO }
+ 
+@@ -91,8 +92,10 @@ export const nousTheme: DesktopTheme = {
    },
    typography: {
      fontSans: SYSTEM_SANS,
--    fontMono: `"Courier Prime", ${SYSTEM_MONO}`,
+-    fontMono: SYSTEM_MONO,
 -    fontUrl: 'https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap'
 +    // Keep the packaged workstation offline. Courier Prime remains the first
 +    // choice when it is installed locally, with the bundled/system monospace
@@ -62,7 +72,7 @@ index 9cfb880c660feb8f82f9a5f1fda6bc697e4cae9d..c0effc11f5047584939b81ddf52a25b1
    }
  }
  
-@@ -129,8 +131,7 @@ export const midnightTheme: DesktopTheme = {
+@@ -128,8 +131,7 @@ export const midnightTheme: DesktopTheme = {
      userBubbleBorder: '#242466'
    },
    typography: {
@@ -72,7 +82,7 @@ index 9cfb880c660feb8f82f9a5f1fda6bc697e4cae9d..c0effc11f5047584939b81ddf52a25b1
    }
  }
  
-@@ -166,8 +167,9 @@ export const emberTheme: DesktopTheme = {
+@@ -165,8 +167,9 @@ export const emberTheme: DesktopTheme = {
      userBubbleBorder: '#4a2010'
    },
    typography: {
@@ -84,3 +94,6 @@ index 9cfb880c660feb8f82f9a5f1fda6bc697e4cae9d..c0effc11f5047584939b81ddf52a25b1
    }
  }
  
+-- 
+2.55.0.windows.3
+

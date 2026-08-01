@@ -1,10 +1,9 @@
-From 16b774a019dc02c745c3370ffa51bd8aca3a4710 Mon Sep 17 00:00:00 2001
+From 627c2182f59440720fcac477ea7bcd33dac399c9 Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Wed, 29 Jul 2026 23:30:51 +0100
-Subject: [PATCH 13/13] fix(desktop): report authoritative gateway state
+Subject: [PATCH 13/26] fix(desktop): report authoritative gateway state
 
 ---
- .lazy-refresh-incomplete                      |  2 -
  apps/desktop/electron/hermes-local-control.ts |  8 +-
  .../hermes-local-gateway-status.test.ts       | 74 ++++++++++++++
  .../electron/hermes-local-gateway-status.ts   | 75 ++++++++++++++
@@ -12,23 +11,14 @@ Subject: [PATCH 13/13] fix(desktop): report authoritative gateway state
  .../src/app/local-workstation/types.ts        |  7 ++
  .../workstation-status.test.ts                | 90 +++++++++++++++++
  .../local-workstation/workstation-status.ts   | 97 +++++++++++++++++++
- 8 files changed, 359 insertions(+), 11 deletions(-)
- delete mode 100644 .lazy-refresh-incomplete
+ 7 files changed, 359 insertions(+), 9 deletions(-)
  create mode 100644 apps/desktop/electron/hermes-local-gateway-status.test.ts
  create mode 100644 apps/desktop/electron/hermes-local-gateway-status.ts
  create mode 100644 apps/desktop/src/app/local-workstation/workstation-status.test.ts
  create mode 100644 apps/desktop/src/app/local-workstation/workstation-status.ts
 
-diff --git a/.lazy-refresh-incomplete b/.lazy-refresh-incomplete
-deleted file mode 100644
-index b9745a74b12f2e29798dabe48a9d217e741faa4a..0000000000000000000000000000000000000000
---- a/.lazy-refresh-incomplete
-+++ /dev/null
-@@ -1,2 +0,0 @@
--started=1785343166.9711895
--pid=2093896
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index e5436719e31b091eff6e0019c6fe08e6b66cdcce..02f0c781c085d3901679ddc6a4ba19f89eac3924 100644
+index e5436719e..02f0c781c 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -20,6 +20,8 @@ import {
@@ -62,7 +52,7 @@ index e5436719e31b091eff6e0019c6fe08e6b66cdcce..02f0c781c085d3901679ddc6a4ba19f8
      },
 diff --git a/apps/desktop/electron/hermes-local-gateway-status.test.ts b/apps/desktop/electron/hermes-local-gateway-status.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..e48f9a4c227267a8dbb34e041767c6a501194fe9
+index 000000000..e48f9a4c2
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-gateway-status.test.ts
 @@ -0,0 +1,74 @@
@@ -143,7 +133,7 @@ index 0000000000000000000000000000000000000000..e48f9a4c227267a8dbb34e041767c6a5
 \ No newline at end of file
 diff --git a/apps/desktop/electron/hermes-local-gateway-status.ts b/apps/desktop/electron/hermes-local-gateway-status.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..41b4923a9359262153602ecfd3cff5921af5a69e
+index 000000000..41b4923a9
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-gateway-status.ts
 @@ -0,0 +1,75 @@
@@ -224,7 +214,7 @@ index 0000000000000000000000000000000000000000..41b4923a9359262153602ecfd3cff592
 +}
 \ No newline at end of file
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index 0119519c286c7017a20c2ea79cca83be3f16cf7c..086aa72519453f8fd7e236ee9a673f111b6a93ef 100644
+index 0119519c2..086aa7251 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -40,6 +40,7 @@ import type {
@@ -283,7 +273,7 @@ index 0119519c286c7017a20c2ea79cca83be3f16cf7c..086aa72519453f8fd7e236ee9a673f11
      return () => {
        active = false
 diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
-index 6e93daa20a3aaf0a58523f37103cb121deaabdac..cfa9be5b67424723c4563931f5b7055fa31b4026 100644
+index 6e93daa20..cfa9be5b6 100644
 --- a/apps/desktop/src/app/local-workstation/types.ts
 +++ b/apps/desktop/src/app/local-workstation/types.ts
 @@ -129,6 +129,13 @@ export interface LocalWorkstationSnapshot {
@@ -302,7 +292,7 @@ index 6e93daa20a3aaf0a58523f37103cb121deaabdac..cfa9be5b67424723c4563931f5b7055f
    }
 diff --git a/apps/desktop/src/app/local-workstation/workstation-status.test.ts b/apps/desktop/src/app/local-workstation/workstation-status.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..f68d46adc34f3c6d2b752d39d2296c1e0b334bc1
+index 000000000..f68d46adc
 --- /dev/null
 +++ b/apps/desktop/src/app/local-workstation/workstation-status.test.ts
 @@ -0,0 +1,90 @@
@@ -399,7 +389,7 @@ index 0000000000000000000000000000000000000000..f68d46adc34f3c6d2b752d39d2296c1e
 \ No newline at end of file
 diff --git a/apps/desktop/src/app/local-workstation/workstation-status.ts b/apps/desktop/src/app/local-workstation/workstation-status.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..74723f38dc02acf3fdd7e921295404f5d1e0026e
+index 000000000..74723f38d
 --- /dev/null
 +++ b/apps/desktop/src/app/local-workstation/workstation-status.ts
 @@ -0,0 +1,97 @@
@@ -501,3 +491,6 @@ index 0000000000000000000000000000000000000000..74723f38dc02acf3fdd7e921295404f5
 +  }
 +}
 \ No newline at end of file
+-- 
+2.55.0.windows.3
+

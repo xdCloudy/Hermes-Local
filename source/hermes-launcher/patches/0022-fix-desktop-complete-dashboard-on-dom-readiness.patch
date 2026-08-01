@@ -1,21 +1,22 @@
-From 1111111111111111111111111111111111111111 Mon Sep 17 00:00:00 2001
+From 3901be852f51575297275b78b3297f801a3b3c98 Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
 Date: Fri, 31 Jul 2026 02:31:00 +0000
-Subject: [PATCH] fix(desktop): complete dashboard on DOM readiness
+Subject: [PATCH 22/26] fix(desktop): complete dashboard on DOM readiness
 
 Do not keep the embedded dashboard hidden while waiting indefinitely for
 Electron's did-finish-load event. Track the committed main-frame response and
 complete a successful same-origin load when its DOM is ready, while retaining
 did-finish-load as a compatibility fallback.
 ---
- .../hermes-local-dashboard-view.test.ts       | 25 +++++++++++--
- .../electron/hermes-local-dashboard-view.ts   | 52 ++++++++++++++++++---------
- 2 files changed, 58 insertions(+), 19 deletions(-)
+ .../hermes-local-dashboard-view.test.ts       | 25 ++++++-
+ .../electron/hermes-local-dashboard-view.ts   | 75 +++++++++++++------
+ 2 files changed, 76 insertions(+), 24 deletions(-)
 
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.test.ts b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
+index 98551f7b1..cca0509bb 100644
 --- a/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
-@@ -22,11 +22,17 @@ const TOKEN = 'A'.repeat(48)
+@@ -23,11 +23,17 @@ const TOKEN = 'A'.repeat(48)
  class FakeWebContents extends EventEmitter {
    closed = false
    currentUrl = ''
@@ -34,7 +35,7 @@ diff --git a/apps/desktop/electron/hermes-local-dashboard-view.test.ts b/apps/de
    })
    windowOpenHandler: ((details: { url: string }) => { action: string }) | null = null
  
-@@ -92,7 +98,7 @@ function fakeSession() {
+@@ -91,7 +97,7 @@ function fakeSession() {
    }
  }
  
@@ -51,7 +52,7 @@ diff --git a/apps/desktop/electron/hermes-local-dashboard-view.test.ts b/apps/de
        views.push(view)
  
        return view as never
-@@ -219,6 +226,20 @@ describe('Hermes Local embedded dashboard policy', () => {
+@@ -229,6 +236,20 @@ describe('Hermes Local embedded dashboard policy', () => {
      expect(views[0].webContents.loadURL).toHaveBeenCalledTimes(1)
    })
  
@@ -73,9 +74,10 @@ diff --git a/apps/desktop/electron/hermes-local-dashboard-view.test.ts b/apps/de
      const { controller, timers, views } = harness()
      const bounds = { height: 500, width: 800, x: 20, y: 100 }
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop/electron/hermes-local-dashboard-view.ts
+index be14a0c8a..634521f32 100644
 --- a/apps/desktop/electron/hermes-local-dashboard-view.ts
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.ts
-@@ -153,6 +153,7 @@ export function createHermesLocalDashboardViewController(
+@@ -218,6 +218,7 @@ export function createHermesLocalDashboardViewController(
    let disposed = false
    let desiredVisible = false
    let lastMainFrameStatus: null | number = null
@@ -83,7 +85,7 @@ diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop
  
    const publish = (next: Partial<HermesLocalDashboardState>): HermesLocalDashboardState => {
      state = { ...state, ...next }
-@@ -239,6 +240,42 @@ export function createHermesLocalDashboardViewController(
+@@ -306,6 +307,42 @@ export function createHermesLocalDashboardViewController(
      }, delay)
    }
  
@@ -126,7 +128,7 @@ diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop
    const installSessionGuards = () => {
      if (sessionInstalled) {
        return
-@@ -323,50 +360,44 @@ export function createHermesLocalDashboardViewController(
+@@ -395,8 +432,14 @@ export function createHermesLocalDashboardViewController(
      contents.on('will-navigate', guardNavigation)
      contents.on('will-redirect', guardNavigation)
      contents.on('will-attach-webview', event => event.preventDefault())
@@ -141,7 +143,7 @@ diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop
        setViewVisibility(false)
        publish({
          canRetry: true,
-         message: 'Loading the protected loopback dashboard.',
+@@ -404,35 +447,23 @@ export function createHermesLocalDashboardViewController(
          phase: state.phase === 'restarting' ? 'restarting' : 'loading'
        })
      })
@@ -187,11 +189,6 @@ diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop
        setViewVisibility(false)
        publish({
          canRetry: true,
-         message: 'The local dashboard is offline. Hermes Local will reconnect automatically.',
-         phase: 'offline'
-       })
-       scheduleRetry()
-     })
-     contents.on('render-process-gone', () => {
 -- 
-2.47.3
+2.55.0.windows.3
+

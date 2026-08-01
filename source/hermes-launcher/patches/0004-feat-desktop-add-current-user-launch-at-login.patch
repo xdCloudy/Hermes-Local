@@ -1,7 +1,7 @@
-From 6ac407431fb8c54f21d73f70e512cd93bb2046c4 Mon Sep 17 00:00:00 2001
+From 1b13059c958fb013c4a46180a8e8eb17662043aa Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Tue, 28 Jul 2026 10:04:06 +0100
-Subject: [PATCH 04/12] feat(desktop): add current-user launch at login
+Subject: [PATCH 04/26] feat(desktop): add current-user launch at login
 
 ---
  .../e2e/hermes-local-workstation.spec.ts      | 37 ++++++++
@@ -14,7 +14,7 @@ Subject: [PATCH 04/12] feat(desktop): add current-user launch at login
  7 files changed, 193 insertions(+), 27 deletions(-)
 
 diff --git a/apps/desktop/e2e/hermes-local-workstation.spec.ts b/apps/desktop/e2e/hermes-local-workstation.spec.ts
-index d486230a570a2b30f6d4d0c016d5b22c86dce5f7..4544a3831c1fbb5813d1ebd0beaf25f0be645fb5 100644
+index d486230a5..4544a3831 100644
 --- a/apps/desktop/e2e/hermes-local-workstation.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-workstation.spec.ts
 @@ -8,6 +8,22 @@ const ROOT = process.env.HERMES_LOCAL_ROOT || 'D:\\Hermes-Local'
@@ -69,7 +69,7 @@ index d486230a570a2b30f6d4d0c016d5b22c86dce5f7..4544a3831c1fbb5813d1ebd0beaf25f0
          if (message.type() === 'error') {
            rendererErrors.push(`console: ${message.text()}`)
 diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
-index 7b35b0b6a749bcd5ea739f8c3ed7f9b6ef0a6bb9..c4f5e0dafe682b17f4f5f44541219d9896a353d3 100644
+index 7b35b0b6a..c4f5e0daf 100644
 --- a/apps/desktop/electron/hermes-local-control.test.ts
 +++ b/apps/desktop/electron/hermes-local-control.test.ts
 @@ -1,6 +1,11 @@
@@ -101,7 +101,7 @@ index 7b35b0b6a749bcd5ea739f8c3ed7f9b6ef0a6bb9..c4f5e0dafe682b17f4f5f44541219d98
 +  })
  })
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index 8a206a37af20d533dbdb6be54f5dfb9ea45ec9c3..642f45cdd710dfea00d39785b02ec462925778d6 100644
+index 8a206a37a..642f45cdd 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -5,13 +5,14 @@ import os from 'node:os'
@@ -211,7 +211,7 @@ index 8a206a37af20d533dbdb6be54f5dfb9ea45ec9c3..642f45cdd710dfea00d39785b02ec462
 +  setLoginItem
  }
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
-index 06d2fceedc771e5e31290448850cc8763fd8c718..29e7c8acaec8f5b96c72ffc210f3f694ccacf4de 100644
+index c6e1df497..c2d535963 100644
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
 @@ -96,6 +96,10 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
@@ -226,7 +226,7 @@ index 06d2fceedc771e5e31290448850cc8763fd8c718..29e7c8acaec8f5b96c72ffc210f3f694
      actionStatus: taskId => ipcRenderer.invoke('hermes:local:action:status', taskId),
      logs: (name, lines) => ipcRenderer.invoke('hermes:local:logs', name, lines),
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index 92d8df7487d2e38697874219048ec624e4a389ac..54028e50dd948284c5903789577c1a865bdecfc5 100644
+index 92d8df748..54028e50d 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -598,6 +598,7 @@ function SectionContent({
@@ -355,7 +355,7 @@ index 92d8df7487d2e38697874219048ec624e4a389ac..54028e50dd948284c5903789577c1a86
              selectedProfile={profileView}
              snapshot={snapshot}
 diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
-index 543a6d0b39514c9415768e143fb6b0395c3bc17d..7e1ced1f0e2a346daa596a425fb6a68976a0fdde 100644
+index 543a6d0b3..7e1ced1f0 100644
 --- a/apps/desktop/src/app/local-workstation/types.ts
 +++ b/apps/desktop/src/app/local-workstation/types.ts
 @@ -22,6 +22,12 @@ export interface LocalActionTask {
@@ -380,7 +380,7 @@ index 543a6d0b39514c9415768e143fb6b0395c3bc17d..7e1ced1f0e2a346daa596a425fb6a689
    runtime: {
      controllerAlive: boolean
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index be8fb68997c1bdacf156d8743eb956fcc1b5d53a..a1a557d49bbd2be1c8af16e8a5fc6e7eb0e7fb8b 100644
+index 0a0c314f0..29489c171 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
 @@ -120,6 +120,10 @@ declare global {
@@ -394,3 +394,6 @@ index be8fb68997c1bdacf156d8743eb956fcc1b5d53a..a1a557d49bbd2be1c8af16e8a5fc6e7e
          logs: (name: LocalLog, lines?: number) => Promise<LocalLogResult>
          openDashboard: () => Promise<{ url: string }>
          openRoot: () => Promise<{ error: string; ok: boolean }>
+-- 
+2.55.0.windows.3
+

@@ -1,7 +1,8 @@
-From 6f79c749fa9cc38ebfae2847f864fdbca99f3f0b Mon Sep 17 00:00:00 2001
+From a1229ac2c0fdacafef1cb9f35e1276627392d086 Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
 Date: Fri, 31 Jul 2026 10:20:00 +0100
-Subject: [PATCH] fix(desktop): reflect model-managed speculative decoding
+Subject: [PATCH 26/26] fix(desktop): reflect model-managed speculative
+ decoding
 
 The profile editor only considered its stored profile boolean when rendering
 speculative decoding. Models that enable self-speculation through their
@@ -13,15 +14,15 @@ arguments. Model-managed speculative decoding is highlighted, labelled and
 read-only so the profile editor cannot imply that it can disable a manifest
 requirement. Cover the state in the packaged configuration acceptance flow.
 ---
- .../e2e/hermes-local-configuration.spec.ts    |  7 +++++++
- .../src/app/local-workstation/index.tsx       | 49 ++++++++++++++++++---------
- 2 files changed, 39 insertions(+), 17 deletions(-)
+ .../e2e/hermes-local-configuration.spec.ts    |  7 +++
+ .../src/app/local-workstation/index.tsx       | 49 +++++++++++++------
+ 2 files changed, 40 insertions(+), 16 deletions(-)
 
 diff --git a/apps/desktop/e2e/hermes-local-configuration.spec.ts b/apps/desktop/e2e/hermes-local-configuration.spec.ts
 index 72ee002e8..743fabfaa 100644
 --- a/apps/desktop/e2e/hermes-local-configuration.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-configuration.spec.ts
-@@ -139,4 +139,11 @@ test.describe('Hermes Local portable configuration UI', () => {
+@@ -142,6 +142,13 @@ test.describe('Hermes Local portable configuration UI', () => {
        await openSection('Profiles')
        await expect(page.getByRole('heading', { exact: true, name: 'Profiles' })).toBeVisible()
  
@@ -33,11 +34,14 @@ index 72ee002e8..743fabfaa 100644
 +      await expect(modelSpeculativeDecoding).toHaveAttribute('aria-pressed', 'true')
 +      await expect(modelSpeculativeDecoding).toBeDisabled()
        const settingsBeforeProfiles = fs.existsSync(settingsPath)
+         ? JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
+         : {}
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index 9a35816..a5e2bd2 100644
+index 9a35816e8..a5e2bd213 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
-@@ -239,3 +239,12 @@ function ProfileEditor({
+@@ -240,6 +240,15 @@ function ProfileEditor({
+     return <p className="p-5 text-sm text-(--ui-text-tertiary)">Profiles are unavailable.</p>
    }
  
 +  const serverArguments = snapshot.model.server.extraArguments
@@ -50,7 +54,9 @@ index 9a35816..a5e2bd2 100644
 +    )
 +
    const numeric = (
-@@ -430,20 +439,28 @@ function ProfileEditor({
+     label: string,
+     value: number,
+@@ -451,22 +460,30 @@ function ProfileEditor({
                ['Prompt cache', 'promptCache'],
                ['Speculative decoding', 'speculativeDecoding']
              ] as const
@@ -95,5 +101,8 @@ index 9a35816..a5e2bd2 100644
 +            )
 +          })}
          </div>
+         <div className="mt-5 flex items-center justify-end gap-2 border-t border-(--ui-stroke-secondary) pt-4">
+           <Button
 -- 
-2.47.3
+2.55.0.windows.3
+

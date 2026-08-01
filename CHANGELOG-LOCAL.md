@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Rebased the complete Hermes Local integration patch series onto Hermes Agent
+  `85148f79` while preserving the newer upstream Desktop architecture and
+  dependency locks.
+- Made upstream compatibility validation reproducible with an exact supported
+  npm CLI and the pinned Jinja dependency required by llama.cpp's Python-backed
+  CTest coverage.
 - Provisioned and SHA-256 verified the starter model's vision projector during setup, then passed its portable local path to llama.cpp instead of depending on an HTTPS-enabled native build.
 - Blocked llama.cpp rebuilds while `llama-server`, `llama-cli` or `llama-bench` is running, replacing opaque locked-DLL linker failures with a direct stop instruction.
 - Corrected messaging-gateway health to treat Hermes Agent's persisted `updated_at` value as a state-change timestamp rather than a periodic heartbeat, preventing a live connected gateway from being restarted merely because it has been idle or the model is leased to a benchmark.
