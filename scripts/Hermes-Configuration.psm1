@@ -419,11 +419,9 @@ function Test-HermesSelectedModel {
     return $true
 }
 
-function Sync-HermesRuntimeConfiguration {
+function Get-HermesPythonExecutable {
     [CmdletBinding()]
-    param(
-        [pscustomobject] $Configuration = (Get-HermesConfiguration)
-    )
+    param()
 
     $pythonCandidates = @(
         (Resolve-HermesPath 'runtimes\python\hermes\Scripts\python.exe'),
@@ -432,8 +430,64 @@ function Sync-HermesRuntimeConfiguration {
     ) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) }
     $python = $pythonCandidates | Select-Object -First 1
     if (-not $python) {
-        throw 'Python is required to merge the Hermes YAML configuration.'
+        throw 'Python is required for Hermes Local runtime configuration.'
     }
+    return $python
+}
+
+function Assert-HermesModelIdentity {
+    [CmdletBinding()]
+    param(
+        [pscustomobject] $Configuration = (Get-HermesConfiguration),
+        [string] $StatusPath = (Resolve-HermesPath 'data\runtime\status.json'),
+        [string] $ConfigPath = (Resolve-HermesPath 'data\hermes\config.yaml')
+    )
+
+    if (-not (Test-Path -LiteralPath $StatusPath -PathType Leaf)) {
+        throw "Hermes runtime status is missing: $StatusPath"
+    }
+    if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
+        throw "Hermes provider configuration is missing: $ConfigPath"
+    }
+
+    $python = Get-HermesPythonExecutable
+    $evidencePath = Resolve-HermesPath 'data\runtime\model-identity.json'
+    Invoke-HermesProcess -FilePath $python -ArgumentList @(
+        (Resolve-HermesPath 'scripts\verify_model_identity.py'),
+        '--status', $StatusPath,
+        '--config', $ConfigPath,
+        '--expected-id', [string]$Configuration.selectedModelId,
+        '--expected-alias', [string]$Configuration.selectedModel.alias,
+        '--output', $evidencePath
+    ) -LogComponent supervisor
+
+    $status = Get-Content -Raw -LiteralPath $StatusPath | ConvertFrom-Json
+    $modelPid = [int]$status.model.pid
+    if ($modelPid -le 0) {
+        throw 'Runtime identity verification did not find an active model process.'
+    }
+    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $modelPid" -ErrorAction Stop
+    $commandLine = [string]$process.CommandLine
+    $modelPath = [string]$Configuration.selectedModel.resolvedPath
+    $alias = [string]$Configuration.selectedModel.alias
+    if ([string]::IsNullOrWhiteSpace($commandLine) -or
+        $commandLine.IndexOf($modelPath, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        throw "Running llama-server command line does not contain the selected GGUF path: $modelPath"
+    }
+    if ($commandLine.IndexOf('--alias', [System.StringComparison]::OrdinalIgnoreCase) -lt 0 -or
+        $commandLine.IndexOf($alias, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        throw "Running llama-server command line does not contain the selected alias: $alias"
+    }
+    return $status
+}
+
+function Sync-HermesRuntimeConfiguration {
+    [CmdletBinding()]
+    param(
+        [pscustomobject] $Configuration = (Get-HermesConfiguration)
+    )
+
+    $python = Get-HermesPythonExecutable
 
     $modelBaseUrl = "http://$($Configuration.network.host):$($Configuration.network.modelPort)/v1"
     $arguments = @(
@@ -463,5 +517,7 @@ Export-ModuleMember -Function @(
     'Get-HermesBuildParallelism',
     'Get-HermesCudaArchitecture',
     'Test-HermesSelectedModel',
+    'Get-HermesPythonExecutable',
+    'Assert-HermesModelIdentity',
     'Sync-HermesRuntimeConfiguration'
 )

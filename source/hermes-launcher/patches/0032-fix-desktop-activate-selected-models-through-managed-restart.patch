@@ -1,0 +1,1322 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Hermes Local CI <hermes-local-ci@localhost>
+Date: Sun, 2 Aug 2026 17:52:56 +0000
+Subject: [PATCH] fix(desktop): activate selected models through managed
+ restart
+
+---
+ apps/desktop/electron/hermes-local-control.ts |  23 +--
+ .../hermes-local-dashboard-view.test.ts       |  39 ++--
+ .../electron/hermes-local-dashboard-view.ts   |  17 +-
+ .../hermes-local-gateway-status.test.ts       |   2 +-
+ .../electron/hermes-local-gateway-status.ts   |   7 +-
+ .../electron/hermes-local-task-model.test.ts  |  15 +-
+ .../electron/hermes-local-task-model.ts       |  33 +--
+ .../electron/hermes-local-task-store.test.ts  |  12 +-
+ .../electron/hermes-local-task-store.ts       |  13 +-
+ apps/desktop/electron/main.ts                 |   4 +-
+ .../electron/media-permissions.test.ts        |  40 ++--
+ apps/desktop/electron/media-permissions.ts    |   4 +-
+ .../chat/composer/status-stack/coding-row.tsx |   5 +-
+ apps/desktop/src/app/contrib/surfaces.tsx     |   4 +-
+ .../src/app/gateway/hooks/use-gateway-boot.ts |   8 +-
+ .../src/app/local-workstation/index.tsx       |  69 ++++---
+ .../src/app/local-workstation/task-centre.tsx | 189 ++++++++++++++----
+ .../src/app/local-workstation/types.ts        |  18 +-
+ .../workstation-status.test.ts                |  14 +-
+ .../local-workstation/workstation-status.ts   |  12 +-
+ .../hooks/gateway-statusbar-state.test.ts     |   2 +-
+ .../shell/hooks/gateway-statusbar-state.ts    |   2 +-
+ .../shell/hooks/use-status-snapshot.test.ts   |  11 +-
+ .../app/shell/hooks/use-status-snapshot.ts    |   2 +-
+ .../app/shell/hooks/use-statusbar-items.tsx   |   1 +
+ 25 files changed, 273 insertions(+), 273 deletions(-)
+
+diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
+index 1922d9218..658c7e296 100644
+--- a/apps/desktop/electron/hermes-local-control.ts
++++ b/apps/desktop/electron/hermes-local-control.ts
+@@ -440,12 +440,7 @@ function reconcileTaskRegistry(): void {
+       continue
+     }
+ 
+-    const recovered = reconcileRecoveredTask(
+-      task,
+-      processAlive(task.owner.pid),
+-      taskCompletionEvidence(task),
+-      at
+-    )
++    const recovered = reconcileRecoveredTask(task, processAlive(task.owner.pid), taskCompletionEvidence(task), at)
+ 
+     if (recovered !== task) {
+       replaceTaskRecord(task, recovered)
+@@ -654,12 +649,7 @@ function startActionTask(actionValue: unknown, input: unknown) {
+   actionArguments(action, payload)
+   const id = crypto.randomUUID()
+ 
+-  const record = createTaskRecord(
+-    action,
+-    id,
+-    { kind: 'desktop-child-process', pid: null },
+-    new Date().toISOString()
+-  )
++  const record = createTaskRecord(action, id, { kind: 'desktop-child-process', pid: null }, new Date().toISOString())
+ 
+   const task: ActionTask = { ...record, child: null, events: new EventEmitter(), input: payload }
+ 
+@@ -1145,10 +1135,7 @@ function dashboardConfiguration() {
+   return { token, url: url.toString() }
+ }
+ 
+-function dashboardBoundsAtZoom(
+-  bounds: HermesLocalDashboardBounds,
+-  zoomFactor: number
+-): HermesLocalDashboardBounds {
++function dashboardBoundsAtZoom(bounds: HermesLocalDashboardBounds, zoomFactor: number): HermesLocalDashboardBounds {
+   const factor = Number.isFinite(zoomFactor) && zoomFactor > 0 ? zoomFactor : 1
+   const left = Math.round(bounds.x * factor)
+   const top = Math.round(bounds.y * factor)
+@@ -1174,9 +1161,7 @@ function requireDashboardSender(
+   return dashboardView
+ }
+ 
+-export function registerHermesLocalControlIpc(
+-  dashboardView?: HermesLocalDashboardViewController
+-): void {
++export function registerHermesLocalControlIpc(dashboardView?: HermesLocalDashboardViewController): void {
+   if (process.env.HERMES_LOCAL_ROOT) {
+     startTaskReconciliation()
+   }
+diff --git a/apps/desktop/electron/hermes-local-dashboard-view.test.ts b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
+index debfa8d10..9851e9a1b 100644
+--- a/apps/desktop/electron/hermes-local-dashboard-view.test.ts
++++ b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
+@@ -197,9 +197,12 @@ describe('Hermes Local embedded dashboard policy', () => {
+   })
+ 
+   it('clamps renderer-provided bounds to the Desktop content area', () => {
+-    expect(
+-      safeDashboardBounds({ height: 900, width: 1400, x: 900, y: 650 }, { height: 700, width: 1000 })
+-    ).toEqual({ height: 50, width: 100, x: 900, y: 650 })
++    expect(safeDashboardBounds({ height: 900, width: 1400, x: 900, y: 650 }, { height: 700, width: 1000 })).toEqual({
++      height: 50,
++      width: 100,
++      x: 900,
++      y: 650
++    })
+     expect(() =>
+       safeDashboardBounds({ height: Number.NaN, width: 100, x: 0, y: 0 }, { height: 700, width: 1000 })
+     ).toThrow(/finite/i)
+@@ -208,10 +211,7 @@ describe('Hermes Local embedded dashboard policy', () => {
+   it('injects the protected token only for the configured origin', async () => {
+     const { controller, partition } = harness()
+ 
+-    await controller.show(
+-      { token: TOKEN, url: 'http://127.0.0.1:9119' },
+-      { height: 500, width: 800, x: 20, y: 100 }
+-    )
++    await controller.show({ token: TOKEN, url: 'http://127.0.0.1:9119' }, { height: 500, width: 800, x: 20, y: 100 })
+ 
+     const localResult = await new Promise<any>(resolve =>
+       partition.handlers.beforeSendHeaders(
+@@ -239,10 +239,7 @@ describe('Hermes Local embedded dashboard policy', () => {
+   it('opens external links in the system browser without navigating the embedded view', async () => {
+     const { controller, openExternal, views } = harness()
+ 
+-    await controller.show(
+-      { token: TOKEN, url: 'http://127.0.0.1:9119' },
+-      { height: 500, width: 800, x: 20, y: 100 }
+-    )
++    await controller.show({ token: TOKEN, url: 'http://127.0.0.1:9119' }, { height: 500, width: 800, x: 20, y: 100 })
+ 
+     const view = views[0]
+     expect(view.webContents.windowOpenHandler?.({ url: 'https://example.com/docs' })).toEqual({ action: 'deny' })
+@@ -273,10 +270,7 @@ describe('Hermes Local embedded dashboard policy', () => {
+   it('shows a successful dashboard when DOM readiness arrives without did-finish-load', async () => {
+     const { controller, views } = harness({ finishLoad: false })
+ 
+-    await controller.show(
+-      { token: TOKEN, url: 'http://127.0.0.1:9119' },
+-      { height: 500, width: 800, x: 20, y: 100 }
+-    )
++    await controller.show({ token: TOKEN, url: 'http://127.0.0.1:9119' }, { height: 500, width: 800, x: 20, y: 100 })
+ 
+     expect(controller.getState().phase).toBe('ready')
+     expect(controller.getState().message).toMatch(/connected/i)
+@@ -287,10 +281,7 @@ describe('Hermes Local embedded dashboard policy', () => {
+   it('shows a successful dashboard when the completed main-frame request is the only readiness signal', async () => {
+     const { controller, partition, views } = harness({ domReady: false, finishLoad: false })
+ 
+-    await controller.show(
+-      { token: TOKEN, url: 'http://127.0.0.1:9119' },
+-      { height: 500, width: 800, x: 20, y: 100 }
+-    )
++    await controller.show({ token: TOKEN, url: 'http://127.0.0.1:9119' }, { height: 500, width: 800, x: 20, y: 100 })
+     partition.handlers.completed({
+       resourceType: 'mainFrame',
+       statusCode: 200,
+@@ -324,10 +315,7 @@ describe('Hermes Local embedded dashboard policy', () => {
+   it('keeps a ready dashboard visible during later non-navigation loading activity', async () => {
+     const { controller, views } = harness()
+ 
+-    await controller.show(
+-      { token: TOKEN, url: 'http://127.0.0.1:9119' },
+-      { height: 500, width: 800, x: 20, y: 100 }
+-    )
++    await controller.show({ token: TOKEN, url: 'http://127.0.0.1:9119' }, { height: 500, width: 800, x: 20, y: 100 })
+ 
+     views[0].webContents.emit('did-start-loading')
+     views[0].webContents.emit('did-stop-loading')
+@@ -362,10 +350,7 @@ describe('Hermes Local embedded dashboard policy', () => {
+   it('ignores same-document main-frame navigation starts after readiness', async () => {
+     const { controller, views } = harness()
+ 
+-    await controller.show(
+-      { token: TOKEN, url: 'http://127.0.0.1:9119' },
+-      { height: 500, width: 800, x: 20, y: 100 }
+-    )
++    await controller.show({ token: TOKEN, url: 'http://127.0.0.1:9119' }, { height: 500, width: 800, x: 20, y: 100 })
+ 
+     views[0].webContents.emit('did-start-navigation', {
+       isMainFrame: true,
+diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop/electron/hermes-local-dashboard-view.ts
+index 570cae332..2133fb01f 100644
+--- a/apps/desktop/electron/hermes-local-dashboard-view.ts
++++ b/apps/desktop/electron/hermes-local-dashboard-view.ts
+@@ -1,23 +1,10 @@
+-import {
+-  app,
+-  type BrowserWindow,
+-  type Rectangle,
+-  session,
+-  type Session,
+-  shell,
+-  WebContentsView
+-} from 'electron'
++import { app, type BrowserWindow, type Rectangle, session, type Session, shell, WebContentsView } from 'electron'
+ 
+ const DASHBOARD_PARTITION = 'hermes:local-dashboard'
+ const RETRY_DELAYS_MS = [750, 1500, 3000, 6000, 10_000]
+ const TOKEN_RE = /^[A-Za-z0-9_-]{40,128}$/
+ 
+-export type HermesLocalDashboardPhase =
+-  | 'authentication'
+-  | 'loading'
+-  | 'offline'
+-  | 'ready'
+-  | 'restarting'
++export type HermesLocalDashboardPhase = 'authentication' | 'loading' | 'offline' | 'ready' | 'restarting'
+ 
+ export interface HermesLocalDashboardState {
+   canRetry: boolean
+diff --git a/apps/desktop/electron/hermes-local-gateway-status.test.ts b/apps/desktop/electron/hermes-local-gateway-status.test.ts
+index e48f9a4c2..8ddd9dbb3 100644
+--- a/apps/desktop/electron/hermes-local-gateway-status.test.ts
++++ b/apps/desktop/electron/hermes-local-gateway-status.test.ts
+@@ -71,4 +71,4 @@ describe('Hermes Local gateway status probe', () => {
+       state: 'stopped'
+     })
+   })
+-})
+\ No newline at end of file
++})
+diff --git a/apps/desktop/electron/hermes-local-gateway-status.ts b/apps/desktop/electron/hermes-local-gateway-status.ts
+index 41b4923a9..a3cba39a0 100644
+--- a/apps/desktop/electron/hermes-local-gateway-status.ts
++++ b/apps/desktop/electron/hermes-local-gateway-status.ts
+@@ -55,10 +55,7 @@ export function normalizeGatewayStatus(payload: unknown): GatewayStatusSnapshot
+   }
+ }
+ 
+-export async function readGatewayStatus(
+-  url: string,
+-  fetchImpl: GatewayFetch = fetch
+-): Promise<GatewayStatusSnapshot> {
++export async function readGatewayStatus(url: string, fetchImpl: GatewayFetch = fetch): Promise<GatewayStatusSnapshot> {
+   try {
+     const response = await fetchImpl(url, {
+       signal: AbortSignal.timeout(2500)
+@@ -72,4 +69,4 @@ export async function readGatewayStatus(
+   } catch {
+     return unavailableGatewayStatus()
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/apps/desktop/electron/hermes-local-task-model.test.ts b/apps/desktop/electron/hermes-local-task-model.test.ts
+index e76f82aec..0f7bb7e3c 100644
+--- a/apps/desktop/electron/hermes-local-task-model.test.ts
++++ b/apps/desktop/electron/hermes-local-task-model.test.ts
+@@ -34,9 +34,7 @@ describe('Hermes Local task model', () => {
+       startedAt: '2026-08-01T10:00:01.000Z',
+       status: 'succeeded'
+     })
+-    expect(() => transitionTask(completed, 'running', '2026-08-01T10:05:01.000Z')).toThrow(
+-      /invalid task transition/i
+-    )
++    expect(() => transitionTask(completed, 'running', '2026-08-01T10:05:01.000Z')).toThrow(/invalid task transition/i)
+   })
+ 
+   it('joins duplicate starts instead of creating a second owner', () => {
+@@ -78,12 +76,7 @@ describe('Hermes Local task model', () => {
+   })
+ 
+   it('cancels queued work immediately and running work cooperatively', () => {
+-    const queued = createTaskRecord(
+-      'benchmark',
+-      'queued',
+-      { kind: 'desktop-child-process', pid: null },
+-      createdAt
+-    )
++    const queued = createTaskRecord('benchmark', 'queued', { kind: 'desktop-child-process', pid: null }, createdAt)
+ 
+     const cancelled = requestTaskCancellation(queued, '2026-08-01T10:00:02.000Z')
+     const cancelling = requestTaskCancellation(running('test'), '2026-08-01T10:00:03.000Z')
+@@ -91,9 +84,7 @@ describe('Hermes Local task model', () => {
+     expect(cancelled.status).toBe('cancelled')
+     expect(cancelled.completedAt).toBe('2026-08-01T10:00:02.000Z')
+     expect(cancelling.status).toBe('cancelling')
+-    expect(() => requestTaskCancellation(running('update'), '2026-08-01T10:00:04.000Z')).toThrow(
+-      /cannot be cancelled/i
+-    )
++    expect(() => requestTaskCancellation(running('update'), '2026-08-01T10:00:04.000Z')).toThrow(/cannot be cancelled/i)
+   })
+ 
+   it('interrupts stale owners so their resource locks can be released', () => {
+diff --git a/apps/desktop/electron/hermes-local-task-model.ts b/apps/desktop/electron/hermes-local-task-model.ts
+index 49e642b79..5e46a6111 100644
+--- a/apps/desktop/electron/hermes-local-task-model.ts
++++ b/apps/desktop/electron/hermes-local-task-model.ts
+@@ -1,25 +1,9 @@
+ export const TASK_SCHEMA_VERSION = 1 as const
+ 
+ export type TaskAction =
+-  | 'backup'
+-  | 'benchmark'
+-  | 'diagnostics'
+-  | 'repair'
+-  | 'restart'
+-  | 'security'
+-  | 'start'
+-  | 'stop'
+-  | 'test'
+-  | 'update'
+-
+-export type TaskState =
+-  | 'cancelled'
+-  | 'cancelling'
+-  | 'failed'
+-  | 'interrupted'
+-  | 'queued'
+-  | 'running'
+-  | 'succeeded'
++  'backup' | 'benchmark' | 'diagnostics' | 'repair' | 'restart' | 'security' | 'start' | 'stop' | 'test' | 'update'
++
++export type TaskState = 'cancelled' | 'cancelling' | 'failed' | 'interrupted' | 'queued' | 'running' | 'succeeded'
+ 
+ export type TaskResource = 'model-runtime' | 'user-data' | 'workstation'
+ export type TaskResourceMode = 'exclusive' | 'shared'
+@@ -152,12 +136,7 @@ export function taskCapabilities(task: TaskRecord): TaskCapabilities {
+   }
+ }
+ 
+-export function createTaskRecord(
+-  action: TaskAction,
+-  id: string,
+-  owner: TaskOwner,
+-  createdAt: string
+-): TaskRecord {
++export function createTaskRecord(action: TaskAction, id: string, owner: TaskOwner, createdAt: string): TaskRecord {
+   const policy = TASK_POLICIES[action]
+ 
+   return {
+@@ -478,9 +457,7 @@ export function admitTask(action: TaskAction, tasks: Iterable<TaskRecord>): Task
+     return { kind: 'start', message: `Resources available for '${action}'` }
+   }
+ 
+-  const summary = conflicts
+-    .map(conflict => `'${conflict.action}' (${conflict.resources.join(', ')})`)
+-    .join('; ')
++  const summary = conflicts.map(conflict => `'${conflict.action}' (${conflict.resources.join(', ')})`).join('; ')
+ 
+   return {
+     conflicts,
+diff --git a/apps/desktop/electron/hermes-local-task-store.test.ts b/apps/desktop/electron/hermes-local-task-store.test.ts
+index 5b4e0e356..e1ffea24c 100644
+--- a/apps/desktop/electron/hermes-local-task-store.test.ts
++++ b/apps/desktop/electron/hermes-local-task-store.test.ts
+@@ -54,19 +54,11 @@ describe('Hermes Local durable task store', () => {
+ 
+     const records = [terminal('old'), terminal('new'), active]
+ 
+-    const parsed = parseTaskStore(
+-      serializeTaskStore(records, '2026-08-01T10:02:00.000Z', 1),
+-      128 * 1024,
+-      1
+-    )
++    const parsed = parseTaskStore(serializeTaskStore(records, '2026-08-01T10:02:00.000Z', 1), 128 * 1024, 1)
+ 
+     expect(parsed.records.map(record => record.id)).toEqual(['new', 'active'])
+ 
+-    const activeOnly = parseTaskStore(
+-      serializeTaskStore(records, '2026-08-01T10:02:00.000Z', 0),
+-      128 * 1024,
+-      0
+-    )
++    const activeOnly = parseTaskStore(serializeTaskStore(records, '2026-08-01T10:02:00.000Z', 0), 128 * 1024, 0)
+ 
+     expect(activeOnly.records.map(record => record.id)).toEqual(['active'])
+   })
+diff --git a/apps/desktop/electron/hermes-local-task-store.ts b/apps/desktop/electron/hermes-local-task-store.ts
+index 3b9e07d6a..7e70b112c 100644
+--- a/apps/desktop/electron/hermes-local-task-store.ts
++++ b/apps/desktop/electron/hermes-local-task-store.ts
+@@ -17,6 +17,7 @@ function boundedRecords(records: Iterable<TaskRecord>, maximumTerminal: number):
+ 
+   const all = [...records]
+   const terminal = all.filter(record => isTaskTerminal(record.status))
++
+   const retainedTerminalIds = new Set(
+     (maximumTerminal === 0 ? [] : terminal.slice(-maximumTerminal)).map(record => record.id)
+   )
+@@ -24,11 +25,7 @@ function boundedRecords(records: Iterable<TaskRecord>, maximumTerminal: number):
+   return all.filter(record => !isTaskTerminal(record.status) || retainedTerminalIds.has(record.id))
+ }
+ 
+-export function serializeTaskStore(
+-  records: Iterable<TaskRecord>,
+-  updatedAt: string,
+-  maximumTerminal: number
+-): string {
++export function serializeTaskStore(records: Iterable<TaskRecord>, updatedAt: string, maximumTerminal: number): string {
+   return `${JSON.stringify(
+     {
+       schemaVersion: TASK_STORE_SCHEMA_VERSION,
+@@ -88,11 +85,7 @@ export function parseTaskStore(text: string, maximumOutput: number, maximumTermi
+   return { records: boundedRecords(records, maximumTerminal), warnings }
+ }
+ 
+-export function loadTaskStore(
+-  filePath: string,
+-  maximumOutput: number,
+-  maximumTerminal: number
+-): TaskStoreLoadResult {
++export function loadTaskStore(filePath: string, maximumOutput: number, maximumTerminal: number): TaskStoreLoadResult {
+   try {
+     return parseTaskStore(fs.readFileSync(filePath, 'utf8'), maximumOutput, maximumTerminal)
+   } catch (error) {
+diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
+index a5d0c8826..b38637d3a 100644
+--- a/apps/desktop/electron/main.ts
++++ b/apps/desktop/electron/main.ts
+@@ -11311,9 +11311,7 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
+   const cwd = safeTerminalCwd(payload?.cwd)
+ 
+   const localLaunch =
+-    requestedMode === 'hermes-tui'
+-      ? hermesLocalTuiLaunch()
+-      : { ...terminalShellCommand(), cwd, env: {} }
++    requestedMode === 'hermes-tui' ? hermesLocalTuiLaunch() : { ...terminalShellCommand(), cwd, env: {} }
+ 
+   const { args, command, name } = localLaunch
+   const cols = Math.max(2, Number.parseInt(String(payload?.cols || 80), 10) || 80)
+diff --git a/apps/desktop/electron/media-permissions.test.ts b/apps/desktop/electron/media-permissions.test.ts
+index 24d691ac3..35f5eae8b 100644
+--- a/apps/desktop/electron/media-permissions.test.ts
++++ b/apps/desktop/electron/media-permissions.test.ts
+@@ -6,7 +6,7 @@ import { shouldAllowRendererPermission } from './media-permissions'
+ 
+ const packaged = {
+   devServer: null,
+-  packagedRendererUrl: 'file:///C:/Program%20Files/Hermes/resources/app.asar/dist/index.html',
++  packagedRendererUrl: 'file:///C:/Program%20Files/Hermes/resources/app.asar/dist/index.html'
+ }
+ 
+ test('allows audio-only capture from an owned packaged renderer window', () => {
+@@ -16,11 +16,11 @@ test('allows audio-only capture from an owned packaged renderer window', () => {
+         details: { mediaTypes: ['audio'] },
+         hasWindowOwner: true,
+         permission: 'media',
+-        url: packaged.packagedRendererUrl,
++        url: packaged.packagedRendererUrl
+       },
+-      packaged,
++      packaged
+     ),
+-    true,
++    true
+   )
+ })
+ 
+@@ -29,18 +29,18 @@ test('denies video and non-media permissions by default', () => {
+     { details: { mediaTypes: ['video'] }, permission: 'media' },
+     { details: { mediaTypes: ['audio', 'video'] }, permission: 'media' },
+     { details: {}, permission: 'notifications' },
+-    { details: {}, permission: 'geolocation' },
++    { details: {}, permission: 'geolocation' }
+   ]) {
+     assert.equal(
+       shouldAllowRendererPermission(
+         {
+           ...request,
+           hasWindowOwner: true,
+-          url: packaged.packagedRendererUrl,
++          url: packaged.packagedRendererUrl
+         },
+-        packaged,
++        packaged
+       ),
+-      false,
++      false
+     )
+   }
+ })
+@@ -52,11 +52,11 @@ test('denies media from webviews and untrusted renderer URLs', () => {
+         details: { mediaTypes: ['audio'] },
+         hasWindowOwner: false,
+         permission: 'media',
+-        url: packaged.packagedRendererUrl,
++        url: packaged.packagedRendererUrl
+       },
+-      packaged,
++      packaged
+     ),
+-    false,
++    false
+   )
+   assert.equal(
+     shouldAllowRendererPermission(
+@@ -64,11 +64,11 @@ test('denies media from webviews and untrusted renderer URLs', () => {
+         details: { mediaTypes: ['audio'] },
+         hasWindowOwner: true,
+         permission: 'media',
+-        url: 'https://attacker.example/',
++        url: 'https://attacker.example/'
+       },
+-      packaged,
++      packaged
+     ),
+-    false,
++    false
+   )
+   assert.equal(
+     shouldAllowRendererPermission(
+@@ -76,30 +76,30 @@ test('denies media from webviews and untrusted renderer URLs', () => {
+         details: { mediaTypes: ['audio'] },
+         hasWindowOwner: true,
+         permission: 'media',
+-        url: 'file:///C:/Windows/System32/drivers/etc/hosts',
++        url: 'file:///C:/Windows/System32/drivers/etc/hosts'
+       },
+-      packaged,
++      packaged
+     ),
+-    false,
++    false
+   )
+ })
+ 
+ test('matches a development renderer by exact origin, not a string prefix', () => {
+   const locations = {
+     devServer: 'http://127.0.0.1:5174',
+-    packagedRendererUrl: packaged.packagedRendererUrl,
++    packagedRendererUrl: packaged.packagedRendererUrl
+   }
+ 
+   const request = {
+     details: { mediaTypes: ['audio'] },
+     hasWindowOwner: true,
+-    permission: 'media',
++    permission: 'media'
+   }
+ 
+   assert.equal(shouldAllowRendererPermission({ ...request, url: 'http://127.0.0.1:5174/chat' }, locations), true)
+ 
+   assert.equal(
+     shouldAllowRendererPermission({ ...request, url: 'http://127.0.0.1:5174.attacker.example/' }, locations),
+-    false,
++    false
+   )
+ })
+diff --git a/apps/desktop/electron/media-permissions.ts b/apps/desktop/electron/media-permissions.ts
+index c1f744847..eb0b7e6c6 100644
+--- a/apps/desktop/electron/media-permissions.ts
++++ b/apps/desktop/electron/media-permissions.ts
+@@ -15,7 +15,7 @@ export interface TrustedRendererLocations {
+ 
+ export function isAudioCapturePermission(
+   permission: string,
+-  details: RendererPermissionRequest['details'] = {},
++  details: RendererPermissionRequest['details'] = {}
+ ): boolean {
+   if (permission === 'audioCapture') {
+     return true
+@@ -61,7 +61,7 @@ export function isTrustedRendererUrl(url: string, locations: TrustedRendererLoca
+ 
+ export function shouldAllowRendererPermission(
+   request: RendererPermissionRequest,
+-  locations: TrustedRendererLocations,
++  locations: TrustedRendererLocations
+ ): boolean {
+   return (
+     request.hasWindowOwner &&
+diff --git a/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx b/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
+index 7d533ca43..6a36001e9 100644
+--- a/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
++++ b/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
+@@ -168,10 +168,7 @@ export const CodingStatusRow = memo(function CodingStatusRow({
+           onActivate={onChangeProject}
+         >
+           <div className="flex min-w-0 flex-1 items-center gap-1">
+-            <span
+-              className="min-w-0 truncate text-xs font-normal text-muted-foreground/92"
+-              title={resolvedRepoPath}
+-            >
++            <span className="min-w-0 truncate text-xs font-normal text-muted-foreground/92" title={resolvedRepoPath}>
+               {label}
+             </span>
+             {hasMenu && (
+diff --git a/apps/desktop/src/app/contrib/surfaces.tsx b/apps/desktop/src/app/contrib/surfaces.tsx
+index 5857c9cfb..4e3f4ed17 100644
+--- a/apps/desktop/src/app/contrib/surfaces.tsx
++++ b/apps/desktop/src/app/contrib/surfaces.tsx
+@@ -35,7 +35,9 @@ import type { SidebarActions, WiringActions } from './types'
+ const ArtifactsView = lazy(async () => ({ default: (await import('../artifacts')).ArtifactsView }))
+ const MessagingView = lazy(async () => ({ default: (await import('../messaging')).MessagingView }))
+ const SkillsView = lazy(async () => ({ default: (await import('../skills')).SkillsView }))
+-const LocalWorkstationView = lazy(async () => ({ default: (await import('../local-workstation')).LocalWorkstationView }))
++const LocalWorkstationView = lazy(async () => ({
++  default: (await import('../local-workstation')).LocalWorkstationView
++}))
+ const HermesTuiPanel = lazy(async () => ({ default: (await import('../local-workstation/tui-panel')).HermesTuiPanel }))
+ 
+ export function LegacySessionRedirect() {
+diff --git a/apps/desktop/src/app/gateway/hooks/use-gateway-boot.ts b/apps/desktop/src/app/gateway/hooks/use-gateway-boot.ts
+index 4d4cfd6eb..21328ef8b 100644
+--- a/apps/desktop/src/app/gateway/hooks/use-gateway-boot.ts
++++ b/apps/desktop/src/app/gateway/hooks/use-gateway-boot.ts
+@@ -25,13 +25,7 @@ import {
+ import { $gatewaySwitching, wipeSessionListsForGatewaySwitch } from '@/store/gateway-switch'
+ import { notify, notifyError } from '@/store/notifications'
+ import { $activeGatewayProfile, normalizeProfileKey, touchActiveGatewayBackend } from '@/store/profile'
+-import {
+-  $connection,
+-  $sessions,
+-  ensureDefaultWorkspaceCwd,
+-  setConnection,
+-  setSessionsLoading
+-} from '@/store/session'
++import { $connection, $sessions, ensureDefaultWorkspaceCwd, setConnection, setSessionsLoading } from '@/store/session'
+ import { $attentionSessionIds, $workingSessionIds, resetTileRuntimeBindings } from '@/store/session-states'
+ import type { RpcEvent } from '@/types/hermes'
+ 
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index 6ef487692..ab69493ad 100644
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -165,7 +165,8 @@ function ActionButton({
+   variant?: 'default' | 'destructive' | 'outline'
+ }) {
+   const busy = tasks.some(
+-    task => task.action === action && (task.status === 'queued' || task.status === 'running' || task.status === 'cancelling')
++    task =>
++      task.action === action && (task.status === 'queued' || task.status === 'running' || task.status === 'cancelling')
+   )
+ 
+   return (
+@@ -250,9 +251,7 @@ function ProfileEditor({
+ 
+   const modelSpeculativeDecoding =
+     (specType !== undefined && specType !== 'none') ||
+-    serverArguments.some(argument =>
+-      ['-md', '--model-draft', '--model-draft-url'].includes(argument.toLowerCase())
+-    )
++    serverArguments.some(argument => ['-md', '--model-draft', '--model-draft-url'].includes(argument.toLowerCase()))
+ 
+   const numeric = (
+     label: string,
+@@ -886,18 +885,18 @@ function HomeContent({
+                 {snapshot.runtime.profile || snapshot.profiles?.selected || 'No profile'}
+               </span>
+             </div>
+-            <h2 className="text-xl font-semibold tracking-[-0.02em]">
+-              {status.title}
+-            </h2>
+-            <p className="mt-1 max-w-2xl text-sm leading-6 text-(--ui-text-secondary)">
+-              {status.description}
+-
+-            </p>
++            <h2 className="text-xl font-semibold tracking-[-0.02em]">{status.title}</h2>
++            <p className="mt-1 max-w-2xl text-sm leading-6 text-(--ui-text-secondary)">{status.description}</p>
+           </div>
+           <div className="flex flex-wrap gap-2 md:justify-end">
+             {stackRunning ? (
+               <>
+-                <ActionButton action="restart" available={snapshot.actions.restart} onRun={onRun} tasks={snapshot.tasks}>
++                <ActionButton
++                  action="restart"
++                  available={snapshot.actions.restart}
++                  onRun={onRun}
++                  tasks={snapshot.tasks}
++                >
+                   <IconRefresh className="size-3.5" />
+                   Restart
+                 </ActionButton>
+@@ -1099,17 +1098,20 @@ function DashboardContent({ snapshot }: { snapshot: LocalWorkstationSnapshot })
+     const bounds = readBounds()
+ 
+     if (bounds) {
+-      void dashboard.show(bounds).then(next => active && setState(next)).catch(error => {
+-        if (active) {
+-          setState(current => ({
+-            ...current,
+-            canRetry: true,
+-            message: error instanceof Error ? error.message : String(error),
+-            phase: 'offline',
+-            visible: false
+-          }))
+-        }
+-      })
++      void dashboard
++        .show(bounds)
++        .then(next => active && setState(next))
++        .catch(error => {
++          if (active) {
++            setState(current => ({
++              ...current,
++              canRetry: true,
++              message: error instanceof Error ? error.message : String(error),
++              phase: 'offline',
++              visible: false
++            }))
++          }
++        })
+     }
+ 
+     return () => {
+@@ -1142,9 +1144,7 @@ function DashboardContent({ snapshot }: { snapshot: LocalWorkstationSnapshot })
+             <div className="flex flex-wrap items-center gap-2">
+               <StatusPill label={phaseLabel} ok={state.phase === 'ready'} />
+               {state.origin && (
+-                <span className="truncate font-mono text-[0.6875rem] text-(--ui-text-tertiary)">
+-                  {state.origin}
+-                </span>
++                <span className="truncate font-mono text-[0.6875rem] text-(--ui-text-tertiary)">{state.origin}</span>
+               )}
+             </div>
+             <h3 className="mt-3 text-base font-semibold">Hermes Web Dashboard</h3>
+@@ -1157,7 +1157,12 @@ function DashboardContent({ snapshot }: { snapshot: LocalWorkstationSnapshot })
+             <Button
+               className="gap-2"
+               disabled={!dashboard || !state.canRetry}
+-              onClick={() => void dashboard?.reload().then(setState).catch(() => undefined)}
++              onClick={() =>
++                void dashboard
++                  ?.reload()
++                  .then(setState)
++                  .catch(() => undefined)
++              }
+               variant="outline"
+             >
+               <IconRefresh className={cn('size-4', loading && 'animate-spin motion-reduce:animate-none')} />
+@@ -1294,7 +1299,8 @@ function SectionContent({
+   if (section === 'services') {
+     const latestTask =
+       snapshot.tasks.findLast(
+-        candidate => candidate.status === 'queued' || candidate.status === 'running' || candidate.status === 'cancelling'
++        candidate =>
++          candidate.status === 'queued' || candidate.status === 'running' || candidate.status === 'cancelling'
+       ) || snapshot.tasks.at(-1)
+ 
+     return (
+@@ -1342,7 +1348,12 @@ function SectionContent({
+             <ActionButton action="test" available={snapshot.actions.test} onRun={onRun} tasks={snapshot.tasks}>
+               <IconActivityHeartbeat className="size-3.5" /> Run tests
+             </ActionButton>
+-            <ActionButton action="diagnostics" available={snapshot.actions.diagnostics} onRun={onRun} tasks={snapshot.tasks}>
++            <ActionButton
++              action="diagnostics"
++              available={snapshot.actions.diagnostics}
++              onRun={onRun}
++              tasks={snapshot.tasks}
++            >
+               <IconFileAnalytics className="size-3.5" /> Export diagnostics
+             </ActionButton>
+             <ActionButton action="update" available={snapshot.actions.update} onRun={onRun} tasks={snapshot.tasks}>
+diff --git a/apps/desktop/src/app/local-workstation/task-centre.tsx b/apps/desktop/src/app/local-workstation/task-centre.tsx
+index 97d765547..50d22ef0e 100644
+--- a/apps/desktop/src/app/local-workstation/task-centre.tsx
++++ b/apps/desktop/src/app/local-workstation/task-centre.tsx
+@@ -63,15 +63,25 @@ function timestamp(value: null | string): number {
+ }
+ 
+ function taskMatchesFilter(task: LocalActionTask, filter: TaskFilter): boolean {
+-  if (filter === 'active') {return activeStates.has(task.status)}
++  if (filter === 'active') {
++    return activeStates.has(task.status)
++  }
+ 
+-  if (filter === 'queued') {return task.status === 'queued'}
++  if (filter === 'queued') {
++    return task.status === 'queued'
++  }
+ 
+-  if (filter === 'completed') {return task.status === 'succeeded'}
++  if (filter === 'completed') {
++    return task.status === 'succeeded'
++  }
+ 
+-  if (filter === 'failed') {return task.status === 'failed' || task.status === 'interrupted'}
++  if (filter === 'failed') {
++    return task.status === 'failed' || task.status === 'interrupted'
++  }
+ 
+-  if (filter === 'cancelled') {return task.status === 'cancelled'}
++  if (filter === 'cancelled') {
++    return task.status === 'cancelled'
++  }
+ 
+   return true
+ }
+@@ -90,9 +100,13 @@ export function taskElapsed(task: LocalActionTask, now = Date.now()): string {
+   const minutes = Math.floor((seconds % 3600) / 60)
+   const remainder = seconds % 60
+ 
+-  if (hours) {return `${hours}h ${minutes}m`}
++  if (hours) {
++    return `${hours}h ${minutes}m`
++  }
+ 
+-  if (minutes) {return `${minutes}m ${remainder}s`}
++  if (minutes) {
++    return `${minutes}m ${remainder}s`
++  }
+ 
+   return `${remainder}s`
+ }
+@@ -100,35 +114,57 @@ export function taskElapsed(task: LocalActionTask, now = Date.now()): string {
+ function relativeTime(value: string, now = Date.now()): string {
+   const seconds = Math.max(0, Math.floor((now - timestamp(value)) / 1000))
+ 
+-  if (seconds < 60) {return `${seconds}s ago`}
++  if (seconds < 60) {
++    return `${seconds}s ago`
++  }
+ 
+-  if (seconds < 3600) {return `${Math.floor(seconds / 60)}m ago`}
++  if (seconds < 3600) {
++    return `${Math.floor(seconds / 60)}m ago`
++  }
+ 
+-  if (seconds < 86_400) {return `${Math.floor(seconds / 3600)}h ago`}
++  if (seconds < 86_400) {
++    return `${Math.floor(seconds / 3600)}h ago`
++  }
+ 
+   return `${Math.floor(seconds / 86_400)}d ago`
+ }
+ 
+ function taskStage(task: LocalActionTask): string {
+-  if (task.status === 'queued') {return 'Waiting for resources'}
++  if (task.status === 'queued') {
++    return 'Waiting for resources'
++  }
+ 
+-  if (task.status === 'cancelling') {return 'Stopping owned process'}
++  if (task.status === 'cancelling') {
++    return 'Stopping owned process'
++  }
+ 
+-  if (task.status === 'running') {return `${ACTION_COPY[task.action].label} in progress`}
++  if (task.status === 'running') {
++    return `${ACTION_COPY[task.action].label} in progress`
++  }
+ 
+-  if (task.status === 'interrupted') {return 'Owner exited without a conclusive result'}
++  if (task.status === 'interrupted') {
++    return 'Owner exited without a conclusive result'
++  }
+ 
+-  if (task.status === 'failed') {return task.failure?.message || 'Operation failed'}
++  if (task.status === 'failed') {
++    return task.failure?.message || 'Operation failed'
++  }
+ 
+-  if (task.status === 'cancelled') {return 'Cancelled safely'}
++  if (task.status === 'cancelled') {
++    return 'Cancelled safely'
++  }
+ 
+   return 'Operation completed'
+ }
+ 
+ function taskSummary(task: LocalActionTask): string {
+-  if (task.failure?.message) {return task.failure.message}
++  if (task.failure?.message) {
++    return task.failure.message
++  }
+ 
+-  if (task.result?.path) {return task.result.path}
++  if (task.result?.path) {
++    return task.result.path
++  }
+ 
+   const line = task.output
+     .split(/\r?\n/)
+@@ -140,13 +176,21 @@ function taskSummary(task: LocalActionTask): string {
+ }
+ 
+ function statusTone(status: LocalActionTask['status']): string {
+-  if (status === 'succeeded') {return 'text-emerald-500'}
++  if (status === 'succeeded') {
++    return 'text-emerald-500'
++  }
+ 
+-  if (status === 'failed') {return 'text-red-500'}
++  if (status === 'failed') {
++    return 'text-red-500'
++  }
+ 
+-  if (status === 'interrupted' || status === 'cancelled') {return 'text-amber-500'}
++  if (status === 'interrupted' || status === 'cancelled') {
++    return 'text-amber-500'
++  }
+ 
+-  if (status === 'queued' || status === 'cancelling') {return 'text-amber-500'}
++  if (status === 'queued' || status === 'cancelling') {
++    return 'text-amber-500'
++  }
+ 
+   return 'text-(--ui-accent)'
+ }
+@@ -156,16 +200,30 @@ function StatusIcon({ status }: { status: LocalActionTask['status'] }) {
+     return <IconLoader2 className="size-4 animate-spin motion-reduce:animate-none" />
+   }
+ 
+-  if (status === 'succeeded') {return <IconCheck className="size-4" />}
++  if (status === 'succeeded') {
++    return <IconCheck className="size-4" />
++  }
+ 
+-  if (status === 'failed' || status === 'interrupted') {return <IconAlertTriangle className="size-4" />}
++  if (status === 'failed' || status === 'interrupted') {
++    return <IconAlertTriangle className="size-4" />
++  }
+ 
+-  if (status === 'cancelled') {return <IconBan className="size-4" />}
++  if (status === 'cancelled') {
++    return <IconBan className="size-4" />
++  }
+ 
+   return <IconClock className="size-4" />
+ }
+ 
+-function DetailRow({ children, icon: Icon, label }: { children: React.ReactNode; icon: typeof IconClock; label: string }) {
++function DetailRow({
++  children,
++  icon: Icon,
++  label
++}: {
++  children: React.ReactNode
++  icon: typeof IconClock
++  label: string
++}) {
+   return (
+     <div className="grid gap-1 border-b border-(--ui-stroke-secondary) px-4 py-3 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center">
+       <div className="flex items-center gap-2 text-xs font-medium text-(--ui-text-tertiary)">
+@@ -204,7 +262,10 @@ export function TaskCentre({
+   const visibleTasks = useMemo(() => filterTasks(tasks, filter), [filter, tasks])
+ 
+   const filterCounts = useMemo(
+-    () => Object.fromEntries(TASK_FILTERS.map(item => [item.id, tasks.filter(task => taskMatchesFilter(task, item.id)).length])),
++    () =>
++      Object.fromEntries(
++        TASK_FILTERS.map(item => [item.id, tasks.filter(task => taskMatchesFilter(task, item.id)).length])
++      ),
+     [tasks]
+   )
+ 
+@@ -258,7 +319,8 @@ export function TaskCentre({
+               aria-selected={filter === item.id}
+               className={cn(
+                 'relative shrink-0 px-3 py-2.5 text-xs font-medium text-(--ui-text-tertiary) transition-colors hover:text-(--ui-text-primary)',
+-                filter === item.id && 'text-(--ui-text-primary) after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:bg-(--ui-accent)'
++                filter === item.id &&
++                  'text-(--ui-text-primary) after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:bg-(--ui-accent)'
+               )}
+               id={`task-filter-${item.id}`}
+               key={item.id}
+@@ -290,7 +352,9 @@ export function TaskCentre({
+               <div className="grid min-h-52 place-items-center px-6 text-center">
+                 <div>
+                   <IconStack2 className="mx-auto size-6 text-(--ui-text-tertiary)" stroke={1.5} />
+-                  <p className="mt-3 text-sm font-medium">No {TASK_FILTERS.find(item => item.id === filter)?.label.toLowerCase()} tasks</p>
++                  <p className="mt-3 text-sm font-medium">
++                    No {TASK_FILTERS.find(item => item.id === filter)?.label.toLowerCase()} tasks
++                  </p>
+                   <p className="mt-1 text-xs text-(--ui-text-tertiary)">Task history will appear here automatically.</p>
+                 </div>
+               </div>
+@@ -320,7 +384,9 @@ export function TaskCentre({
+                         {STATUS_COPY[task.status]}
+                       </span>
+                       <span className="shrink-0 font-mono text-[0.625rem] text-(--ui-text-tertiary)">
+-                        {activeStates.has(task.status) ? taskElapsed(task) : relativeTime(task.completedAt || task.updatedAt)}
++                        {activeStates.has(task.status)
++                          ? taskElapsed(task)
++                          : relativeTime(task.completedAt || task.updatedAt)}
+                       </span>
+                     </div>
+                     <p className="mt-1 truncate pl-6 text-[0.6875rem] text-(--ui-text-tertiary)">{taskSummary(task)}</p>
+@@ -349,13 +415,20 @@ export function TaskCentre({
+           ) : (
+             <>
+               <header className="flex flex-wrap items-center gap-3 border-b border-(--ui-stroke-secondary) px-4 py-4">
+-                <span className={cn('grid size-8 place-items-center rounded-lg bg-(--ui-control-background)', statusTone(selected.status))}>
++                <span
++                  className={cn(
++                    'grid size-8 place-items-center rounded-lg bg-(--ui-control-background)',
++                    statusTone(selected.status)
++                  )}
++                >
+                   <StatusIcon status={selected.status} />
+                 </span>
+                 <div className="min-w-0 flex-1">
+                   <div className="flex flex-wrap items-center gap-2">
+                     <h3 className="text-base font-semibold">{ACTION_COPY[selected.action].label}</h3>
+-                    <span className={cn('text-xs font-medium', statusTone(selected.status))}>{STATUS_COPY[selected.status]}</span>
++                    <span className={cn('text-xs font-medium', statusTone(selected.status))}>
++                      {STATUS_COPY[selected.status]}
++                    </span>
+                   </div>
+                   <p className="mt-0.5 truncate text-xs text-(--ui-text-tertiary)">{taskStage(selected)}</p>
+                 </div>
+@@ -365,16 +438,36 @@ export function TaskCentre({
+                     disabled={!selected.capabilities.cancel || Boolean(pendingControl)}
+                     onClick={() => void invoke('cancel', () => onCancel(selected.id))}
+                     size="sm"
+-                    title={selected.capabilities.cancel ? 'Cancel this owned process' : 'Cancellation is unavailable for this owner or state'}
++                    title={
++                      selected.capabilities.cancel
++                        ? 'Cancel this owned process'
++                        : 'Cancellation is unavailable for this owner or state'
++                    }
+                     variant="outline"
+                   >
+-                    {pendingControl === 'cancel' ? <IconLoader2 className="size-3.5 animate-spin" /> : <IconX className="size-3.5" />}
++                    {pendingControl === 'cancel' ? (
++                      <IconLoader2 className="size-3.5 animate-spin" />
++                    ) : (
++                      <IconX className="size-3.5" />
++                    )}
+                     Cancel
+                   </Button>
+-                  <Button className="h-8 gap-1.5 px-3 text-xs" disabled size="sm" title="Pause is not supported by this action" variant="outline">
++                  <Button
++                    className="h-8 gap-1.5 px-3 text-xs"
++                    disabled
++                    size="sm"
++                    title="Pause is not supported by this action"
++                    variant="outline"
++                  >
+                     <IconPlayerPause className="size-3.5" /> Pause
+                   </Button>
+-                  <Button className="h-8 gap-1.5 px-3 text-xs" disabled size="sm" title="Resume is not supported by this action" variant="outline">
++                  <Button
++                    className="h-8 gap-1.5 px-3 text-xs"
++                    disabled
++                    size="sm"
++                    title="Resume is not supported by this action"
++                    variant="outline"
++                  >
+                     <IconPlayerPlay className="size-3.5" /> Resume
+                   </Button>
+                   {selected.capabilities.retry && (
+@@ -384,7 +477,11 @@ export function TaskCentre({
+                       onClick={() => void invoke('retry', () => onRetry(selected.id))}
+                       size="sm"
+                     >
+-                      {pendingControl === 'retry' ? <IconLoader2 className="size-3.5 animate-spin" /> : <IconRefresh className="size-3.5" />}
++                      {pendingControl === 'retry' ? (
++                        <IconLoader2 className="size-3.5 animate-spin" />
++                      ) : (
++                        <IconRefresh className="size-3.5" />
++                      )}
+                       Retry
+                     </Button>
+                   )}
+@@ -420,7 +517,11 @@ export function TaskCentre({
+               </DetailRow>
+               <DetailRow icon={IconStack2} label="Model / profile">
+                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+-                  <span>{selected.resources.some(claim => claim.resource === 'model-runtime') ? modelName : 'Not model-bound'}</span>
++                  <span>
++                    {selected.resources.some(claim => claim.resource === 'model-runtime')
++                      ? modelName
++                      : 'Not model-bound'}
++                  </span>
+                   <span className="text-(--ui-text-tertiary)">/</span>
+                   <span>{profileName || 'Default profile'}</span>
+                 </div>
+@@ -429,7 +530,9 @@ export function TaskCentre({
+                 <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[0.6875rem]">
+                   {selected.resources.length
+                     ? selected.resources.map(claim => (
+-                        <span key={`${claim.resource}-${claim.mode}`}>{claim.resource} · {claim.mode}</span>
++                        <span key={`${claim.resource}-${claim.mode}`}>
++                          {claim.resource} · {claim.mode}
++                        </span>
+                       ))
+                     : 'Observational — no exclusive resources'}
+                 </div>
+@@ -447,7 +550,9 @@ export function TaskCentre({
+               <div className="p-4">
+                 <div className="flex items-center gap-2">
+                   <h4 className="text-xs font-semibold">Output</h4>
+-                  {selected.outputTruncated && <span className="text-[0.625rem] text-amber-500">Earlier output discarded</span>}
++                  {selected.outputTruncated && (
++                    <span className="text-[0.625rem] text-amber-500">Earlier output discarded</span>
++                  )}
+                 </div>
+                 <pre className="mt-2 max-h-56 min-h-28 overflow-auto whitespace-pre-wrap rounded-lg bg-[#111315] p-3 font-mono text-[0.6875rem] leading-5 text-[#d9dde3]">
+                   {selected.output || 'No output has been recorded for this task.'}
+@@ -459,7 +564,9 @@ export function TaskCentre({
+                   <div className="min-w-0 flex-1">
+                     <h4 className="text-xs font-semibold">Result / recovery</h4>
+                     <p className="mt-1 truncate text-[0.6875rem] text-(--ui-text-tertiary)">
+-                      {selected.result?.path || selected.failure?.message || 'No result yet. Recovery options appear when the task terminates.'}
++                      {selected.result?.path ||
++                        selected.failure?.message ||
++                        'No result yet. Recovery options appear when the task terminates.'}
+                     </p>
+                   </div>
+                   {selected.result && (
+diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
+index 095a6279b..e2cb4589a 100644
+--- a/apps/desktop/src/app/local-workstation/types.ts
++++ b/apps/desktop/src/app/local-workstation/types.ts
+@@ -1,9 +1,4 @@
+-export type HermesLocalDashboardPhase =
+-  | 'authentication'
+-  | 'loading'
+-  | 'offline'
+-  | 'ready'
+-  | 'restarting'
++export type HermesLocalDashboardPhase = 'authentication' | 'loading' | 'offline' | 'ready' | 'restarting'
+ 
+ export interface HermesLocalDashboardState {
+   canRetry: boolean
+@@ -22,16 +17,7 @@ export interface HermesLocalDashboardBounds {
+ }
+ 
+ export type LocalAction =
+-  | 'backup'
+-  | 'benchmark'
+-  | 'diagnostics'
+-  | 'repair'
+-  | 'restart'
+-  | 'security'
+-  | 'start'
+-  | 'stop'
+-  | 'test'
+-  | 'update'
++  'backup' | 'benchmark' | 'diagnostics' | 'repair' | 'restart' | 'security' | 'start' | 'stop' | 'test' | 'update'
+ 
+ export type LocalLog = 'dashboard' | 'hermes' | 'launcher' | 'model' | 'security' | 'supervisor'
+ 
+diff --git a/apps/desktop/src/app/local-workstation/workstation-status.test.ts b/apps/desktop/src/app/local-workstation/workstation-status.test.ts
+index f68d46adc..f7deaeac5 100644
+--- a/apps/desktop/src/app/local-workstation/workstation-status.test.ts
++++ b/apps/desktop/src/app/local-workstation/workstation-status.test.ts
+@@ -42,9 +42,7 @@ describe('local workstation readiness', () => {
+   })
+ 
+   it('never reports Ready when the authoritative gateway is stopped', () => {
+-    const result = deriveLocalWorkstationStatus(
+-      snapshot({ gateway: { running: false, state: 'stopped' } })
+-    )
++    const result = deriveLocalWorkstationStatus(snapshot({ gateway: { running: false, state: 'stopped' } }))
+ 
+     expect(result.ready).toBe(false)
+     expect(result.stackRunning).toBe(true)
+@@ -52,9 +50,7 @@ describe('local workstation readiness', () => {
+   })
+ 
+   it('reports starting while the gateway starts', () => {
+-    const result = deriveLocalWorkstationStatus(
+-      snapshot({ gateway: { running: false, state: 'starting' } })
+-    )
++    const result = deriveLocalWorkstationStatus(snapshot({ gateway: { running: false, state: 'starting' } }))
+ 
+     expect(result.ready).toBe(false)
+     expect(result.label).toBe('Gateway starting')
+@@ -70,9 +66,7 @@ describe('local workstation readiness', () => {
+   })
+ 
+   it('reports Ready only after every live check passes', () => {
+-    const result = deriveLocalWorkstationStatus(
+-      snapshot({ gateway: { running: true, state: 'running' } })
+-    )
++    const result = deriveLocalWorkstationStatus(snapshot({ gateway: { running: true, state: 'running' } }))
+ 
+     expect(result.ready).toBe(true)
+     expect(result.label).toBe('Ready for local inference')
+@@ -87,4 +81,4 @@ describe('local workstation readiness', () => {
+     expect(result.label).toBe('Stack degraded')
+     expect(result.stackRunning).toBe(false)
+   })
+-})
+\ No newline at end of file
++})
+diff --git a/apps/desktop/src/app/local-workstation/workstation-status.ts b/apps/desktop/src/app/local-workstation/workstation-status.ts
+index 74723f38d..06a3c9cb2 100644
+--- a/apps/desktop/src/app/local-workstation/workstation-status.ts
++++ b/apps/desktop/src/app/local-workstation/workstation-status.ts
+@@ -8,9 +8,7 @@ export interface LocalWorkstationPresentation {
+   title: string
+ }
+ 
+-export function deriveLocalWorkstationStatus(
+-  snapshot: LocalWorkstationSnapshot
+-): LocalWorkstationPresentation {
++export function deriveLocalWorkstationStatus(snapshot: LocalWorkstationSnapshot): LocalWorkstationPresentation {
+   const { health } = snapshot
+   const stackRunning = health.model && health.hermes && health.dashboard
+   const anyServiceRunning = health.model || health.hermes || health.dashboard
+@@ -18,7 +16,8 @@ export function deriveLocalWorkstationStatus(
+   if (!stackRunning) {
+     if (anyServiceRunning) {
+       return {
+-        description: 'One or more local services failed their live health check. Review the service logs before restarting.',
++        description:
++          'One or more local services failed their live health check. Review the service logs before restarting.',
+         label: 'Stack degraded',
+         ready: false,
+         stackRunning: false,
+@@ -79,7 +78,8 @@ export function deriveLocalWorkstationStatus(
+ 
+   if (['startup_failed', 'failed', 'crashed'].includes(gateway.state)) {
+     return {
+-      description: 'The local services are online, but the gateway failed to start. Open the Web Dashboard or logs for details.',
++      description:
++        'The local services are online, but the gateway failed to start. Open the Web Dashboard or logs for details.',
+       label: 'Gateway failed',
+       ready: false,
+       stackRunning: true,
+@@ -94,4 +94,4 @@ export function deriveLocalWorkstationStatus(
+     stackRunning: true,
+     title: 'Start or restart the gateway'
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.test.ts b/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.test.ts
+index bb72682a5..e270cd9af 100644
+--- a/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.test.ts
++++ b/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.test.ts
+@@ -111,4 +111,4 @@ describe('resolveGatewayStatusbarState', () => {
+       })
+     ).toEqual({ kind: 'offline' })
+   })
+-})
+\ No newline at end of file
++})
+diff --git a/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.ts b/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.ts
+index 17043696d..3315b15ce 100644
+--- a/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.ts
++++ b/apps/desktop/src/app/shell/hooks/gateway-statusbar-state.ts
+@@ -56,4 +56,4 @@ export function resolveGatewayStatusbarState({
+   }
+ 
+   return { kind: 'checking' }
+-}
+\ No newline at end of file
++}
+diff --git a/apps/desktop/src/app/shell/hooks/use-status-snapshot.test.ts b/apps/desktop/src/app/shell/hooks/use-status-snapshot.test.ts
+index 5acb66a10..5a3ff7000 100644
+--- a/apps/desktop/src/app/shell/hooks/use-status-snapshot.test.ts
++++ b/apps/desktop/src/app/shell/hooks/use-status-snapshot.test.ts
+@@ -67,6 +67,7 @@ describe('useStatusSnapshot', () => {
+       async (method: string) =>
+         (method === 'setup.runtime_check' ? { ok: true } : { provider_configured: true }) as never
+     )
++
+     const requestGateway = requestGatewayMock as unknown as GatewayRequester
+ 
+     renderHook(() => useStatusSnapshot('open', requestGateway))
+@@ -84,9 +85,7 @@ describe('useStatusSnapshot', () => {
+   })
+ 
+   it('clears a stale running snapshot when authoritative status becomes unavailable', async () => {
+-    vi.mocked(getStatus)
+-      .mockResolvedValueOnce(status())
+-      .mockRejectedValueOnce(new Error('status endpoint unavailable'))
++    vi.mocked(getStatus).mockResolvedValueOnce(status()).mockRejectedValueOnce(new Error('status endpoint unavailable'))
+ 
+     const requestGateway = vi.fn() as unknown as GatewayRequester
+     const { result } = renderHook(() => useStatusSnapshot('closed', requestGateway))
+@@ -114,6 +113,7 @@ describe('useStatusSnapshot', () => {
+ 
+       return (method === 'setup.runtime_check' ? { ok: true } : { provider_configured: true }) as never
+     })
++
+     const requestGateway = requestGatewayMock as unknown as GatewayRequester
+     const { result } = renderHook(() => useStatusSnapshot('open', requestGateway))
+ 
+@@ -131,6 +131,7 @@ describe('useStatusSnapshot', () => {
+     const requestGatewayMock = vi.fn(async (method: string) => {
+       throw new Error(`${method} connection closed`)
+     })
++
+     const requestGateway = requestGatewayMock as unknown as GatewayRequester
+     const { result } = renderHook(() => useStatusSnapshot('open', requestGateway))
+ 
+@@ -146,6 +147,7 @@ describe('useStatusSnapshot', () => {
+           ? { error: 'No usable credentials found for nous.', ok: false }
+           : { provider_configured: true }) as never
+     )
++
+     const requestGateway = requestGatewayMock as unknown as GatewayRequester
+     const { result } = renderHook(() => useStatusSnapshot('open', requestGateway))
+ 
+@@ -183,6 +185,7 @@ describe('useStatusSnapshot', () => {
+     const requestGatewayMock = vi.fn(
+       (method: string) => (method === 'setup.runtime_check' ? runtime.promise : setup.promise) as never
+     )
++
+     const requestGateway = requestGatewayMock as unknown as GatewayRequester
+ 
+     renderHook(() => useStatusSnapshot('open', requestGateway))
+@@ -212,4 +215,4 @@ describe('useStatusSnapshot', () => {
+     })
+     expect(requestGatewayMock).toHaveBeenCalledTimes(4)
+   })
+-})
+\ No newline at end of file
++})
+diff --git a/apps/desktop/src/app/shell/hooks/use-status-snapshot.ts b/apps/desktop/src/app/shell/hooks/use-status-snapshot.ts
+index 7d75c48cc..9e9601f63 100644
+--- a/apps/desktop/src/app/shell/hooks/use-status-snapshot.ts
++++ b/apps/desktop/src/app/shell/hooks/use-status-snapshot.ts
+@@ -134,4 +134,4 @@ export function useStatusSnapshot(gatewayState: string | undefined, requestGatew
+   }, [gatewayState, requestGateway])
+ 
+   return { inferenceStatus, statusSnapshot }
+-}
+\ No newline at end of file
++}
+diff --git a/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx b/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
+index b15cf639f..cdfb7c0ec 100644
+--- a/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
++++ b/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
+@@ -255,6 +255,7 @@ export function useStatusbarItems({
+     inferenceStatus,
+     statusSnapshot
+   })
++
+   const gatewayReady = gatewayStatus.kind === 'ready'
+   const gatewayDegraded = ['checking', 'connecting', 'needs-setup'].includes(gatewayStatus.kind)
+ 
+-- 
+2.55.0.windows.3
+
