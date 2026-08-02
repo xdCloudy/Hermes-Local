@@ -9,10 +9,10 @@
     "hermesAgent": {
       "repository": "https://github.com/NousResearch/hermes-agent.git",
       "branch": "main",
-      "commit": "85148f79f78af6c5dafdf0fa4e7545ec7f7a1731",
+      "commit": "582606f176f5467deb96bb949e0879a8e18f31dd",
       "integrationBranch": "hermes-local-integration",
-      "integrationCommit": "7c511d57757d7d5a2601d20bb719989f6b1e81bd",
-      "integrationTree": "293cfbcc405657e7c743dc2518b57f0e310d3bd1",
+      "integrationCommit": "8ecfb9e190f3be9f3182567dbbe19373b3cc3ab7",
+      "integrationTree": "169e88825cd8e769b24e918b71dff07dbaa5bed3",
       "patchSeries": "source/hermes-launcher/patches"
     },
     "llamaCpp": {
@@ -50,5 +50,5 @@
     "modelAliasDefault": "qwen3.6-35b-a3b-apex-mtp-i-quality",
     "portableSettings": true
   },
-  "recordedAt": "2026-08-01T20:12:38Z"
+  "recordedAt": "2026-08-02T16:41:39.750890Z"
 }

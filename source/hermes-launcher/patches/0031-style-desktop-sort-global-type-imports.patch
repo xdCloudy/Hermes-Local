@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Hermes Local Compatibility CI <hermes-local-ci@localhost>
+Date: Sun, 2 Aug 2026 16:41:39 +0000
+Subject: [PATCH 31/31] style(desktop): sort global type imports
+
+---
+ apps/desktop/src/global.d.ts | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
+index 84ea93c55..602d031ec 100644
+--- a/apps/desktop/src/global.d.ts
++++ b/apps/desktop/src/global.d.ts
+@@ -1,6 +1,5 @@
+ import type { GatewayWsUrlResult } from '@hermes/shared'
+ 
+-import type { WakeIndicatorState } from './lib/wake-indicator'
+ import type {
+   HermesLocalDashboardBounds,
+   HermesLocalDashboardState,
+@@ -13,6 +12,7 @@ import type {
+   LocalWorkstationSettings,
+   LocalWorkstationSnapshot
+ } from './app/local-workstation/types'
++import type { WakeIndicatorState } from './lib/wake-indicator'
+ import type {
+   PetOverlayBounds,
+   PetOverlayControl,

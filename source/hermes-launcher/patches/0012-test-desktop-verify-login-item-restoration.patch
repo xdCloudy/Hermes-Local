@@ -1,7 +1,7 @@
-From b635a6e45c69a1f21fcb67781898e7ad2bf8cc11 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Wed, 29 Jul 2026 19:15:23 +0100
-Subject: [PATCH 12/26] test(desktop): verify login item restoration
+Subject: [PATCH 12/30] test(desktop): verify login item restoration
 
 ---
  .../e2e/hermes-local-functional.spec.ts       | 39 +++++++++++++++++++
@@ -64,6 +64,3 @@ index a5f0c8305..f4edde2ef 100644
        const sections = [
          ['Services', 'Services', 'services'],
          ['Web Dashboard', 'Dashboard', 'dashboard'],
--- 
-2.55.0.windows.3
-

@@ -1,7 +1,7 @@
-From cbd26624cff87b7c6cff5b30fc42d5c537b17e6a Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Thu, 30 Jul 2026 17:18:26 +0000
-Subject: [PATCH 18/26] refactor(desktop): remove redirect-only Tools page
+Subject: [PATCH 18/30] refactor(desktop): remove redirect-only Tools page
 
 ---
  .../desktop/e2e/hermes-local-portable.spec.ts |  2 ++
@@ -173,6 +173,3 @@ index 2c1f45af7..46875a01b 100644
  
  export type AppView =
    | 'agents'
--- 
-2.55.0.windows.3
-

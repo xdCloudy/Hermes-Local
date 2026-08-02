@@ -1,7 +1,7 @@
-From 64ae15c2a59b7bdbc9123a878c8a65e2bde0249b Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
 Date: Fri, 31 Jul 2026 02:09:50 +0000
-Subject: [PATCH 21/26] style(desktop): satisfy embedded dashboard lint rules
+Subject: [PATCH 21/30] style(desktop): satisfy embedded dashboard lint rules
 
 ---
  apps/desktop/electron/hermes-local-control.ts          | 10 +++++-----
@@ -109,10 +109,10 @@ index ddc518f72..be14a0c8a 100644
  const DASHBOARD_PARTITION = 'hermes:local-dashboard'
  const RETRY_DELAYS_MS = [750, 1500, 3000, 6000, 10_000]
 diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
-index 621a005fc..563502412 100644
+index cfc733af7..a5d0c8826 100644
 --- a/apps/desktop/electron/main.ts
 +++ b/apps/desktop/electron/main.ts
-@@ -1060,6 +1060,7 @@ function registerMediaProtocol() {
+@@ -1056,6 +1056,7 @@ function registerMediaProtocol() {
  }
  
  let mainWindow = null
@@ -120,7 +120,7 @@ index 621a005fc..563502412 100644
  const hermesLocalDashboardView = createHermesLocalDashboardViewController({
    emitState: state => {
      if (mainWindow && !mainWindow.isDestroyed()) {
-@@ -1068,6 +1069,7 @@ const hermesLocalDashboardView = createHermesLocalDashboardViewController({
+@@ -1064,6 +1065,7 @@ const hermesLocalDashboardView = createHermesLocalDashboardViewController({
    },
    getWindow: () => mainWindow
  })
@@ -156,6 +156,3 @@ index a4187b821..9a35816e8 100644
    const [phaseLabel, PhaseIcon] = phaseCopy[state.phase]
    const loading = state.phase === 'loading' || state.phase === 'restarting'
  
--- 
-2.55.0.windows.3
-

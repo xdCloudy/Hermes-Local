@@ -211,6 +211,71 @@ class CompatibilityReportTests(unittest.TestCase):
                     log=Path("logs/patches.log"),
                 )
 
+    def test_lockfile_recovery_ignores_non_lock_conflicts(self) -> None:
+        with mock.patch.object(compatibility, "run") as run_mock:
+            recovered = compatibility.recover_npm_lockfile_conflict(
+                Path("work/hermes-agent"),
+                ["apps/desktop/electron/main.ts"],
+                log=Path("logs/patches.log"),
+            )
+        self.assertFalse(recovered)
+        run_mock.assert_not_called()
+
+    def test_lockfile_recovery_regenerates_and_continues_patch(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary)
+            (source / "package.json").write_text("{}\n", encoding="utf-8")
+            (source / "package-lock.json").write_text("{}\n", encoding="utf-8")
+
+            def fake_run(command, **kwargs):
+                if command == ["git", "diff", "--name-only"]:
+                    return "package-lock.json"
+                if command == ["git", "diff", "--name-only", "--diff-filter=U"]:
+                    return ""
+                return ""
+
+            with mock.patch.object(compatibility, "run", side_effect=fake_run) as run_mock:
+                recovered = compatibility.recover_npm_lockfile_conflict(
+                    source,
+                    [r"package-lock.json"],
+                    log=Path("logs/patches.log"),
+                )
+
+        self.assertTrue(recovered)
+        commands = [call.args[0] for call in run_mock.call_args_list]
+        self.assertEqual(commands[0], ["git", "checkout", "--ours", "--", "package-lock.json"])
+        self.assertIn(
+            compatibility.npm_command(
+                "install",
+                "--package-lock-only",
+                "--ignore-scripts",
+                "--no-audit",
+                "--fund=false",
+            ),
+            commands,
+        )
+        self.assertIn(["git", "add", "--", "package-lock.json"], commands)
+        self.assertEqual(commands[-1], ["git", "am", "--continue"])
+
+    def test_lockfile_recovery_rejects_unexpected_npm_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary)
+            (source / "package.json").write_text("{}\n", encoding="utf-8")
+            (source / "package-lock.json").write_text("{}\n", encoding="utf-8")
+
+            def fake_run(command, **kwargs):
+                if command == ["git", "diff", "--name-only"]:
+                    return "package-lock.json\npackage.json"
+                return ""
+
+            with mock.patch.object(compatibility, "run", side_effect=fake_run):
+                with self.assertRaisesRegex(RuntimeError, "unexpected files"):
+                    compatibility.recover_npm_lockfile_conflict(
+                        source,
+                        ["package-lock.json"],
+                        log=Path("logs/patches.log"),
+                    )
+
     def test_verify_requires_named_component_reports(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             report_path = Path(temporary) / "aggregate.json"

@@ -1,7 +1,7 @@
-From a7a1d8466375f53c8982eccb1c6523d26d284a47 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Tue, 28 Jul 2026 14:29:35 +0100
-Subject: [PATCH 08/26] fix(desktop): start local workstation before connecting
+Subject: [PATCH 08/30] fix(desktop): start local workstation before connecting
 
 ---
  .../e2e/hermes-local-workstation.spec.ts      |  5 ++-
@@ -119,7 +119,7 @@ index 428c6e8e4..1f96b1284 100644
 +  waitForActionTask
  }
 diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
-index 37ddb11ef..86b2ca4d7 100644
+index 7d6348fff..fb8b169a3 100644
 --- a/apps/desktop/electron/main.ts
 +++ b/apps/desktop/electron/main.ts
 @@ -136,6 +136,7 @@ import {
@@ -130,7 +130,7 @@ index 37ddb11ef..86b2ca4d7 100644
    hermesLocalTuiLaunch,
    registerHermesLocalControlIpc
  } from './hermes-local-control'
-@@ -8372,6 +8373,11 @@ async function startHermes() {
+@@ -8419,6 +8420,11 @@ async function startHermes() {
        backendArgs.unshift('--profile', activeProfile)
      }
  
@@ -143,7 +143,7 @@ index 37ddb11ef..86b2ca4d7 100644
        connectRemote,
        ensureLocalRuntime: ensureRuntime,
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
-index 9b29b60ab..5c2e8170a 100644
+index 11f66eacd..f45628979 100644
 --- a/apps/desktop/package.json
 +++ b/apps/desktop/package.json
 @@ -2,7 +2,7 @@
@@ -156,7 +156,7 @@ index 9b29b60ab..5c2e8170a 100644
    "author": "Nous Research",
    "type": "module",
 diff --git a/package-lock.json b/package-lock.json
-index db7f5efe4..86e0ad489 100644
+index 4a6cea00f..dd1ab6a35 100644
 --- a/package-lock.json
 +++ b/package-lock.json
 @@ -69,7 +69,7 @@
@@ -168,6 +168,3 @@ index db7f5efe4..86e0ad489 100644
        "dependencies": {
          "@assistant-ui/core": "0.2.23",
          "@assistant-ui/react": "0.14.24",
--- 
-2.55.0.windows.3
-

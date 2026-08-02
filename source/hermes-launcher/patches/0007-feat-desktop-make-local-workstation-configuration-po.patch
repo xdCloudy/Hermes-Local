@@ -1,7 +1,7 @@
-From 34d56fccbadd956b4a0528b504c4ea22de2271ae Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Tue, 28 Jul 2026 12:36:08 +0100
-Subject: [PATCH 07/26] feat(desktop): make local workstation configuration
+Subject: [PATCH 07/30] feat(desktop): make local workstation configuration
  portable
 
 ---
@@ -1562,10 +1562,10 @@ index 000000000..03f128922
 +  sanitizeModel
 +}
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
-index c2d535963..aefac73c9 100644
+index 676ea71b4..48e1b65ca 100644
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
-@@ -104,7 +104,12 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
+@@ -114,7 +114,12 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
      actionStatus: taskId => ipcRenderer.invoke('hermes:local:action:status', taskId),
      logs: (name, lines) => ipcRenderer.invoke('hermes:local:logs', name, lines),
      saveProfile: profile => ipcRenderer.invoke('hermes:local:profile:save', profile),
@@ -1579,7 +1579,7 @@ index c2d535963..aefac73c9 100644
      openRoot: () => ipcRenderer.invoke('hermes:local:root:open')
    },
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
-index 48c6d299e..9b29b60ab 100644
+index 266a594e9..11f66eacd 100644
 --- a/apps/desktop/package.json
 +++ b/apps/desktop/package.json
 @@ -2,7 +2,7 @@
@@ -2743,10 +2743,10 @@ index 7e1ced1f0..6e93daa20 100644
      updatedAt?: string
    }
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index 29489c171..31603d22c 100644
+index d24cb6430..e0497494f 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
-@@ -6,6 +6,8 @@ import type {
+@@ -7,6 +7,8 @@ import type {
    LocalInferenceProfile,
    LocalLog,
    LocalLogResult,
@@ -2755,7 +2755,7 @@ index 29489c171..31603d22c 100644
    LocalWorkstationSnapshot
  } from './app/local-workstation/types'
  import type {
-@@ -125,9 +127,14 @@ declare global {
+@@ -131,9 +133,14 @@ declare global {
            set: (enabled: boolean) => Promise<LocalLoginItemStatus>
          }
          logs: (name: LocalLog, lines?: number) => Promise<LocalLogResult>
@@ -2771,7 +2771,7 @@ index 29489c171..31603d22c 100644
          snapshot: () => Promise<LocalWorkstationSnapshot>
          startAction: (action: LocalAction, input?: { profile?: string }) => Promise<LocalActionTask>
 diff --git a/package-lock.json b/package-lock.json
-index a4b1e71ee..db7f5efe4 100644
+index 8146777ad..4a6cea00f 100644
 --- a/package-lock.json
 +++ b/package-lock.json
 @@ -69,7 +69,7 @@
@@ -2783,6 +2783,3 @@ index a4b1e71ee..db7f5efe4 100644
        "dependencies": {
          "@assistant-ui/core": "0.2.23",
          "@assistant-ui/react": "0.14.24",
--- 
-2.55.0.windows.3
-

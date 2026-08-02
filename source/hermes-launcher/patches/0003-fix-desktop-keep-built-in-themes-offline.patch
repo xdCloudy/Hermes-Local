@@ -1,7 +1,7 @@
-From 2d8139e98e6a01d11853b44ddc8a91cffca46be6 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Tue, 28 Jul 2026 09:44:01 +0100
-Subject: [PATCH 03/26] fix(desktop): keep built-in themes offline
+Subject: [PATCH 03/30] fix(desktop): keep built-in themes offline
 
 ---
  apps/desktop/src/themes/context.tsx     |  4 ++--
@@ -94,6 +94,3 @@ index 464381819..c0effc11f 100644
    }
  }
  
--- 
-2.55.0.windows.3
-

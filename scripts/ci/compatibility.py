@@ -224,6 +224,81 @@ def npm_command(*arguments: str) -> list[str]:
     return [npm(), "--yes", f"npm@{HERMES_AGENT_NPM_VERSION}", *arguments]
 
 
+def recover_npm_lockfile_conflict(
+    source: Path,
+    conflicts: Sequence[str],
+    *,
+    log: Path,
+) -> bool:
+    """Resolve a lockfile-only ``git am`` conflict deterministically.
+
+    Upstream periodically regenerates ``package-lock.json`` while the package
+    manifests remain mergeable. In that narrow case, keep the candidate's
+    lockfile as the base, regenerate it from the already-merged manifests with
+    the exact supported npm CLI, stage it, and continue the original mail
+    patch. Any additional conflict or unexpected unstaged file remains a hard
+    failure so source conflicts are never hidden.
+    """
+    normalized = [path.strip().replace("\\", "/") for path in conflicts if path.strip()]
+    if normalized != ["package-lock.json"]:
+        return False
+    if not (source / "package.json").is_file() or not (source / "package-lock.json").is_file():
+        return False
+
+    run(
+        ["git", "checkout", "--ours", "--", "package-lock.json"],
+        cwd=source,
+        log=log,
+    )
+    run(
+        npm_command(
+            "install",
+            "--package-lock-only",
+            "--ignore-scripts",
+            "--no-audit",
+            "--fund=false",
+        ),
+        cwd=source,
+        log=log,
+        timeout=1800,
+    )
+
+    unstaged = [
+        path.strip().replace("\\", "/")
+        for path in run(["git", "diff", "--name-only"], cwd=source, log=log).splitlines()
+        if path.strip()
+    ]
+    unexpected = [path for path in unstaged if path != "package-lock.json"]
+    if unexpected:
+        raise RuntimeError(
+            "npm lockfile regeneration modified unexpected files: " + ", ".join(unexpected)
+        )
+
+    run(["git", "add", "--", "package-lock.json"], cwd=source, log=log)
+    remaining = [
+        path.strip()
+        for path in run(
+            ["git", "diff", "--name-only", "--diff-filter=U"],
+            cwd=source,
+            log=log,
+            allow_failure=True,
+        ).splitlines()
+        if path.strip()
+    ]
+    if remaining:
+        raise RuntimeError(
+            "Lockfile regeneration left unresolved paths: " + ", ".join(remaining)
+        )
+
+    run(
+        ["git", "am", "--continue"],
+        cwd=source,
+        log=log,
+        timeout=600,
+    )
+    return True
+
+
 def uv() -> str:
     local = Path(sys.executable).resolve().parent / ("uv.exe" if os.name == "nt" else "uv")
     found = str(local) if local.exists() else shutil.which("uv")
@@ -341,12 +416,34 @@ def hermes_agent(args: argparse.Namespace) -> int:
                 applied.append({"order": index, "patch": patch.name, "status": "passed", "application": mode})
             except CommandError as exc:
                 conflicts = run(["git", "diff", "--name-only", "--diff-filter=U"], cwd=source, log=logs / "patches.log", allow_failure=True).splitlines()
+                recovery_error: Exception | None = None
+                try:
+                    recovered = recover_npm_lockfile_conflict(
+                        source,
+                        conflicts,
+                        log=logs / "patches.log",
+                    )
+                except Exception as lock_exc:
+                    recovered = False
+                    recovery_error = lock_exc
+                if recovered:
+                    applied.append({
+                        "order": index,
+                        "patch": patch.name,
+                        "status": "passed",
+                        "application": "three-way-lockfile-regenerated",
+                    })
+                    continue
+
                 current = run(["git", "am", "--show-current-patch=diff"], cwd=source, log=logs / "patches.log", allow_failure=True)
                 run(["git", "am", "--abort"], cwd=source, log=logs / "patches.log", allow_failure=True)
-                fail_report(report, stage="patches", message=f"Patch {patch.name} failed against {candidate}.", error=exc, details={
+                details = {
                     "patch": patch.name, "patchOrder": index, "conflictedFiles": conflicts,
                     "currentPatchTail": current[-8000:], "laterPatchesSkipped": [p.name for p in patches[index:]],
-                })
+                }
+                if recovery_error:
+                    details["lockfileRecoveryError"] = f"{type(recovery_error).__name__}: {recovery_error}"
+                fail_report(report, stage="patches", message=f"Patch {patch.name} failed against {candidate}.", error=exc, details=details)
                 report["stages"]["patches"]["patches"] = applied
                 return finish(report, output, 1)
         try:

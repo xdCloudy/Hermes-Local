@@ -1,7 +1,7 @@
-From 627c2182f59440720fcac477ea7bcd33dac399c9 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Wed, 29 Jul 2026 23:30:51 +0100
-Subject: [PATCH 13/26] fix(desktop): report authoritative gateway state
+Subject: [PATCH 13/30] fix(desktop): report authoritative gateway state
 
 ---
  apps/desktop/electron/hermes-local-control.ts |  8 +-
@@ -491,6 +491,3 @@ index 000000000..74723f38d
 +  }
 +}
 \ No newline at end of file
--- 
-2.55.0.windows.3
-

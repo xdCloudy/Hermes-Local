@@ -1,7 +1,8 @@
-From c9dfb3199eb5918cfa57ac4fb66422e153e381c4 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local Compatibility CI <hermes-local-ci@localhost>
 Date: Sat, 1 Aug 2026 18:13:44 +0100
-Subject: [PATCH] refactor(desktop): define task lifecycle and resource locks
+Subject: [PATCH 28/30] refactor(desktop): define task lifecycle and resource
+ locks
 
 ---
  .../electron/hermes-local-control.test.ts     |  56 ++--
@@ -933,6 +934,3 @@ index cd428766d..c1531b127 100644
  }
  
  export interface LocalLoginItemStatus {
--- 
-2.55.0.windows.3
-

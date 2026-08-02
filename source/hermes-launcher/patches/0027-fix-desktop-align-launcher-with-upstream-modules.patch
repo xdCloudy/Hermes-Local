@@ -1,7 +1,7 @@
-From 00cca1c2ef5e7336b5e547b465e97c90e26cb29f Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local Compatibility CI <hermes-local-ci@localhost>
 Date: Sat, 1 Aug 2026 17:31:50 +0100
-Subject: [PATCH] fix(desktop): align launcher with upstream modules
+Subject: [PATCH 27/30] fix(desktop): align launcher with upstream modules
 
 ---
  .../composer/status-stack/coding-row.test.tsx |  2 +-
@@ -11,10 +11,10 @@ Subject: [PATCH] fix(desktop): align launcher with upstream modules
  4 files changed, 34 insertions(+), 31 deletions(-)
 
 diff --git a/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx b/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
-index 2b950b248..8fe686324 100644
+index b7e22137c..b5d58c4a0 100644
 --- a/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
 +++ b/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
-@@ -31,7 +31,7 @@ vi.mock('@/i18n', () => ({
+@@ -33,7 +33,7 @@ vi.mock('@/i18n', () => ({
          removeProject: 'Remove project'
        },
        sidebar: { projects: { menu: 'Project actions', sectionLabel: 'Projects' } },
@@ -111,10 +111,10 @@ index 67a2ed251..c3bd8292b 100644
  import { Unicode11Addon } from '@xterm/addon-unicode11'
  import { Terminal } from '@xterm/xterm'
 diff --git a/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx b/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
-index 5a9c7c451..b2f5ff820 100644
+index 2bf975276..b15cf639f 100644
 --- a/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
 +++ b/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
-@@ -47,7 +47,9 @@ import type { StatusResponse, UsageStats } from '@/types/hermes'
+@@ -49,7 +49,9 @@ import type { StatusResponse, UsageStats } from '@/types/hermes'
  
  import { CRON_ROUTE, SETTINGS_ROUTE, WEBHOOKS_ROUTE } from '../../routes'
  import type { StatusbarItem } from '../statusbar-controls'
@@ -123,7 +123,4 @@ index 5a9c7c451..b2f5ff820 100644
 +
  const EMPTY_USAGE = { calls: 0, input: 0, output: 0, total: 0 } as const
  
- function workspaceLabel(cwd: string): string {
--- 
-2.55.0.windows.3
-
+ interface StatusbarItemsOptions {

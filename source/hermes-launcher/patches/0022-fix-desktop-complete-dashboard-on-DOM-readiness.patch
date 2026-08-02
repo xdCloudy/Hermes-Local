@@ -1,7 +1,7 @@
-From 3901be852f51575297275b78b3297f801a3b3c98 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
 Date: Fri, 31 Jul 2026 02:31:00 +0000
-Subject: [PATCH 22/26] fix(desktop): complete dashboard on DOM readiness
+Subject: [PATCH 22/30] fix(desktop): complete dashboard on DOM readiness
 
 Do not keep the embedded dashboard hidden while waiting indefinitely for
 Electron's did-finish-load event. Track the committed main-frame response and
@@ -189,6 +189,3 @@ index be14a0c8a..634521f32 100644
        setViewVisibility(false)
        publish({
          canRetry: true,
--- 
-2.55.0.windows.3
-

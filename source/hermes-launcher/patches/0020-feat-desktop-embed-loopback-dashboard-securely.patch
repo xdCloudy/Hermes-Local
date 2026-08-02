@@ -1,7 +1,7 @@
-From 33d1215e82c46969e52fd7e067f98f5f8ece4bd0 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
 Date: Fri, 31 Jul 2026 01:36:56 +0000
-Subject: [PATCH 20/26] feat(desktop): embed loopback dashboard securely
+Subject: [PATCH 20/30] feat(desktop): embed loopback dashboard securely
 
 Add a sandboxed WebContentsView for the configured loopback dashboard, keep authentication in the Electron session boundary, block cross-origin navigation and requests, preserve view state across Desktop routes, and recover from backend or renderer restarts.
 ---
@@ -1003,7 +1003,7 @@ index 000000000..ddc518f72
 +  }
 +}
 diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
-index cc357f486..621a005fc 100644
+index 46d16d0ec..cfc733af7 100644
 --- a/apps/desktop/electron/main.ts
 +++ b/apps/desktop/electron/main.ts
 @@ -140,6 +140,7 @@ import {
@@ -1014,7 +1014,7 @@ index cc357f486..621a005fc 100644
  import { createLinkTitleWindow, guardLinkTitleSession, readLinkTitleWindowTitle } from './link-title-window'
  import { ensureMainWindow } from './main-window-lifecycle'
  import { isTrustedRendererUrl, shouldAllowRendererPermission } from './media-permissions'
-@@ -1059,6 +1060,14 @@ function registerMediaProtocol() {
+@@ -1055,6 +1056,14 @@ function registerMediaProtocol() {
  }
  
  let mainWindow = null
@@ -1029,15 +1029,15 @@ index cc357f486..621a005fc 100644
  const backendConnectionState = createBackendConnectionState<ReturnType<typeof spawn>, any>()
  const remoteLiveness = new RemoteLivenessTracker()
  const remoteRevalidation = new RemoteRevalidationCoordinator()
-@@ -9280,6 +9289,7 @@ function createWindow() {
-   const createdMainWindow = mainWindow
+@@ -9339,6 +9348,7 @@ function createWindow() {
    mainWindow.on('closed', () => {
      closePetOverlay()
+     wakeIndicatorController.close()
 +    hermesLocalDashboardView.handleWindowClosed(createdMainWindow)
  
      if (mainWindow === createdMainWindow) {
        mainWindow = null
-@@ -9394,7 +9404,7 @@ function createWindow() {
+@@ -9453,7 +9463,7 @@ function createWindow() {
    })
  }
  
@@ -1046,7 +1046,7 @@ index cc357f486..621a005fc 100644
  
  ipcMain.handle('hermes:connection', async (_event, profile) => ensureBackend(profile))
  // Reconnect-after-wake recovery. A REMOTE primary backend has no child process,
-@@ -11925,6 +11935,10 @@ app.on('before-quit', event => {
+@@ -11999,6 +12009,10 @@ app.on('before-quit', event => {
      }
    }
  
@@ -1058,10 +1058,10 @@ index cc357f486..621a005fc 100644
    // pet can't keep the process alive or float over a quit app.
    closePetOverlay()
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
-index ac22b927d..04abcd4a2 100644
+index 149c29dc5..288e2ea4a 100644
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
-@@ -110,6 +110,19 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
+@@ -120,6 +120,19 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
      removeModel: id => ipcRenderer.invoke('hermes:local:model:remove', id),
      selectModel: id => ipcRenderer.invoke('hermes:local:model:select', id),
      saveSettings: settings => ipcRenderer.invoke('hermes:local:settings:save', settings),
@@ -1352,19 +1352,19 @@ index cfa9be5b6..cd428766d 100644
    | 'backup'
    | 'benchmark'
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index 86ef0fcba..604ed5242 100644
+index a1cc14131..a31f5eb89 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
-@@ -1,6 +1,8 @@
- import type { GatewayWsUrlResult } from '@hermes/shared'
+@@ -2,6 +2,8 @@ import type { GatewayWsUrlResult } from '@hermes/shared'
  
+ import type { WakeIndicatorState } from './lib/wake-indicator'
  import type {
 +  HermesLocalDashboardBounds,
 +  HermesLocalDashboardState,
    LocalAction,
    LocalActionTask,
    LocalInferenceProfile,
-@@ -128,6 +130,14 @@ declare global {
+@@ -134,6 +136,14 @@ declare global {
          }
          logs: (name: LocalLog, lines?: number) => Promise<LocalLogResult>
          deleteProfile: (name: string) => Promise<{ name: string; selected: string }>
@@ -1379,6 +1379,3 @@ index 86ef0fcba..604ed5242 100644
          openDashboard: () => Promise<{ url: string }>
          openRoot: () => Promise<{ error: string; ok: boolean }>
          registerModel: (model: Partial<LocalModel> & { localPath: string }) => Promise<LocalModel>
--- 
-2.55.0.windows.3
-

@@ -1,7 +1,7 @@
-From 89fb101d640b23a491e4ae9523110c636514fe62 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
 Date: Fri, 31 Jul 2026 03:20:00 +0000
-Subject: [PATCH 23/26] fix(desktop): serialize dashboard readiness
+Subject: [PATCH 23/30] fix(desktop): serialize dashboard readiness
 
 Use successful main-frame completion as an authoritative readiness signal and coalesce concurrent show calls onto one navigation.
 ---
@@ -206,6 +206,3 @@ index 634521f32..de13c921b 100644
      } else {
        attachToCurrentWindow()
      }
--- 
-2.55.0.windows.3
-

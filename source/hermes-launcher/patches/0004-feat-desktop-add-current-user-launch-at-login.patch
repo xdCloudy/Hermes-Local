@@ -1,7 +1,7 @@
-From 1b13059c958fb013c4a46180a8e8eb17662043aa Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Tue, 28 Jul 2026 10:04:06 +0100
-Subject: [PATCH 04/26] feat(desktop): add current-user launch at login
+Subject: [PATCH 04/30] feat(desktop): add current-user launch at login
 
 ---
  .../e2e/hermes-local-workstation.spec.ts      | 37 ++++++++
@@ -211,10 +211,10 @@ index 8a206a37a..642f45cdd 100644
 +  setLoginItem
  }
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
-index c6e1df497..c2d535963 100644
+index 67f05297c..676ea71b4 100644
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
-@@ -96,6 +96,10 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
+@@ -106,6 +106,10 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
    },
    localWorkstation: {
      snapshot: () => ipcRenderer.invoke('hermes:local:snapshot'),
@@ -380,10 +380,10 @@ index 543a6d0b3..7e1ced1f0 100644
    runtime: {
      controllerAlive: boolean
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index 0a0c314f0..29489c171 100644
+index 9860c76fa..d24cb6430 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
-@@ -120,6 +120,10 @@ declare global {
+@@ -126,6 +126,10 @@ declare global {
        }
        localWorkstation: {
          actionStatus: (taskId: string) => Promise<LocalActionTask>
@@ -394,6 +394,3 @@ index 0a0c314f0..29489c171 100644
          logs: (name: LocalLog, lines?: number) => Promise<LocalLogResult>
          openDashboard: () => Promise<{ url: string }>
          openRoot: () => Promise<{ error: string; ok: boolean }>
--- 
-2.55.0.windows.3
-
