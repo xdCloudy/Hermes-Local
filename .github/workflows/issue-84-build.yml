@@ -4,11 +4,12 @@ on:
   pull_request:
     paths:
       - '.github/workflows/issue-84-build.yml'
-      - 'scripts/ci/issue84-root.patch'
       - 'scripts/ci/issue84-desktop.patch.gz.b64'
       - 'Switch-Hermes-Model.ps1'
+      - 'scripts/Hermes-Configuration.psm1'
       - 'scripts/verify_model_identity.py'
       - 'tests/test_verify_model_identity.py'
+      - 'source/hermes-launcher/patches/0032-fix-desktop-activate-selected-models-through-managed-restart.patch'
 
 permissions:
   contents: write
@@ -26,10 +27,6 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
-
-      - name: Apply root lifecycle changes
-        shell: pwsh
-        run: git apply '.\scripts\ci\issue84-root.patch'
 
       - name: Validate root lifecycle sources
         shell: pwsh
@@ -69,7 +66,12 @@ jobs:
           git -C '.\temp\hermes-agent' checkout --detach $candidate
           git -C '.\temp\hermes-agent' config user.name 'Hermes Local CI'
           git -C '.\temp\hermes-agent' config user.email 'hermes-local-ci@localhost'
-          $patches = @(Get-ChildItem '.\source\hermes-launcher\patches\*.patch' | Sort-Object Name | ForEach-Object FullName)
+          $patches = @(
+            Get-ChildItem '.\source\hermes-launcher\patches\*.patch' |
+              Where-Object Name -ne '0032-fix-desktop-activate-selected-models-through-managed-restart.patch' |
+              Sort-Object Name |
+              ForEach-Object FullName
+          )
           git -C '.\temp\hermes-agent' am --3way --committer-date-is-author-date @patches
 
           @'
@@ -81,7 +83,7 @@ jobs:
           $desktopPatch = (Resolve-Path '.\temp\issue84-desktop.patch').Path
           git -C '.\temp\hermes-agent\apps\desktop' apply $desktopPatch
 
-      - name: Install, format, and test Desktop changes
+      - name: Validate focused Desktop changes without broad rewrites
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -91,8 +93,6 @@ jobs:
             npx.cmd --yes npm@12.0.0 install --ignore-scripts --no-audit --fund=false
             Push-Location '.\apps\desktop'
             try {
-              npx.cmd --no-install eslint src/ electron/ --fix
-              npx.cmd --no-install prettier --write "src/**/*.{ts,tsx}" "electron/**/*.ts" vite.config.ts
               npx.cmd --no-install vitest run --project electron `
                 electron/hermes-local-model-switch.test.ts `
                 electron/hermes-local-control.test.ts `
@@ -109,7 +109,7 @@ jobs:
             Pop-Location
           }
 
-      - name: Generate patch and recorded integration state
+      - name: Generate minimal patch and recorded integration state
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -118,10 +118,11 @@ jobs:
           git -C $source add apps/desktop package-lock.json
           git -C $source commit -m 'fix(desktop): activate selected models through managed restart'
 
-          $output = Resolve-Path '.\source\hermes-launcher\patches'
-          $generated = (git -C $source format-patch -1 --zero-commit --output-directory $output).Trim()
-          $destination = Join-Path $output '0032-fix-desktop-activate-selected-models-through-managed-restart.patch'
-          Move-Item -LiteralPath $generated -Destination $destination -Force
+          $destination = Resolve-Path '.\source\hermes-launcher\patches'
+          $generated = (git -C $source format-patch -1 --zero-commit --output-directory $destination).Trim()
+          $finalPatch = Join-Path $destination '0032-fix-desktop-activate-selected-models-through-managed-restart.patch'
+          if (Test-Path -LiteralPath $finalPatch) { Remove-Item -LiteralPath $finalPatch -Force }
+          Move-Item -LiteralPath $generated -Destination $finalPatch -Force
 
           $integrationCommit = (git -C $source rev-parse HEAD).Trim()
           $integrationTree = (git -C $source rev-parse 'HEAD^{tree}').Trim()
@@ -157,6 +158,8 @@ jobs:
 
           git config user.name 'Hermes Local CI'
           git config user.email 'hermes-local-ci@localhost'
-          git add Start-Hermes-Local.ps1 Switch-Hermes-Model.ps1 VERSION.json scripts/Hermes-Configuration.psm1 scripts/verify_model_identity.py tests/test_verify_model_identity.py source/hermes-launcher/patches
-          git commit -m 'fix: activate selected models through managed stack restart'
-          git push origin HEAD:${{ github.head_ref }}
+          git add VERSION.json source/hermes-launcher/patches/0032-fix-desktop-activate-selected-models-through-managed-restart.patch
+          if (-not (git diff --cached --quiet)) {
+            git commit -m 'refactor: keep issue 84 integration patch focused'
+            git push origin HEAD:${{ github.head_ref }}
+          }
