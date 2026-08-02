@@ -118,6 +118,19 @@ new = """  const stageValue = candidate.stage
 if old not in model:
     raise SystemExit('Task stage parser block was not found')
 model_path.write_text(model.replace(old, new, 1), encoding='utf-8')
+
+control_path = Path('temp/hermes-agent/apps/desktop/electron/hermes-local-control.ts')
+control_lines = control_path.read_text(encoding='utf-8').splitlines(keepends=True)
+matches = [
+    index
+    for index, line in enumerate(control_lines)
+    if 'hermes-model-switch-stage' in line and '\\\\s' in line
+]
+if len(matches) != 1:
+    raise SystemExit(f'Expected one escaped model-switch stage regex, found {len(matches)}')
+index = matches[0]
+control_lines[index] = control_lines[index].replace('\\\\s', '\\s', 1)
+control_path.write_text(''.join(control_lines), encoding='utf-8')
 '@ | python -
 
 Push-Location $sourcePath
