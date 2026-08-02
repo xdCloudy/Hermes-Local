@@ -1,0 +1,169 @@
+diff --git a/Start-Hermes-Local.ps1 b/Start-Hermes-Local.ps1
+index b330825..d56a775 100644
+--- a/Start-Hermes-Local.ps1
++++ b/Start-Hermes-Local.ps1
+@@ -17,7 +17,11 @@ function Test-HermesDesktopReadyState {
+         [AllowNull()]
+         [psobject] $Status,
+         [Parameter(Mandatory)]
+-        [int] $ControllerPid
++        [int] $ControllerPid,
++        [Parameter(Mandatory)]
++        [string] $ExpectedModelId,
++        [Parameter(Mandatory)]
++        [string] $ExpectedModelAlias
+     )
+ 
+     if (-not $Status -or
+@@ -29,7 +33,10 @@ function Test-HermesDesktopReadyState {
+     $gatewayReady = $Status.PSObject.Properties.Name -notcontains 'gateway' -or
+         -not $Status.gateway.required -or $Status.gateway.healthy
+     $desktopReady = $Status.hermes.healthy -and $gatewayReady
+-    $inferenceReady = $Status.phase -eq 'running' -and $Status.model.healthy
++    $inferenceReady = $Status.phase -eq 'running' -and
++        $Status.model.healthy -and
++        [string]$Status.selectedModelId -eq $ExpectedModelId -and
++        [string]$Status.model.alias -eq $ExpectedModelAlias
+     $benchmarkReady = $Status.phase -in @('benchmark-preparing', 'benchmarking', 'starting-model') -and $desktopReady
+     return $desktopReady -and ($inferenceReady -or $benchmarkReady)
+ }
+@@ -62,8 +69,9 @@ function Get-RunningHermesSupervisor {
+ try {
+     Assert-HermesRoot
+     Initialize-HermesLayout
++    $expectedConfiguration = Get-HermesConfiguration
+     if (-not $Profile) {
+-        $Profile = [string](Get-HermesConfiguration).selectedProfile
++        $Profile = [string]$expectedConfiguration.selectedProfile
+     }
+     $runtimeDirectory = Resolve-HermesPath 'data\runtime'
+     $statusPath = Join-Path $runtimeDirectory 'status.json'
+@@ -80,8 +88,9 @@ try {
+         } else {
+             $null
+         }
+-        if (Test-HermesDesktopReadyState -Status $status -ControllerPid $existingPid) {
++        if (Test-HermesDesktopReadyState -Status $status -ControllerPid $existingPid -ExpectedModelId ([string]$expectedConfiguration.selectedModelId) -ExpectedModelAlias ([string]$expectedConfiguration.selectedModel.alias)) {
+             if ($status.phase -eq 'running') {
++                [void](Assert-HermesModelIdentity -Configuration $expectedConfiguration -StatusPath $statusPath)
+                 Write-Host "Hermes Local is already running with profile '$($status.profile)' (supervisor PID $existingPid)."
+             } else {
+                 Write-Host "Hermes Local Desktop services are ready while benchmark lifecycle state is '$($status.phase)' (supervisor PID $existingPid)."
+@@ -170,13 +179,14 @@ try {
+                     Write-Verbose "Hermes Local phase: $($status.phase) — $($status.message)"
+                     $lastPhase = $status.phase
+                 }
+-                if (Test-HermesDesktopReadyState -Status $status -ControllerPid $process.Id) {
++                if (Test-HermesDesktopReadyState -Status $status -ControllerPid $process.Id -ExpectedModelId ([string]$expectedConfiguration.selectedModelId) -ExpectedModelAlias ([string]$expectedConfiguration.selectedModel.alias)) {
+                     $gatewayDetail = if ($status.PSObject.Properties.Name -contains 'gateway' -and $status.gateway.required) {
+                         " Gateway PID $($status.gateway.pid) ($($status.gateway.ownership))."
+                     } else {
+                         ' Messaging gateway disabled.'
+                     }
+                     if ($status.phase -eq 'running') {
++                        [void](Assert-HermesModelIdentity -Configuration $expectedConfiguration -StatusPath $statusPath)
+                         Write-Host "Hermes Local is ready with profile '$Profile'. Model PID $($status.model.pid); Hermes PID $($status.hermes.pid).$gatewayDetail"
+                     } else {
+                         Write-Host "Hermes Local Desktop services are ready while benchmark lifecycle state is '$($status.phase)'. Hermes PID $($status.hermes.pid).$gatewayDetail"
+@@ -187,6 +197,9 @@ try {
+                     throw "Hermes Local startup failed: $($status.message)"
+                 }
+             } catch {
++                if ($_.Exception.Message -match 'identity|selected GGUF|selected alias|provider configuration') {
++                    throw
++                }
+                 Write-Verbose "Waiting for an atomic status update: $($_.Exception.Message)"
+             }
+         }
+diff --git a/scripts/Hermes-Configuration.psm1 b/scripts/Hermes-Configuration.psm1
+index 3c455c8..adb7e50 100644
+--- a/scripts/Hermes-Configuration.psm1
++++ b/scripts/Hermes-Configuration.psm1
+@@ -419,11 +419,9 @@ function Test-HermesSelectedModel {
+     return $true
+ }
+ 
+-function Sync-HermesRuntimeConfiguration {
++function Get-HermesPythonExecutable {
+     [CmdletBinding()]
+-    param(
+-        [pscustomobject] $Configuration = (Get-HermesConfiguration)
+-    )
++    param()
+ 
+     $pythonCandidates = @(
+         (Resolve-HermesPath 'runtimes\python\hermes\Scripts\python.exe'),
+@@ -432,8 +430,64 @@ function Sync-HermesRuntimeConfiguration {
+     ) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) }
+     $python = $pythonCandidates | Select-Object -First 1
+     if (-not $python) {
+-        throw 'Python is required to merge the Hermes YAML configuration.'
++        throw 'Python is required for Hermes Local runtime configuration.'
+     }
++    return $python
++}
++
++function Assert-HermesModelIdentity {
++    [CmdletBinding()]
++    param(
++        [pscustomobject] $Configuration = (Get-HermesConfiguration),
++        [string] $StatusPath = (Resolve-HermesPath 'data\runtime\status.json'),
++        [string] $ConfigPath = (Resolve-HermesPath 'data\hermes\config.yaml')
++    )
++
++    if (-not (Test-Path -LiteralPath $StatusPath -PathType Leaf)) {
++        throw "Hermes runtime status is missing: $StatusPath"
++    }
++    if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
++        throw "Hermes provider configuration is missing: $ConfigPath"
++    }
++
++    $python = Get-HermesPythonExecutable
++    $evidencePath = Resolve-HermesPath 'data\runtime\model-identity.json'
++    Invoke-HermesProcess -FilePath $python -ArgumentList @(
++        (Resolve-HermesPath 'scripts\verify_model_identity.py'),
++        '--status', $StatusPath,
++        '--config', $ConfigPath,
++        '--expected-id', [string]$Configuration.selectedModelId,
++        '--expected-alias', [string]$Configuration.selectedModel.alias,
++        '--output', $evidencePath
++    ) -LogComponent supervisor
++
++    $status = Get-Content -Raw -LiteralPath $StatusPath | ConvertFrom-Json
++    $modelPid = [int]$status.model.pid
++    if ($modelPid -le 0) {
++        throw 'Runtime identity verification did not find an active model process.'
++    }
++    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $modelPid" -ErrorAction Stop
++    $commandLine = [string]$process.CommandLine
++    $modelPath = [string]$Configuration.selectedModel.resolvedPath
++    $alias = [string]$Configuration.selectedModel.alias
++    if ([string]::IsNullOrWhiteSpace($commandLine) -or
++        $commandLine.IndexOf($modelPath, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
++        throw "Running llama-server command line does not contain the selected GGUF path: $modelPath"
++    }
++    if ($commandLine.IndexOf('--alias', [System.StringComparison]::OrdinalIgnoreCase) -lt 0 -or
++        $commandLine.IndexOf($alias, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
++        throw "Running llama-server command line does not contain the selected alias: $alias"
++    }
++    return $status
++}
++
++function Sync-HermesRuntimeConfiguration {
++    [CmdletBinding()]
++    param(
++        [pscustomobject] $Configuration = (Get-HermesConfiguration)
++    )
++
++    $python = Get-HermesPythonExecutable
+ 
+     $modelBaseUrl = "http://$($Configuration.network.host):$($Configuration.network.modelPort)/v1"
+     $arguments = @(
+@@ -463,5 +517,7 @@ Export-ModuleMember -Function @(
+     'Get-HermesBuildParallelism',
+     'Get-HermesCudaArchitecture',
+     'Test-HermesSelectedModel',
++    'Get-HermesPythonExecutable',
++    'Assert-HermesModelIdentity',
+     'Sync-HermesRuntimeConfiguration'
+ )
