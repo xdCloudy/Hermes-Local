@@ -1,7 +1,7 @@
-From 22c32f25252f84abcc912235e4fd35d5ec568021 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
 Date: Fri, 31 Jul 2026 04:50:00 +0100
-Subject: [PATCH 24/26] fix(desktop): track main-frame dashboard navigation
+Subject: [PATCH 24/30] fix(desktop): track main-frame dashboard navigation
 
 ---
  .../hermes-local-dashboard-view.test.ts       | 70 ++++++++++++++++++-
@@ -157,6 +157,3 @@ index de13c921b..570cae332 100644
        attachToCurrentWindow()
      }
  
--- 
-2.55.0.windows.3
-

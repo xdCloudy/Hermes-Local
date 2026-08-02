@@ -1,7 +1,7 @@
-From e7babef321a7c0f52c8f08dc5d36018404a14410 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Thu, 30 Jul 2026 04:47:48 +0100
-Subject: [PATCH] fix(desktop): keep packaged chats projectless
+Subject: [PATCH 15/30] fix(desktop): keep packaged chats projectless
 
 ---
  .../e2e/hermes-local-functional.spec.ts       |  51 ++++++++
@@ -983,6 +983,3 @@ index 029d8ae72..9df94c1e4 100644
          "project": _project_info_for_cwd(cwd),
          "lazy": True,
          "model": _resolve_model(),
--- 
-2.55.0.windows.2
-

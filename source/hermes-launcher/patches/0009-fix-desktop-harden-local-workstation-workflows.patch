@@ -1,7 +1,7 @@
-From 775bfe88b016e93ecc97e6280aa9a51ff217d584 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Wed, 29 Jul 2026 18:30:48 +0100
-Subject: [PATCH 09/26] fix(desktop): harden local workstation workflows
+Subject: [PATCH 09/30] fix(desktop): harden local workstation workflows
 
 ---
  .../electron/desktop-installation.test.ts     |   5 +-
@@ -384,10 +384,10 @@ index 03f128922..4bfe0d5a2 100644
  
    return profile
 diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
-index 86b2ca4d7..cc357f486 100644
+index fb8b169a3..46d16d0ec 100644
 --- a/apps/desktop/electron/main.ts
 +++ b/apps/desktop/electron/main.ts
-@@ -629,9 +629,6 @@ const DESKTOP_WINDOW_STATE_PATH = path.join(app.getPath('userData'), 'window-sta
+@@ -625,9 +625,6 @@ const DESKTOP_WINDOW_STATE_PATH = path.join(app.getPath('userData'), 'window-sta
  // ~/.hermes/active_profile file. Unset (null) preserves the legacy behavior:
  // no --profile flag, so the backend honors active_profile / default.
  const DESKTOP_PROFILE_CONFIG_PATH = path.join(app.getPath('userData'), 'active-profile.json')
@@ -398,10 +398,10 @@ index 86b2ca4d7..cc357f486 100644
  // tracks main. User can also override at runtime via
  // hermesDesktop.updates.setBranch().
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
-index aefac73c9..ac22b927d 100644
+index 48e1b65ca..149c29dc5 100644
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
-@@ -103,7 +103,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
+@@ -113,7 +113,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
      startAction: (action, input) => ipcRenderer.invoke('hermes:local:action:start', action, input),
      actionStatus: taskId => ipcRenderer.invoke('hermes:local:action:status', taskId),
      logs: (name, lines) => ipcRenderer.invoke('hermes:local:logs', name, lines),
@@ -1323,10 +1323,10 @@ index a22d9aa52..601c855aa 100644
    await act(async () => {
      result = render(
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index 31603d22c..86ef0fcba 100644
+index e0497494f..a1cc14131 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
-@@ -132,7 +132,7 @@ declare global {
+@@ -138,7 +138,7 @@ declare global {
          openRoot: () => Promise<{ error: string; ok: boolean }>
          registerModel: (model: Partial<LocalModel> & { localPath: string }) => Promise<LocalModel>
          removeModel: (id: string) => Promise<{ id: string; selected: string }>
@@ -1336,10 +1336,10 @@ index 31603d22c..86ef0fcba 100644
          selectModel: (id: string) => Promise<{ id: string }>
          selectProfile: (name: string) => Promise<{ name: string }>
 diff --git a/apps/desktop/src/styles.css b/apps/desktop/src/styles.css
-index 065f5bd56..eaebdf9de 100644
+index 9b77346fa..5bf2176bf 100644
 --- a/apps/desktop/src/styles.css
 +++ b/apps/desktop/src/styles.css
-@@ -1033,8 +1033,9 @@ code {
+@@ -1076,8 +1076,9 @@ code {
  }
  
  /* Arc-style multicolor action surface (static, not animated). Reusable on any
@@ -1352,10 +1352,10 @@ index 065f5bd56..eaebdf9de 100644
    color: #fff;
    border-color: transparent;
 diff --git a/apps/desktop/vitest.setup.ts b/apps/desktop/vitest.setup.ts
-index a780ec2fa..b2de9b380 100644
+index 5e83926d5..aba9d89cd 100644
 --- a/apps/desktop/vitest.setup.ts
 +++ b/apps/desktop/vitest.setup.ts
-@@ -10,3 +10,10 @@ import { configure } from '@testing-library/react'
+@@ -38,3 +38,10 @@ if (typeof (globalThis as any).localStorage === 'undefined') {
  // CPU contention in CI. Success still resolves the instant the node appears;
  // the wider deadline only absorbs a starved runner, killing timing flakes.
  configure({ asyncUtilTimeout: 5000 })
@@ -1366,6 +1366,3 @@ index a780ec2fa..b2de9b380 100644
 +// branch while keeping suite output actionable. Canvas-specific tests replace
 +// this method with their own deterministic context fixture.
 +HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext
--- 
-2.55.0.windows.3
-

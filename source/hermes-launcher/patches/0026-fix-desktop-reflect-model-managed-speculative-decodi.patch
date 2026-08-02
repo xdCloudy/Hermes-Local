@@ -1,7 +1,7 @@
-From a1229ac2c0fdacafef1cb9f35e1276627392d086 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
 Date: Fri, 31 Jul 2026 10:20:00 +0100
-Subject: [PATCH 26/26] fix(desktop): reflect model-managed speculative
+Subject: [PATCH 26/30] fix(desktop): reflect model-managed speculative
  decoding
 
 The profile editor only considered its stored profile boolean when rendering
@@ -103,6 +103,3 @@ index 9a35816e8..a5e2bd213 100644
          </div>
          <div className="mt-5 flex items-center justify-end gap-2 border-t border-(--ui-stroke-secondary) pt-4">
            <Button
--- 
-2.55.0.windows.3
-

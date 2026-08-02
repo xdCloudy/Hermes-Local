@@ -1,7 +1,7 @@
-From faf2a53fa75852f3d4da8f9db9861ab9341b128d Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Tue, 28 Jul 2026 10:36:05 +0100
-Subject: [PATCH 05/26] fix(windows): keep skill preprocessing native
+Subject: [PATCH 05/30] fix(windows): keep skill preprocessing native
 
 ---
  agent/skill_commands.py                       |  15 ++-
@@ -238,6 +238,3 @@ index 5ccc6b74d..39f321b65 100644
  
  
  
--- 
-2.55.0.windows.3
-

@@ -1,7 +1,7 @@
-From 7c511d57757d7d5a2601d20bb719989f6b1e81bd Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local Compatibility CI <hermes-local-ci@localhost>
 Date: Sat, 1 Aug 2026 20:25:51 +0100
-Subject: [PATCH] feat(desktop): build authoritative Task Centre
+Subject: [PATCH 30/30] feat(desktop): build authoritative Task Centre
 
 ---
  apps/desktop/electron/hermes-local-control.ts | 106 +++-
@@ -255,10 +255,10 @@ index af7fb705a..49e642b79 100644
    action: TaskAction,
    id: string,
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
-index 13795cc31..651ca32a0 100644
+index e9bcd3203..41f2d67f3 100644
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
-@@ -103,6 +103,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
+@@ -113,6 +113,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
      startAction: (action, input) => ipcRenderer.invoke('hermes:local:action:start', action, input),
      actionStatus: taskId => ipcRenderer.invoke('hermes:local:action:status', taskId),
      listActions: () => ipcRenderer.invoke('hermes:local:action:list'),
@@ -1299,10 +1299,10 @@ index 95bcc5948..095a6279b 100644
    conflictPolicy: 'queue' | 'reject'
    createdAt: string
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index ef09979b6..b07971eec 100644
+index 8117ce722..84ea93c55 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
-@@ -124,7 +124,9 @@ declare global {
+@@ -130,7 +130,9 @@ declare global {
        }
        localWorkstation: {
          actionStatus: (taskId: string) => Promise<LocalActionTask>
@@ -1312,7 +1312,7 @@ index ef09979b6..b07971eec 100644
          loginItem: {
            get: () => Promise<LocalLoginItemStatus>
            set: (enabled: boolean) => Promise<LocalLoginItemStatus>
-@@ -149,6 +151,7 @@ declare global {
+@@ -155,6 +157,7 @@ declare global {
          selectProfile: (name: string) => Promise<{ name: string }>
          snapshot: () => Promise<LocalWorkstationSnapshot>
          startAction: (action: LocalAction, input?: { profile?: string }) => Promise<LocalActionTask>
@@ -1320,6 +1320,3 @@ index ef09979b6..b07971eec 100644
        }
        api: <T>(request: HermesApiRequest) => Promise<T>
        notify: (payload: HermesNotification) => Promise<boolean>
--- 
-2.55.0.windows.3
-

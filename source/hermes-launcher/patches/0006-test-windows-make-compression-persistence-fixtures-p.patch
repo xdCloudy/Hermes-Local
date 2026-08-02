@@ -1,7 +1,7 @@
-From c6f9a7e2320c9360b86e5f86af5f4ca74437db89 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Tue, 28 Jul 2026 10:40:36 +0100
-Subject: [PATCH 06/26] test(windows): make compression persistence fixtures
+Subject: [PATCH 06/30] test(windows): make compression persistence fixtures
  portable
 
 ---
@@ -63,6 +63,3 @@ index 6af2248f8..87cb4b76d 100644
                  "Built prompt missing 'Platform: cli' — drift detection cannot read it"
              )
 +            db.close()
--- 
-2.55.0.windows.3
-

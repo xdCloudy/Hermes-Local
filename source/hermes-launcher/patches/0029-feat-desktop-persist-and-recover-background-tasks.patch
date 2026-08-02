@@ -1,7 +1,7 @@
-From 92d2f46ba0fbb35f832bc47be5489b71948ca7e3 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local Compatibility CI <hermes-local-ci@localhost>
 Date: Sat, 1 Aug 2026 19:14:29 +0100
-Subject: [PATCH] feat(desktop): persist and recover background tasks
+Subject: [PATCH 29/30] feat(desktop): persist and recover background tasks
 
 ---
  .../electron/hermes-local-control.test.ts     |  39 ++-
@@ -1100,10 +1100,10 @@ index 000000000..3b9e07d6a
 +  }
 +}
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
-index 04abcd4a2..13795cc31 100644
+index 288e2ea4a..e9bcd3203 100644
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
-@@ -102,6 +102,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
+@@ -112,6 +112,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
      },
      startAction: (action, input) => ipcRenderer.invoke('hermes:local:action:start', action, input),
      actionStatus: taskId => ipcRenderer.invoke('hermes:local:action:status', taskId),
@@ -1153,10 +1153,10 @@ index c1531b127..95bcc5948 100644
      controllerAlive: boolean
      controllerPid?: null | number
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index 604ed5242..ef09979b6 100644
+index a31f5eb89..8117ce722 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
-@@ -124,6 +124,7 @@ declare global {
+@@ -130,6 +130,7 @@ declare global {
        }
        localWorkstation: {
          actionStatus: (taskId: string) => Promise<LocalActionTask>
@@ -1164,6 +1164,3 @@ index 604ed5242..ef09979b6 100644
          loginItem: {
            get: () => Promise<LocalLoginItemStatus>
            set: (enabled: boolean) => Promise<LocalLoginItemStatus>
--- 
-2.55.0.windows.3
-

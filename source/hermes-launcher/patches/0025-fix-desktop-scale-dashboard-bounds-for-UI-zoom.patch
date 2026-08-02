@@ -1,7 +1,7 @@
-From 1a394192de20318acfb6a5ede87b5d16398c4847 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
 Date: Fri, 31 Jul 2026 04:20:00 +0100
-Subject: [PATCH 25/26] fix(desktop): scale dashboard bounds for UI zoom
+Subject: [PATCH 25/30] fix(desktop): scale dashboard bounds for UI zoom
 
 ---
  .../electron/hermes-local-control.test.ts     | 26 +++++++++++++++++
@@ -101,6 +101,3 @@ index 5bf3705fe..8ec12e7ee 100644
    localRoot,
    loginItemExecutable,
    loginItemStatus,
--- 
-2.55.0.windows.3
-

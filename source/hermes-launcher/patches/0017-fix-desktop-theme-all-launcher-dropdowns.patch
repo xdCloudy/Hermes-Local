@@ -1,7 +1,7 @@
-From e0e763c1dc61ca342d4a788a27be64761328a868 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Thu, 30 Jul 2026 05:36:36 +0100
-Subject: [PATCH 17/26] fix(desktop): theme all launcher dropdowns
+Subject: [PATCH 17/30] fix(desktop): theme all launcher dropdowns
 
 ---
  .../e2e/hermes-local-configuration.spec.ts    |  67 +++++++---
@@ -559,6 +559,3 @@ index 059575a1c..d48a140cd 100644
          data-slot="select-content"
          position={position}
          {...props}
--- 
-2.55.0.windows.3
-

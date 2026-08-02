@@ -1,7 +1,7 @@
-From d38def3bd201aff5a46ef647d9f7f602e85f03e2 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Wed, 29 Jul 2026 18:44:34 +0100
-Subject: [PATCH 11/26] test(desktop): derive packaged source pin from manifest
+Subject: [PATCH 11/30] test(desktop): derive packaged source pin from manifest
 
 ---
  apps/desktop/e2e/hermes-local-functional.spec.ts | 7 +++++--
@@ -39,6 +39,3 @@ index 4dba5f65e..a5f0c8305 100644
          dirty: false
        })
  
--- 
-2.55.0.windows.3
-

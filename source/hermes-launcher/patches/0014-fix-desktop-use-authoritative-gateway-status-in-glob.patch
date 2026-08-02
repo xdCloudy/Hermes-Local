@@ -1,7 +1,7 @@
-From 6ae0c5dbcc6ebba8bc44c9e0ffffa3099509c65d Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Wed, 29 Jul 2026 23:58:34 +0100
-Subject: [PATCH 14/26] fix(desktop): use authoritative gateway status in
+Subject: [PATCH 14/30] fix(desktop): use authoritative gateway status in
  global chrome
 
 ---
@@ -536,10 +536,10 @@ index d2b714904..7d75c48cc 100644
 +}
 \ No newline at end of file
 diff --git a/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx b/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
-index adedab3fa..5a9c7c451 100644
+index a4081e9ac..2bf975276 100644
 --- a/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
 +++ b/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
-@@ -47,7 +47,7 @@ import type { StatusResponse, UsageStats } from '@/types/hermes'
+@@ -49,7 +49,7 @@ import type { StatusResponse, UsageStats } from '@/types/hermes'
  
  import { CRON_ROUTE, SETTINGS_ROUTE, WEBHOOKS_ROUTE } from '../../routes'
  import type { StatusbarItem } from '../statusbar-controls'
@@ -547,8 +547,8 @@ index adedab3fa..5a9c7c451 100644
 +import { resolveGatewayStatusbarState } from './gateway-statusbar-state'
  const EMPTY_USAGE = { calls: 0, input: 0, output: 0, total: 0 } as const
  
- function workspaceLabel(cwd: string): string {
-@@ -200,22 +200,26 @@ export function useStatusbarItems({
+ interface StatusbarItemsOptions {
+@@ -248,22 +248,26 @@ export function useStatusbarItems({
      [gatewayState, inferenceStatus, openCommandCenterSection, statusSnapshot]
    )
  
@@ -587,7 +587,7 @@ index adedab3fa..5a9c7c451 100644
      ? undefined
      : gatewayDegraded
        ? 'text-amber-600 hover:text-amber-600'
-@@ -351,7 +355,7 @@ export function useStatusbarItems({
+@@ -399,7 +403,7 @@ export function useStatusbarItems({
          detail: gatewayRestarting ? copy.gatewayRestarting : gatewayDetail,
          icon: gatewayRestarting ? (
            <GlyphSpinner ariaLabel={copy.gatewayRestarting} className="size-3" />
@@ -596,7 +596,7 @@ index adedab3fa..5a9c7c451 100644
            <Activity className="size-3" />
          ) : (
            <AlertCircle className="size-3" />
-@@ -361,7 +365,7 @@ export function useStatusbarItems({
+@@ -409,7 +413,7 @@ export function useStatusbarItems({
          menuClassName: 'w-72',
          menuContent: gatewayMenuContent,
          // Tip only when there's a real status reason — not "gateway status" restating the label.
@@ -605,7 +605,7 @@ index adedab3fa..5a9c7c451 100644
          toggleLabel: copy.gateway,
          variant: 'menu'
        },
-@@ -454,8 +458,9 @@ export function useStatusbarItems({
+@@ -502,8 +506,9 @@ export function useStatusbarItems({
        gatewayMenuContent,
        gatewayClassName,
        gatewayDetail,
@@ -616,6 +616,3 @@ index adedab3fa..5a9c7c451 100644
        inferenceStatus?.reason,
        openAgents,
        projectName,
--- 
-2.55.0.windows.3
-
