@@ -21,7 +21,7 @@ on:
       - '.github/workflows/powershell-validation.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -91,36 +91,4 @@ jobs:
           }
           if ($manifest.sources.hermesAgent.integrationTree -ne ('3' * 40)) {
             throw 'Hermes Agent integration tree override was not applied.'
-          }
-
-  issue84-finalize:
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/fix-issue-84-model-switch'
-    runs-on: windows-latest
-    timeout-minutes: 120
-    env:
-      PYTHONUTF8: '1'
-    steps:
-      - name: Check out pull-request branch
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-
-      - name: Generate and verify the final Issue 84 integration patch
-        shell: pwsh
-        run: |
-          try {
-            & '.\scripts\ci\finalize-issue84.ps1'
-          }
-          catch {
-            $staged = @(git diff --cached --name-only)
-            if ($staged.Count -eq 0) {
-              throw
-            }
-
-            Write-Host 'Finalizer completed validation and staged the generated integration; publishing staged files.'
-            git config user.name 'Hermes Local CI'
-            git config user.email 'hermes-local-ci@localhost'
-            git commit -m 'fix: activate selected models through managed stack restart'
-            git push origin "HEAD:${{ github.head_ref }}"
           }
