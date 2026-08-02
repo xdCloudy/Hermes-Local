@@ -99,8 +99,8 @@ jobs:
           from pathlib import Path
           path = Path('temp/hermes-agent/apps/desktop/src/app/local-workstation/types.ts')
           content = path.read_text(encoding='utf-8')
-          original = '  stage: string | null\n'
-          replacement = '  stage?: string | null\n'
+          original = '  stage: null | string\n'
+          replacement = '  stage?: null | string\n'
           if original not in content:
               raise SystemExit('LocalActionTask.stage declaration was not found')
           path.write_text(content.replace(original, replacement, 1), encoding='utf-8')
