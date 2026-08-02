@@ -1,0 +1,66 @@
+name: Issue 71 validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/issue-71-validation.yml'
+      - 'scripts/ci/compatibility.py'
+      - 'tests/test_compatibility.py'
+      - 'Update-Hermes-Agent.ps1'
+      - 'source/hermes-launcher/patches/**'
+
+permissions:
+  contents: read
+
+jobs:
+  export-sources:
+    name: Export issue 71 sources
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: issue-71-source-snapshot
+          path: |
+            scripts/ci/compatibility.py
+            tests/test_compatibility.py
+            Update-Hermes-Agent.ps1
+            source/hermes-launcher/patches/0002-fix-security-harden-desktop-boundaries-and-dependenc.patch
+            VERSION.json
+          if-no-files-found: error
+          retention-days: 7
+
+  exact-candidate:
+    name: Exact Hermes Agent candidate
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Run exact candidate patch gate
+        shell: pwsh
+        run: |
+          python '.\scripts\ci\compatibility.py' hermes-agent `
+            --repository-root '.' `
+            --candidate-ref '582606f176f5467deb96bb949e0879a8e18f31dd' `
+            --work-dir '.\temp\issue-71' `
+            --log-dir '.\artifacts\issue-71\logs' `
+            --report '.\artifacts\issue-71\hermes-agent-report.json'
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: issue-71-validation-evidence
+          path: artifacts/issue-71
+          if-no-files-found: error
+          retention-days: 7
