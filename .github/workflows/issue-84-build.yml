@@ -97,13 +97,37 @@ jobs:
 
           @'
           from pathlib import Path
-          path = Path('temp/hermes-agent/apps/desktop/src/app/local-workstation/types.ts')
-          content = path.read_text(encoding='utf-8')
-          original = '  stage: null | string\n'
-          replacement = '  stage?: null | string\n'
-          if original not in content:
+
+          types_path = Path('temp/hermes-agent/apps/desktop/src/app/local-workstation/types.ts')
+          types = types_path.read_text(encoding='utf-8')
+          type_marker = '  stage: null | string\n'
+          if type_marker not in types:
               raise SystemExit('LocalActionTask.stage declaration was not found')
-          path.write_text(content.replace(original, replacement, 1), encoding='utf-8')
+          types_path.write_text(types.replace(type_marker, '  stage?: null | string\n', 1), encoding='utf-8')
+
+          model_path = Path('temp/hermes-agent/apps/desktop/electron/hermes-local-task-model.ts')
+          model = model_path.read_text(encoding='utf-8')
+          old = """  const stage = candidate.stage === null || candidate.stage === undefined ? null : candidate.stage
+
+  if (stage !== null && (typeof stage !== 'string' || stage.length > 128)) {
+    return null
+  }
+"""
+          new = """  const stageValue = candidate.stage
+
+  if (
+    stageValue !== null &&
+    stageValue !== undefined &&
+    (typeof stageValue !== 'string' || stageValue.length > 128)
+  ) {
+    return null
+  }
+
+  const stage = typeof stageValue === 'string' ? stageValue : null
+"""
+          if old not in model:
+              raise SystemExit('Task stage parser block was not found')
+          model_path.write_text(model.replace(old, new, 1), encoding='utf-8')
           '@ | python -
 
       - name: Validate focused Desktop changes without broad rewrites
@@ -183,6 +207,6 @@ jobs:
           git config user.email 'hermes-local-ci@localhost'
           git add VERSION.json source/hermes-launcher/patches/0032-fix-desktop-activate-selected-models-through-managed-restart.patch
           if (-not (git diff --cached --quiet)) {
-            git commit -m 'refactor: keep issue 84 integration patch focused'
+            git commit -m 'fix: activate selected models through managed stack restart'
             git push origin HEAD:${{ github.head_ref }}
           }
