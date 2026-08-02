@@ -1,30 +1,51 @@
 # Screenshot catalog
 
-[← Documentation home](README.md) · [Project home](../README.md) ·
+[<- Documentation home](README.md) | [Project home](../README.md) |
 [Launcher design](design/DESIGN_SPEC.md)
 
-This catalog keeps README imagery intentional and makes missing product captures
-visible. Use packaged-build screenshots where possible, remove personal data,
-and capture at a readable desktop width.
+These captures document the packaged `v0.18.15` launcher. They were reviewed
+before publication and the session-history area was removed. Screens containing
+credentials, user identifiers or conversation content are not committed.
 
-| Surface | Current asset | README use |
+## Core experience
+
+| Surface | Screenshot | Purpose |
 |---|---|---|
-| Launcher / Home | [`reports/acceptance/launcher-home.png`](../reports/acceptance/launcher-home.png) | Hero |
-| Dashboard | [`reports/qa/screenshots/packaged-dashboard.png`](../reports/qa/screenshots/packaged-dashboard.png) | Gallery |
-| Models | [`reports/qa/screenshots/packaged-models.png`](../reports/qa/screenshots/packaged-models.png) | Gallery |
-| Profiles | [`reports/qa/screenshots/packaged-profiles.png`](../reports/qa/screenshots/packaged-profiles.png) | Gallery |
-| Project Centre | [`reports/qa/screenshots/packaged-projects.png`](../reports/qa/screenshots/packaged-projects.png) | Catalog |
-| Benchmarks | [`reports/qa/screenshots/packaged-benchmarks.png`](../reports/qa/screenshots/packaged-benchmarks.png) | Gallery |
-| Logs | [`reports/qa/screenshots/packaged-logs.png`](../reports/qa/screenshots/packaged-logs.png) | Catalog |
-| Diagnostics | [`reports/qa/screenshots/packaged-about.png`](../reports/qa/screenshots/packaged-about.png) and [`packaged-services.png`](../reports/qa/screenshots/packaged-services.png) | Catalog |
-| Updater | **TODO:** capture the packaged Update Centre when its dedicated operational surface lands | Pending |
+| Home | [Open](assets/screenshots/home.png) | Authoritative workstation readiness, service health and resource state |
+| Chat | [Open](assets/screenshots/chat.png) | Integrated Hermes Agent conversation workspace |
+| TUI | [Open](assets/screenshots/tui.png) | Keyboard-driven Hermes Agent terminal interface |
+| Models | [Open](assets/screenshots/models.png) | Registered GGUFs, active model identity and runtime settings |
+| Profiles | [Open](assets/screenshots/profiles.png) | Context, cache, batching, offload and resource profile editor |
+| Skills | [Open](assets/screenshots/skills.png) | Skill catalogue and enablement controls |
+| Services | [Open](assets/screenshots/services.png) | Process health and lifecycle operations |
+| Security | [Open](assets/screenshots/security.png) | Local security controls and scan entry point |
 
-## Capture checklist
+## Gallery
 
-- Use a current packaged build and record its version in the pull request.
-- Prefer 16:9 or 3:2 captures at 1440 px or wider.
-- Show realistic but non-sensitive sample state.
-- Check tokens, usernames, local paths, conversations and project names.
-- Include both the full view and a narrow-width capture for layout changes.
-- Optimise PNGs without scaling text below readable size.
-- Update this table when a surface or filename changes.
+<table>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/home.png" alt="Hermes Local home"><br><strong>Home</strong></td>
+    <td width="50%"><img src="assets/screenshots/chat.png" alt="Hermes Local chat"><br><strong>Chat</strong></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/tui.png" alt="Hermes Agent TUI"><br><strong>TUI</strong></td>
+    <td width="50%"><img src="assets/screenshots/models.png" alt="Hermes Local models"><br><strong>Models</strong></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/profiles.png" alt="Hermes Local profiles"><br><strong>Profiles</strong></td>
+    <td width="50%"><img src="assets/screenshots/skills.png" alt="Hermes Agent skills"><br><strong>Skills</strong></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/services.png" alt="Hermes Local services"><br><strong>Services</strong></td>
+    <td width="50%"><img src="assets/screenshots/security.png" alt="Hermes Local security"><br><strong>Security</strong></td>
+  </tr>
+</table>
+
+## Capture policy
+
+- Use the current packaged build and identify its version in the pull request.
+- Prefer captures at 1440 px or wider and optimise them without making text unreadable.
+- Remove tokens, user IDs, personal paths, conversation titles and private project names.
+- Do not publish a masked credential merely because most characters are hidden.
+- Use realistic state, but avoid screenshots that imply unfinished functionality is complete.
+- Update this page and the README gallery when the launcher information architecture changes.
