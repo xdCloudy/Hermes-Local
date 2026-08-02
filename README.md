@@ -47,7 +47,7 @@ a paid inference API.
 <!-- BEGIN GENERATED STATUS -->
 | Release | Delivery | Repository |
 |---|---|---|
-| **Current build:** v0.18.15<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 44 open · 14 closed<br>**Overall completion:** 24%<br>**Recent commit:** [`ea85e3d`](https://github.com/xdCloudy/Hermes-Local/commit/ea85e3dfccb2d1f8019151a11962bd49fe5d0339) docs: refresh project dashboard |
+| **Current build:** v0.18.15<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 44 open · 14 closed<br>**Overall completion:** 24%<br>**Recent commit:** [`118460a`](https://github.com/xdCloudy/Hermes-Local/commit/118460a037ed3cc73a22b2574d29703ef2e0359d) docs: align README with current product and roadmap (#86) |
 
 > Status is generated from GitHub issues, milestones, releases and commits.
 <!-- END GENERATED STATUS -->
@@ -138,8 +138,7 @@ native blocked-by relationships.
 | ⏳ **Post-v1.0 Optimisation and Observability** | **Purpose:** Turn hardware inspection and telemetry into safe workload-specific tuning.<br>**Success:** Memory planning, live metrics and resource policies improve useful performance without hiding trade-offs. | [Performance, AutoTune and Observability](https://github.com/xdCloudy/Hermes-Local/milestone/2) | **0%**<br>0/3 issues |
 | ⏳ **Post-v1.0 Certification and Routing** | **Purpose:** Certify complete model/runtime/profile identities and route only between validated configurations.<br>**Success:** Tool use, long context, speculative decoding and fallback decisions are measurable and side-effect aware. | [Certification, Routing and Recovery](https://github.com/xdCloudy/Hermes-Local/milestone/3) | **0%**<br>0/3 issues |
 
-Progress is derived from issue counts on the linked milestones. Dates are added
-only when prerequisites and maintainer capacity support a credible release window.
+Progress is derived from issue counts on the linked milestones. The sequence is intentional; dates are added only when maintainers have a credible delivery window.
 <!-- END GENERATED ROADMAP -->
 
 [Open the GitHub Project](https://github.com/users/xdCloudy/projects/1) ·
