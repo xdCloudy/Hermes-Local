@@ -155,6 +155,8 @@ jobs:
             throw "Generated integration tree mismatch: $tree"
           }
 
+          git config user.name 'Hermes Local CI'
+          git config user.email 'hermes-local-ci@localhost'
           git add Start-Hermes-Local.ps1 Switch-Hermes-Model.ps1 VERSION.json scripts/Hermes-Configuration.psm1 scripts/verify_model_identity.py tests/test_verify_model_identity.py source/hermes-launcher/patches
           git commit -m 'fix: activate selected models through managed stack restart'
           git push origin HEAD:${{ github.head_ref }}
