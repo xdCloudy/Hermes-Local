@@ -1,6 +1,14 @@
 name: Update README dashboard
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/update-readme.ps1'
+      - 'docs/roadmap.json'
+      - 'tests/fixtures/readme-api.json'
+      - '.github/workflows/update-readme.yml'
   issues:
     types: [opened, edited, closed, reopened, deleted, transferred, milestoned, demilestoned]
   milestone:
