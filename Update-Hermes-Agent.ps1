@@ -17,6 +17,8 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Configuration.psm1') -Force
 
+$HermesAgentNpmVersion = '12.0.0'
+
 function Invoke-NativeText {
     param(
         [Parameter(Mandatory)]
@@ -173,6 +175,131 @@ function Assert-ActiveAgentIsReplaceable {
     }
 }
 
+function Get-UnmergedAgentPaths {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Source
+    )
+
+    $text = Invoke-NativeText `
+        -FilePath 'git' `
+        -WorkingDirectory $Source `
+        -ArgumentList @('diff', '--name-only', '--diff-filter=U') `
+        -AllowFailure
+    if (-not $text) {
+        return @()
+    }
+    return @(
+        $text -split '\r?\n' |
+            ForEach-Object { $_.Trim().Replace('\\', '/') } |
+            Where-Object { $_ }
+    )
+}
+
+function Resolve-AgentNpmLockConflict {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Source,
+        [Parameter(Mandatory)]
+        [string[]] $Conflicts
+    )
+
+    $normalized = @(
+        $Conflicts |
+            ForEach-Object { $_.Trim().Replace('\\', '/') } |
+            Where-Object { $_ }
+    )
+    if ($normalized.Count -ne 1 -or $normalized[0] -ne 'package-lock.json') {
+        return $false
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $Source 'package.json') -PathType Leaf) -or
+        -not (Test-Path -LiteralPath (Join-Path $Source 'package-lock.json') -PathType Leaf)) {
+        return $false
+    }
+
+    Write-HermesLog `
+        -Component update `
+        -Level WARN `
+        -Message 'Regenerating package-lock.json after an upstream-only lockfile conflict.'
+
+    Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
+        '-C', $Source, 'checkout', '--ours', '--', 'package-lock.json'
+    ) -LogComponent update
+    Invoke-HermesProcess -FilePath 'npx.cmd' -ArgumentList @(
+        '--yes', "npm@$HermesAgentNpmVersion",
+        '--prefix', $Source,
+        'install',
+        '--package-lock-only',
+        '--ignore-scripts',
+        '--no-audit',
+        '--fund=false'
+    ) -LogComponent update
+
+    $unstagedText = Invoke-NativeText `
+        -FilePath 'git' `
+        -WorkingDirectory $Source `
+        -ArgumentList @('diff', '--name-only')
+    $unexpected = @(
+        $unstagedText -split '\r?\n' |
+            ForEach-Object { $_.Trim().Replace('\\', '/') } |
+            Where-Object { $_ -and $_ -ne 'package-lock.json' }
+    )
+    if ($unexpected.Count -gt 0) {
+        throw "npm lockfile regeneration modified unexpected files: $($unexpected -join ', ')"
+    }
+
+    Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
+        '-C', $Source, 'add', '--', 'package-lock.json'
+    ) -LogComponent update
+    $remaining = @(Get-UnmergedAgentPaths -Source $Source)
+    if ($remaining.Count -gt 0) {
+        throw "Lockfile regeneration left unresolved paths: $($remaining -join ', ')"
+    }
+
+    Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
+        '-C', $Source, 'am', '--continue'
+    ) -Environment @{
+        GIT_COMMITTER_NAME = 'Hermes Local Updater'
+        GIT_COMMITTER_EMAIL = 'hermes-local@localhost'
+    } -LogComponent update
+    return $true
+}
+
+function Invoke-AgentPatchSeries {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Source,
+        [Parameter(Mandatory)]
+        [System.IO.FileInfo[]] $Patches,
+        [Parameter(Mandatory)]
+        [string] $Candidate
+    )
+
+    foreach ($patch in $Patches) {
+        try {
+            Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
+                '-C', $Source,
+                'am', '--3way', '--committer-date-is-author-date',
+                $patch.FullName
+            ) -Environment @{
+                GIT_COMMITTER_NAME = 'Hermes Local Updater'
+                GIT_COMMITTER_EMAIL = 'hermes-local@localhost'
+            } -LogComponent update
+        } catch {
+            $patchError = $_
+            $conflicts = @(Get-UnmergedAgentPaths -Source $Source)
+            try {
+                if (Resolve-AgentNpmLockConflict -Source $Source -Conflicts $conflicts) {
+                    continue
+                }
+            } catch {
+                throw "Patch $($patch.Name) hit a package-lock.json conflict and deterministic regeneration failed. The active installation was not changed. $($_.Exception.Message)"
+            }
+            throw "Patch $($patch.Name) did not apply cleanly to $Candidate. Conflicted files: $($conflicts -join ', '). The active installation was not changed. $($patchError.Exception.Message)"
+        }
+    }
+}
+
 function New-StagedAgentCandidate {
     param(
         [Parameter(Mandatory)]
@@ -215,14 +342,11 @@ function New-StagedAgentCandidate {
             '-C', $source, 'switch', '-c', $integrationBranch
         ) -LogComponent update
 
-        $patchArguments = @(
-            '-C', $source, 'am', '--3way', '--committer-date-is-author-date'
-        ) + @($patches | ForEach-Object { $_.FullName })
         try {
-            Invoke-HermesProcess -FilePath 'git' -ArgumentList $patchArguments -Environment @{
-                GIT_COMMITTER_NAME = 'Hermes Local Updater'
-                GIT_COMMITTER_EMAIL = 'hermes-local@localhost'
-            } -LogComponent update
+            Invoke-AgentPatchSeries `
+                -Source $source `
+                -Patches $patches `
+                -Candidate $Candidate
         } catch {
             # Keep the failed am session intact. The outer catch quarantines this
             # staging tree under build\updates\failed for direct conflict review.
