@@ -35,6 +35,7 @@ a paid inference API.
 </div>
 
 ![Hermes Local workstation home screen](docs/assets/screenshots/home.png)
+
 > [!IMPORTANT]
 > Hermes Local is active pre-1.0 software. The current Windows release packages
 > the control centre, but it is not yet a one-click full workstation installer.
@@ -116,6 +117,7 @@ The images were captured from the packaged `v0.18.15` launcher. Session history
 and credential-bearing surfaces were removed before publication.
 
 [Browse the complete screenshot catalog ->](docs/SCREENSHOTS.md)
+
 ## Roadmap
 
 The foundational Windows workstation is already in place. The remaining roadmap
