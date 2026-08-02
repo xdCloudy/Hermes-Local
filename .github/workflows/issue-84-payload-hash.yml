@@ -1,0 +1,31 @@
+name: Issue 84 payload checksum
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/issue-84-payload-hash.yml'
+      - 'scripts/ci/issue84-desktop-patch-v3/**'
+
+permissions:
+  contents: read
+
+jobs:
+  checksum:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.head_ref }}
+          persist-credentials: false
+      - shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          parts = sorted(Path('scripts/ci/issue84-desktop-patch-v3').glob('part-*.txt'))
+          encoded = ''.join(path.read_text(encoding='ascii').strip() for path in parts)
+          print('parts', [(p.name, len(p.read_text(encoding="ascii").strip()), hashlib.sha256(p.read_bytes()).hexdigest()) for p in parts])
+          print('encoded_length', len(encoded))
+          print('encoded_sha_no_newline', hashlib.sha256(encoded.encode('ascii')).hexdigest())
+          print('encoded_sha_newline', hashlib.sha256((encoded + '\n').encode('ascii')).hexdigest())
+          PY
