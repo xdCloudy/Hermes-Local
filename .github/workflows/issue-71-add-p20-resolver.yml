@@ -1,0 +1,94 @@
+name: Issue 71 add patch 20 resolver
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/issue-71-add-p20-resolver.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Add resolver and clean superseded workflows
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/ci/rebase_issue71_series.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              'PROJECTLESS_SUBJECT = "fix(desktop): keep packaged chats projectless"\n',
+              'PROJECTLESS_SUBJECT = "fix(desktop): keep packaged chats projectless"\nDASHBOARD_SUBJECT = "feat(desktop): embed loopback dashboard securely"\n',
+              1,
+          )
+          anchor = '''    run(["git", "am", "--continue"], cwd=source, timeout=600)
+    return True
+
+
+def capture_conflict'''
+          resolver = '''    run(["git", "am", "--continue"], cwd=source, timeout=600)
+    return True
+
+
+def resolve_dashboard_patch(source: Path, conflicts: list[str]) -> bool:
+    path = "apps/desktop/electron/main.ts"
+    if conflicts != [path]:
+        return False
+    target = source / path
+    text = target.read_text(encoding="utf-8")
+    marker = f"""<<<<<<< HEAD
+    wakeIndicatorController.close()
+=======
+    hermesLocalDashboardView.handleWindowClosed(createdMainWindow)
+>>>>>>> {DASHBOARD_SUBJECT}
+"""
+    replacement = """    wakeIndicatorController.close()
+    hermesLocalDashboardView.handleWindowClosed(createdMainWindow)
+"""
+    if marker not in text:
+        return False
+    text = text.replace(marker, replacement, 1)
+    if "<<<<<<<" in text or ">>>>>>>" in text:
+        raise RuntimeError("dashboard main-process conflict markers remain")
+    target.write_text(text, encoding="utf-8")
+    run(["git", "add", "--", path], cwd=source)
+    run(["git", "am", "--continue"], cwd=source, timeout=600)
+    return True
+
+
+def capture_conflict'''
+          if anchor not in text:
+              raise SystemExit('resolver insertion point not found')
+          text = text.replace(anchor, resolver, 1)
+          call_anchor = '''            elif resolve_projectless_patch(source, conflicts):
+                applied.append({"order": order, "patch": patch.name, "application": "three-way-projectless-rebased"})
+                recovered = True
+            if recovered:'''
+          call_replacement = '''            elif resolve_projectless_patch(source, conflicts):
+                applied.append({"order": order, "patch": patch.name, "application": "three-way-projectless-rebased"})
+                recovered = True
+            elif resolve_dashboard_patch(source, conflicts):
+                applied.append({"order": order, "patch": patch.name, "application": "three-way-dashboard-rebased"})
+                recovered = True
+            if recovered:'''
+          if call_anchor not in text:
+              raise SystemExit('resolver call insertion point not found')
+          path.write_text(text.replace(call_anchor, call_replacement, 1), encoding='utf-8')
+          PY
+          rm -f '.github/workflows/issue-71-add-p20-resolver.yml'
+          rm -f '.github/workflows/issue-71-fix-capture-encoding.yml'
+          rm -f '.github/workflows/issue-71-p20-debug.yml'
+          python -m py_compile scripts/ci/rebase_issue71_series.py
+          git config user.name 'Hermes Local Compatibility CI'
+          git config user.email 'hermes-local-ci@localhost'
+          git add scripts/ci/rebase_issue71_series.py
+          git add -u .github/workflows
+          git commit -m 'fix: rebase dashboard cleanup integration'
+          git push origin "HEAD:${{ github.head_ref }}"
