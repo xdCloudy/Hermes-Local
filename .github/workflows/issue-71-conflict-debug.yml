@@ -1,4 +1,4 @@
-name: Issue 71 conflict debug
+name: Issue 71 patch rebase
 
 on:
   pull_request:
@@ -9,10 +9,10 @@ permissions:
   contents: read
 
 jobs:
-  capture:
-    name: Capture patch 15 conflicts
+  rebase:
+    name: Rebase patch 15 and verify remaining series
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Check out pull-request branch
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -20,56 +20,124 @@ jobs:
           ref: ${{ github.head_ref }}
           persist-credentials: false
 
-      - name: Reproduce and capture conflict stages
+      - name: Resolve patch 15 against exact candidate
         shell: pwsh
         run: |
           $root = (Resolve-Path '.').Path
+          $work = Join-Path $root 'temp\issue-71-rebase'
+          $logs = Join-Path $root 'artifacts\issue-71-rebase\compatibility-logs'
+          $report = Join-Path $root 'artifacts\issue-71-rebase\initial-report.json'
+
           python '.\scripts\ci\compatibility.py' hermes-agent `
             --repository-root '.' `
             --candidate-ref '582606f176f5467deb96bb949e0879a8e18f31dd' `
-            --work-dir '.\temp\issue-71-debug' `
-            --log-dir '.\artifacts\issue-71-debug\compatibility-logs' `
-            --report '.\artifacts\issue-71-debug\initial-report.json' `
+            --work-dir $work `
+            --log-dir $logs `
+            --report $report `
             --keep-workspace
           if ($LASTEXITCODE -eq 0) {
-            throw 'Expected patch 15 to remain unresolved during conflict capture.'
+            throw 'Expected the unrevised patch 15 to conflict during rebase preparation.'
           }
 
-          $source = Join-Path $root 'temp\issue-71-debug\hermes-agent'
-          $patch = Join-Path $root 'source\hermes-launcher\patches\0015-fix-desktop-keep-packaged-chats-projectless.patch'
+          $source = Join-Path $work 'hermes-agent'
+          $patchDir = Join-Path $root 'source\hermes-launcher\patches'
+          $patch15 = Join-Path $patchDir '0015-fix-desktop-keep-packaged-chats-projectless.patch'
+
           Push-Location $source
           try {
-            git am --3way --committer-date-is-author-date $patch
+            git am --3way --committer-date-is-author-date $patch15
             if ($LASTEXITCODE -eq 0) {
-              throw 'Patch 15 unexpectedly applied without a conflict.'
+              throw 'Patch 15 unexpectedly applied without the known source conflicts.'
             }
 
-            $evidence = Join-Path $root 'artifacts\issue-71-debug\conflicts'
-            New-Item -ItemType Directory -Force -Path $evidence | Out-Null
-            git status --short | Set-Content -Encoding utf8 (Join-Path $evidence 'status.txt')
-            git diff --cc | Set-Content -Encoding utf8 (Join-Path $evidence 'combined.diff')
-            git am --show-current-patch=diff | Set-Content -Encoding utf8 (Join-Path $evidence 'patch-0015.diff')
+            @'
+from pathlib import Path
+import sys
 
-            $paths = @(
-              'apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx',
+source = Path(sys.argv[1])
+
+coding = source / 'apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx'
+text = coding.read_text(encoding='utf-8')
+start = text.index('<<<<<<< HEAD\n')
+mid = text.index('=======\n', start)
+end_marker = '>>>>>>> fix(desktop): keep packaged chats projectless\n'
+end = text.index(end_marker, mid)
+ours = text[start + len('<<<<<<< HEAD\n'):mid]
+theirs = text[mid + len('=======\n'):end]
+text = text[:start] + ours + '  })\n\n' + theirs + text[end + len(end_marker):]
+if '<<<<<<<' in text or '>>>>>>>' in text:
+    raise RuntimeError('coding-row test conflict markers remain')
+coding.write_text(text, encoding='utf-8')
+
+projects = source / 'apps/desktop/src/store/projects.ts'
+text = projects.read_text(encoding='utf-8')
+old_imports = """import {
+  $currentCwd,
+  $selectedStoredSessionId,
+  $sessions,
+  idsShareLineage,
+  sessionMatchesStoredId,
+  workspaceCwdForNewSession
+} from '@/store/session'
+import { $focusedSessionState, $focusedStoredSessionId } from '@/store/session-states'
+"""
+new_imports = """import { $selectedStoredSessionId, $sessions, sessionMatchesStoredId, workspaceCwdForNewSession } from '@/store/session'
+"""
+if old_imports not in text:
+    raise RuntimeError('expected projects.ts import block was not found')
+text = text.replace(old_imports, new_imports, 1)
+while '<<<<<<< HEAD\n' in text:
+    start = text.index('<<<<<<< HEAD\n')
+    mid = text.index('=======\n', start)
+    end = text.index(end_marker, mid)
+    theirs = text[mid + len('=======\n'):end]
+    text = text[:start] + theirs + text[end + len(end_marker):]
+helper = '/** Live workspace of the session the user is looking at (tile or primary). */\n'
+start = text.index(helper)
+end = text.index('const underPath =', start)
+text = text[:start] + text[end:]
+if any(token in text for token in ('$currentCwd', 'idsShareLineage', '$focusedSessionState', '$focusedStoredSessionId')):
+    raise RuntimeError('removed focused-session inheritance is still referenced')
+if '<<<<<<<' in text or '>>>>>>>' in text:
+    raise RuntimeError('projects.ts conflict markers remain')
+projects.write_text(text, encoding='utf-8')
+'@ | Set-Content -Encoding utf8 (Join-Path $env:RUNNER_TEMP 'resolve_patch15.py')
+
+            python (Join-Path $env:RUNNER_TEMP 'resolve_patch15.py') $source
+            git add -- `
+              'apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx' `
               'apps/desktop/src/store/projects.ts'
-            )
-            foreach ($path in $paths) {
-              $name = ($path -replace '[/\\]', '__')
-              Copy-Item -LiteralPath $path -Destination (Join-Path $evidence "$name.conflicted")
-              git show ":1:$path" | Set-Content -Encoding utf8 (Join-Path $evidence "$name.base")
-              git show ":2:$path" | Set-Content -Encoding utf8 (Join-Path $evidence "$name.ours")
-              git show ":3:$path" | Set-Content -Encoding utf8 (Join-Path $evidence "$name.theirs")
+            git am --continue
+            if ($LASTEXITCODE -ne 0) {
+              throw 'Resolved patch 15 could not be continued.'
             }
+
+            $output = Join-Path $root 'artifacts\issue-71-rebase\rebased'
+            New-Item -ItemType Directory -Force -Path $output | Out-Null
+            python -c "import pathlib,subprocess; pathlib.Path(r'$output\0015-fix-desktop-keep-packaged-chats-projectless.patch').write_bytes(subprocess.check_output(['git','format-patch','-1','--stdout']))"
+
+            $later = Get-ChildItem -LiteralPath $patchDir -Filter '*.patch' -File |
+              Sort-Object Name |
+              Where-Object { $_.Name -gt '0015-fix-desktop-keep-packaged-chats-projectless.patch' }
+            foreach ($patch in $later) {
+              git am --3way --committer-date-is-author-date $patch.FullName
+              if ($LASTEXITCODE -ne 0) {
+                git status --short | Set-Content -Encoding utf8 (Join-Path $output 'later-conflict-status.txt')
+                git am --show-current-patch=diff | Set-Content -Encoding utf8 (Join-Path $output 'later-conflict.patch')
+                throw "Later patch failed after rebasing patch 15: $($patch.Name)"
+              }
+            }
+            git status --short | Set-Content -Encoding utf8 (Join-Path $output 'final-status.txt')
+            git log --oneline -20 | Set-Content -Encoding utf8 (Join-Path $output 'final-log.txt')
           } finally {
             Pop-Location
           }
 
-      - name: Upload conflict evidence
+      - name: Upload rebased patch and evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: issue-71-patch-15-conflicts
-          path: artifacts/issue-71-debug
+          name: issue-71-rebased-patch-15
+          path: artifacts/issue-71-rebase
           if-no-files-found: error
           retention-days: 7
