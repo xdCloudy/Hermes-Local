@@ -75,7 +75,8 @@ jobs:
           encoded = Path('scripts/ci/issue84-desktop.patch.gz.b64').read_text(encoding='ascii')
           Path('temp/issue84-desktop.patch').write_bytes(gzip.decompress(base64.b64decode(encoded)))
           '@ | python -
-          git -C '.\temp\hermes-agent' apply (Resolve-Path '.\temp\issue84-desktop.patch')
+          $desktopPatch = (Resolve-Path '.\temp\issue84-desktop.patch').Path
+          git -C '.\temp\hermes-agent\apps\desktop' apply $desktopPatch
           if ($LASTEXITCODE -ne 0) { throw 'Issue 84 Desktop patch failed to apply.' }
 
       - name: Install, format, and test Desktop changes
@@ -87,7 +88,7 @@ jobs:
             npx.cmd --yes npm@12.0.0 run fix --workspace hermes-launcher
             npx.cmd --yes npm@12.0.0 run typecheck --workspace hermes-launcher
             npx.cmd --yes npm@12.0.0 run lint --workspace hermes-launcher
-            npx.cmd --yes npm@12.0.0 run test:desktop:platforms --workspace hermes-launcher -- --runInBand
+            npx.cmd --yes npm@12.0.0 run test:desktop:platforms --workspace hermes-launcher
           } finally {
             Pop-Location
           }
