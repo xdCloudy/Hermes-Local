@@ -6,6 +6,11 @@ on:
       - '.github/workflows/issue-84-inspect.yml'
       - 'source/hermes-launcher/patches/**'
       - 'VERSION.json'
+      - 'Start-Hermes-Local.ps1'
+      - 'Stop-Hermes-Local.ps1'
+      - 'Restart-Hermes-Local.ps1'
+      - 'scripts/Hermes-Configuration.psm1'
+      - 'scripts/supervisor/**'
 
 permissions:
   contents: read
@@ -38,11 +43,14 @@ jobs:
           actual_tree="$(git -C temp/hermes-agent rev-parse HEAD^{tree})"
           test "$actual_tree" = "$expected_tree"
 
-          mkdir -p artifacts/issue-84-source/apps/desktop
+          mkdir -p artifacts/issue-84-source/apps/desktop artifacts/issue-84-source/hermes-local/scripts
           cp -R temp/hermes-agent/apps/desktop/electron artifacts/issue-84-source/apps/desktop/
           cp -R temp/hermes-agent/apps/desktop/src artifacts/issue-84-source/apps/desktop/
           cp temp/hermes-agent/apps/desktop/package.json artifacts/issue-84-source/apps/desktop/
           cp temp/hermes-agent/package.json temp/hermes-agent/package-lock.json artifacts/issue-84-source/
+          cp Start-Hermes-Local.ps1 Stop-Hermes-Local.ps1 Restart-Hermes-Local.ps1 artifacts/issue-84-source/hermes-local/
+          cp scripts/Hermes-Configuration.psm1 scripts/Common-Hermes.psm1 artifacts/issue-84-source/hermes-local/scripts/
+          cp -R scripts/supervisor artifacts/issue-84-source/hermes-local/scripts/
           git -C temp/hermes-agent log --oneline --decorate -40 > artifacts/issue-84-source/integration-log.txt
 
       - name: Upload integrated source
