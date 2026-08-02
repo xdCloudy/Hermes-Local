@@ -1,0 +1,48 @@
+name: Issue 71 publish patch 15
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/issue-71-publish-p15.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    name: Publish rebased patch 15
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out pull-request branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Download rebased patch artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: issue-71-rebased-patch-15
+          path: downloaded
+          run-id: 30755884745
+          github-token: ${{ github.token }}
+
+      - name: Replace patch and remove temporary rebase tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp downloaded/0015-fix-desktop-keep-packaged-chats-projectless.patch \
+            source/hermes-launcher/patches/0015-fix-desktop-keep-packaged-chats-projectless.patch
+          rm -f scripts/ci/resolve_issue71_patch15.py
+          rm -f .github/workflows/issue-71-conflict-debug.yml
+          rm -f .github/workflows/issue-71-patch-rebase.yml
+          rm -f .github/workflows/issue-71-publish-p15.yml
+
+          git config user.name 'Hermes Local Compatibility CI'
+          git config user.email 'hermes-local-ci@localhost'
+          git add source/hermes-launcher/patches/0015-fix-desktop-keep-packaged-chats-projectless.patch
+          git add -u scripts/ci .github/workflows
+          git commit -m 'fix: rebase projectless chat patch'
+          git push origin "HEAD:${{ github.head_ref }}"
