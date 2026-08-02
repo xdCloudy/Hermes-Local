@@ -1,0 +1,68 @@
+name: Issue 71 publish full rebase
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/issue-71-publish-rebase.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    name: Publish rebased Hermes Agent integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out pull-request branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Download successful full-rebase artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: issue-71-full-rebase
+          path: downloaded
+          run-id: 30756613851
+          github-token: ${{ github.token }}
+
+      - name: Replace integration series and recorded source state
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find downloaded/patches -maxdepth 1 -type f -name '*.patch' | wc -l)" -eq 30
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path('downloaded/result.json').read_text(encoding='utf-8'))
+          version = json.loads(Path('downloaded/VERSION.json').read_text(encoding='utf-8'))
+          agent = version['sources']['hermesAgent']
+          assert result['candidate'] == '582606f176f5467deb96bb949e0879a8e18f31dd'
+          assert result['patchCount'] == 30
+          assert agent['commit'] == result['candidate']
+          assert agent['integrationCommit'] == result['integrationCommit']
+          assert agent['integrationTree'] == result['integrationTree']
+          PY
+
+          rm -rf source/hermes-launcher/patches
+          mkdir -p source/hermes-launcher/patches
+          cp downloaded/patches/*.patch source/hermes-launcher/patches/
+          cp downloaded/VERSION.json VERSION.json
+
+          rm -f .github/workflows/issue-71-publish-rebase.yml
+          rm -f .github/workflows/issue-71-full-rebase.yml
+          rm -f .github/workflows/issue-71-p20-debug.yml
+          rm -f .github/workflows/issue-71-add-p20-resolver.yml
+          rm -f .github/workflows/issue-71-fix-capture-encoding.yml
+          rm -f scripts/ci/rebase_issue71_series.py
+          rm -f scripts/ci/run_issue71_rebase.py
+
+          git config user.name 'Hermes Local Compatibility CI'
+          git config user.email 'hermes-local-ci@localhost'
+          git add VERSION.json source/hermes-launcher/patches
+          git add -u .github/workflows scripts/ci
+          git commit -m 'fix: rebase Hermes Agent integration onto rolling candidate'
+          git push origin "HEAD:${{ github.head_ref }}"
