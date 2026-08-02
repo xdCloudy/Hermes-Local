@@ -34,6 +34,7 @@ jobs:
       - name: Validate root lifecycle sources
         shell: pwsh
         run: |
+          python -m pip install --disable-pip-version-check --no-input PyYAML==6.0.3
           python -m py_compile '.\scripts\verify_model_identity.py' '.\tests\test_verify_model_identity.py'
           python -m unittest '.\tests\test_verify_model_identity.py' -v
           $failures = [System.Collections.Generic.List[string]]::new()
