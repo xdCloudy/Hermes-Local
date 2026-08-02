@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/issue-84-build.yml'
-      - 'scripts/ci/issue84-desktop-patch/**'
+      - 'scripts/ci/issue84-desktop-patch-v2/**'
       - 'Switch-Hermes-Model.ps1'
       - 'scripts/Hermes-Configuration.psm1'
       - 'scripts/verify_model_identity.py'
@@ -80,14 +80,14 @@ jobs:
           import hashlib
           from pathlib import Path
 
-          parts = sorted(Path('scripts/ci/issue84-desktop-patch').glob('part-*.txt'))
-          if len(parts) != 6:
-              raise SystemExit(f'Expected 6 patch chunks, found {len(parts)}')
+          parts = sorted(Path('scripts/ci/issue84-desktop-patch-v2').glob('part-*.txt'))
+          if len(parts) != 7:
+              raise SystemExit(f'Expected 7 patch chunks, found {len(parts)}')
           encoded = ''.join(path.read_text(encoding='ascii').strip() for path in parts)
-          if hashlib.sha256(encoded.encode('ascii')).hexdigest() != '9df595b9c1f404fa6512afa5b57afeb75a3669bcc03614085a87203cba7f8c37':
+          if hashlib.sha256((encoded + '\n').encode('ascii')).hexdigest() != '98ed32ff755aaa1a7f242078bfafba9f80e93f88fe7bf4352d0880bed52a5f07':
               raise SystemExit('Issue 84 encoded patch checksum mismatch')
           patch = gzip.decompress(base64.b64decode(encoded, validate=True))
-          if hashlib.sha256(patch).hexdigest() != 'b781704be69f43b8f87f3255542b06ab472aa898ba2c4fd7a443e3457f87e5a7':
+          if hashlib.sha256(patch).hexdigest() != '0833ca9f6d9af6516d29c1398bd30aaf64ac06dd7e80e9a5b9214cf67f5bb912':
               raise SystemExit('Issue 84 decoded patch checksum mismatch')
           Path('temp/issue84-desktop.patch').write_bytes(patch)
           '@ | python -
