@@ -124,10 +124,12 @@ control_lines = control_path.read_text(encoding='utf-8').splitlines(keepends=Tru
 matches = [
     index
     for index, line in enumerate(control_lines)
-    if 'safeReadJson<Record<string, any>>' in line and 'data' in line and 'runtime' in line and 'status.json' in line
+    if line.strip().startswith("const state = safeReadJson<Record<string, any>>('data")
+    and 'runtime' in line
+    and 'status.json' in line
 ]
 if len(matches) != 1:
-    raise SystemExit(f'Expected one runtime status path line, found {len(matches)}')
+    raise SystemExit(f'Expected one model-selection runtime status path, found {len(matches)}')
 index = matches[0]
 backslash = chr(92)
 if control_lines[index].count(backslash) != 2:
