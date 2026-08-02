@@ -97,9 +97,9 @@ function Get-ProjectData {
     $milestones = Invoke-GitHubPagedRequest "$api/milestones?state=all&per_page=100"
     $allIssues = Invoke-GitHubPagedRequest "$api/issues?state=all&per_page=100"
     $issues = @($allIssues | Where-Object { -not $_.PSObject.Properties['pull_request'] })
-    Write-GeneratorLog "GET $api/commits?per_page=1"
+    Write-GeneratorLog "GET $api/commits?per_page=20"
     $commits = @(
-        Invoke-RestMethod -Uri "$api/commits?per_page=1" -Headers (Get-GitHubHeaders)
+        Invoke-RestMethod -Uri "$api/commits?per_page=20" -Headers (Get-GitHubHeaders)
     )
 
     return [pscustomobject]@{
@@ -122,6 +122,51 @@ function Get-ReleaseVersion {
     if (-not (Test-Path -LiteralPath $versionPath)) { return 'Unknown' }
     $manifest = Get-Content -Raw -LiteralPath $versionPath | ConvertFrom-Json
     return "v$($manifest.product.version)"
+}
+
+function Test-IsGeneratedDashboardCommit {
+    param([Parameter(Mandatory)][object]$Commit)
+
+    $message = if ($Commit.PSObject.Properties['commit'] -and
+        $Commit.commit -and $Commit.commit.PSObject.Properties['message']) {
+        ([string]$Commit.commit.message -split "`n")[0].Trim()
+    } else { '' }
+    $authorLogin = if ($Commit.PSObject.Properties['author'] -and
+        $Commit.author -and $Commit.author.PSObject.Properties['login']) {
+        [string]$Commit.author.login
+    } else { '' }
+    $committerLogin = if ($Commit.PSObject.Properties['committer'] -and
+        $Commit.committer -and $Commit.committer.PSObject.Properties['login']) {
+        [string]$Commit.committer.login
+    } else { '' }
+
+    return (
+        $message -eq 'docs: refresh project dashboard' -or
+        $authorLogin -eq 'github-actions[bot]' -or
+        $committerLogin -eq 'github-actions[bot]'
+    )
+}
+
+function Get-LatestRelevantCommit {
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$Commits
+    )
+
+    $relevant = @(
+        $Commits | Where-Object { -not (Test-IsGeneratedDashboardCommit -Commit $_) } |
+            Select-Object -First 1
+    )
+    if ($relevant.Count) {
+        return $relevant[0]
+    }
+
+    $fallback = @($Commits | Select-Object -First 1)
+    if ($fallback.Count) {
+        return $fallback[0]
+    }
+    return $null
 }
 
 function Get-MilestoneProgress {
@@ -167,7 +212,7 @@ function New-StatusMarkdown {
     } else { 0 }
 
     $latestRelease = @($Data.releases | Sort-Object published_at -Descending | Select-Object -First 1)
-    $latestCommit = @($Data.commits | Select-Object -First 1)
+    $latestCommit = Get-LatestRelevantCommit -Commits @($Data.commits)
     $currentStage = @($Roadmap.stages | Where-Object id -EQ $Roadmap.currentStage | Select-Object -First 1)
     $currentMilestones = @(
         $Data.milestones | Where-Object {
@@ -192,10 +237,10 @@ function New-StatusMarkdown {
     $recentReleaseCell = if ($latestRelease.Count) {
         "$(ConvertTo-MarkdownText $latestRelease[0].name) · $([datetime]$latestRelease[0].published_at | Get-Date -Format 'yyyy-MM-dd')"
     } else { 'No release published' }
-    $commitCell = if ($latestCommit.Count) {
-        $shortSha = ([string]$latestCommit[0].sha).Substring(0, [math]::Min(7, ([string]$latestCommit[0].sha).Length))
-        $message = ([string]$latestCommit[0].commit.message -split "`n")[0]
-        "[``$shortSha``]($($latestCommit[0].html_url)) $(ConvertTo-MarkdownText $message)"
+    $commitCell = if ($null -ne $latestCommit) {
+        $shortSha = ([string]$latestCommit.sha).Substring(0, [math]::Min(7, ([string]$latestCommit.sha).Length))
+        $message = ([string]$latestCommit.commit.message -split "`n")[0]
+        "[``$shortSha``]($($latestCommit.html_url)) $(ConvertTo-MarkdownText $message)"
     } else { 'No commit found' }
     $milestoneCell = if ($currentMilestone.Count) {
         "[$(ConvertTo-MarkdownText $currentMilestone[0].title)]($($currentMilestone[0].html_url))"

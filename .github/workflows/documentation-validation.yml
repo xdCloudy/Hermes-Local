@@ -75,6 +75,13 @@ jobs:
           }
           & '.\scripts\update-readme.ps1' @arguments
           $firstHash = (Get-FileHash -LiteralPath $testReadme).Hash
+          $generated = Get-Content -Raw -LiteralPath $testReadme
+          if ($generated -notmatch '\[`0123456`\].*fix: test deterministic README generation') {
+            throw 'README status did not select the latest non-generated commit.'
+          }
+          if ($generated -match '\[`aaaaaaa`\].*docs: refresh project dashboard') {
+            throw 'README status selected a generated dashboard commit.'
+          }
           & '.\scripts\update-readme.ps1' @arguments
           $secondHash = (Get-FileHash -LiteralPath $testReadme).Hash
           if ($firstHash -ne $secondHash) {
