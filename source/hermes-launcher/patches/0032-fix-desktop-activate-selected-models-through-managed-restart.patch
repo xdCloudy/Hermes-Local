@@ -1,0 +1,841 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Hermes Local CI <hermes-local-ci@localhost>
+Date: Sun, 2 Aug 2026 19:48:03 +0000
+Subject: [PATCH] fix(desktop): activate selected models through managed
+ restart
+
+---
+ apps/desktop/electron/hermes-local-control.ts | 158 +++++++++++++++++-
+ .../hermes-local-model-switch.test.ts         |  81 +++++++++
+ .../electron/hermes-local-model-switch.ts     |  61 +++++++
+ .../electron/hermes-local-task-model.test.ts  |   8 +
+ .../electron/hermes-local-task-model.ts       |  40 ++++-
+ .../electron/hermes-local-task-store.test.ts  |  18 ++
+ apps/desktop/electron/main.ts                 |   6 +
+ .../src/app/local-workstation/index.tsx       |  64 +++++--
+ .../src/app/local-workstation/task-centre.tsx |   3 +-
+ .../src/app/local-workstation/types.ts        |  14 ++
+ apps/desktop/src/global.d.ts                  |   6 +-
+ 11 files changed, 438 insertions(+), 21 deletions(-)
+ create mode 100644 apps/desktop/electron/hermes-local-model-switch.test.ts
+ create mode 100644 apps/desktop/electron/hermes-local-model-switch.ts
+
+diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
+index 1922d9218..491a87658 100644
+--- a/apps/desktop/electron/hermes-local-control.ts
++++ b/apps/desktop/electron/hermes-local-control.ts
+@@ -14,6 +14,7 @@ import {
+   normalizeHermesLocalDashboardUrl
+ } from './hermes-local-dashboard-view'
+ import { readGatewayStatus } from './hermes-local-gateway-status'
++import { activeModelSwitch, planModelSelection, runtimeModelIdentityMatches } from './hermes-local-model-switch'
+ import {
+   deleteProfile,
+   readLocalConfiguration,
+@@ -59,6 +60,7 @@ const ACTION_SCRIPTS = {
+   security: 'Security-Scan-Hermes-Local.ps1',
+   start: 'Start-Hermes-Local.ps1',
+   stop: 'Stop-Hermes-Local.ps1',
++  'switch-model': 'Switch-Hermes-Model.ps1',
+   test: 'Test-Hermes-Local.ps1',
+   update: 'Update-Hermes-Local.ps1'
+ } as const satisfies Record<TaskAction, string>
+@@ -210,9 +212,13 @@ function redacted(text: string): string {
+ }
+ 
+ function appendTaskOutput(task: ActionTask, chunk: Buffer | string): void {
+-  const result = boundedTaskOutput(task.output, redacted(String(chunk)), MAX_TASK_OUTPUT)
++  const text = redacted(String(chunk))
++  const result = boundedTaskOutput(task.output, text, MAX_TASK_OUTPUT)
++  const stageMatches = [...text.matchAll(/::hermes-model-switch-stage::([a-z0-9-]+)::([^\r\n]+)/gi)]
++
+   task.output = result.output
+   task.outputTruncated ||= result.truncated
++  task.stage = stageMatches.at(-1)?.[1] || task.stage
+   task.updatedAt = new Date().toISOString()
+   scheduleTaskRegistryPersistence()
+ }
+@@ -401,11 +407,24 @@ function taskCompletionEvidence(task: TaskRecord): null | TaskCompletionEvidence
+     return newestArchiveEvidence('logs\\diagnostics', 'Hermes-Local-Diagnostics-')
+   }
+ 
+-  if (task.action === 'start' || task.action === 'restart' || task.action === 'repair') {
++  if (
++    task.action === 'start' ||
++    task.action === 'restart' ||
++    task.action === 'repair' ||
++    task.action === 'switch-model'
++  ) {
+     const runtime = safeReadJson<Record<string, any>>('data\\runtime\\status.json')
+     const phase = String(runtime?.phase || '')
+ 
+-    if (runtime && ['benchmark-preparing', 'benchmarking', 'running', 'starting-model'].includes(phase)) {
++    const switchTargetMatches =
++      task.action !== 'switch-model' ||
++      (runtime?.selectedModelId === task.context.targetModelId && runtime?.model?.alias === task.context.targetAlias)
++
++    if (
++      runtime &&
++      switchTargetMatches &&
++      ['benchmark-preparing', 'benchmarking', 'running', 'starting-model'].includes(phase)
++    ) {
+       const evidence = fileEvidence('data\\runtime\\status.json', 'succeeded', null, 'runtime-state')
+ 
+       return processAlive(runtime.controllerPid) ? evidence : null
+@@ -481,7 +500,7 @@ function hydrateTaskRegistry(): void {
+       ...record,
+       child: null,
+       events: new EventEmitter(),
+-      input: {}
++      input: { ...record.context }
+     })
+   }
+ }
+@@ -539,6 +558,18 @@ function actionArguments(action: ActionName, input: Record<string, unknown>): st
+     args.push('-Profile', validProfileName(input.profile || configuredProfile))
+   }
+ 
++  if (action === 'switch-model') {
++    const targetModelId = String(input.targetModelId || '')
++    const previousModelId = String(input.previousModelId || '')
++    const profile = validProfileName(input.profile || readLocalConfiguration(localRoot(), os.cpus().length).selectedProfile)
++
++    if (!targetModelId || !previousModelId) {
++      throw new Error('Model switch requires targetModelId and previousModelId')
++    }
++
++    args.push('-TargetModelId', targetModelId, '-PreviousModelId', previousModelId, '-Profile', profile)
++  }
++
+   if (action === 'update') {
+     args.push('-Mode', 'Check')
+   }
+@@ -624,6 +655,18 @@ function pruneCompletedTasks(taskMap: Map<string, ActionTask> = tasks, maximum =
+   }
+ }
+ 
++function taskContext(action: ActionName, input: Record<string, unknown>): Record<string, string> {
++  if (action !== 'switch-model') {
++    return {}
++  }
++
++  return Object.fromEntries(
++    ['previousModelId', 'profile', 'targetAlias', 'targetModelId']
++      .map(key => [key, String(input[key] || '')])
++      .filter(([, value]) => value)
++  )
++}
++
+ function startActionTask(actionValue: unknown, input: unknown) {
+   reconcileTaskRegistry()
+ 
+@@ -658,7 +701,8 @@ function startActionTask(actionValue: unknown, input: unknown) {
+     action,
+     id,
+     { kind: 'desktop-child-process', pid: null },
+-    new Date().toISOString()
++    new Date().toISOString(),
++    taskContext(action, payload)
+   )
+ 
+   const task: ActionTask = { ...record, child: null, events: new EventEmitter(), input: payload }
+@@ -964,6 +1008,15 @@ async function buildWorkstationSnapshot() {
+     Object.entries(ACTION_SCRIPTS).map(([name, relativePath]) => [name, fs.existsSync(resolveUnderRoot(relativePath))])
+   )
+ 
++  const identityMatches = runtimeModelIdentityMatches({
++    configuredAlias: configuration.selectedModel.alias,
++    configuredModelId: configuration.selectedModelId,
++    runtimeAlias: state?.model?.alias,
++    runtimeModelId: state?.selectedModelId
++  })
++
++  const switchingTask = activeModelSwitch([...tasks.values()].map(task => publicTask(task)))
++
+   return {
+     actions,
+     generatedAt: new Date().toISOString(),
+@@ -977,7 +1030,19 @@ async function buildWorkstationSnapshot() {
+       dashboard: snapshotHealth.dashboard,
+       gateway,
+       hermes: snapshotHealth.hermes,
+-      model: snapshotHealth.model
++      model: snapshotHealth.model && identityMatches
++    },
++    lifecycle: {
++      identityMatches,
++      switchingModel: switchingTask
++        ? {
++            previousModelId: switchingTask.context.previousModelId || '',
++            stage: switchingTask.stage,
++            targetAlias: switchingTask.context.targetAlias || '',
++            targetModelId: switchingTask.context.targetModelId || '',
++            taskId: switchingTask.id
++          }
++        : null
+     },
+     model: configuration.selectedModel,
+     models: configuration.models,
+@@ -1016,7 +1081,11 @@ async function buildWorkstationSnapshot() {
+       ...state,
+       controllerAlive: processAlive(state?.controllerPid),
+       hermesAlive: processAlive(state?.hermes?.pid),
+-      modelAlive: processAlive(state?.model?.pid)
++      modelAlive: processAlive(state?.model?.pid),
++      identityMismatch:
++        state?.phase === 'running' && !identityMatches
++          ? `Configured model '${configuration.selectedModel.alias}' does not match the active runtime`
++          : null
+     },
+     version,
+     gpu
+@@ -1174,6 +1243,79 @@ function requireDashboardSender(
+   return dashboardView
+ }
+ 
++export function isHermesLocalModelSwitchActive(): boolean {
++  reconcileTaskRegistry()
++
++  return Boolean(activeModelSwitch([...tasks.values()].map(task => publicTask(task))))
++}
++
++function runtimeStackRunning(state: null | Record<string, any>): boolean {
++  return Boolean(
++    state &&
++      processAlive(state.controllerPid) &&
++      ['benchmark-preparing', 'benchmarking', 'running', 'starting-model'].includes(String(state.phase || ''))
++  )
++}
++
++function selectManagedModel(idValue: unknown) {
++  reconcileTaskRegistry()
++
++  const targetModelId = String(idValue || '').trim()
++  const configuration = readLocalConfiguration(localRoot(), os.cpus().length)
++  const target = configuration.models.find(model => model.id === targetModelId)
++
++  if (!target) {
++    throw new Error(`Model '${targetModelId}' is not registered`)
++  }
++
++  if (!target.installed) {
++    throw new Error(`Model '${target.displayName}' is not installed at '${target.resolvedPath}'`)
++  }
++
++  const currentTask = activeModelSwitch([...tasks.values()].map(task => publicTask(task)))
++  const state = safeReadJson<Record<string, any>>('data/runtime/status.json')
++
++  const plan = planModelSelection({
++    activeTask: currentTask,
++    currentModelId: configuration.selectedModelId,
++    runtimeRunning: runtimeStackRunning(state),
++    targetModelId
++  })
++
++  if (plan.kind === 'reject') {
++    throw new Error(plan.message)
++  }
++
++  if (plan.kind === 'join') {
++    const task = tasks.get(plan.taskId)
++
++    if (!task) {
++      throw new Error(`Model switch task '${plan.taskId}' disappeared during admission`)
++    }
++
++    return { id: targetModelId, mode: 'joined', task: publicTask(task) }
++  }
++
++  if (plan.kind === 'unchanged') {
++    return { id: targetModelId, mode: 'unchanged', task: null }
++  }
++
++  if (plan.kind === 'persist') {
++    selectModel(localRoot(), targetModelId, os.cpus().length)
++
++    return { id: targetModelId, mode: 'selected', task: null }
++  }
++
++  const task = startActionTask('switch-model', {
++    previousModelId: configuration.selectedModelId,
++    profile: configuration.selectedProfile,
++    targetAlias: target.alias,
++    targetModelId
++  })
++
++  return { id: targetModelId, mode: 'switching', task }
++}
++
+ export function registerHermesLocalControlIpc(
+   dashboardView?: HermesLocalDashboardViewController
+ ): void {
+@@ -1198,7 +1340,7 @@ export function registerHermesLocalControlIpc(
+   ipcMain.handle('hermes:local:profile:select', (_event, name) => selectProfile(localRoot(), name, os.cpus().length))
+   ipcMain.handle('hermes:local:model:register', (_event, model) => registerModel(localRoot(), model))
+   ipcMain.handle('hermes:local:model:remove', (_event, id) => removeModel(localRoot(), id, os.cpus().length))
+-  ipcMain.handle('hermes:local:model:select', (_event, id) => selectModel(localRoot(), id, os.cpus().length))
++  ipcMain.handle('hermes:local:model:select', (_event, id) => selectManagedModel(id))
+   ipcMain.handle('hermes:local:settings:save', (_event, settings) =>
+     saveWorkstationSettings(localRoot(), settings, os.cpus().length)
+   )
+diff --git a/apps/desktop/electron/hermes-local-model-switch.test.ts b/apps/desktop/electron/hermes-local-model-switch.test.ts
+new file mode 100644
+index 000000000..5777cbb65
+--- /dev/null
++++ b/apps/desktop/electron/hermes-local-model-switch.test.ts
+@@ -0,0 +1,81 @@
++import { describe, expect, it } from 'vitest'
++
++import {
++  activeModelSwitch,
++  planModelSelection,
++  runtimeModelIdentityMatches,
++  shouldBlockHermesApiDuringModelSwitch
++} from './hermes-local-model-switch'
++import { createTaskRecord, taskCapabilities, type TaskView, transitionTask } from './hermes-local-task-model'
++
++function switchTask(targetModelId: string, status: 'queued' | 'running' = 'running'): TaskView {
++  const created = createTaskRecord(
++    'switch-model',
++    'switch-task',
++    { kind: 'desktop-child-process', pid: status === 'running' ? 41 : null },
++    '2026-08-02T10:00:00.000Z',
++    { previousModelId: 'qwen', profile: 'Daily', targetModelId }
++  )
++  const record = status === 'running'
++    ? transitionTask(created, 'running', '2026-08-02T10:00:01.000Z', {
++        owner: { kind: 'desktop-child-process', pid: 41 }
++      })
++    : created
++
++  return { ...record, capabilities: taskCapabilities(record) }
++}
++
++describe('Hermes Local model switch admission', () => {
++  it('persists a stopped-stack selection without starting services', () => {
++    expect(
++      planModelSelection({ activeTask: null, currentModelId: 'qwen', runtimeRunning: false, targetModelId: 'agents' })
++    ).toEqual({ kind: 'persist' })
++  })
++
++  it('starts a managed switch for a running stack', () => {
++    expect(
++      planModelSelection({ activeTask: null, currentModelId: 'qwen', runtimeRunning: true, targetModelId: 'agents' })
++    ).toEqual({ kind: 'start' })
++  })
++
++  it('joins rapid duplicate selections and rejects a different target', () => {
++    const activeTask = switchTask('agents')
++
++    expect(planModelSelection({ activeTask, currentModelId: 'qwen', runtimeRunning: true, targetModelId: 'agents' })).toEqual({
++      kind: 'join',
++      taskId: 'switch-task'
++    })
++    expect(
++      planModelSelection({ activeTask, currentModelId: 'qwen', runtimeRunning: true, targetModelId: 'llama' })
++    ).toMatchObject({ kind: 'reject' })
++  })
++
++  it('recovers the active target from a persisted task after renderer reload', () => {
++    expect(activeModelSwitch([switchTask('agents', 'queued')])?.context.targetModelId).toBe('agents')
++  })
++
++  it('gates mutating Chat API requests while the provider is replacing', () => {
++    expect(shouldBlockHermesApiDuringModelSwitch('POST', true)).toBe(true)
++    expect(shouldBlockHermesApiDuringModelSwitch('GET', true)).toBe(false)
++    expect(shouldBlockHermesApiDuringModelSwitch('POST', false)).toBe(false)
++  })
++
++  it('requires configured and runtime identities to agree', () => {
++    expect(
++      runtimeModelIdentityMatches({
++        configuredAlias: 'agents-local',
++        configuredModelId: 'agents',
++        runtimeAlias: 'agents-local',
++        runtimeModelId: 'agents'
++      })
++    ).toBe(true)
++    expect(
++      runtimeModelIdentityMatches({
++        configuredAlias: 'agents-local',
++        configuredModelId: 'agents',
++        runtimeAlias: 'qwen-local',
++        runtimeModelId: 'qwen'
++      })
++    ).toBe(false)
++  })
++})
+diff --git a/apps/desktop/electron/hermes-local-model-switch.ts b/apps/desktop/electron/hermes-local-model-switch.ts
+new file mode 100644
+index 000000000..c1099a10b
+--- /dev/null
++++ b/apps/desktop/electron/hermes-local-model-switch.ts
+@@ -0,0 +1,61 @@
++import type { TaskView } from './hermes-local-task-model'
++
++export type ModelSelectionPlan =
++  | { kind: 'join'; taskId: string }
++  | { kind: 'persist' }
++  | { kind: 'reject'; message: string }
++  | { kind: 'start' }
++  | { kind: 'unchanged' }
++
++export function activeModelSwitch(tasks: Iterable<TaskView>): TaskView | null {
++  return (
++    [...tasks].find(
++      task =>
++        task.action === 'switch-model' &&
++        (task.status === 'queued' || task.status === 'running' || task.status === 'cancelling')
++    ) || null
++  )
++}
++
++export function planModelSelection(input: {
++  activeTask: TaskView | null
++  currentModelId: string
++  runtimeRunning: boolean
++  targetModelId: string
++}): ModelSelectionPlan {
++  const { activeTask, currentModelId, runtimeRunning, targetModelId } = input
++
++  if (activeTask) {
++    if (activeTask.context.targetModelId === targetModelId) {
++      return { kind: 'join', taskId: activeTask.id }
++    }
++
++    return {
++      kind: 'reject',
++      message: `Model switch to '${activeTask.context.targetModelId || 'another model'}' is already in progress`
++    }
++  }
++
++  if (targetModelId === currentModelId) {
++    return { kind: 'unchanged' }
++  }
++
++  return runtimeRunning ? { kind: 'start' } : { kind: 'persist' }
++}
++
++export function runtimeModelIdentityMatches(input: {
++  configuredAlias: string
++  configuredModelId: string
++  runtimeAlias: unknown
++  runtimeModelId: unknown
++}): boolean {
++  return (
++    input.runtimeModelId === input.configuredModelId &&
++    input.runtimeAlias === input.configuredAlias
++  )
++}
++
++export function shouldBlockHermesApiDuringModelSwitch(method: unknown, active: boolean): boolean {
++  const normalized = String(method || 'GET').toUpperCase()
++  return active && normalized !== 'GET' && normalized !== 'HEAD'
++}
+diff --git a/apps/desktop/electron/hermes-local-task-model.test.ts b/apps/desktop/electron/hermes-local-task-model.test.ts
+index e76f82aec..b836a7b93 100644
+--- a/apps/desktop/electron/hermes-local-task-model.test.ts
++++ b/apps/desktop/electron/hermes-local-task-model.test.ts
+@@ -47,6 +47,14 @@ describe('Hermes Local task model', () => {
+     })
+   })
+ 
++  it('serializes model switches through the exclusive workstation resource', () => {
++    const switching = running('switch-model')
++
++    expect(admitTask('switch-model', [switching])).toMatchObject({ kind: 'join', taskId: switching.id })
++    expect(admitTask('restart', [switching])).toMatchObject({ kind: 'reject' })
++    expect(admitTask('benchmark', [switching])).toMatchObject({ kind: 'reject' })
++  })
++
+   it('keeps gateway readiness available while a benchmark owns only the model', () => {
+     const benchmark = running('benchmark')
+ 
+diff --git a/apps/desktop/electron/hermes-local-task-model.ts b/apps/desktop/electron/hermes-local-task-model.ts
+index 49e642b79..63ac85553 100644
+--- a/apps/desktop/electron/hermes-local-task-model.ts
++++ b/apps/desktop/electron/hermes-local-task-model.ts
+@@ -9,6 +9,7 @@ export type TaskAction =
+   | 'security'
+   | 'start'
+   | 'stop'
++  | 'switch-model'
+   | 'test'
+   | 'update'
+ 
+@@ -54,6 +55,7 @@ export interface TaskCapabilities {
+ 
+ export interface TaskRecord {
+   action: TaskAction
++  context: Record<string, string>
+   completedAt: null | string
+   conflictPolicy: TaskConflictPolicy
+   createdAt: string
+@@ -67,6 +69,7 @@ export interface TaskRecord {
+   resources: TaskResourceClaim[]
+   result: null | TaskResult
+   schemaVersion: typeof TASK_SCHEMA_VERSION
++  stage: null | string
+   startedAt: null | string
+   status: TaskState
+   updatedAt: string
+@@ -110,6 +113,7 @@ export const TASK_POLICIES = {
+   security: { cancellable: true, conflictPolicy: 'reject', resources: [] },
+   start: { cancellable: false, conflictPolicy: 'queue', resources: [sharedWorkstation] },
+   stop: { cancellable: false, conflictPolicy: 'reject', resources: [exclusiveWorkstation] },
++  'switch-model': { cancellable: false, conflictPolicy: 'reject', resources: [exclusiveWorkstation] },
+   test: {
+     cancellable: true,
+     conflictPolicy: 'reject',
+@@ -156,12 +160,14 @@ export function createTaskRecord(
+   action: TaskAction,
+   id: string,
+   owner: TaskOwner,
+-  createdAt: string
++  createdAt: string,
++  context: Record<string, string> = {}
+ ): TaskRecord {
+   const policy = TASK_POLICIES[action]
+ 
+   return {
+     action,
++    context: { ...context },
+     completedAt: null,
+     conflictPolicy: policy.conflictPolicy,
+     createdAt,
+@@ -175,6 +181,7 @@ export function createTaskRecord(
+     resources: policy.resources.map(claim => ({ ...claim })),
+     result: null,
+     schemaVersion: TASK_SCHEMA_VERSION,
++    stage: null,
+     startedAt: null,
+     status: 'queued',
+     updatedAt: createdAt
+@@ -370,6 +377,35 @@ export function restoreTaskRecord(value: unknown, maximumOutput: number): null |
+     return null
+   }
+ 
++  const contextValue = candidate.context
++  const context: Record<string, string> = {}
++
++  if (contextValue !== undefined) {
++    if (!contextValue || typeof contextValue !== 'object' || Array.isArray(contextValue)) {
++      return null
++    }
++
++    for (const [key, value] of Object.entries(contextValue as Record<string, unknown>)) {
++      if (typeof value !== 'string' || key.length > 64 || value.length > 1024) {
++        return null
++      }
++
++      context[key] = value
++    }
++  }
++
++  const stageValue = candidate.stage
++
++  if (
++    stageValue !== null &&
++    stageValue !== undefined &&
++    (typeof stageValue !== 'string' || stageValue.length > 128)
++  ) {
++    return null
++  }
++
++  const stage = typeof stageValue === 'string' ? stageValue : null
++
+   const bounded = boundedTaskOutput('', candidate.output, maximumOutput)
+   const policy = TASK_POLICIES[action]
+   const resultValue = candidate.result as null | undefined | Record<string, unknown>
+@@ -389,6 +425,7 @@ export function restoreTaskRecord(value: unknown, maximumOutput: number): null |
+ 
+   return {
+     action,
++    context,
+     completedAt,
+     conflictPolicy: policy.conflictPolicy,
+     createdAt,
+@@ -402,6 +439,7 @@ export function restoreTaskRecord(value: unknown, maximumOutput: number): null |
+     resources: policy.resources.map(claim => ({ ...claim })),
+     result,
+     schemaVersion: TASK_SCHEMA_VERSION,
++    stage,
+     startedAt,
+     status,
+     updatedAt
+diff --git a/apps/desktop/electron/hermes-local-task-store.test.ts b/apps/desktop/electron/hermes-local-task-store.test.ts
+index 5b4e0e356..0d2d6588f 100644
+--- a/apps/desktop/electron/hermes-local-task-store.test.ts
++++ b/apps/desktop/electron/hermes-local-task-store.test.ts
+@@ -45,6 +45,24 @@ describe('Hermes Local durable task store', () => {
+     expect(fs.readdirSync(path.dirname(filePath))).toEqual(['desktop-tasks.json'])
+   })
+ 
++  it('persists switch target context across Desktop reloads', () => {
++    const task = createTaskRecord(
++      'switch-model',
++      'switch',
++      { kind: 'desktop-child-process', pid: null },
++      createdAt,
++      { previousModelId: 'qwen', targetModelId: 'agents' }
++    )
++    task.stage = 'starting-target'
++
++    const parsed = parseTaskStore(serializeTaskStore([task], createdAt, 50), 128 * 1024, 50)
++
++    expect(parsed.records[0]).toMatchObject({
++      context: { previousModelId: 'qwen', targetModelId: 'agents' },
++      stage: 'starting-target'
++    })
++  })
++
+   it('keeps all active work while bounding terminal history', () => {
+     const active = transitionTask(
+       createTaskRecord('start', 'active', { kind: 'desktop-child-process', pid: 4242 }, createdAt),
+diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
+index a5d0c8826..5c3e01ae9 100644
+--- a/apps/desktop/electron/main.ts
++++ b/apps/desktop/electron/main.ts
+@@ -138,9 +138,11 @@ import {
+   configureHermesLocalDesktopEnvironment,
+   ensureHermesLocalWorkstationReady,
+   hermesLocalTuiLaunch,
++  isHermesLocalModelSwitchActive,
+   registerHermesLocalControlIpc
+ } from './hermes-local-control'
+ import { createHermesLocalDashboardViewController } from './hermes-local-dashboard-view'
++import { shouldBlockHermesApiDuringModelSwitch } from './hermes-local-model-switch'
+ import { createLinkTitleWindow, guardLinkTitleSession, readLinkTitleWindowTitle } from './link-title-window'
+ import { ensureMainWindow } from './main-window-lifecycle'
+ import { isTrustedRendererUrl, shouldAllowRendererPermission } from './media-permissions'
+@@ -10247,6 +10249,10 @@ async function mergeRemoteProfileSessions(searchParams, remoteProfiles) {
+ }
+ 
+ ipcMain.handle('hermes:api', async (_event, request) => {
++  if (shouldBlockHermesApiDuringModelSwitch(request?.method, isHermesLocalModelSwitchActive())) {
++    throw new Error('The local model is switching. New Chat requests are disabled until provider health is restored.')
++  }
++
+   // Remote-profile session requests would otherwise hit the local primary off
+   // each profile's on-disk state.db — fine for local profiles, but a remote
+   // profile's sessions live on its remote host, so the UI's IDs 404 (or mutations
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index 6ef487692..72c01039c 100644
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -544,9 +544,18 @@ function ModelManager({
+     }
+   }
+ 
++  const switching = snapshot.lifecycle.switchingModel
++  const switchingActive = Boolean(switching)
++
+   return (
+     <Surface className="overflow-hidden" title="Registered models">
+       <div className="divide-y divide-(--ui-stroke-secondary)">
++        {switching && (
++          <div className="bg-(--ui-accent)/5 px-4 py-3 text-xs text-(--ui-text-secondary)">
++            Switching {switching.previousModelId || "current model"} → {switching.targetAlias || switching.targetModelId}.
++            <span className="ml-1 font-medium text-(--ui-text-primary)">{switching.stage || "queued"}</span>
++          </div>
++        )}
+         {snapshot.models.map(model => (
+           <div className="flex flex-wrap items-center gap-3 px-4 py-3" key={model.id}>
+             <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-(--ui-accent)/10 text-(--ui-accent)">
+@@ -562,18 +571,23 @@ function ModelManager({
+             {model.id === snapshot.settings.selectedModelId ? (
+               <StatusPill
+                 label={
+-                  snapshot.health.model && snapshot.runtime.selectedModelId === model.id
+-                    ? 'Selected · loaded'
+-                    : 'Selected'
++                  switching?.targetModelId === model.id
++                    ? `Switching · ${switching.stage || 'starting'}`
++                    : snapshot.health.model &&
++                        snapshot.lifecycle.identityMatches &&
++                        snapshot.runtime.selectedModelId === model.id
++                      ? 'Selected · loaded'
++                      : 'Selected'
+                 }
+                 ok={model.installed}
+               />
+             ) : (
+               <Button
+                 className="h-8 text-xs"
+-                disabled={!model.installed}
++                disabled={!model.installed || switchingActive}
+                 onClick={() => void onSelect(model.id)}
+                 size="sm"
++                title={switchingActive ? 'Another model switch owns the workstation lifecycle' : undefined}
+                 variant="outline"
+               >
+                 Select
+@@ -1067,6 +1081,21 @@ function DashboardContent({ snapshot }: { snapshot: LocalWorkstationSnapshot })
+       return
+     }
+ 
++    const switchingModel = snapshot.lifecycle.switchingModel
++
++    if (switchingModel) {
++      void dashboard.hide().catch(() => undefined)
++      setState(current => ({
++        ...current,
++        canRetry: false,
++        message: `Model switch: ${switchingModel.stage || 'starting'}`,
++        phase: 'restarting',
++        visible: false
++      }))
++
++      return
++    }
++
+     let active = true
+     let frame = 0
+ 
+@@ -1121,7 +1150,13 @@ function DashboardContent({ snapshot }: { snapshot: LocalWorkstationSnapshot })
+       window.removeEventListener('scroll', resize, true)
+       void dashboard.hide().catch(() => undefined)
+     }
+-  }, [dashboard, readBounds, snapshot.settings.network.hermesPort, snapshot.settings.network.host])
++  }, [
++    dashboard,
++    readBounds,
++    snapshot.lifecycle.switchingModel,
++    snapshot.settings.network.hermesPort,
++    snapshot.settings.network.host
++  ])
+ 
+   const phaseCopy = {
+     authentication: ['Authentication required', IconKey],
+@@ -1392,9 +1427,13 @@ function SectionContent({
+                 <div className="ml-auto">
+                   <StatusPill
+                     label={
+-                      snapshot.health.model && snapshot.runtime.selectedModelId === model.id
+-                        ? 'Loaded'
+-                        : model.installed
++                      snapshot.lifecycle.switchingModel
++                        ? `Switching · ${snapshot.lifecycle.switchingModel.stage || 'starting'}`
++                        : snapshot.health.model &&
++                            snapshot.lifecycle.identityMatches &&
++                            snapshot.runtime.selectedModelId === model.id
++                          ? 'Loaded'
++                          : model.installed
+                           ? 'On disk'
+                           : 'File missing'
+                     }
+@@ -1804,13 +1843,18 @@ export function LocalWorkstationView() {
+   const selectModel = useCallback(
+     async (id: string) => {
+       try {
+-        await window.hermesDesktop.localWorkstation.selectModel(id)
++        const result = await window.hermesDesktop.localWorkstation.selectModel(id)
++
++        if (result.task) {
++          navigate('/tasks')
++        }
++
+         refresh()
+       } catch (nextError) {
+         setError(nextError instanceof Error ? nextError.message : String(nextError))
+       }
+     },
+-    [refresh]
++    [navigate, refresh]
+   )
+ 
+   const removeModel = useCallback(
+diff --git a/apps/desktop/src/app/local-workstation/task-centre.tsx b/apps/desktop/src/app/local-workstation/task-centre.tsx
+index 97d765547..bab3f1b81 100644
+--- a/apps/desktop/src/app/local-workstation/task-centre.tsx
++++ b/apps/desktop/src/app/local-workstation/task-centre.tsx
+@@ -42,6 +42,7 @@ const ACTION_COPY: Record<LocalActionTask['action'], { feature: string; label: s
+   security: { feature: 'Security', label: 'Security scan', route: '/security' },
+   start: { feature: 'Services', label: 'Start', route: '/services' },
+   stop: { feature: 'Services', label: 'Stop', route: '/services' },
++  'switch-model': { feature: 'Models', label: 'Model switch', route: '/models' },
+   test: { feature: 'Services', label: 'Tests', route: '/services' },
+   update: { feature: 'Services', label: 'Update check', route: '/services' }
+ }
+@@ -114,7 +115,7 @@ function taskStage(task: LocalActionTask): string {
+ 
+   if (task.status === 'cancelling') {return 'Stopping owned process'}
+ 
+-  if (task.status === 'running') {return `${ACTION_COPY[task.action].label} in progress`}
++  if (task.status === 'running') {return task.stage || `${ACTION_COPY[task.action].label} in progress`}
+ 
+   if (task.status === 'interrupted') {return 'Owner exited without a conclusive result'}
+ 
+diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
+index 095a6279b..aea0500f2 100644
+--- a/apps/desktop/src/app/local-workstation/types.ts
++++ b/apps/desktop/src/app/local-workstation/types.ts
+@@ -30,6 +30,7 @@ export type LocalAction =
+   | 'security'
+   | 'start'
+   | 'stop'
++  | 'switch-model'
+   | 'test'
+   | 'update'
+ 
+@@ -37,6 +38,7 @@ export type LocalLog = 'dashboard' | 'hermes' | 'launcher' | 'model' | 'security
+ 
+ export interface LocalActionTask {
+   action: LocalAction
++  context?: Record<string, string>
+   capabilities: {
+     cancel: boolean
+     pause: boolean
+@@ -68,6 +70,7 @@ export interface LocalActionTask {
+     path: string
+   }
+   schemaVersion: 1
++  stage?: null | string
+   startedAt: null | string
+   status: 'cancelled' | 'cancelling' | 'failed' | 'interrupted' | 'queued' | 'running' | 'succeeded'
+   updatedAt: string
+@@ -162,6 +165,16 @@ export interface LocalWorkstationSettings {
+ 
+ export interface LocalWorkstationSnapshot {
+   actions: Record<LocalAction, boolean>
++  lifecycle: {
++    identityMatches: boolean
++    switchingModel: null | {
++      previousModelId: string
++      stage: null | string
++      targetAlias: string
++      targetModelId: string
++      taskId: string
++    }
++  }
+   generatedAt: string
+   gpu: null | {
+     memoryFreeMiB: number
+@@ -226,6 +239,7 @@ export interface LocalWorkstationSnapshot {
+       url: string
+     }
+     modelAlive: boolean
++    identityMismatch?: null | string
+     phase?: string
+     profile?: string
+     restartCount?: number
+diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
+index 602d031ec..411f9ce23 100644
+--- a/apps/desktop/src/global.d.ts
++++ b/apps/desktop/src/global.d.ts
+@@ -153,7 +153,11 @@ declare global {
+         removeModel: (id: string) => Promise<{ id: string; selected: string }>
+         saveProfile: (profile: LocalInferenceProfile, originalName?: string) => Promise<LocalInferenceProfile>
+         saveSettings: (settings: Partial<LocalWorkstationSettings>) => Promise<unknown>
+-        selectModel: (id: string) => Promise<{ id: string }>
++        selectModel: (id: string) => Promise<{
++          id: string
++          mode: 'joined' | 'selected' | 'switching' | 'unchanged'
++          task: LocalActionTask | null
++        }>
+         selectProfile: (name: string) => Promise<{ name: string }>
+         snapshot: () => Promise<LocalWorkstationSnapshot>
+         startAction: (action: LocalAction, input?: { profile?: string }) => Promise<LocalActionTask>
+-- 
+2.55.0.windows.2
+

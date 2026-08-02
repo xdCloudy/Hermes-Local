@@ -17,7 +17,11 @@ function Test-HermesDesktopReadyState {
         [AllowNull()]
         [psobject] $Status,
         [Parameter(Mandatory)]
-        [int] $ControllerPid
+        [int] $ControllerPid,
+        [Parameter(Mandatory)]
+        [string] $ExpectedModelId,
+        [Parameter(Mandatory)]
+        [string] $ExpectedModelAlias
     )
 
     if (-not $Status -or
@@ -29,7 +33,10 @@ function Test-HermesDesktopReadyState {
     $gatewayReady = $Status.PSObject.Properties.Name -notcontains 'gateway' -or
         -not $Status.gateway.required -or $Status.gateway.healthy
     $desktopReady = $Status.hermes.healthy -and $gatewayReady
-    $inferenceReady = $Status.phase -eq 'running' -and $Status.model.healthy
+    $inferenceReady = $Status.phase -eq 'running' -and
+        $Status.model.healthy -and
+        [string]$Status.selectedModelId -eq $ExpectedModelId -and
+        [string]$Status.model.alias -eq $ExpectedModelAlias
     $benchmarkReady = $Status.phase -in @('benchmark-preparing', 'benchmarking', 'starting-model') -and $desktopReady
     return $desktopReady -and ($inferenceReady -or $benchmarkReady)
 }
@@ -62,8 +69,9 @@ function Get-RunningHermesSupervisor {
 try {
     Assert-HermesRoot
     Initialize-HermesLayout
+    $expectedConfiguration = Get-HermesConfiguration
     if (-not $Profile) {
-        $Profile = [string](Get-HermesConfiguration).selectedProfile
+        $Profile = [string]$expectedConfiguration.selectedProfile
     }
     $runtimeDirectory = Resolve-HermesPath 'data\runtime'
     $statusPath = Join-Path $runtimeDirectory 'status.json'
@@ -80,8 +88,9 @@ try {
         } else {
             $null
         }
-        if (Test-HermesDesktopReadyState -Status $status -ControllerPid $existingPid) {
+        if (Test-HermesDesktopReadyState -Status $status -ControllerPid $existingPid -ExpectedModelId ([string]$expectedConfiguration.selectedModelId) -ExpectedModelAlias ([string]$expectedConfiguration.selectedModel.alias)) {
             if ($status.phase -eq 'running') {
+                [void](Assert-HermesModelIdentity -Configuration $expectedConfiguration -StatusPath $statusPath)
                 Write-Host "Hermes Local is already running with profile '$($status.profile)' (supervisor PID $existingPid)."
             } else {
                 Write-Host "Hermes Local Desktop services are ready while benchmark lifecycle state is '$($status.phase)' (supervisor PID $existingPid)."
@@ -170,13 +179,14 @@ try {
                     Write-Verbose "Hermes Local phase: $($status.phase) — $($status.message)"
                     $lastPhase = $status.phase
                 }
-                if (Test-HermesDesktopReadyState -Status $status -ControllerPid $process.Id) {
+                if (Test-HermesDesktopReadyState -Status $status -ControllerPid $process.Id -ExpectedModelId ([string]$expectedConfiguration.selectedModelId) -ExpectedModelAlias ([string]$expectedConfiguration.selectedModel.alias)) {
                     $gatewayDetail = if ($status.PSObject.Properties.Name -contains 'gateway' -and $status.gateway.required) {
                         " Gateway PID $($status.gateway.pid) ($($status.gateway.ownership))."
                     } else {
                         ' Messaging gateway disabled.'
                     }
                     if ($status.phase -eq 'running') {
+                        [void](Assert-HermesModelIdentity -Configuration $expectedConfiguration -StatusPath $statusPath)
                         Write-Host "Hermes Local is ready with profile '$Profile'. Model PID $($status.model.pid); Hermes PID $($status.hermes.pid).$gatewayDetail"
                     } else {
                         Write-Host "Hermes Local Desktop services are ready while benchmark lifecycle state is '$($status.phase)'. Hermes PID $($status.hermes.pid).$gatewayDetail"
@@ -187,6 +197,9 @@ try {
                     throw "Hermes Local startup failed: $($status.message)"
                 }
             } catch {
+                if ($_.Exception.Message -match 'identity|selected GGUF|selected alias|provider configuration') {
+                    throw
+                }
                 Write-Verbose "Waiting for an atomic status update: $($_.Exception.Message)"
             }
         }
