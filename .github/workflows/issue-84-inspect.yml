@@ -33,7 +33,7 @@ jobs:
           git -C temp/hermes-agent checkout --detach "$candidate"
           git -C temp/hermes-agent config user.name 'Hermes Local CI'
           git -C temp/hermes-agent config user.email 'hermes-local-ci@localhost'
-          git -C temp/hermes-agent am --3way --committer-date-is-author-date source/hermes-launcher/patches/*.patch
+          git -C temp/hermes-agent am --3way --committer-date-is-author-date "$GITHUB_WORKSPACE"/source/hermes-launcher/patches/*.patch
 
           actual_tree="$(git -C temp/hermes-agent rev-parse HEAD^{tree})"
           test "$actual_tree" = "$expected_tree"
