@@ -120,12 +120,17 @@ if old not in model:
 model_path.write_text(model.replace(old, new, 1), encoding='utf-8')
 
 control_path = Path('temp/hermes-agent/apps/desktop/electron/hermes-local-control.ts')
-control = control_path.read_text(encoding='utf-8')
-old_stage_line = '  const stageMatches = [...text.matchAll(/::hermes-model-switch-stage::([a-z0-9-]+)::([^\\\\r\\\\n]+)/gi)]'
-new_stage_line = '  const stageMatches = [...text.matchAll(/::hermes-model-switch-stage::([a-z0-9-]+)::([^\\r\\n]+)/gi)]'
-if old_stage_line not in control:
-    raise SystemExit('Escaped model-switch stage parser line was not found')
-control_path.write_text(control.replace(old_stage_line, new_stage_line, 1), encoding='utf-8')
+control_lines = control_path.read_text(encoding='utf-8').splitlines(keepends=True)
+matches = [index for index, line in enumerate(control_lines) if 'hermes-model-switch-stage' in line]
+if len(matches) != 1:
+    raise SystemExit(f'Expected one model-switch stage parser line, found {len(matches)}')
+index = matches[0]
+backslash = chr(92)
+doubled = backslash * 2
+if control_lines[index].count(doubled) != 2:
+    raise SystemExit('Model-switch stage parser did not contain two doubled backslashes')
+control_lines[index] = control_lines[index].replace(doubled, backslash)
+control_path.write_text(''.join(control_lines), encoding='utf-8')
 '@ | python -
 
 Push-Location $sourcePath
