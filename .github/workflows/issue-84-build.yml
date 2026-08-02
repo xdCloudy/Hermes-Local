@@ -92,8 +92,8 @@ jobs:
           Path('temp/issue84-desktop.patch').write_bytes(patch)
           '@ | python -
           $desktopPatch = (Resolve-Path '.\temp\issue84-desktop.patch').Path
-          git -C '.\temp\hermes-agent\apps\desktop' apply --check $desktopPatch
-          git -C '.\temp\hermes-agent\apps\desktop' apply $desktopPatch
+          git -C '.\temp\hermes-agent' apply --check --directory='apps/desktop' $desktopPatch
+          git -C '.\temp\hermes-agent' apply --directory='apps/desktop' $desktopPatch
 
       - name: Validate focused Desktop changes without broad rewrites
         shell: pwsh
