@@ -1,0 +1,73 @@
+name: Issue 71 patch 20 debug
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/issue-71-p20-debug.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: Capture patch 20 conflict
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out pull-request branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.head_ref }}
+          persist-credentials: false
+
+      - name: Reproduce and capture conflict stages
+        shell: pwsh
+        run: |
+          $root = (Resolve-Path '.').Path
+          $work = Join-Path $root 'temp\issue-71-p20'
+          $output = Join-Path $root 'artifacts\issue-71-p20'
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+
+          python '.\scripts\ci\compatibility.py' hermes-agent `
+            --repository-root '.' `
+            --candidate-ref '582606f176f5467deb96bb949e0879a8e18f31dd' `
+            --work-dir $work `
+            --log-dir (Join-Path $output 'logs') `
+            --report (Join-Path $output 'initial-report.json') `
+            --keep-workspace
+          if ($LASTEXITCODE -eq 0) {
+            throw 'Expected patch 20 to remain unresolved during conflict capture.'
+          }
+
+          $source = Join-Path $work 'hermes-agent'
+          $patch = Join-Path $root 'source\hermes-launcher\patches\0020-feat-desktop-embed-loopback-dashboard-securely.patch'
+          Push-Location $source
+          try {
+            git am --3way --committer-date-is-author-date $patch
+            if ($LASTEXITCODE -eq 0) {
+              throw 'Patch 20 unexpectedly applied without a conflict.'
+            }
+
+            $evidence = Join-Path $output 'conflicts'
+            New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+            git status --short | Set-Content -Encoding utf8 (Join-Path $evidence 'status.txt')
+            git diff --cc | Set-Content -Encoding utf8 (Join-Path $evidence 'combined.diff')
+            git am --show-current-patch=diff | Set-Content -Encoding utf8 (Join-Path $evidence 'patch-0020.diff')
+
+            $path = 'apps/desktop/electron/main.ts'
+            Copy-Item -LiteralPath $path -Destination (Join-Path $evidence 'main.ts.conflicted')
+            git show ":1:$path" | Set-Content -Encoding utf8 (Join-Path $evidence 'main.ts.base')
+            git show ":2:$path" | Set-Content -Encoding utf8 (Join-Path $evidence 'main.ts.ours')
+            git show ":3:$path" | Set-Content -Encoding utf8 (Join-Path $evidence 'main.ts.theirs')
+          } finally {
+            Pop-Location
+          }
+
+      - name: Upload conflict evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: issue-71-patch-20-conflict
+          path: artifacts/issue-71-p20
+          if-no-files-found: error
+          retention-days: 7
