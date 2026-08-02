@@ -95,6 +95,17 @@ jobs:
           git -C '.\temp\hermes-agent' apply --check --directory='apps/desktop' $desktopPatch
           git -C '.\temp\hermes-agent' apply --directory='apps/desktop' $desktopPatch
 
+          @'
+          from pathlib import Path
+          path = Path('temp/hermes-agent/apps/desktop/src/app/local-workstation/types.ts')
+          content = path.read_text(encoding='utf-8')
+          original = '  stage: string | null\n'
+          replacement = '  stage?: string | null\n'
+          if original not in content:
+              raise SystemExit('LocalActionTask.stage declaration was not found')
+          path.write_text(content.replace(original, replacement, 1), encoding='utf-8')
+          '@ | python -
+
       - name: Validate focused Desktop changes without broad rewrites
         shell: pwsh
         run: |
