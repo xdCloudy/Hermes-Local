@@ -27,7 +27,6 @@ a paid inference API.
 [![Stars](https://img.shields.io/github/stars/xdCloudy/Hermes-Local?style=flat)](https://github.com/xdCloudy/Hermes-Local/stargazers)
 [![Last commit](https://img.shields.io/github/last-commit/xdCloudy/Hermes-Local)](https://github.com/xdCloudy/Hermes-Local/commits/main)
 
-> [!NOTE]
 > Hermes Local is an independent Windows integration built on the official
 > [NousResearch Hermes Agent](https://github.com/NousResearch/hermes-agent).
 > It is not an official Nous Research release.
