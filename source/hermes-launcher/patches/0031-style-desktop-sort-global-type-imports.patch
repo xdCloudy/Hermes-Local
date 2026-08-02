@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local Compatibility CI <hermes-local-ci@localhost>
 Date: Sun, 2 Aug 2026 16:41:39 +0000
-Subject: [PATCH] style(desktop): sort global type imports
+Subject: [PATCH 31/31] style(desktop): sort global type imports
 
 ---
  apps/desktop/src/global.d.ts | 2 +-
