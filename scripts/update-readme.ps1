@@ -125,7 +125,12 @@ function Get-ReleaseVersion {
 }
 
 function Get-MilestoneProgress {
-    param([Parameter(Mandatory)][object[]]$Milestones)
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$Milestones
+    )
+
     $open = [int](($Milestones | Measure-Object -Property open_issues -Sum).Sum)
     $closed = [int](($Milestones | Measure-Object -Property closed_issues -Sum).Sum)
     $total = $open + $closed
