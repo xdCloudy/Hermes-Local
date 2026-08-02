@@ -131,8 +131,22 @@ function Get-MilestoneProgress {
         [object[]]$Milestones
     )
 
-    $open = [int](($Milestones | Measure-Object -Property open_issues -Sum).Sum)
-    $closed = [int](($Milestones | Measure-Object -Property closed_issues -Sum).Sum)
+    $open = 0
+    $closed = 0
+
+    foreach ($milestone in @($Milestones)) {
+        if ($null -eq $milestone) {
+            continue
+        }
+
+        if ($milestone.PSObject.Properties['open_issues']) {
+            $open += [int]$milestone.open_issues
+        }
+        if ($milestone.PSObject.Properties['closed_issues']) {
+            $closed += [int]$milestone.closed_issues
+        }
+    }
+
     $total = $open + $closed
     $percent = if ($total -gt 0) { [math]::Round(($closed / $total) * 100) } else { 0 }
     return [pscustomobject]@{ Open = $open; Closed = $closed; Total = $total; Percent = $percent }
