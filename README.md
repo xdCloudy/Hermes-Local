@@ -34,8 +34,7 @@ a paid inference API.
 
 </div>
 
-![Hermes Launcher home screen](reports/acceptance/launcher-home.png)
-
+![Hermes Local workstation home screen](docs/assets/screenshots/home.png)
 > [!IMPORTANT]
 > Hermes Local is active pre-1.0 software. The current Windows release packages
 > the control centre, but it is not yet a one-click full workstation installer.
@@ -100,17 +99,23 @@ output, reasoning, long context and stability—not only generation speed.
 
 <table>
   <tr>
-    <td width="50%"><img src="reports/qa/screenshots/packaged-dashboard.png" alt="Hermes Local dashboard"><br><strong>Dashboard</strong> — workstation health and runtime state.</td>
-    <td width="50%"><img src="reports/qa/screenshots/packaged-models.png" alt="Local model management"><br><strong>Models</strong> — register, select and inspect local GGUF models.</td>
+    <td width="50%"><img src="docs/assets/screenshots/chat.png" alt="Hermes Agent chat inside Hermes Local"><br><strong>Chat</strong> - use the local model through the integrated Hermes Agent workspace.</td>
+    <td width="50%"><img src="docs/assets/screenshots/tui.png" alt="Hermes Agent terminal interface inside Hermes Local"><br><strong>TUI</strong> - run the keyboard-driven Hermes terminal interface without leaving the launcher.</td>
   </tr>
   <tr>
-    <td width="50%"><img src="reports/qa/screenshots/packaged-profiles.png" alt="Inference profiles"><br><strong>Profiles</strong> — tune context, cache, compute and offload policy.</td>
-    <td width="50%"><img src="reports/qa/screenshots/packaged-benchmarks.png" alt="Benchmark centre"><br><strong>Benchmarks</strong> — turn performance claims into repeatable evidence.</td>
+    <td width="50%"><img src="docs/assets/screenshots/models.png" alt="Hermes Local model management"><br><strong>Models</strong> - register GGUFs, inspect runtime identity and select the active local model.</td>
+    <td width="50%"><img src="docs/assets/screenshots/profiles.png" alt="Hermes Local inference profile editor"><br><strong>Profiles</strong> - tune context, cache, batching, offload and resource reserves as versioned settings.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshots/skills.png" alt="Hermes Agent skills management"><br><strong>Skills</strong> - inspect and enable the skill catalogue available to Hermes Agent.</td>
+    <td width="50%"><img src="docs/assets/screenshots/security.png" alt="Hermes Local security workflow"><br><strong>Security</strong> - keep loopback, authentication, encryption and validated findings visible.</td>
   </tr>
 </table>
 
-[Browse the complete screenshot catalog →](docs/SCREENSHOTS.md)
+The images were captured from the packaged `v0.18.15` launcher. Session history
+and credential-bearing surfaces were removed before publication.
 
+[Browse the complete screenshot catalog ->](docs/SCREENSHOTS.md)
 ## Roadmap
 
 The foundational Windows workstation is already in place. The remaining roadmap
