@@ -1,0 +1,48 @@
+name: Issue 71 exact candidate validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/issue-71-exact-validation.yml'
+      - 'VERSION.json'
+      - 'scripts/ci/compatibility.py'
+      - 'source/hermes-launcher/patches/**'
+
+permissions:
+  contents: read
+
+jobs:
+  exact-candidate:
+    name: Full Hermes Agent candidate gate
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - name: Check out pull-request branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.head_ref }}
+          persist-credentials: false
+
+      - name: Run full exact-candidate validation
+        shell: pwsh
+        run: |
+          python '.\scripts\ci\compatibility.py' hermes-agent `
+            --repository-root '.' `
+            --candidate-ref '582606f176f5467deb96bb949e0879a8e18f31dd' `
+            --work-dir '.\temp\issue-71-exact' `
+            --log-dir '.\artifacts\issue-71-exact\logs' `
+            --report '.\artifacts\issue-71-exact\hermes-agent-report.json' `
+            --run-desktop-checks `
+            --run-python-checks `
+            --run-package-checks
+
+      - name: Upload exact-candidate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: issue-71-exact-candidate-evidence
+          path: artifacts/issue-71-exact
+          if-no-files-found: error
+          retention-days: 30
