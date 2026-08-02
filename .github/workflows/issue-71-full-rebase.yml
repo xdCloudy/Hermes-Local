@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/issue-71-full-rebase.yml'
       - 'scripts/ci/rebase_issue71_series.py'
+      - 'scripts/ci/run_issue71_rebase.py'
 
 permissions:
   contents: read
@@ -22,85 +23,17 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Add known patch 20 resolver
+      - name: Validate rebase utilities
         shell: pwsh
         run: |
-          @'
-          from pathlib import Path
-
-          path = Path('scripts/ci/rebase_issue71_series.py')
-          text = path.read_text(encoding='utf-8')
-          if 'def resolve_dashboard_patch' not in text:
-              text = text.replace(
-                  'PROJECTLESS_SUBJECT = "fix(desktop): keep packaged chats projectless"\n',
-                  'PROJECTLESS_SUBJECT = "fix(desktop): keep packaged chats projectless"\nDASHBOARD_SUBJECT = "feat(desktop): embed loopback dashboard securely"\n',
-                  1,
-              )
-              anchor = '''    run(["git", "am", "--continue"], cwd=source, timeout=600)
-              return True
-
-
-          def capture_conflict'''
-              resolver = '''    run(["git", "am", "--continue"], cwd=source, timeout=600)
-              return True
-
-
-          def resolve_dashboard_patch(source: Path, conflicts: list[str]) -> bool:
-              path = "apps/desktop/electron/main.ts"
-              if conflicts != [path]:
-                  return False
-              target = source / path
-              text = target.read_text(encoding="utf-8")
-              marker = f"""<<<<<<< HEAD
-              wakeIndicatorController.close()
-          =======
-              hermesLocalDashboardView.handleWindowClosed(createdMainWindow)
-          >>>>>>> {DASHBOARD_SUBJECT}
-          """
-              replacement = """    wakeIndicatorController.close()
-              hermesLocalDashboardView.handleWindowClosed(createdMainWindow)
-          """
-              if marker not in text:
-                  return False
-              text = text.replace(marker, replacement, 1)
-              if "<<<<<<<" in text or ">>>>>>>" in text:
-                  raise RuntimeError("dashboard main-process conflict markers remain")
-              target.write_text(text, encoding="utf-8")
-              run(["git", "add", "--", path], cwd=source)
-              run(["git", "am", "--continue"], cwd=source, timeout=600)
-              return True
-
-
-          def capture_conflict'''
-              if anchor not in text:
-                  raise RuntimeError('resolver insertion point not found')
-              text = text.replace(anchor, resolver, 1)
-              call_anchor = '''            elif resolve_projectless_patch(source, conflicts):
-                              applied.append({"order": order, "patch": patch.name, "application": "three-way-projectless-rebased"})
-                              recovered = True
-                          if recovered:'''
-              call_replacement = '''            elif resolve_projectless_patch(source, conflicts):
-                              applied.append({"order": order, "patch": patch.name, "application": "three-way-projectless-rebased"})
-                              recovered = True
-                          elif resolve_dashboard_patch(source, conflicts):
-                              applied.append({"order": order, "patch": patch.name, "application": "three-way-dashboard-rebased"})
-                              recovered = True
-                          if recovered:'''
-              if call_anchor not in text:
-                  raise RuntimeError('resolver call insertion point not found')
-              text = text.replace(call_anchor, call_replacement, 1)
-              path.write_text(text, encoding='utf-8')
-          '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\patch-rebaser.py"
-          python "$env:RUNNER_TEMP\patch-rebaser.py"
-
-      - name: Validate rebase utility
-        shell: pwsh
-        run: python -m py_compile '.\scripts\ci\rebase_issue71_series.py'
+          python -m py_compile `
+            '.\scripts\ci\rebase_issue71_series.py' `
+            '.\scripts\ci\run_issue71_rebase.py'
 
       - name: Rebase full patch series
         shell: pwsh
         run: |
-          python '.\scripts\ci\rebase_issue71_series.py' `
+          python '.\scripts\ci\run_issue71_rebase.py' `
             --repository-root '.' `
             --candidate '582606f176f5467deb96bb949e0879a8e18f31dd' `
             --work-dir '.\temp\issue-71-full-rebase' `
