@@ -21,7 +21,7 @@ on:
       - '.github/workflows/powershell-validation.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -92,3 +92,20 @@ jobs:
           if ($manifest.sources.hermesAgent.integrationTree -ne ('3' * 40)) {
             throw 'Hermes Agent integration tree override was not applied.'
           }
+
+  issue84-finalize:
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/fix-issue-84-model-switch'
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - name: Check out pull-request branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Generate and verify the final Issue 84 integration patch
+        shell: pwsh
+        run: "& '.\\scripts\\ci\\finalize-issue84.ps1'"
