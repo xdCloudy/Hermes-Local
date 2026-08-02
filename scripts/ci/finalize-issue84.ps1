@@ -132,6 +132,10 @@ try {
             electron/hermes-local-task-store.test.ts `
             electron/hermes-local-settings.test.ts `
             electron/hermes-local-dashboard-view.test.ts
+        npx.cmd --no-install eslint `
+            electron/hermes-local-control.ts `
+            src/app/local-workstation/index.tsx `
+            --fix
     }
     finally {
         Pop-Location
