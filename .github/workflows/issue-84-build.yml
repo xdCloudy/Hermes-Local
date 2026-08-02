@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/issue-84-build.yml'
-      - 'scripts/ci/issue84-desktop.patch.gz.b64'
+      - 'scripts/ci/issue84-desktop-patch/**'
       - 'Switch-Hermes-Model.ps1'
       - 'scripts/Hermes-Configuration.psm1'
       - 'scripts/verify_model_identity.py'
@@ -75,12 +75,24 @@ jobs:
           git -C '.\temp\hermes-agent' am --3way --committer-date-is-author-date @patches
 
           @'
-          import base64, gzip
+          import base64
+          import gzip
+          import hashlib
           from pathlib import Path
-          encoded = Path('scripts/ci/issue84-desktop.patch.gz.b64').read_text(encoding='ascii')
-          Path('temp/issue84-desktop.patch').write_bytes(gzip.decompress(base64.b64decode(encoded)))
+
+          parts = sorted(Path('scripts/ci/issue84-desktop-patch').glob('part-*.txt'))
+          if len(parts) != 6:
+              raise SystemExit(f'Expected 6 patch chunks, found {len(parts)}')
+          encoded = ''.join(path.read_text(encoding='ascii').strip() for path in parts)
+          if hashlib.sha256(encoded.encode('ascii')).hexdigest() != '9df595b9c1f404fa6512afa5b57afeb75a3669bcc03614085a87203cba7f8c37':
+              raise SystemExit('Issue 84 encoded patch checksum mismatch')
+          patch = gzip.decompress(base64.b64decode(encoded, validate=True))
+          if hashlib.sha256(patch).hexdigest() != 'b781704be69f43b8f87f3255542b06ab472aa898ba2c4fd7a443e3457f87e5a7':
+              raise SystemExit('Issue 84 decoded patch checksum mismatch')
+          Path('temp/issue84-desktop.patch').write_bytes(patch)
           '@ | python -
           $desktopPatch = (Resolve-Path '.\temp\issue84-desktop.patch').Path
+          git -C '.\temp\hermes-agent\apps\desktop' apply --check $desktopPatch
           git -C '.\temp\hermes-agent\apps\desktop' apply $desktopPatch
 
       - name: Validate focused Desktop changes without broad rewrites
