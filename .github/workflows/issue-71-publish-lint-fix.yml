@@ -1,0 +1,58 @@
+name: Issue 71 publish lint fix
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/issue-71-publish-lint-fix.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    name: Publish patch 31 and updated integration state
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out pull-request branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Download generated lint-fix artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: issue-71-lint-fix
+          path: downloaded
+          run-id: 30757166821
+          github-token: ${{ github.token }}
+
+      - name: Publish patch and manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path('downloaded/result.json').read_text(encoding='utf-8-sig'))
+          version = json.loads(Path('downloaded/VERSION.json').read_text(encoding='utf-8-sig'))
+          assert result['candidate'] == '582606f176f5467deb96bb949e0879a8e18f31dd'
+          assert result['patchCount'] == 31
+          assert version['sources']['hermesAgent']['integrationCommit'] == result['integrationCommit']
+          assert version['sources']['hermesAgent']['integrationTree'] == result['integrationTree']
+          PY
+
+          cp downloaded/0031-style-desktop-sort-global-type-imports.patch \
+            source/hermes-launcher/patches/0031-style-desktop-sort-global-type-imports.patch
+          cp downloaded/VERSION.json VERSION.json
+          rm -f .github/workflows/issue-71-generate-lint-fix.yml
+          rm -f .github/workflows/issue-71-publish-lint-fix.yml
+
+          git config user.name 'Hermes Local Compatibility CI'
+          git config user.email 'hermes-local-ci@localhost'
+          git add VERSION.json source/hermes-launcher/patches/0031-style-desktop-sort-global-type-imports.patch
+          git add -u .github/workflows
+          git commit -m 'style: sort desktop global type imports'
+          git push origin "HEAD:${{ github.head_ref }}"
