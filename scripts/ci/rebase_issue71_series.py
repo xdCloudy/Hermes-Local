@@ -17,6 +17,11 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 NPM_VERSION = "12.0.0"
 PATCH_ROOT = "source/hermes-launcher/patches"
 PROJECTLESS_SUBJECT = "fix(desktop): keep packaged chats projectless"
@@ -240,13 +245,7 @@ def apply_candidate_series(source: Path, candidate: str, patches: list[Path], ou
                 cwd=source,
                 timeout=600,
             )
-            applied.append(
-                {
-                    "order": order,
-                    "patch": patch.name,
-                    "application": "three-way" if "3-way" in text else "clean",
-                }
-            )
+            applied.append({"order": order, "patch": patch.name, "application": "three-way" if "3-way" in text else "clean"})
             continue
         except CommandError:
             conflicts = normalize_paths(
@@ -254,14 +253,10 @@ def apply_candidate_series(source: Path, candidate: str, patches: list[Path], ou
             )
             recovered = False
             if recover_lockfile(source, conflicts):
-                applied.append(
-                    {"order": order, "patch": patch.name, "application": "three-way-lockfile-regenerated"}
-                )
+                applied.append({"order": order, "patch": patch.name, "application": "three-way-lockfile-regenerated"})
                 recovered = True
             elif resolve_projectless_patch(source, conflicts):
-                applied.append(
-                    {"order": order, "patch": patch.name, "application": "three-way-projectless-rebased"}
-                )
+                applied.append({"order": order, "patch": patch.name, "application": "three-way-projectless-rebased"})
                 recovered = True
             if recovered:
                 continue
@@ -299,7 +294,6 @@ def export_result(repo: Path, source: Path, candidate: str, output: Path, manife
     agent["integrationCommit"] = integration_commit
     agent["integrationTree"] = integration_tree
     from datetime import datetime, timezone
-
     data["recordedAt"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     (output / "VERSION.json").write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     (output / "result.json").write_text(
