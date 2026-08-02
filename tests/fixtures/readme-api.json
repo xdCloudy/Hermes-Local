@@ -80,10 +80,29 @@
   ],
   "commits": [
     {
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "html_url": "https://github.com/xdCloudy/Hermes-Local/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "author": {
+        "login": "github-actions[bot]"
+      },
+      "committer": {
+        "login": "github-actions[bot]"
+      },
+      "commit": {
+        "message": "docs: refresh project dashboard"
+      }
+    },
+    {
       "sha": "0123456789abcdef0123456789abcdef01234567",
       "html_url": "https://github.com/xdCloudy/Hermes-Local/commit/0123456789abcdef0123456789abcdef01234567",
+      "author": {
+        "login": "xdCloudy"
+      },
+      "committer": {
+        "login": "xdCloudy"
+      },
       "commit": {
-        "message": "docs: test deterministic README generation"
+        "message": "fix: test deterministic README generation"
       }
     }
   ]
