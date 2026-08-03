@@ -32,13 +32,14 @@ jobs:
         shell: pwsh
         run: |
           $reportPath = '.\artifacts\compatibility\hermes-agent-patch-smoke\hermes-agent-report.json'
+          $workRoot = '.\temp\compatibility\hermes-agent-patch-smoke'
           $stdoutPath = Join-Path $env:RUNNER_TEMP 'hermes-agent-patch-smoke.stdout.log'
           $stderrPath = Join-Path $env:RUNNER_TEMP 'hermes-agent-patch-smoke.stderr.log'
           $arguments = @(
             '.\scripts\ci\compatibility.py',
             'hermes-agent',
             '--repository-root', '.',
-            '--work-dir', '.\temp\compatibility\hermes-agent-patch-smoke',
+            '--work-dir', $workRoot,
             '--log-dir', '.\artifacts\compatibility\hermes-agent-patch-smoke\logs',
             '--report', $reportPath,
             '--run-desktop-checks',
@@ -87,21 +88,43 @@ jobs:
             }
           )
 
+          $benchmarkTestExit = -1
+          if ($checkerExit -eq 0 -and $failedStages.Count -eq 0) {
+            $source = Resolve-Path (Join-Path $workRoot 'hermes-agent')
+            $desktop = Join-Path $source 'apps\desktop'
+            $vitest = Join-Path $source 'node_modules\.bin\vitest.cmd'
+            if (-not (Test-Path -LiteralPath $vitest -PathType Leaf)) {
+              throw "Vitest executable is missing after dependency installation: $vitest"
+            }
+
+            Push-Location $desktop
+            try {
+              & $vitest run `
+                --project electron `
+                electron/hermes-local-control.test.ts `
+                electron/hermes-local-benchmark-progress.test.ts
+              $benchmarkTestExit = $LASTEXITCODE
+            } finally {
+              Pop-Location
+            }
+          }
+
           @(
             '# Hermes Agent patch smoke',
             '',
             "**Checker exit:** ``$checkerExit``",
             "**Candidate status:** ``$($report.status)``",
             "**Pinned preimage tree:** ``$($report.metadata.preimageSeedTree)``",
-            "**Required stages:** ``$($requiredStages -join ', ')``"
+            "**Required stages:** ``$($requiredStages -join ', ')``",
+            "**Benchmark regression exit:** ``$benchmarkTestExit``"
           ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
 
           foreach ($failure in @($report.failures)) {
             "- **$($failure.stage):** $($failure.message)" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
           }
 
-          if ($checkerExit -ne 0 -or $failedStages.Count -gt 0) {
-            throw "Hermes Agent Desktop validation failed: $($failedStages -join ', '); checker exit $checkerExit."
+          if ($checkerExit -ne 0 -or $failedStages.Count -gt 0 -or $benchmarkTestExit -ne 0) {
+            throw "Hermes Agent Desktop validation failed: $($failedStages -join ', '); checker exit $checkerExit; benchmark regression exit $benchmarkTestExit."
           }
 
       - name: Upload patch application evidence
