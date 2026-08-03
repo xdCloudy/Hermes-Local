@@ -9,15 +9,15 @@ benchmarking and operating local GGUF models—without requiring Docker, WSL or
 a paid inference API.
 
 [**Releases**](https://github.com/xdCloudy/Hermes-Local/releases/latest) ·
-[**Install**](#quick-start) ·
+[**Install**](#install) ·
 [**Explore the docs**](docs/README.md) ·
 [**View the roadmap**](#roadmap) ·
 [**Contribute**](CONTRIBUTING.md)
 
 [![Latest release](https://img.shields.io/github/v/release/xdCloudy/Hermes-Local?display_name=tag&sort=semver&style=for-the-badge)](https://github.com/xdCloudy/Hermes-Local/releases/latest)
 [![License](https://img.shields.io/github/license/xdCloudy/Hermes-Local?style=for-the-badge)](LICENSE)
-[![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=Windows&logoColor=white&style=for-the-badge)](docs/INSTALLATION.md)
-[![PowerShell 7](https://img.shields.io/badge/PowerShell-7-5391FE?logo=PowerShell&logoColor=white&style=for-the-badge)](docs/INSTALLATION.md)
+[![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white&style=for-the-badge)](docs/INSTALLATION.md)
+[![PowerShell 7](https://img.shields.io/badge/PowerShell-7-5391FE?logo=powershell&logoColor=white&style=for-the-badge)](docs/INSTALLATION.md)
 
 [![PowerShell validation](https://github.com/xdCloudy/Hermes-Local/actions/workflows/powershell-validation.yml/badge.svg)](https://github.com/xdCloudy/Hermes-Local/actions/workflows/powershell-validation.yml)
 [![README dashboard](https://github.com/xdCloudy/Hermes-Local/actions/workflows/update-readme.yml/badge.svg)](https://github.com/xdCloudy/Hermes-Local/actions/workflows/update-readme.yml)
@@ -33,64 +33,7 @@ a paid inference API.
 
 </div>
 
----
-
-## Table of Contents
-
-- [Quick Start](#quick-start)
-- [Why Hermes Local](#why-hermes-local)
-- [Current Capability](#current-capability)
-- [See it in Action](#see-it-in-action)
-- [Roadmap](#roadmap)
-- [Architecture](#architecture)
-- [Install](#install)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
-- [Get Help](#get-help)
-- [FAQ](#faq)
-- [License](#license)
-
----
-
 ![Hermes Local workstation home screen](docs/assets/screenshots/home.png)
-
-## Quick Start
-
-**The fastest way to get Hermes Local running:**
-
-```powershell
-git clone https://github.com/xdCloudy/Hermes-Local.git
-Set-Location .\Hermes-Local
-& '.\Setup-Hermes-Local.ps1' -NonInteractive
-```
-
-**Prerequisites (installed automatically by setup):**
-
-- Windows 10 or Windows 11 x64
-- PowerShell 7
-- Git, Node.js, uv and CMake (via `winget`)
-- Visual Studio 2022 C++ Build Tools
-- At least 16 GB free RAM before model weights
-
-For detailed installation options, see the [Installation Guide](docs/INSTALLATION.md).
-
----
-
-### Launch & Maintenance
-
-```powershell
-# Start the stack
-& '.\Start-Hermes-Local.ps1' -NonInteractive
-
-# Open the desktop control centre
-& '.\dist\Hermes Launcher.exe'
-
-# Check health and stop when done
-& '.\Test-Hermes-Local.ps1' -NonInteractive
-& '.\Stop-Hermes-Local.ps1' -NonInteractive
-```
-
----
 
 > [!IMPORTANT]
 > Hermes Local is active pre-1.0 software. The current Windows release packages
@@ -326,35 +269,18 @@ Omit `-Profile` to use the current launcher selection.
 
 </details>
 
-## Get Help
-
-**Quick links:**
-
-- [Documentation home](docs/README.md) → comprehensive guides
-- [Troubleshooting](docs/TROUBLESHOOTING.md) → common issues and fixes
-- [User guide](docs/USER_GUIDE.md) → daily operations
-- [Security model](docs/SECURITY.md) → trust boundaries and controls
-
-### Community & Support
-
-**Ask questions:** Use GitHub Discussions for help and feature requests.
-**Report bugs:** [Open a bug report](https://github.com/xdCloudy/Hermes-Local/issues/new?template=bug_report.yml)
-**Request features:** [Open a feature request](https://github.com/xdCloudy/Hermes-Local/issues/new?template=feature_request.yml)
-
----
-
 ## Documentation
 
-|| Start here | Build and operate | Evidence and governance |
-||---|---|---|
-|| [Documentation home](docs/README.md) | [Installation](docs/INSTALLATION.md) | [Acceptance results](docs/ACCEPTANCE_RESULTS.md) |
-|| [User guide](docs/USER_GUIDE.md) | [Models and profiles](docs/MODEL_TUNING.md) | [Security model](docs/SECURITY.md) |
-|| [Architecture](docs/ARCHITECTURE.md) | [Update and rollback](docs/UPDATE_AND_ROLLBACK.md) | [Roadmap views](docs/PROJECT-VIEWS.md) |
-|| [Feature matrix](docs/FREE_FEATURE_MATRIX.md) | [Troubleshooting](docs/TROUBLESHOOTING.md) | [Development](docs/DEVELOPMENT.md) |
+| Start here | Build and operate | Evidence and governance |
+|---|---|---|
+| [Documentation home](docs/README.md) | [Installation](docs/INSTALLATION.md) | [Acceptance results](docs/ACCEPTANCE_RESULTS.md) |
+| [User guide](docs/USER_GUIDE.md) | [Models and profiles](docs/MODEL_TUNING.md) | [Security model](docs/SECURITY.md) |
+| [Architecture](docs/ARCHITECTURE.md) | [Update and rollback](docs/UPDATE_AND_ROLLBACK.md) | [Roadmap views](docs/PROJECT-VIEWS.md) |
+| [Feature matrix](docs/FREE_FEATURE_MATRIX.md) | [Troubleshooting](docs/TROUBLESHOOTING.md) | [Development](docs/DEVELOPMENT.md) |
 
 ## Contributing
 
-Contribations are welcome across Windows engineering, inference optimisation,
+Contributions are welcome across Windows engineering, inference optimisation,
 benchmarking, UX, documentation and testing.
 
 1. Read the [contributor guide](CONTRIBUTING.md) and
