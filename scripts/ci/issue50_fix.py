@@ -33,6 +33,12 @@ def main() -> int:
         replace_required(types, field, field.replace(":", "?:", 1))
 
     replace_required(
+        types,
+        "  last_active_at?: null | number\n  path_state: 'available' | 'inaccessible' | 'missing' | 'moved'",
+        "  last_active_at?: null | number\n  path_state?: 'available' | 'inaccessible' | 'missing' | 'moved'",
+    )
+
+    replace_required(
         tests,
         "  $activeProjectId,\n  $projectScope,\n  $projects,",
         "  $activeProjectId,\n  $projects,\n  $projectScope,",
