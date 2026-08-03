@@ -28,9 +28,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Reconstruct and validate current upstream candidate
+      - name: Reconstruct and validate pinned release integration
         shell: pwsh
         run: |
+          $manifest = Get-Content -Raw -LiteralPath '.\VERSION.json' | ConvertFrom-Json
+          $candidate = [string]$manifest.sources.hermesAgent.commit
           $reportPath = '.\artifacts\compatibility\hermes-agent-patch-smoke\hermes-agent-report.json'
           $workRoot = '.\temp\compatibility\hermes-agent-patch-smoke'
           $stdoutPath = Join-Path $env:RUNNER_TEMP 'hermes-agent-patch-smoke.stdout.log'
@@ -39,6 +41,7 @@ jobs:
             '.\scripts\ci\compatibility.py',
             'hermes-agent',
             '--repository-root', '.',
+            '--candidate-ref', $candidate,
             '--work-dir', $workRoot,
             '--log-dir', '.\artifacts\compatibility\hermes-agent-patch-smoke\logs',
             '--report', $reportPath,
@@ -90,7 +93,7 @@ jobs:
             }
           )
 
-          $benchmarkTestExit = -1
+          $focusedTestExit = -1
           if ($checkerExit -eq 0 -and $failedStages.Count -eq 0) {
             $source = Resolve-Path (Join-Path $workRoot 'hermes-agent')
             $desktop = Join-Path $source 'apps\desktop'
@@ -100,8 +103,9 @@ jobs:
               & npm.cmd --prefix $source exec -- vitest run `
                 --project electron `
                 electron/hermes-local-control.test.ts `
+                electron/hermes-local-update.test.ts `
                 electron/hermes-local-benchmark-progress.test.ts
-              $benchmarkTestExit = $LASTEXITCODE
+              $focusedTestExit = $LASTEXITCODE
             } finally {
               Pop-Location
             }
@@ -110,19 +114,20 @@ jobs:
           @(
             '# Hermes Agent patch smoke',
             '',
+            "**Pinned candidate:** ``$candidate``",
             "**Checker exit:** ``$checkerExit``",
             "**Candidate status:** ``$($report.status)``",
             "**Pinned preimage tree:** ``$($report.metadata.preimageSeedTree)``",
             "**Required stages:** ``$($requiredStages -join ', ')``",
-            "**Benchmark regression exit:** ``$benchmarkTestExit``"
+            "**Focused regression exit:** ``$focusedTestExit``"
           ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
 
           foreach ($failure in @($report.failures)) {
             "- **$($failure.stage):** $($failure.message)" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
           }
 
-          if ($checkerExit -ne 0 -or $failedStages.Count -gt 0 -or $benchmarkTestExit -ne 0) {
-            throw "Hermes Agent Desktop validation failed: $($failedStages -join ', '); checker exit $checkerExit; benchmark regression exit $benchmarkTestExit."
+          if ($checkerExit -ne 0 -or $failedStages.Count -gt 0 -or $focusedTestExit -ne 0) {
+            throw "Hermes Agent Desktop validation failed: $($failedStages -join ', '); checker exit $checkerExit; focused regression exit $focusedTestExit."
           }
 
       - name: Upload patch application evidence

@@ -195,6 +195,7 @@ function New-HermesUpdateState {
         [Parameter(Mandatory)][string] $Component,
         [Parameter(Mandatory)][string] $Mode,
         [Parameter(Mandatory)][string] $Caller,
+        [AllowNull()][string] $TaskId,
         [Parameter(Mandatory)][string] $StatePath
     )
 
@@ -221,6 +222,7 @@ function New-HermesUpdateState {
             requestedAt = $now
         }
         caller = $Caller
+        taskId = if ($TaskId) { $TaskId } else { $null }
         status = 'queued'
         currentStage = $null
         progress = [ordered]@{
@@ -233,6 +235,7 @@ function New-HermesUpdateState {
             [ordered]@{ resource = 'workstation'; mode = 'exclusive' }
         )
         stages = $stages
+        stageResults = [ordered]@{}
         logs = @()
         recovery = [ordered]@{
             staleLockRecovered = $false
@@ -821,13 +824,33 @@ function New-HermesLauncherUpdateAdapter {
     }
 }
 
+function ConvertFrom-HermesAgentUpdateOutput {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string] $Text)
+
+    $marker = @(
+        $Text -split '\r?\n' |
+            Where-Object { $_ -like '::hermes-update-result::*' }
+    ) | Select-Object -Last 1
+    if (-not $marker) {
+        throw 'Hermes Agent updater did not emit a structured result marker.'
+    }
+    $json = $marker.Substring('::hermes-update-result::'.Length)
+    try {
+        $json | ConvertFrom-Json -Depth 64
+    } catch {
+        throw "Hermes Agent updater returned invalid structured JSON. $($_.Exception.Message)"
+    }
+}
+
 function Invoke-HermesAgentUpdateDelegate {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][pscustomobject] $Context,
         [Parameter(Mandatory)]
-        [ValidateSet('Check', 'Apply', 'Rollback')]
-        [string] $Mode
+        [ValidateSet('Check', 'Compatibility', 'Apply', 'Rollback')]
+        [string] $Mode,
+        [switch] $SkipCompatibility
     )
 
     $arguments = @(
@@ -836,6 +859,9 @@ function Invoke-HermesAgentUpdateDelegate {
         '-Mode', $Mode,
         '-NonInteractive'
     )
+    if ($SkipCompatibility) {
+        $arguments += '-SkipCompatibility'
+    }
     if ($Mode -ne 'Rollback' -and
         $Context.Input.ContainsKey('TargetCommit') -and
         $Context.Input.TargetCommit) {
@@ -846,8 +872,42 @@ function Invoke-HermesAgentUpdateDelegate {
         $Context.Input.TargetBranch) {
         $arguments += @('-TargetBranch', [string]$Context.Input.TargetBranch)
     }
-    Invoke-HermesUpdateProcess -FilePath 'pwsh.exe' -ArgumentList $arguments
-    [ordered]@{ delegated = $true; mode = $Mode }
+
+    $validated = Assert-HermesUpdateNativeArguments `
+        -FilePath 'pwsh.exe' `
+        -ArgumentList $arguments
+    Push-Location (Get-HermesRoot)
+    try {
+        $outputLines = @(
+            & 'pwsh.exe' @validated 2>&1 | ForEach-Object {
+                $line = [string]$_
+                if ($line -like '::hermes-update-stage::*') {
+                    # Write-Host bypasses assignment capture, allowing Desktop to
+                    # receive typed nested stages while the delegate is still running.
+                    Write-Host $line
+                }
+                $line
+            }
+        )
+        $exitCode = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    $output = ($outputLines -join [Environment]::NewLine).Trim()
+    $record = ConvertFrom-HermesAgentUpdateOutput -Text $output
+    if ([string]$record.status -eq 'failed' -or $exitCode -ne 0) {
+        $Context.Working.DelegateFailure = [ordered]@{
+            code = [string]$record.failure.code
+            message = [string]$record.failure.message
+            type = [string]$record.failure.type
+            stage = [string]$record.stage
+            activePreserved = [bool]$record.activePreserved
+            rollback = $record.rollback
+            mode = [string]$record.mode
+        }
+        throw [string]$record.failure.message
+    }
+    $record
 }
 
 function New-HermesAgentUpdateAdapter {
@@ -858,21 +918,30 @@ function New-HermesAgentUpdateAdapter {
         AutoRollbackOnFailure = $false
         check = {
             param($Context)
-            Invoke-HermesAgentUpdateDelegate -Context $Context -Mode Check
+            $result = Invoke-HermesAgentUpdateDelegate -Context $Context -Mode Check
+            if (-not $Context.Input.ContainsKey('TargetCommit') -and $result.candidate) {
+                # Pin the resolved upstream candidate for every later stage so a
+                # moving branch cannot be checked and then promote a different commit.
+                $Context.Input.TargetCommit = ([string]$result.candidate).ToLowerInvariant()
+            }
+            $result
         }
         compatibility = {
             param($Context)
             if (-not (Test-Path -LiteralPath (Resolve-HermesPath 'Update-Hermes-Agent.ps1') -PathType Leaf)) {
                 throw 'Update-Hermes-Agent.ps1 is missing.'
             }
-            [ordered]@{ compatible = $true; delegated = $true }
+            if ($Context.Mode -eq 'Rollback') {
+                return [ordered]@{ compatible = $true; delegated = $false }
+            }
+            Invoke-HermesAgentUpdateDelegate -Context $Context -Mode Compatibility
         }
         prepare = { param($Context) [ordered]@{ delegated = $true; stage = 'prepare' } }
         verify = { param($Context) [ordered]@{ delegated = $true; stage = 'verify' } }
         backup = { param($Context) [ordered]@{ delegated = $true; stage = 'backup' } }
         promote = {
             param($Context)
-            Invoke-HermesAgentUpdateDelegate -Context $Context -Mode Apply
+            Invoke-HermesAgentUpdateDelegate -Context $Context -Mode Apply -SkipCompatibility
         }
         validate = { param($Context) [ordered]@{ delegated = $true; stage = 'validate' } }
         rollback = {
@@ -944,8 +1013,13 @@ function Write-HermesUpdateOperationReport {
         operationId = $State.operationId
         identity = $State.identity
         caller = $State.caller
+        taskId = $State.taskId
         status = $State.status
+        progress = $State.progress
         stages = @($State.stages)
+        stageResults = $State.stageResults
+        logs = @($State.logs)
+        recovery = $State.recovery
         result = $State.result
         failure = $State.failure
         sourceStatePath = $State.statePath
@@ -963,7 +1037,7 @@ function Invoke-HermesUpdateOperation {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('Check', 'Apply', 'Rollback')]
+        [ValidateSet('Check', 'Compatibility', 'Apply', 'Rollback')]
         [string] $Mode,
         [Parameter(Mandatory)][string] $Component,
         [ValidateSet('Cli', 'Desktop', 'Installer', 'Recovery', 'Test')]
@@ -972,7 +1046,7 @@ function Invoke-HermesUpdateOperation {
         [string] $StoreRoot
     )
 
-    if ($Mode -ne 'Check' -and $Component -eq 'All') {
+    if ($Mode -notin @('Check', 'Compatibility') -and $Component -eq 'All') {
         $Component = 'Launcher'
     }
     $adapter = Get-HermesUpdateAdapter -Name $Component
@@ -982,11 +1056,13 @@ function Invoke-HermesUpdateOperation {
 
     $operationId = [guid]::NewGuid().ToString('N')
     $statePath = Join-Path $paths.StateRoot "$operationId.json"
+    $taskId = if ($Options.ContainsKey('TaskId')) { [string]$Options.TaskId } else { $null }
     $state = New-HermesUpdateState `
         -OperationId $operationId `
         -Component $Component `
         -Mode $Mode `
         -Caller $Caller `
+        -TaskId $taskId `
         -StatePath $statePath
     Write-HermesUpdateState -State $state -Paths $paths
 
@@ -1026,6 +1102,8 @@ function Invoke-HermesUpdateOperation {
         }
         $sequence = if ($Mode -eq 'Check') {
             @('check')
+        } elseif ($Mode -eq 'Compatibility') {
+            @('check', 'compatibility')
         } elseif ($Mode -eq 'Apply') {
             @('check', 'compatibility', 'prepare', 'verify', 'backup', 'promote', 'validate')
         } else {
@@ -1058,6 +1136,7 @@ function Invoke-HermesUpdateOperation {
                     -Stage $stage `
                     -Status succeeded `
                     -Message 'Stage completed.'
+                $state.stageResults[$stage] = $stageResult.Result
                 $state.result = $stageResult.Result
             }
             Add-HermesUpdateLog -State $state -Message "Stage '$stage' completed."
@@ -1098,10 +1177,27 @@ function Invoke-HermesUpdateOperation {
                 -Message 'Stage failed.' `
                 -ErrorMessage $failure.Exception.Message
         }
-        $state.failure = [ordered]@{
-            code = 'update-operation-failed'
-            message = $failure.Exception.Message
-            type = $failure.Exception.GetType().FullName
+        $delegateFailure = if ($context -and $context.Working.ContainsKey('DelegateFailure')) {
+            $context.Working.DelegateFailure
+        } else {
+            $null
+        }
+        $state.failure = if ($delegateFailure) {
+            [ordered]@{
+                code = [string]$delegateFailure.code
+                message = [string]$delegateFailure.message
+                type = [string]$delegateFailure.type
+                stage = [string]$delegateFailure.stage
+                activePreserved = [bool]$delegateFailure.activePreserved
+                rollback = $delegateFailure.rollback
+            }
+        } else {
+            [ordered]@{
+                code = 'update-operation-failed'
+                message = $failure.Exception.Message
+                type = $failure.Exception.GetType().FullName
+                stage = $failedStage
+            }
         }
         Add-HermesUpdateLog -State $state -Level ERROR -Message $failure.Exception.Message
 
@@ -1153,7 +1249,33 @@ function Invoke-HermesUpdateOperation {
                     -Message "Rollback failed: $($_.Exception.Message)"
             }
         } else {
-            $state.status = 'failed'
+            $delegateRollback = if ($delegateFailure -and $delegateFailure.rollback) {
+                [string]$delegateFailure.rollback.status
+            } else {
+                ''
+            }
+            if ($Mode -eq 'Apply' -and $delegateRollback -eq 'succeeded') {
+                $rollbackStage = @($state.stages | Where-Object { $_.name -eq 'rollback' })[0]
+                if ($rollbackStage.status -eq 'pending') {
+                    Set-HermesUpdateStageState `
+                        -State $state `
+                        -Stage rollback `
+                        -Status succeeded `
+                        -Message 'The delegated updater restored the prior known-good installation.'
+                }
+                $state.status = 'rolled-back'
+                $state.result = [ordered]@{
+                    failedStage = [string]$delegateFailure.stage
+                    activePreserved = [bool]$delegateFailure.activePreserved
+                    rollback = $delegateFailure.rollback
+                }
+                Add-HermesUpdateLog `
+                    -State $state `
+                    -Level WARN `
+                    -Message 'The delegated Hermes Agent updater reported a successful rollback.'
+            } else {
+                $state.status = 'failed'
+            }
         }
 
         foreach ($pending in @($state.stages | Where-Object { $_.status -eq 'pending' })) {

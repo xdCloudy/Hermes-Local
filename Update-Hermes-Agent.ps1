@@ -1,6 +1,6 @@
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 param(
-    [ValidateSet('Check', 'Apply', 'Rollback')]
+    [ValidateSet('Check', 'Compatibility', 'Apply', 'Rollback')]
     [string] $Mode = 'Apply',
 
     [ValidatePattern('^[0-9a-fA-F]{40}$')]
@@ -9,7 +9,9 @@ param(
     [ValidatePattern('^[A-Za-z0-9._/-]+$')]
     [string] $TargetBranch,
 
-    [switch] $NonInteractive
+    [switch] $NonInteractive,
+
+    [switch] $SkipCompatibility
 )
 
 Set-StrictMode -Version Latest
@@ -18,6 +20,53 @@ Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Configuration.psm1') -Force
 
 $HermesAgentNpmVersion = '12.0.0'
+
+$script:AgentUpdateStage = 'check'
+$script:AgentUpdateRollbackStatus = 'not-required'
+
+function Write-HermesAgentUpdateStage {
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet(
+            'check', 'compatibility', 'prepare', 'patch', 'dependency',
+            'schema', 'backup', 'promote', 'build', 'test', 'validate',
+            'rollback', 'complete'
+        )]
+        [string] $Stage,
+        [Parameter(Mandatory)]
+        [string] $Message
+    )
+
+    $script:AgentUpdateStage = $Stage
+    Write-Output "::hermes-update-stage::$Stage::$Message"
+}
+
+function Get-HermesAgentUpdateFailureCode {
+    param([Parameter(Mandatory)][string] $Stage)
+
+    switch ($Stage) {
+        'check' { 'update-check-failed' }
+        'compatibility' { 'compatibility-failed' }
+        'prepare' { 'prepare-failed' }
+        'patch' { 'patch-conflict' }
+        'dependency' { 'dependency-failed' }
+        'schema' { 'schema-failed' }
+        'backup' { 'backup-failed' }
+        'promote' { 'promotion-failed' }
+        'build' { 'build-failed' }
+        'test' { 'test-failed' }
+        'validate' { 'validation-failed' }
+        'rollback' { 'rollback-failed' }
+        default { 'update-operation-failed' }
+    }
+}
+
+function Write-HermesAgentUpdateResult {
+    param([Parameter(Mandatory)][object] $Record)
+
+    $json = $Record | ConvertTo-Json -Depth 24 -Compress
+    Write-Output "::hermes-update-result::$json"
+}
 
 function Invoke-NativeText {
     param(
@@ -321,6 +370,7 @@ function New-StagedAgentCandidate {
         throw "Hermes Local integration patches are missing from $patchDirectory."
     }
 
+    Write-HermesAgentUpdateStage -Stage prepare -Message "Preparing isolated candidate $Candidate."
     [System.IO.Directory]::CreateDirectory($stageRoot) | Out-Null
     try {
         # The mail patches contain abbreviated preimage blob IDs. A blob-filtered
@@ -342,6 +392,7 @@ function New-StagedAgentCandidate {
             '-C', $source, 'switch', '-c', $integrationBranch
         ) -LogComponent update
 
+        Write-HermesAgentUpdateStage -Stage patch -Message "Replaying $($patches.Count) Hermes Local integration patches."
         try {
             Invoke-AgentPatchSeries `
                 -Source $source `
@@ -353,6 +404,7 @@ function New-StagedAgentCandidate {
             throw "The Hermes Local patch series did not apply cleanly to $Candidate. The active installation was not changed. $($_.Exception.Message)"
         }
 
+        Write-HermesAgentUpdateStage -Stage compatibility -Message 'Verifying the reconstructed integration tree.'
         $integrationCommit = Invoke-NativeText -FilePath 'git' -WorkingDirectory $source -ArgumentList @('rev-parse', 'HEAD')
         $integrationTree = Invoke-NativeText -FilePath 'git' -WorkingDirectory $source -ArgumentList @('rev-parse', 'HEAD^{tree}')
         $status = Invoke-NativeText -FilePath 'git' -WorkingDirectory $source -ArgumentList @('status', '--porcelain')
@@ -379,6 +431,141 @@ function New-StagedAgentCandidate {
     }
 }
 
+function New-CompatibleAgentCandidate {
+    param(
+        [Parameter(Mandatory)][pscustomobject] $Manifest,
+        [Parameter(Mandatory)][string] $Candidate,
+        [Parameter(Mandatory)][string] $Stamp
+    )
+
+    $staged = New-StagedAgentCandidate -Manifest $Manifest -Candidate $Candidate -Stamp $Stamp
+    try {
+        Write-HermesAgentUpdateStage -Stage dependency -Message 'Installing candidate Node and Python dependencies in isolation.'
+        Invoke-HermesProcess -FilePath 'npx.cmd' -ArgumentList @(
+            '--yes', "npm@$HermesAgentNpmVersion",
+            '--prefix', $staged.Source,
+            'ci', '--no-audit', '--fund=false'
+        ) -LogComponent update
+
+        $uvCommand = Get-Command 'uv.exe' -ErrorAction SilentlyContinue
+        if (-not $uvCommand) {
+            $uvCommand = Get-Command 'uv' -ErrorAction SilentlyContinue
+        }
+        if (-not $uvCommand) {
+            throw 'uv is required to validate Hermes Agent Python dependencies.'
+        }
+        $uvArguments = @('sync', '--extra', 'all', '--extra', 'dev')
+        if (Test-Path -LiteralPath (Join-Path $staged.Source 'uv.lock') -PathType Leaf) {
+            $uvArguments += '--frozen'
+        }
+        Invoke-HermesProcess `
+            -FilePath $uvCommand.Source `
+            -ArgumentList $uvArguments `
+            -WorkingDirectory $staged.Source `
+            -LogComponent update
+
+        Write-HermesAgentUpdateStage -Stage schema -Message 'Validating manifests, TypeScript contracts and Python modules.'
+        foreach ($required in @(
+            'package.json', 'apps\desktop\package.json', 'pyproject.toml',
+            'apps\desktop\electron\hermes-local-control.ts'
+        )) {
+            if (-not (Test-Path -LiteralPath (Join-Path $staged.Source $required) -PathType Leaf)) {
+                throw "Candidate schema is missing required file '$required'."
+            }
+        }
+        Invoke-HermesProcess -FilePath 'npx.cmd' -ArgumentList @(
+            '--yes', "npm@$HermesAgentNpmVersion",
+            '--prefix', $staged.Source,
+            'run', 'typecheck', '--workspace', 'apps/desktop'
+        ) -LogComponent update
+        $candidatePython = Join-Path $staged.Source '.venv\Scripts\python.exe'
+        if (-not (Test-Path -LiteralPath $candidatePython -PathType Leaf)) {
+            throw "Candidate Python environment was not created: $candidatePython"
+        }
+        Invoke-HermesProcess `
+            -FilePath $candidatePython `
+            -ArgumentList @('-m', 'compileall', '-q', 'hermes_cli', 'tui_gateway') `
+            -WorkingDirectory $staged.Source `
+            -LogComponent update
+
+        Write-HermesAgentUpdateStage -Stage test -Message 'Running focused packaged Desktop and backend regression tests.'
+        Invoke-HermesProcess -FilePath 'npx.cmd' -ArgumentList @(
+            '--yes', "npm@$HermesAgentNpmVersion",
+            '--prefix', $staged.Source,
+            'exec', '--', 'vitest', 'run', '--project', 'electron',
+            'electron/hermes-local-control.test.ts',
+            'electron/hermes-local-update.test.ts'
+        ) -WorkingDirectory (Join-Path $staged.Source 'apps\desktop') -LogComponent update
+        Invoke-HermesProcess `
+            -FilePath $candidatePython `
+            -ArgumentList @(
+                '-m', 'pytest',
+                'tests/hermes_state/test_session_md_export.py',
+                'tests/tui_gateway/test_projects_rpc.py',
+                '-q'
+            ) `
+            -WorkingDirectory $staged.Source `
+            -LogComponent update
+
+        Write-HermesAgentUpdateStage -Stage build -Message 'Building the candidate Desktop workspace.'
+        Invoke-HermesProcess -FilePath 'npx.cmd' -ArgumentList @(
+            '--yes', "npm@$HermesAgentNpmVersion",
+            '--prefix', $staged.Source,
+            'run', 'build', '--workspace', 'apps/desktop'
+        ) -LogComponent update
+        return $staged
+    } catch {
+        $failedRoot = Resolve-HermesPath "build\updates\failed\hermes-agent-compatibility-$Stamp"
+        if (Test-Path -LiteralPath $staged.Root) {
+            [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($failedRoot)) | Out-Null
+            if (Test-Path -LiteralPath $failedRoot) {
+                Remove-Item -LiteralPath $failedRoot -Recurse -Force
+            }
+            Move-Item -LiteralPath $staged.Root -Destination $failedRoot
+        }
+        throw
+    }
+}
+
+function Invoke-AgentCompatibility {
+    $manifest = Get-HermesVersionManifest
+    Write-HermesAgentUpdateStage -Stage compatibility -Message 'Validating the active checkout before candidate testing.'
+    Assert-ActiveAgentIsReplaceable -Manifest $manifest
+    Write-HermesAgentUpdateStage -Stage check -Message 'Resolving the requested upstream candidate.'
+    $candidate = Get-AgentCandidate -Manifest $manifest
+    $currentBase = ([string]$manifest.sources.hermesAgent.commit).ToLowerInvariant()
+    $patchDirectory = Resolve-HermesPath ([string]$manifest.sources.hermesAgent.patchSeries)
+    $patchCount = @(Get-ChildItem -LiteralPath $patchDirectory -Filter '*.patch' -File).Count
+
+    if ($candidate -eq $currentBase) {
+        return [ordered]@{
+            component = 'HermesAgent'
+            status = 'already-current'
+            compatible = $true
+            current = $currentBase
+            candidate = $candidate
+            patchCount = $patchCount
+        }
+    }
+
+    $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+    $staged = New-CompatibleAgentCandidate -Manifest $manifest -Candidate $candidate -Stamp $stamp
+    $result = [ordered]@{
+        component = 'HermesAgent'
+        status = 'compatible'
+        compatible = $true
+        current = $currentBase
+        candidate = $candidate
+        patchCount = $patchCount
+        integrationCommit = $staged.IntegrationCommit
+        integrationTree = $staged.IntegrationTree
+    }
+    if (Test-Path -LiteralPath $staged.Root) {
+        Remove-Item -LiteralPath $staged.Root -Recurse -Force
+    }
+    return $result
+}
+
 function Start-And-TestAgent {
     param(
         [Parameter(Mandatory)]
@@ -399,10 +586,13 @@ function Stop-AgentStack {
 
 function Invoke-AgentApply {
     $manifest = Get-HermesVersionManifest
+    Write-HermesAgentUpdateStage -Stage compatibility -Message 'Validating the active checkout.'
     Assert-ActiveAgentIsReplaceable -Manifest $manifest
+    Write-HermesAgentUpdateStage -Stage check -Message 'Resolving the requested upstream candidate.'
     $candidate = Get-AgentCandidate -Manifest $manifest
     $currentBase = ([string]$manifest.sources.hermesAgent.commit).ToLowerInvariant()
     if ($candidate -eq $currentBase) {
+        Write-HermesAgentUpdateStage -Stage complete -Message 'Hermes Agent is already current.'
         return [ordered]@{
             component = 'HermesAgent'
             status = 'already-current'
@@ -418,7 +608,11 @@ function Invoke-AgentApply {
     }
 
     $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
-    $staged = New-StagedAgentCandidate -Manifest $manifest -Candidate $candidate -Stamp $stamp
+    $staged = if ($SkipCompatibility) {
+        New-StagedAgentCandidate -Manifest $manifest -Candidate $candidate -Stamp $stamp
+    } else {
+        New-CompatibleAgentCandidate -Manifest $manifest -Candidate $candidate -Stamp $stamp
+    }
     $runState = Get-AgentRunState
     $activeSource = Resolve-HermesPath 'source\hermes-agent'
     $activeVenv = Resolve-HermesPath 'runtimes\python\hermes'
@@ -436,6 +630,7 @@ function Invoke-AgentApply {
     [System.IO.Directory]::CreateDirectory($historyRoot) | Out-Null
 
     try {
+        Write-HermesAgentUpdateStage -Stage backup -Message 'Stopping services and capturing the known-good installation.'
         Stop-AgentStack
         Invoke-HermesPowerShellScript -RelativePath 'Backup-Hermes-Local.ps1' -Arguments @(
             '-Name', "pre-hermes-agent-update-$Stamp", '-NonInteractive'
@@ -451,6 +646,7 @@ function Invoke-AgentApply {
             Copy-Item -Path (Join-Path $dist '*') -Destination $knownDist -Recurse -Force
         }
 
+        Write-HermesAgentUpdateStage -Stage promote -Message 'Promoting the verified candidate into the active installation.'
         Move-Item -LiteralPath $staged.Source -Destination $activeSource
         Set-HermesAgentSourceOverride `
             -BaseCommit $staged.BaseCommit `
@@ -458,18 +654,22 @@ function Invoke-AgentApply {
             -IntegrationTree $staged.IntegrationTree
         $promoted = $true
 
+        Write-HermesAgentUpdateStage -Stage dependency -Message 'Reinstalling active Hermes Agent dependencies.'
         Invoke-HermesPowerShellScript -RelativePath 'Setup-Hermes-Local.ps1' -Arguments @(
             '-SkipModel', '-SkipLlamaBuild', '-SkipLauncherBuild',
             '-ReinstallDependencies', '-NonInteractive'
         )
+        Write-HermesAgentUpdateStage -Stage build -Message 'Rebuilding the packaged Hermes Launcher.'
         Invoke-HermesPowerShellScript -RelativePath 'Build-Hermes-Launcher.ps1' -Arguments @('-NonInteractive')
+        Write-HermesAgentUpdateStage -Stage test -Message 'Starting and health-checking the promoted backend.'
         Start-And-TestAgent -Profile $runState.Profile
         if (-not $runState.WasRunning) {
             Stop-AgentStack
         }
 
+        Write-HermesAgentUpdateStage -Stage validate -Message 'Recording the verified integration and recovery history.'
         $history = [ordered]@{
-            schemaVersion = 1
+            schemaVersion = 2
             component = 'HermesAgent'
             status = 'succeeded'
             appliedAt = (Get-Date).ToUniversalTime().ToString('o')
@@ -489,45 +689,56 @@ function Invoke-AgentApply {
             }
         }
         $historyPath = Join-Path $historyRoot "$Stamp-hermes-agent.json"
+        $history.reportPath = $historyPath
         Write-HermesAtomicText -Path $historyPath -Content (
             ($history | ConvertTo-Json -Depth 12) + [Environment]::NewLine
         )
         if (Test-Path -LiteralPath $staged.Root) {
             Remove-Item -LiteralPath $staged.Root -Recurse -Force
         }
+        Write-HermesAgentUpdateStage -Stage complete -Message 'Hermes Agent update completed and passed health checks.'
         return $history
     } catch {
         $failure = $_
         if ($promoted -or $capturedPrevious) {
-            try { Stop-AgentStack } catch { }
-            $failedRoot = Resolve-HermesPath "build\updates\failed\hermes-agent-promoted-$Stamp"
-            [System.IO.Directory]::CreateDirectory($failedRoot) | Out-Null
-            if (Test-Path -LiteralPath $activeSource) {
-                Move-Item -LiteralPath $activeSource -Destination (Join-Path $failedRoot 'source')
-            }
-            if (Test-Path -LiteralPath $activeVenv) {
-                Move-Item -LiteralPath $activeVenv -Destination (Join-Path $failedRoot 'venv')
-            }
-            if (Test-Path -LiteralPath $knownSource) {
-                Move-Item -LiteralPath $knownSource -Destination $activeSource
-            }
-            if (Test-Path -LiteralPath $knownVenv) {
-                Move-Item -LiteralPath $knownVenv -Destination $activeVenv
-            }
-            if (Test-Path -LiteralPath $knownDist) {
-                Get-ChildItem -LiteralPath $dist -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
-                Copy-Item -Path (Join-Path $knownDist '*') -Destination $dist -Recurse -Force
-            }
-            Restore-SourceOverride -Content $previousOverride
-            if ($runState.WasRunning) {
-                try { Start-And-TestAgent -Profile $runState.Profile } catch { }
+            $script:AgentUpdateRollbackStatus = 'running'
+            Write-HermesAgentUpdateStage -Stage rollback -Message 'Restoring the previous known-good Hermes Agent installation.'
+            try {
+                try { Stop-AgentStack } catch { }
+                $failedRoot = Resolve-HermesPath "build\updates\failed\hermes-agent-promoted-$Stamp"
+                [System.IO.Directory]::CreateDirectory($failedRoot) | Out-Null
+                if (Test-Path -LiteralPath $activeSource) {
+                    Move-Item -LiteralPath $activeSource -Destination (Join-Path $failedRoot 'source')
+                }
+                if (Test-Path -LiteralPath $activeVenv) {
+                    Move-Item -LiteralPath $activeVenv -Destination (Join-Path $failedRoot 'venv')
+                }
+                if (Test-Path -LiteralPath $knownSource) {
+                    Move-Item -LiteralPath $knownSource -Destination $activeSource
+                }
+                if (Test-Path -LiteralPath $knownVenv) {
+                    Move-Item -LiteralPath $knownVenv -Destination $activeVenv
+                }
+                if (Test-Path -LiteralPath $knownDist) {
+                    Get-ChildItem -LiteralPath $dist -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
+                    Copy-Item -Path (Join-Path $knownDist '*') -Destination $dist -Recurse -Force
+                }
+                Restore-SourceOverride -Content $previousOverride
+                if ($runState.WasRunning) {
+                    Start-And-TestAgent -Profile $runState.Profile
+                }
+                $script:AgentUpdateRollbackStatus = 'succeeded'
+            } catch {
+                $script:AgentUpdateRollbackStatus = 'failed'
+                throw "Hermes Agent update failed and rollback also failed. Original failure: $($failure.Exception.Message). Rollback failure: $($_.Exception.Message)"
             }
         }
-        throw "Hermes Agent update failed and the previous installation was restored. $($failure.Exception.Message)"
+        throw "Hermes Agent update failed. Rollback: $script:AgentUpdateRollbackStatus. $($failure.Exception.Message)"
     }
 }
 
 function Invoke-AgentRollback {
+    Write-HermesAgentUpdateStage -Stage check -Message 'Locating the latest known-good Hermes Agent snapshot.'
     $historyRoot = Resolve-HermesPath 'build\updates\history'
     $historyFile = Get-ChildItem -LiteralPath $historyRoot -Filter '*-hermes-agent.json' -File -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending |
@@ -559,10 +770,12 @@ function Invoke-AgentRollback {
     $quarantine = Resolve-HermesPath "build\updates\failed\hermes-agent-rollback-$Stamp"
     [System.IO.Directory]::CreateDirectory($quarantine) | Out-Null
 
+    Write-HermesAgentUpdateStage -Stage backup -Message 'Backing up the current installation before rollback.'
     Stop-AgentStack
     Invoke-HermesPowerShellScript -RelativePath 'Backup-Hermes-Local.ps1' -Arguments @(
         '-Name', "pre-hermes-agent-rollback-$Stamp", '-NonInteractive'
     )
+    Write-HermesAgentUpdateStage -Stage rollback -Message 'Restoring the previous source, environment and launcher build.'
     if (Test-Path -LiteralPath $activeSource) {
         Move-Item -LiteralPath $activeSource -Destination (Join-Path $quarantine 'source')
     }
@@ -583,6 +796,7 @@ function Invoke-AgentRollback {
         [string]$history.previous.sourceOverrideContent
     }
     Restore-SourceOverride -Content $previousOverride
+    Write-HermesAgentUpdateStage -Stage validate -Message 'Health-checking the restored backend.'
     Start-And-TestAgent -Profile $runState.Profile
     if (-not $runState.WasRunning) {
         Stop-AgentStack
@@ -599,6 +813,7 @@ function Invoke-AgentRollback {
     Write-HermesAtomicText -Path (Join-Path $historyRoot "$Stamp-hermes-agent-rollback.json") -Content (
         ($result | ConvertTo-Json -Depth 8) + [Environment]::NewLine
     )
+    Write-HermesAgentUpdateStage -Stage complete -Message 'Hermes Agent rollback completed.'
     return $result
 }
 
@@ -612,22 +827,50 @@ try {
 
     $result = switch ($Mode) {
         'Check' {
+            Write-HermesAgentUpdateStage -Stage check -Message 'Checking the configured Hermes Agent upstream target.'
             $manifest = Get-HermesVersionManifest
             $candidate = Get-AgentCandidate -Manifest $manifest
+            $patchDirectory = Resolve-HermesPath ([string]$manifest.sources.hermesAgent.patchSeries)
             [ordered]@{
                 component = 'HermesAgent'
+                status = 'checked'
                 current = [string]$manifest.sources.hermesAgent.commit
+                currentIntegrationCommit = [string]$manifest.sources.hermesAgent.integrationCommit
+                currentIntegrationTree = [string]$manifest.sources.hermesAgent.integrationTree
                 candidate = $candidate
+                targetBranch = if ($TargetBranch) { $TargetBranch } else { [string]$manifest.sources.hermesAgent.branch }
+                patchCount = @(Get-ChildItem -LiteralPath $patchDirectory -Filter '*.patch' -File).Count
                 updateAvailable = $candidate -ne [string]$manifest.sources.hermesAgent.commit
             }
         }
+        'Compatibility' { Invoke-AgentCompatibility }
         'Apply' { Invoke-AgentApply }
         'Rollback' { Invoke-AgentRollback }
     }
-    $result | ConvertTo-Json -Depth 12
+    $result | ConvertTo-Json -Depth 24
+    Write-HermesAgentUpdateResult -Record $result
     exit 0
 } catch {
-    Write-HermesLog -Component update -Level ERROR -Message $_.Exception.ToString()
-    Write-Host "Hermes Agent update $Mode failed: $($_.Exception.Message)" -ForegroundColor Red
+    $failure = [ordered]@{
+        component = 'HermesAgent'
+        status = 'failed'
+        mode = $Mode
+        stage = $script:AgentUpdateStage
+        activePreserved = $script:AgentUpdateStage -notin @('promote', 'dependency', 'build', 'test', 'validate', 'rollback') -or
+            $script:AgentUpdateRollbackStatus -eq 'succeeded'
+        rollback = [ordered]@{
+            status = $script:AgentUpdateRollbackStatus
+        }
+        failure = [ordered]@{
+            code = Get-HermesAgentUpdateFailureCode -Stage $script:AgentUpdateStage
+            message = $_.Exception.Message
+            type = $_.Exception.GetType().FullName
+        }
+    }
+    try {
+        Write-HermesLog -Component update -Level ERROR -Message $_.Exception.ToString()
+    } catch { }
+    $failure | ConvertTo-Json -Depth 24
+    Write-HermesAgentUpdateResult -Record $failure
     exit 1
 }
