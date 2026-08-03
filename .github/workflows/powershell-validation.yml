@@ -56,7 +56,7 @@ jobs:
             throw ($failures -join [Environment]::NewLine)
           }
 
-      - name: Test gateway, benchmark, model and update contracts
+      - name: Test gateway, benchmark, security, model and update contracts
         shell: pwsh
         run: |
           python -m unittest discover -s tests -p 'test_gateway_snapshot.py' -v
@@ -64,6 +64,7 @@ jobs:
           & '.\tests\Test-HermesGatewayModule.ps1'
           & '.\tests\Test-BenchmarkLifecycleContract.ps1'
           & '.\tests\Test-BenchmarkProgressContract.ps1'
+          & '.\tests\Test-HermesSecurityScanProgress.ps1'
           & '.\tests\Test-ModelArtifactContract.ps1'
           & '.\tests\Test-HermesUpdateOrchestrator.ps1'
           & '.\tests\Test-HermesUpdateFailurePaths.ps1' `
