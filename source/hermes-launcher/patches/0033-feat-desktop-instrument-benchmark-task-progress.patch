@@ -168,7 +168,8 @@ diff --git a/apps/desktop/electron/hermes-local-task-model.ts b/apps/desktop/ele
        exitCode: evidence.exitCode,
        failure: evidence.failure,
        result: evidence.result
- diff --git a/apps/desktop/electron/hermes-local-benchmark-progress.test.ts b/apps/desktop/electron/hermes-local-benchmark-progress.test.ts
+
+diff --git a/apps/desktop/electron/hermes-local-benchmark-progress.test.ts b/apps/desktop/electron/hermes-local-benchmark-progress.test.ts
 new file mode 100644
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-benchmark-progress.test.ts
