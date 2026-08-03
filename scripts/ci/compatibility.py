@@ -482,6 +482,8 @@ def hermes_agent(args: argparse.Namespace) -> int:
                     "tests/run_agent/test_dropped_tool_call_recovery.py", "tests/tools/test_browser_ssrf_local.py",
                     "tests/tools/test_cronjob_tools.py", "tests/tools/test_interrupt.py", "tests/tools/test_delegate.py",
                     "tests/agent/test_skill_commands.py", "tests/run_agent/test_compression_persistence.py",
+                    "tests/hermes_cli/test_projects_db.py", "tests/tui_gateway/test_project_tree.py",
+                    "tests/tui_gateway/test_projects_rpc.py",
                 ]
                 selected = [x for x in selected if (source / x).exists()]
                 if not selected:
@@ -494,7 +496,8 @@ def hermes_agent(args: argparse.Namespace) -> int:
                 vitest = source / "node_modules/.bin" / ("vitest.cmd" if os.name == "nt" else "vitest")
                 if vitest.exists():
                     run([vitest, "run", "--project", "electron", "electron/hermes-local-control.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")
-                done.append("desktop:typecheck,lint,focused-electron")
+                    run([vitest, "run", "src/store/projects.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")
+                done.append("desktop:typecheck,lint,focused-electron,project-registry")
             stage_pass(report, "tests", checks=done) if done else stage_warning(report, "tests", "No test suites requested.")
         except Exception as exc:
             fail_report(report, stage="tests", message="Candidate regression tests failed.", error=exc)
