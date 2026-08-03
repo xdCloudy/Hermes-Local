@@ -1,0 +1,92 @@
+name: Issue 24 patch generation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/issue-24-patch-generation.yml'
+      - 'VERSION.json'
+      - 'source/hermes-launcher/patches/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-24-patch-generation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Generate canonical patch 0033
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $manifest = Get-Content -Raw -LiteralPath '.\VERSION.json' | ConvertFrom-Json
+          $source = Join-Path $env:RUNNER_TEMP 'hermes-agent-issue-24'
+          $artifactRoot = Join-Path $PWD 'artifacts\issue-24-patch'
+          $output = Join-Path $artifactRoot '0033-feat-desktop-instrument-benchmark-task-progress.patch'
+          $payload = Resolve-Path '.\source\hermes-launcher\patches\0033-feat-desktop-instrument-benchmark-task-progress.patch'
+          $base = [string]$manifest.sources.hermesAgent.commit
+          $repository = [string]$manifest.sources.hermesAgent.repository
+
+          New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
+          git clone --no-checkout $repository $source
+          git -C $source fetch origin $base
+          git -C $source checkout --detach $base
+          git -C $source switch -c issue-24-canonical-patch
+          git -C $source config user.name 'Hermes Local Compatibility CI'
+          git -C $source config user.email 'hermes-local-ci@localhost'
+
+          $existing = @(
+            Get-ChildItem -LiteralPath '.\source\hermes-launcher\patches' -Filter '*.patch' -File |
+              Where-Object Name -NotLike '0033-*' |
+              Sort-Object Name |
+              ForEach-Object FullName
+          )
+          git -C $source am --3way --committer-date-is-author-date @existing
+          if ($LASTEXITCODE -ne 0) {
+            throw "Pinned patch reconstruction exited with code $LASTEXITCODE."
+          }
+
+          git -C $source apply --recount --whitespace=nowarn $payload
+          if ($LASTEXITCODE -ne 0) {
+            throw "Issue 24 payload application exited with code $LASTEXITCODE."
+          }
+
+          git -C $source add --all
+          git -C $source commit -m 'feat(desktop): instrument benchmark task progress'
+          if ($LASTEXITCODE -ne 0) {
+            throw "Issue 24 integration commit exited with code $LASTEXITCODE."
+          }
+
+          git -C $source format-patch -1 --stdout | Set-Content -LiteralPath $output -Encoding utf8NoBOM
+          git -C $source rev-parse HEAD | Set-Content -LiteralPath (Join-Path $artifactRoot 'integration-commit.txt') -Encoding ascii
+          git -C $source rev-parse 'HEAD^{tree}' | Set-Content -LiteralPath (Join-Path $artifactRoot 'integration-tree.txt') -Encoding ascii
+
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path '.\Benchmark-Hermes-Local.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          )
+          if ($errors.Count -gt 0) {
+            throw ($errors | Out-String)
+          }
+
+      - name: Upload canonical patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-24-canonical-patch
+          path: artifacts/issue-24-patch
+          if-no-files-found: error
+          retention-days: 2
