@@ -42,6 +42,7 @@ jobs:
             '--work-dir', $workRoot,
             '--log-dir', '.\artifacts\compatibility\hermes-agent-patch-smoke\logs',
             '--report', $reportPath,
+            '--keep-workspace',
             '--run-desktop-checks',
             '--run-package-checks'
           )
