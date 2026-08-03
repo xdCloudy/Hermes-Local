@@ -32,6 +32,9 @@ function Get-HermesCommandVersion {
     }
 }
 
+$overlayState = $null
+$exitCode = 0
+
 try {
     Assert-HermesRoot
     Initialize-HermesLayout
@@ -43,6 +46,11 @@ try {
     $versionManifest = Get-HermesVersionManifest
     $version = [string]$versionManifest.product.version
 
+    $overlayState = Resolve-HermesPath "temp\launcher-overlay-$([guid]::NewGuid().ToString('N')).json"
+    & (Resolve-HermesPath 'Apply-Hermes-LauncherOverlay.ps1') `
+        -Mode Apply `
+        -StatePath $overlayState `
+        -RepositoryRoot (Get-HermesRoot)
     $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @('run', 'build', '--workspace', 'apps/desktop') -WorkingDirectory $source -LogComponent launcher
     $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @(
         'run', 'builder', '--workspace', 'apps/desktop', '--', '--win', 'nsis', 'portable', '--x64'
@@ -163,9 +171,23 @@ try {
 
     Write-HermesLog -Component launcher -Message "Packaged $($artifacts.Count) launcher artifact(s) with release integrity metadata."
     Write-Host "Hermes Launcher installer and portable build are in: $dist"
-    exit 0
 } catch {
+    $exitCode = 1
     Write-HermesLog -Component launcher -Level ERROR -Message $_.Exception.ToString()
     Write-Host "Hermes Launcher packaging failed: $($_.Exception.Message)" -ForegroundColor Red
-    exit 1
+} finally {
+    if ($overlayState -and (Test-Path -LiteralPath $overlayState -PathType Leaf)) {
+        try {
+            & (Resolve-HermesPath 'Apply-Hermes-LauncherOverlay.ps1') `
+                -Mode Restore `
+                -StatePath $overlayState `
+                -RepositoryRoot (Get-HermesRoot)
+        } catch {
+            $exitCode = 1
+            Write-HermesLog -Component launcher -Level ERROR -Message $_.Exception.ToString()
+            Write-Host "Hermes Launcher source restoration failed: $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
 }
+
+exit $exitCode

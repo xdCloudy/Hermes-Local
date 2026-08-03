@@ -42,6 +42,7 @@ declare module '@tabler/icons-react/dist/esm/icons/*.mjs' {
 }
 
 $temporaryTypeDeclaration = $null
+$overlayState = $null
 $exitCode = 0
 
 try {
@@ -53,6 +54,11 @@ try {
     $release = Join-Path $desktop 'release'
     $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
 
+    $overlayState = Resolve-HermesPath "temp\launcher-overlay-$([guid]::NewGuid().ToString('N')).json"
+    & (Resolve-HermesPath 'Apply-Hermes-LauncherOverlay.ps1') `
+        -Mode Apply `
+        -StatePath $overlayState `
+        -RepositoryRoot (Get-HermesRoot)
     $temporaryTypeDeclaration = New-TemporaryTablerTypeDeclaration -DesktopSource $desktop
 
     $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @('run', 'build', '--workspace', 'web') -WorkingDirectory $source -LogComponent launcher
@@ -88,6 +94,18 @@ try {
     if ($temporaryTypeDeclaration -and (Test-Path -LiteralPath $temporaryTypeDeclaration)) {
         Remove-Item -LiteralPath $temporaryTypeDeclaration -Force
         Write-HermesLog -Component launcher -Message "Removed temporary Tabler direct-import declaration at $temporaryTypeDeclaration."
+    }
+    if ($overlayState -and (Test-Path -LiteralPath $overlayState -PathType Leaf)) {
+        try {
+            & (Resolve-HermesPath 'Apply-Hermes-LauncherOverlay.ps1') `
+                -Mode Restore `
+                -StatePath $overlayState `
+                -RepositoryRoot (Get-HermesRoot)
+        } catch {
+            $exitCode = 1
+            Write-HermesLog -Component launcher -Level ERROR -Message $_.Exception.ToString()
+            Write-Host "Hermes Launcher source restoration failed: $($_.Exception.Message)" -ForegroundColor Red
+        }
     }
 }
 
