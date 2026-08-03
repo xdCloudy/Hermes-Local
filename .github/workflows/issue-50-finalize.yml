@@ -34,10 +34,17 @@ jobs:
             --dir $artifact
 
           $patchName = '0034-feat-add-stable-project-identity-and-path-recovery.patch'
+          $patchPath = Join-Path '.\source\hermes-launcher\patches' $patchName
           Copy-Item `
             -LiteralPath (Join-Path $artifact $patchName) `
-            -Destination (Join-Path '.\source\hermes-launcher\patches' $patchName) `
+            -Destination $patchPath `
             -Force
+          $patchText = [System.IO.File]::ReadAllText($patchPath).Replace("`r`n", "`n")
+          [System.IO.File]::WriteAllText(
+            $patchPath,
+            $patchText,
+            [System.Text.UTF8Encoding]::new($false)
+          )
 
           $integrationCommit = (Get-Content -Raw -LiteralPath (Join-Path $artifact 'integration-commit.txt')).Trim()
           $integrationTree = (Get-Content -Raw -LiteralPath (Join-Path $artifact 'integration-tree.txt')).Trim()
@@ -85,22 +92,11 @@ jobs:
               raise RuntimeError('Desktop registry test anchor is missing from compatibility.py')
           compatibility = compatibility.replace(desktop_anchor, desktop_replacement, 1)
           compatibility_path.write_text(compatibility, encoding='utf-8')
-
-          smoke_path = root / '.github/workflows/hermes-agent-patch-smoke.yml'
-          smoke = smoke_path.read_text(encoding='utf-8')
-          smoke_anchor = "            '--run-desktop-checks',\n            '--run-package-checks'"
-          smoke_replacement = "            '--run-desktop-checks',\n            '--run-python-checks',\n            '--run-package-checks'"
-          if smoke_anchor not in smoke:
-              raise RuntimeError('Patch-smoke argument anchor is missing')
-          smoke_path.write_text(smoke.replace(smoke_anchor, smoke_replacement, 1), encoding='utf-8')
           '@ | Set-Content -LiteralPath $editor -Encoding utf8NoBOM
 
           python $editor $PWD $integrationCommit $integrationTree
 
           Remove-Item -LiteralPath @(
-            '.\.github\workflows\issue-50-inspect.yml',
-            '.\.github\workflows\issue-50-generate-patch.yml',
-            '.\.github\workflows\issue-50-finalize.yml',
             '.\scripts\ci\issue50_apply.py',
             '.\scripts\ci\issue50_fix.py'
           ) -Force
@@ -109,5 +105,8 @@ jobs:
           git config user.email 'hermes-local-ci@localhost'
           git add --all
           git diff --cached --check
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Final issue #50 repository diff contains whitespace errors.'
+          }
           git commit -m 'feat: add stable project identity and path recovery'
           git push origin HEAD:agent/issue-50-project-registry
