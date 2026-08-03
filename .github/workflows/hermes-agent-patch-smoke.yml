@@ -92,14 +92,10 @@ jobs:
           if ($checkerExit -eq 0 -and $failedStages.Count -eq 0) {
             $source = Resolve-Path (Join-Path $workRoot 'hermes-agent')
             $desktop = Join-Path $source 'apps\desktop'
-            $vitest = Join-Path $source 'node_modules\.bin\vitest.cmd'
-            if (-not (Test-Path -LiteralPath $vitest -PathType Leaf)) {
-              throw "Vitest executable is missing after dependency installation: $vitest"
-            }
 
             Push-Location $desktop
             try {
-              & $vitest run `
+              & npm.cmd --prefix $source exec -- vitest run `
                 --project electron `
                 electron/hermes-local-control.test.ts `
                 electron/hermes-local-benchmark-progress.test.ts
