@@ -48,8 +48,8 @@ jobs:
                 [ref]$tokens,
                 [ref]$errors
               )
-              foreach ($error in @($errors)) {
-                $failures.Add("$($_.FullName):$($error.Extent.StartLineNumber): $($error.Message)")
+              foreach ($parseError in @($errors)) {
+                $failures.Add("$($_.FullName):$($parseError.Extent.StartLineNumber): $($parseError.Message)")
               }
             }
           if ($failures.Count -gt 0) {
@@ -65,6 +65,7 @@ jobs:
           & '.\tests\Test-BenchmarkLifecycleContract.ps1'
           & '.\tests\Test-BenchmarkProgressContract.ps1'
           & '.\tests\Test-HermesSecurityScanProgress.ps1'
+          & '.\tests\Test-SecurityToolBootstrap.ps1'
           & '.\tests\Test-ModelArtifactContract.ps1'
           & '.\tests\Test-HermesUpdateOrchestrator.ps1'
           & '.\tests\Test-HermesUpdateFailurePaths.ps1' `
