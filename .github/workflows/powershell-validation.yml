@@ -66,6 +66,7 @@ jobs:
           & '.\tests\Test-BenchmarkProgressContract.ps1'
           & '.\tests\Test-HermesSecurityScanProgress.ps1'
           & '.\tests\Test-SecurityToolBootstrap.ps1'
+          & '.\tests\Test-PythonRuntimeMigration.ps1'
           & '.\tests\Test-ModelArtifactContract.ps1'
           & '.\tests\Test-HermesUpdateOrchestrator.ps1'
           & '.\tests\Test-HermesUpdateFailurePaths.ps1' `

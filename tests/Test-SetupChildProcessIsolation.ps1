@@ -4,11 +4,11 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$setupPath = Join-Path $root 'Setup-Hermes-Local.ps1'
+$setupPath = Join-Path $root 'Setup-Hermes-Local.Impl.ps1'
 $setup = [System.IO.File]::ReadAllText($setupPath)
 
 if ($setup -notmatch 'function Invoke-IsolatedPowerShellScript') {
-    throw 'Setup does not define the isolated PowerShell child runner.'
+    throw 'Setup implementation does not define the isolated PowerShell child runner.'
 }
 if ($setup -match '&\s+\$launcherBuild') {
     throw 'Launcher build is still invoked directly in the setup process.'

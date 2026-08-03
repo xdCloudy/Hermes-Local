@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 
 $root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $manifestPath = Join-Path $root 'models\manifests\Qwen3.6-35B-A3B-APEX-MTP-I-Quality.json'
-$setupPath = Join-Path $root 'Setup-Hermes-Local.ps1'
+$setupPath = Join-Path $root 'Setup-Hermes-Local.Impl.ps1'
 
 function Assert-Contract {
     param(
