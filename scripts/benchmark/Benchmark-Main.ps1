@@ -60,6 +60,35 @@ function New-BenchmarkDocument {
     }
 }
 
+function Get-BenchmarkRemainingEstimate {
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]] $CompletedCases,
+
+        [Parameter(Mandatory)]
+        [int] $RemainingCases
+    )
+
+    if ($RemainingCases -le 0 -or $CompletedCases.Count -eq 0) {
+        return $null
+    }
+
+    $durations = @(
+        $CompletedCases |
+            ForEach-Object { [double](Get-BenchmarkValue -Record $_ -Name durationSeconds -Default 0) } |
+            Where-Object { $_ -gt 0 }
+    )
+    if ($durations.Count -eq 0) {
+        return $null
+    }
+
+    return [math]::Round(
+        [double](($durations | Measure-Object -Average).Average) * $RemainingCases,
+        1
+    )
+}
+
 try {
     Assert-HermesRoot
     Initialize-HermesLayout
@@ -79,6 +108,9 @@ try {
         Write-Host "Benchmark report regenerated: $(Resolve-HermesPath 'benchmarks\reports\LATEST.md')"
         exit 0
     }
+
+    Initialize-BenchmarkProgress -Mode $(if ($Quick) { 'quick' } else { 'full' })
+    Assert-BenchmarkNotCancelled
 
     $startedAt = (Get-Date).ToUniversalTime()
     $configuration = Get-HermesConfiguration
@@ -109,6 +141,12 @@ try {
         -MaximumContext $maximumContext `
         -QuickMode:$Quick)
 
+    Write-BenchmarkProgress `
+        -Stage 'validation' `
+        -Message "Validated the benchmark runtime, model and $($cases.Count) real execution case(s)." `
+        -CompletedUnits 1 `
+        -TotalUnits 1
+
     $status = Get-CurrentSupervisorStatus
     if ($status -and [string]$status.phase -eq 'running') {
         $script:wasRunning = $true
@@ -116,19 +154,45 @@ try {
             $script:restartProfile = [string]$status.profile
         }
         Enter-HermesBenchmarkMode -Profile $script:restartProfile
+    } else {
+        Write-BenchmarkProgress `
+            -Stage 'runtime-preparation' `
+            -Message 'The managed model stack was not running, so no lifecycle transition was required.' `
+            -CompletedUnits 1 `
+            -TotalUnits 1
     }
 
     $runCases = [System.Collections.Generic.List[object]]::new()
+    $completedCaseCount = 0
     foreach ($case in $cases) {
+        Assert-BenchmarkNotCancelled -Message 'Benchmark cancellation was requested at a safe case boundary.'
+
+        $caseName = [string](Get-BenchmarkValue -Record $case -Name name -Default 'unknown')
+        Write-BenchmarkProgress `
+            -Stage 'model-loading' `
+            -Message "Starting '$caseName'; llama-bench will load the selected model for this measured case." `
+            -Indeterminate
+        Write-BenchmarkProgress `
+            -Stage 'warm-up' `
+            -Message "The native llama-bench warm-up for '$caseName' is beginning; benchmark arguments and timing semantics are unchanged." `
+            -Indeterminate
+        Write-BenchmarkProgress `
+            -Stage 'prompt-execution' `
+            -Message "Executing '$caseName' without changing its arguments or measurement semantics." `
+            -CompletedUnits $completedCaseCount `
+            -TotalUnits $cases.Count
+
         try {
             $runCases.Add((Invoke-BenchmarkCase `
-                -Name ([string]$case.name) `
+                -Name $caseName `
                 -Arguments @($case.args | ForEach-Object { [string]$_ }) `
                 -Binary $binary `
                 -WorkingDirectory (Resolve-HermesPath 'data\user')))
+        } catch [System.OperationCanceledException] {
+            throw
         } catch {
             $runCases.Add([ordered]@{
-                name = [string](Get-BenchmarkValue -Record $case -Name name -Default 'unknown')
+                name = $caseName
                 startedAt = (Get-Date).ToUniversalTime().ToString('o')
                 completedAt = (Get-Date).ToUniversalTime().ToString('o')
                 durationSeconds = 0
@@ -142,7 +206,24 @@ try {
                 rows = @()
             })
         }
+
+        $completedCaseCount += 1
+        $remainingCases = [math]::Max(0, $cases.Count - $completedCaseCount)
+        $estimate = Get-BenchmarkRemainingEstimate -CompletedCases $runCases.ToArray() -RemainingCases $remainingCases
+        Write-BenchmarkProgress `
+            -Stage 'prompt-execution' `
+            -Message "Completed '$caseName'." `
+            -CompletedUnits $completedCaseCount `
+            -TotalUnits $cases.Count `
+            -EstimatedRemainingSeconds $estimate
+
+        Assert-BenchmarkNotCancelled -Message 'Benchmark cancellation was requested after the active case completed.'
     }
+
+    Write-BenchmarkProgress `
+        -Stage 'aggregation' `
+        -Message 'Aggregating native benchmark rows and telemetry without altering measured values.' `
+        -Indeterminate
 
     $manifest = Get-HermesVersionManifest
     $checkpointAt = (Get-Date).ToUniversalTime()
@@ -168,6 +249,11 @@ try {
         -Validation $checkpointValidation `
         -Cases $runCases.ToArray() `
         -LifecycleState 'restoration-pending'
+
+    Write-BenchmarkProgress `
+        -Stage 'report-generation' `
+        -Message 'Writing the checkpoint result and human-readable report before stack restoration.' `
+        -Indeterminate
     Write-HermesAtomicText -Path $resultsPath -Content (($checkpointDocument | ConvertTo-Json -Depth 32) + [Environment]::NewLine)
     Write-BenchmarkReport -Document $checkpointDocument
     Write-HermesLog -Component benchmarks -Message "Checkpointed $($runCases.Count) native benchmark case(s) before stack restoration."
@@ -213,19 +299,47 @@ try {
         -Cases $runCases.ToArray() `
         -LifecycleState 'complete'
 
+    Write-BenchmarkProgress `
+        -Stage 'report-generation' `
+        -Message 'Writing the final benchmark result and report links.' `
+        -Indeterminate
     Write-HermesAtomicText -Path $resultsPath -Content (($document | ConvertTo-Json -Depth 32) + [Environment]::NewLine)
     Write-BenchmarkReport -Document $document
 
     $failed = @($runCases | Where-Object { -not $_.succeeded })
     Write-HermesLog -Component benchmarks -Message "Benchmark completed with $($runCases.Count) case(s), $($failed.Count) failed."
     if ($failed.Count) {
+        Complete-BenchmarkProgress `
+            -Status 'failed' `
+            -Message "Benchmark completed with $($failed.Count) failed case(s)." `
+            -ResultPath 'benchmarks\reports\LATEST.md' `
+            -ErrorMessage 'One or more native benchmark cases failed.'
         Write-Host "Benchmark completed with $($failed.Count) failed case(s). Review benchmarks\results\latest.json." -ForegroundColor Yellow
         exit 2
     }
+
+    Complete-BenchmarkProgress `
+        -Status 'succeeded' `
+        -Message 'Benchmark completed and the report is ready.' `
+        -ResultPath 'benchmarks\reports\LATEST.md'
     Write-Host "Benchmark passed. Report: $(Resolve-HermesPath 'benchmarks\reports\LATEST.md')"
     exit 0
+} catch [System.OperationCanceledException] {
+    $script:benchmarkCancellationObserved = $true
+    Write-HermesLog -Component benchmarks -Level WARN -Message $_.Exception.Message
+    Write-BenchmarkProgress `
+        -Stage 'restoration' `
+        -Message 'Cancellation accepted; restoring any managed runtime state before completing the task.' `
+        -Status 'cancelling' `
+        -Indeterminate
+    exit 130
 } catch {
     Write-HermesLog -Component benchmarks -Level ERROR -Message $_.Exception.ToString()
+    Complete-BenchmarkProgress `
+        -Status 'failed' `
+        -Message 'Benchmark failed before a valid report was completed.' `
+        -ResultPath 'benchmarks\results\latest.json' `
+        -ErrorMessage $_.Exception.Message
     Write-Host "Benchmark failed: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 } finally {
@@ -240,17 +354,37 @@ try {
         }
     }
 
+    $restorationFailure = $null
     if ($script:wasRunning -and -not $script:stackRestored) {
         try {
             Restore-HermesBenchmarkStack -Profile $script:restartProfile
         } catch {
-            Write-HermesLog -Component benchmarks -Level ERROR -Message "Could not restore stack after benchmark failure: $($_.Exception.Message)"
+            $restorationFailure = Protect-HermesLogText $_.Exception.Message
+            Write-HermesLog -Component benchmarks -Level ERROR -Message "Could not restore stack after benchmark termination: $restorationFailure"
         }
     }
 
     foreach ($file in $script:temporaryFiles) {
         if (Test-Path -LiteralPath $file) {
             Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    Remove-BenchmarkCancellationRequest
+
+    if ($script:benchmarkCancellationObserved -and -not $script:benchmarkProgressTerminalStatus) {
+        if ($restorationFailure) {
+            Complete-BenchmarkProgress `
+                -Status 'failed' `
+                -Message 'Benchmark cancellation could not restore the managed runtime safely.' `
+                -ResultPath 'benchmarks\results\latest.json' `
+                -ErrorMessage $restorationFailure
+        } else {
+            Complete-BenchmarkProgress `
+                -Status 'cancelled' `
+                -Message 'Benchmark cancelled at a safe boundary and all owned lifecycle state was released.' `
+                -ResultPath 'benchmarks\results\latest.json' `
+                -ErrorMessage 'Cancelled by the user.'
         }
     }
 }

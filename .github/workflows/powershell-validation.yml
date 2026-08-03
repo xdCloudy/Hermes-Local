@@ -63,6 +63,7 @@ jobs:
           python -m py_compile '.\scripts\gateway_snapshot.py' '.\tests\test_gateway_snapshot.py'
           & '.\tests\Test-HermesGatewayModule.ps1'
           & '.\tests\Test-BenchmarkLifecycleContract.ps1'
+          & '.\tests\Test-BenchmarkProgressContract.ps1'
           & '.\tests\Test-ModelArtifactContract.ps1'
           & '.\tests\Test-HermesUpdateOrchestrator.ps1'
 

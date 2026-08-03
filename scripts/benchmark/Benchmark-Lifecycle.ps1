@@ -21,12 +21,16 @@ function Wait-HermesBenchmarkPhase {
         [ValidateSet('benchmarking', 'running')]
         [string] $Phase,
         [int] $TimeoutSeconds = 960,
-        [switch] $AllowControllerReplacement
+        [switch] $AllowControllerReplacement,
+        [switch] $IgnoreCancellation
     )
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $deadControllerPid = 0
     while ((Get-Date) -lt $deadline) {
+        if (-not $IgnoreCancellation) {
+            Assert-BenchmarkNotCancelled
+        }
         $status = Get-CurrentSupervisorStatus
         if ($status) {
             $controllerPid = [int](Get-BenchmarkValue -Record $status -Name controllerPid -Default 0)
@@ -73,6 +77,12 @@ function Wait-HermesBenchmarkPhase {
 function Enter-HermesBenchmarkMode {
     param([Parameter(Mandatory)][string] $Profile)
 
+    Assert-BenchmarkNotCancelled
+    Write-BenchmarkProgress `
+        -Stage 'runtime-preparation' `
+        -Message 'Requesting exclusive model access while keeping Desktop and gateway services available.' `
+        -Indeterminate
+
     if (Test-Path -LiteralPath $script:benchmarkRequestPath) {
         try {
             $existing = Get-Content -Raw -LiteralPath $script:benchmarkRequestPath | ConvertFrom-Json
@@ -89,7 +99,8 @@ function Enter-HermesBenchmarkMode {
     }
 
     $request = [ordered]@{
-        schemaVersion = 1
+        schemaVersion = 2
+        taskId = $script:benchmarkTaskId
         ownerPid = $PID
         profile = $Profile
         requestedAt = (Get-Date).ToUniversalTime().ToString('o')
@@ -107,8 +118,13 @@ function Enter-HermesBenchmarkMode {
 function Restore-HermesBenchmarkStack {
     param([Parameter(Mandatory)][string] $Profile)
 
+    Write-BenchmarkProgress `
+        -Stage 'restoration' `
+        -Message 'Restoring the selected model and validating the managed stack.' `
+        -Indeterminate
+
     try {
-        Wait-HermesBenchmarkPhase -Phase running -TimeoutSeconds 960
+        Wait-HermesBenchmarkPhase -Phase running -TimeoutSeconds 960 -IgnoreCancellation
     } catch {
         $script:restorationInitialError = Protect-HermesLogText $_.Exception.Message
         Write-HermesLog -Component benchmarks -Level WARN -Message (
@@ -118,7 +134,7 @@ function Restore-HermesBenchmarkStack {
         if ($LASTEXITCODE -ne 0) {
             throw "Start-Hermes-Local.ps1 exited with code $LASTEXITCODE after benchmark restoration failed."
         }
-        Wait-HermesBenchmarkPhase -Phase running -TimeoutSeconds 960 -AllowControllerReplacement
+        Wait-HermesBenchmarkPhase -Phase running -TimeoutSeconds 960 -AllowControllerReplacement -IgnoreCancellation
         $script:restorationRecoveredByReplacement = $true
     }
     $script:stackRestored = $true
