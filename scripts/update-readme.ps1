@@ -7,6 +7,9 @@ Reads repository, release, milestone, issue and commit data from the GitHub API.
 Only content between the generated markers is replaced. Pass -DryRun to print
 the result without writing, or -FixturePath to test with a local JSON payload.
 
+The commit lookup is deliberately bounded. The dashboard shows one latest
+relevant commit and replaces it on each refresh instead of accumulating links.
+
 .EXAMPLE
 .\scripts\update-readme.ps1 -Verbose
 
@@ -29,6 +32,10 @@ param(
 
     [Parameter()]
     [string]$Token = $env:GITHUB_TOKEN,
+
+    [Parameter()]
+    [ValidateRange(1, 100)]
+    [int]$CommitFetchLimit = 10,
 
     [Parameter()]
     [switch]$DryRun
@@ -97,10 +104,15 @@ function Get-ProjectData {
     $milestones = Invoke-GitHubPagedRequest "$api/milestones?state=all&per_page=100"
     $allIssues = Invoke-GitHubPagedRequest "$api/issues?state=all&per_page=100"
     $issues = @($allIssues | Where-Object { -not $_.PSObject.Properties['pull_request'] })
-    Write-GeneratorLog "GET $api/commits?per_page=20"
-    $commits = @(
-        Invoke-RestMethod -Uri "$api/commits?per_page=20" -Headers (Get-GitHubHeaders)
-    )
+
+    Write-GeneratorLog "GET $api/commits?per_page=$CommitFetchLimit"
+    $commitResponse = Invoke-RestMethod `
+        -Uri "$api/commits?per_page=$CommitFetchLimit" `
+        -Headers (Get-GitHubHeaders)
+
+    # Invoke-RestMethod can return a JSON array as one pipeline object. Pipe the
+    # assigned value explicitly so the commit collection is flattened and capped.
+    $commits = @($commitResponse | Select-Object -First $CommitFetchLimit)
 
     return [pscustomobject]@{
         repository = $repositoryData
@@ -154,15 +166,28 @@ function Get-LatestRelevantCommit {
         [object[]]$Commits
     )
 
+    # Flatten one accidental nested-array layer as a defensive measure for live
+    # API responses and fixtures. This prevents property enumeration from joining
+    # every commit URL into one malformed Markdown link.
+    $normalized = @(
+        foreach ($entry in @($Commits)) {
+            foreach ($commit in $entry) {
+                if ($null -ne $commit) {
+                    $commit
+                }
+            }
+        }
+    )
+
     $relevant = @(
-        $Commits | Where-Object { -not (Test-IsGeneratedDashboardCommit -Commit $_) } |
+        $normalized | Where-Object { -not (Test-IsGeneratedDashboardCommit -Commit $_) } |
             Select-Object -First 1
     )
     if ($relevant.Count) {
         return $relevant[0]
     }
 
-    $fallback = @($Commits | Select-Object -First 1)
+    $fallback = @($normalized | Select-Object -First 1)
     if ($fallback.Count) {
         return $fallback[0]
     }
@@ -212,7 +237,7 @@ function New-StatusMarkdown {
     } else { 0 }
 
     $latestRelease = @($Data.releases | Sort-Object published_at -Descending | Select-Object -First 1)
-    $latestCommit = Get-LatestRelevantCommit -Commits @($Data.commits)
+    $latestCommit = @(Get-LatestRelevantCommit -Commits @($Data.commits))[0]
     $currentStage = @($Roadmap.stages | Where-Object id -EQ $Roadmap.currentStage | Select-Object -First 1)
     $currentMilestones = @(
         $Data.milestones | Where-Object {
