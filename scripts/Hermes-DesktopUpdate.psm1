@@ -8,7 +8,9 @@ function Write-HermesDesktopUpdateJson {
         [Parameter(Mandatory)][object] $Value
     )
 
-    $directory = [System.IO.Path]::GetDirectoryName([System.IO.Path]::GetFullPath($Path))
+    $directory = [System.IO.Path]::GetDirectoryName(
+        [System.IO.Path]::GetFullPath($Path)
+    )
     [System.IO.Directory]::CreateDirectory($directory) | Out-Null
     $temporary = "$Path.$PID.$([guid]::NewGuid().ToString('N')).tmp"
     [System.IO.File]::WriteAllText(
@@ -22,29 +24,39 @@ function Write-HermesDesktopUpdateJson {
 function ConvertTo-HermesDesktopUpdateMarker {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][ValidateSet('status', 'helper', 'result')][string] $Name,
+        [Parameter(Mandatory)]
+        [ValidateSet('status', 'helper', 'result')]
+        [string] $Name,
         [Parameter(Mandatory)][object] $Value
     )
 
     $json = $Value | ConvertTo-Json -Depth 64 -Compress
-    $encoded = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($json))
+    $encoded = [Convert]::ToBase64String(
+        [System.Text.Encoding]::UTF8.GetBytes($json)
+    )
     "::hermes-desktop-update-$Name::$encoded"
 }
 
 function ConvertFrom-HermesDesktopUpdateMarker {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][ValidateSet('status', 'helper', 'result')][string] $Name,
+        [Parameter(Mandatory)]
+        [ValidateSet('status', 'helper', 'result')]
+        [string] $Name,
         [Parameter(Mandatory)][string] $Text
     )
 
     $pattern = "::hermes-desktop-update-$([regex]::Escape($Name))::([A-Za-z0-9+/=]+)"
     $match = [regex]::Matches($Text, $pattern) | Select-Object -Last 1
-    if (-not $match) { return $null }
+    if (-not $match) {
+        return $null
+    }
 
     try {
-        $json = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($match.Groups[1].Value))
-        return $json | ConvertFrom-Json -Depth 64
+        $json = [System.Text.Encoding]::UTF8.GetString(
+            [Convert]::FromBase64String($match.Groups[1].Value)
+        )
+        $json | ConvertFrom-Json -Depth 64
     } catch {
         throw "Hermes Desktop update marker '$Name' is malformed. $($_.Exception.Message)"
     }
@@ -58,9 +70,13 @@ function Assert-HermesDesktopUpdatePath {
         [string] $Description = 'Update path'
     )
 
-    $resolvedRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    $resolvedRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd('\', '/') +
+        [System.IO.Path]::DirectorySeparatorChar
     $resolvedPath = [System.IO.Path]::GetFullPath($Path)
-    if (-not $resolvedPath.StartsWith($resolvedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    if (-not $resolvedPath.StartsWith(
+            $resolvedRoot,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )) {
         throw "$Description is outside the Hermes Local root: $resolvedPath"
     }
     $resolvedPath
@@ -71,7 +87,7 @@ function Test-HermesDesktopUpdateOrigin {
     param([Parameter(Mandatory)][string] $Origin)
 
     $normalized = $Origin.Trim().TrimEnd('/')
-    return [bool](
+    [bool](
         $normalized -match '^https://github\.com/xdCloudy/Hermes-Local(?:\.git)?$' -or
         $normalized -match '^git@github\.com:xdCloudy/Hermes-Local(?:\.git)?$'
     )
@@ -95,10 +111,15 @@ function New-HermesDesktopUpdatePlan {
             throw 'Desktop update plans require full 40-character Git commit identities.'
         }
     }
-    if ($ParentPid -lt 0) { throw 'ParentPid cannot be negative.' }
+    if ($ParentPid -lt 0) {
+        throw 'ParentPid cannot be negative.'
+    }
 
     $operationId = [guid]::NewGuid().ToString('N')
-    $stagingRoot = Assert-HermesDesktopUpdatePath -Root $Root -Path (Join-Path $Root "build\updates\desktop-staging\$operationId") -Description 'Staging root'
+    $stagingRoot = Assert-HermesDesktopUpdatePath `
+        -Root $Root `
+        -Path (Join-Path $Root "build\updates\desktop-staging\$operationId") `
+        -Description 'Staging root'
     [ordered]@{
         schemaVersion = 1
         operationId = $operationId
@@ -112,7 +133,9 @@ function New-HermesDesktopUpdatePlan {
         previousBranch = if ($CurrentBranch) { $CurrentBranch } else { $null }
         parentPid = $ParentPid
         rollbackOnly = [bool]$RollbackOnly
-        launcherPath = Join-Path ([System.IO.Path]::GetFullPath($Root)) 'dist\Hermes Launcher.exe'
+        launcherPath = Join-Path (
+            [System.IO.Path]::GetFullPath($Root)
+        ) 'dist\Hermes Launcher.exe'
         previousDist = Join-Path $stagingRoot 'previous-dist'
         progressPath = Join-Path $stagingRoot 'progress.json'
         resultPath = Join-Path $stagingRoot 'result.json'
@@ -126,9 +149,16 @@ function Get-HermesDesktopUpdateRequiredBytes {
 
     $dist = Join-Path $Root 'dist'
     $distBytes = if (Test-Path -LiteralPath $dist -PathType Container) {
-        [long](Get-ChildItem -LiteralPath $dist -Recurse -File -ErrorAction SilentlyContinue |
-            Measure-Object -Property Length -Sum).Sum
-    } else { 0L }
+        $measure = Get-ChildItem `
+            -LiteralPath $dist `
+            -Recurse `
+            -File `
+            -ErrorAction SilentlyContinue |
+            Measure-Object -Property Length -Sum
+        if ($null -eq $measure.Sum) { 0L } else { [long]$measure.Sum }
+    } else {
+        0L
+    }
     [long][math]::Max(2GB, ($distBytes * 3) + 512MB)
 }
 
@@ -139,13 +169,24 @@ function Assert-HermesDesktopUpdateDiskSpace {
         [long] $RequiredBytes = 0
     )
 
-    if ($RequiredBytes -le 0) { $RequiredBytes = Get-HermesDesktopUpdateRequiredBytes -Root $Root }
-    $driveRoot = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($Root))
+    if ($RequiredBytes -le 0) {
+        $RequiredBytes = Get-HermesDesktopUpdateRequiredBytes -Root $Root
+    }
+    $driveRoot = [System.IO.Path]::GetPathRoot(
+        [System.IO.Path]::GetFullPath($Root)
+    )
     $drive = [System.IO.DriveInfo]::new($driveRoot)
     if ($drive.AvailableFreeSpace -lt $RequiredBytes) {
-        throw "Insufficient disk space for the staged update. Required $([math]::Round($RequiredBytes / 1GB, 2)) GiB; available $([math]::Round($drive.AvailableFreeSpace / 1GB, 2)) GiB."
+        throw (
+            "Insufficient disk space for the staged update. Required " +
+            "$([math]::Round($RequiredBytes / 1GB, 2)) GiB; available " +
+            "$([math]::Round($drive.AvailableFreeSpace / 1GB, 2)) GiB."
+        )
     }
-    [pscustomobject]@{ RequiredBytes = $RequiredBytes; AvailableBytes = $drive.AvailableFreeSpace }
+    [pscustomobject]@{
+        RequiredBytes = $RequiredBytes
+        AvailableBytes = $drive.AvailableFreeSpace
+    }
 }
 
 function Write-HermesDesktopUpdateProgress {
@@ -175,7 +216,9 @@ function Write-HermesDesktopUpdateProgress {
         result = $Result
         updatedAt = (Get-Date).ToUniversalTime().ToString('o')
     }
-    Write-HermesDesktopUpdateJson -Path ([string]$Plan.progressPath) -Value $record
+    Write-HermesDesktopUpdateJson `
+        -Path ([string]$Plan.progressPath) `
+        -Value $record
     $record
 }
 
@@ -186,7 +229,9 @@ function Wait-HermesDesktopUpdateParent {
         [int] $TimeoutSeconds = 180
     )
 
-    if ($ParentPid -le 0) { return $true }
+    if ($ParentPid -le 0) {
+        return $true
+    }
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
         try {
@@ -207,27 +252,68 @@ function Enter-HermesDesktopUpdateLock {
     )
 
     $lockPath = Join-Path $Root 'data\runtime\locks\desktop-self-update.json'
-    [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($lockPath)) | Out-Null
+    [System.IO.Directory]::CreateDirectory(
+        [System.IO.Path]::GetDirectoryName($lockPath)
+    ) | Out-Null
+
     for ($attempt = 0; $attempt -lt 2; $attempt += 1) {
         try {
-            $stream = [System.IO.File]::Open($lockPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+            $stream = [System.IO.File]::Open(
+                $lockPath,
+                [System.IO.FileMode]::CreateNew,
+                [System.IO.FileAccess]::Write,
+                [System.IO.FileShare]::None
+            )
             try {
-                $payload = [System.Text.Encoding]::UTF8.GetBytes((@{
-                    schemaVersion = 1; operationId = $OperationId; ownerPid = $PID; acquiredAt = (Get-Date).ToUniversalTime().ToString('o')
-                } | ConvertTo-Json -Compress))
+                $record = [ordered]@{
+                    schemaVersion = 1
+                    operationId = $OperationId
+                    ownerPid = $PID
+                    acquiredAt = (Get-Date).ToUniversalTime().ToString('o')
+                }
+                $payload = [System.Text.Encoding]::UTF8.GetBytes(
+                    $record | ConvertTo-Json -Compress
+                )
                 $stream.Write($payload, 0, $payload.Length)
                 $stream.Flush($true)
-            } finally { $stream.Dispose() }
+            } finally {
+                $stream.Dispose()
+            }
             return $lockPath
         } catch [System.IO.IOException] {
-            $existing = try { Get-Content -Raw -LiteralPath $lockPath | ConvertFrom-Json } catch { $null }
-            $alive = $false
-            if ($existing?.ownerPid) {
-                try { $null = Get-Process -Id ([int]$existing.ownerPid) -ErrorAction Stop; $alive = $true } catch { }
+            $existing = try {
+                Get-Content -Raw -LiteralPath $lockPath | ConvertFrom-Json
+            } catch {
+                $null
             }
-            if ($alive) { throw "Desktop update '$($existing.operationId)' is already running under process $($existing.ownerPid)." }
-            $recovered = "$lockPath.recovered-$((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ'))"
-            Move-Item -LiteralPath $lockPath -Destination $recovered -Force
+            $alive = $false
+            if ($existing -and $existing.PSObject.Properties['ownerPid']) {
+                try {
+                    $null = Get-Process `
+                        -Id ([int]$existing.ownerPid) `
+                        -ErrorAction Stop
+                    $alive = $true
+                } catch {
+                    $alive = $false
+                }
+            }
+            if ($alive) {
+                throw (
+                    "Desktop update '$($existing.operationId)' is already " +
+                    "running under process $($existing.ownerPid)."
+                )
+            }
+
+            $recovered = (
+                "$lockPath.recovered-" +
+                (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ')
+            )
+            if (Test-Path -LiteralPath $lockPath -PathType Leaf) {
+                Move-Item `
+                    -LiteralPath $lockPath `
+                    -Destination $recovered `
+                    -Force
+            }
         }
     }
     throw 'Could not acquire the Desktop self-update lock.'
@@ -236,11 +322,18 @@ function Enter-HermesDesktopUpdateLock {
 function Exit-HermesDesktopUpdateLock {
     [CmdletBinding()]
     param([string] $LockPath)
-    if ($LockPath -and (Test-Path -LiteralPath $LockPath -PathType Leaf)) {
-        try {
-            $record = Get-Content -Raw -LiteralPath $LockPath | ConvertFrom-Json
-            if ([int]$record.ownerPid -eq $PID) { Remove-Item -LiteralPath $LockPath -Force }
-        } catch { }
+
+    if (-not $LockPath -or
+        -not (Test-Path -LiteralPath $LockPath -PathType Leaf)) {
+        return
+    }
+    try {
+        $record = Get-Content -Raw -LiteralPath $LockPath | ConvertFrom-Json
+        if ([int]$record.ownerPid -eq $PID) {
+            Remove-Item -LiteralPath $LockPath -Force
+        }
+    } catch {
+        # A damaged lock is retained for the next stale-lock recovery pass.
     }
 }
 
