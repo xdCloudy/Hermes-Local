@@ -8,7 +8,6 @@ function Assert-True {
     param(
         [Parameter(Mandatory)]
         [bool] $Condition,
-
         [Parameter(Mandatory)]
         [string] $Message
     )
@@ -22,8 +21,8 @@ function New-FixtureStore {
     $root = Join-Path ([System.IO.Path]::GetTempPath()) "hermes-update-fixture-$([guid]::NewGuid().ToString('N'))"
     $fixture = Join-Path $root 'fixture'
     [System.IO.Directory]::CreateDirectory($fixture) | Out-Null
-    [System.IO.File]::WriteAllText((Join-Path $fixture 'active.txt'), 'old', [System.Text.UTF8Encoding]::new($false))
-    [System.IO.File]::WriteAllText((Join-Path $fixture 'candidate.txt'), 'new', [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText((Join-Path $fixture 'active.txt'), 'old')
+    [System.IO.File]::WriteAllText((Join-Path $fixture 'candidate.txt'), 'new')
     return $root
 }
 
@@ -57,8 +56,8 @@ function New-FixtureAdapter {
             param($Context)
             $staging = Join-Path $Context.Working.Fixture 'staging'
             [System.IO.Directory]::CreateDirectory($staging) | Out-Null
-            Copy-Item -LiteralPath $Context.Working.Candidate -Destination (Join-Path $staging 'candidate.txt') -Force
             $Context.Working.Staged = Join-Path $staging 'candidate.txt'
+            Copy-Item -LiteralPath $Context.Working.Candidate -Destination $Context.Working.Staged -Force
             [ordered]@{ staged = $Context.Working.Staged }
         }
 
@@ -111,10 +110,7 @@ function Register-FixtureAdapter {
 }
 
 function Get-NormalizedOperation {
-    param(
-        [Parameter(Mandatory)]
-        [object] $State
-    )
+    param([Parameter(Mandatory)][object] $State)
 
     return [ordered]@{
         component = [string]$State.identity.component
@@ -122,10 +118,7 @@ function Get-NormalizedOperation {
         status = [string]$State.status
         stages = @(
             $State.stages | ForEach-Object {
-                [ordered]@{
-                    name = [string]$_.name
-                    status = [string]$_.status
-                }
+                [ordered]@{ name = [string]$_.name; status = [string]$_.status }
             }
         )
     }
@@ -144,23 +137,23 @@ try {
             -Mode Apply `
             -Component Fixture `
             -Caller $caller `
+            -Input @{} `
             -StoreRoot $store
 
         Assert-True ($state.status -eq 'succeeded') "$caller fixture apply did not succeed."
         Assert-True ((Get-Content -Raw -LiteralPath (Join-Path $store 'fixture\active.txt')) -eq 'new') "$caller fixture was not promoted."
         Assert-True (Test-Path -LiteralPath $state.statePath -PathType Leaf) "$caller state was not persisted."
         Assert-True (Test-Path -LiteralPath $state.reportPath -PathType Leaf) "$caller report was not persisted."
-
         $callerStates[$caller] = Get-NormalizedOperation -State $state
     }
 
-    $cliJson = $callerStates.Cli | ConvertTo-Json -Depth 16 -Compress
-    $desktopJson = $callerStates.Desktop | ConvertTo-Json -Depth 16 -Compress
-    Assert-True ($cliJson -eq $desktopJson) 'CLI and Desktop callers produced different normalized state.'
+    Assert-True `
+        (($callerStates.Cli | ConvertTo-Json -Depth 16 -Compress) -eq ($callerStates.Desktop | ConvertTo-Json -Depth 16 -Compress)) `
+        'CLI and Desktop callers produced different normalized state.'
 
     $durableStore = New-FixtureStore
     $stores.Add($durableStore)
-    $durable = Invoke-HermesUpdateOperation -Mode Apply -Component Fixture -Caller Desktop -StoreRoot $durableStore
+    $durable = Invoke-HermesUpdateOperation -Mode Apply -Component Fixture -Caller Desktop -Input @{} -StoreRoot $durableStore
     $durableId = [string]$durable.operationId
 
     Remove-Module Hermes-UpdateOrchestrator -Force
@@ -181,20 +174,14 @@ try {
 
     Assert-True ($failed.status -eq 'rolled-back') 'A failed fixture promotion was not rolled back.'
     Assert-True ((Get-Content -Raw -LiteralPath (Join-Path $failedStore 'fixture\active.txt')) -eq 'old') 'Rollback did not restore the fixture.'
-    $promoteStage = @($failed.stages | Where-Object name -eq 'promote')[0]
-    $rollbackStage = @($failed.stages | Where-Object name -eq 'rollback')[0]
-    Assert-True ($promoteStage.status -eq 'failed') 'The failed promotion stage was not recorded.'
-    Assert-True ($rollbackStage.status -eq 'succeeded') 'The rollback stage was not recorded as successful.'
+    Assert-True ((@($failed.stages | Where-Object name -eq 'promote')[0]).status -eq 'failed') 'The failed promotion stage was not recorded.'
+    Assert-True ((@($failed.stages | Where-Object name -eq 'rollback')[0]).status -eq 'succeeded') 'The rollback stage was not recorded as successful.'
 
     $rollbackStore = New-FixtureStore
     $stores.Add($rollbackStore)
     Copy-Item -LiteralPath (Join-Path $rollbackStore 'fixture\active.txt') -Destination (Join-Path $rollbackStore 'fixture\backup.txt') -Force
-    [System.IO.File]::WriteAllText(
-        (Join-Path $rollbackStore 'fixture\active.txt'),
-        'new',
-        [System.Text.UTF8Encoding]::new($false)
-    )
-    $rolledBack = Invoke-HermesUpdateOperation -Mode Rollback -Component Fixture -Caller Desktop -StoreRoot $rollbackStore
+    [System.IO.File]::WriteAllText((Join-Path $rollbackStore 'fixture\active.txt'), 'new')
+    $rolledBack = Invoke-HermesUpdateOperation -Mode Rollback -Component Fixture -Caller Desktop -Input @{} -StoreRoot $rollbackStore
     Assert-True ($rolledBack.status -eq 'succeeded') 'Explicit fixture rollback did not succeed.'
     Assert-True ((Get-Content -Raw -LiteralPath (Join-Path $rollbackStore 'fixture\active.txt')) -eq 'old') 'Explicit rollback did not restore old content.'
 
@@ -211,12 +198,10 @@ try {
         resources = @('update-orchestrator', 'workstation')
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $lockRoot 'update-orchestrator.json') -Encoding utf8
 
-    $staleRecovered = Invoke-HermesUpdateOperation -Mode Apply -Component Fixture -Caller Cli -StoreRoot $staleStore
+    $staleRecovered = Invoke-HermesUpdateOperation -Mode Apply -Component Fixture -Caller Cli -Input @{} -StoreRoot $staleStore
     Assert-True ($staleRecovered.status -eq 'succeeded') 'Operation did not continue after stale-lock recovery.'
     Assert-True ([bool]$staleRecovered.recovery.staleLockRecovered) 'Stale-lock recovery was not recorded.'
-    Assert-True (
-        @(Get-ChildItem -LiteralPath $lockRoot -Filter 'update-orchestrator.recovered-*.json' -File).Count -eq 1
-    ) 'Recovered lock evidence was not retained.'
+    Assert-True (@(Get-ChildItem -LiteralPath $lockRoot -Filter 'update-orchestrator.recovered-*.json' -File).Count -eq 1) 'Recovered lock evidence was not retained.'
 
     $nativeRejected = $false
     try {
