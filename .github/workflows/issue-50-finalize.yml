@@ -1,0 +1,113 @@
+name: Issue 50 finalizer
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/issue-50-finalize.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  finalize:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out issue branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/issue-50-project-registry
+          fetch-depth: 0
+
+      - name: Import canonical patch and permanent validation
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $artifact = Join-Path $env:RUNNER_TEMP 'issue-50-canonical'
+          New-Item -ItemType Directory -Force -Path $artifact | Out-Null
+          gh run download 30793154777 `
+            --repo 'xdCloudy/Hermes-Local' `
+            --name 'issue-50-canonical-patch' `
+            --dir $artifact
+
+          $patchName = '0034-feat-add-stable-project-identity-and-path-recovery.patch'
+          Copy-Item `
+            -LiteralPath (Join-Path $artifact $patchName) `
+            -Destination (Join-Path '.\source\hermes-launcher\patches' $patchName) `
+            -Force
+
+          $integrationCommit = (Get-Content -Raw -LiteralPath (Join-Path $artifact 'integration-commit.txt')).Trim()
+          $integrationTree = (Get-Content -Raw -LiteralPath (Join-Path $artifact 'integration-tree.txt')).Trim()
+
+          $editor = Join-Path $env:RUNNER_TEMP 'finalize-issue-50.py'
+          @'
+          from __future__ import annotations
+
+          import datetime as dt
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1]).resolve()
+          integration_commit = sys.argv[2]
+          integration_tree = sys.argv[3]
+
+          version_path = root / 'VERSION.json'
+          version = json.loads(version_path.read_text(encoding='utf-8'))
+          version['product']['version'] = '0.18.16'
+          version['sources']['hermesAgent']['integrationCommit'] = integration_commit
+          version['sources']['hermesAgent']['integrationTree'] = integration_tree
+          version['recordedAt'] = dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
+          version_path.write_text(json.dumps(version, indent=2) + '\n', encoding='utf-8')
+
+          compatibility_path = root / 'scripts/ci/compatibility.py'
+          compatibility = compatibility_path.read_text(encoding='utf-8')
+          python_anchor = '                    "tests/agent/test_skill_commands.py", "tests/run_agent/test_compression_persistence.py",\n'
+          python_replacement = (
+              python_anchor
+              + '                    "tests/hermes_cli/test_projects_db.py", "tests/tui_gateway/test_project_tree.py",\n'
+              + '                    "tests/tui_gateway/test_projects_rpc.py",\n'
+          )
+          if python_anchor not in compatibility:
+              raise RuntimeError('Python registry test anchor is missing from compatibility.py')
+          compatibility = compatibility.replace(python_anchor, python_replacement, 1)
+
+          desktop_anchor = '                    run([vitest, "run", "--project", "electron", "electron/hermes-local-control.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")\n                done.append("desktop:typecheck,lint,focused-electron")'
+          desktop_replacement = (
+              '                    run([vitest, "run", "--project", "electron", "electron/hermes-local-control.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")\n'
+              '                    run([vitest, "run", "src/store/projects.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")\n'
+              '                done.append("desktop:typecheck,lint,focused-electron,project-registry")'
+          )
+          if desktop_anchor not in compatibility:
+              raise RuntimeError('Desktop registry test anchor is missing from compatibility.py')
+          compatibility = compatibility.replace(desktop_anchor, desktop_replacement, 1)
+          compatibility_path.write_text(compatibility, encoding='utf-8')
+
+          smoke_path = root / '.github/workflows/hermes-agent-patch-smoke.yml'
+          smoke = smoke_path.read_text(encoding='utf-8')
+          smoke_anchor = "            '--run-desktop-checks',\n            '--run-package-checks'"
+          smoke_replacement = "            '--run-desktop-checks',\n            '--run-python-checks',\n            '--run-package-checks'"
+          if smoke_anchor not in smoke:
+              raise RuntimeError('Patch-smoke argument anchor is missing')
+          smoke_path.write_text(smoke.replace(smoke_anchor, smoke_replacement, 1), encoding='utf-8')
+          '@ | Set-Content -LiteralPath $editor -Encoding utf8NoBOM
+
+          python $editor $PWD $integrationCommit $integrationTree
+
+          Remove-Item -LiteralPath @(
+            '.\.github\workflows\issue-50-inspect.yml',
+            '.\.github\workflows\issue-50-generate-patch.yml',
+            '.\.github\workflows\issue-50-finalize.yml',
+            '.\scripts\ci\issue50_apply.py',
+            '.\scripts\ci\issue50_fix.py'
+          ) -Force
+
+          git config user.name 'Hermes Local Integration'
+          git config user.email 'hermes-local-ci@localhost'
+          git add --all
+          git diff --cached --check
+          git commit -m 'feat: add stable project identity and path recovery'
+          git push origin HEAD:agent/issue-50-project-registry
