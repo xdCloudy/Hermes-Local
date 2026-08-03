@@ -104,8 +104,15 @@ jobs:
                 --project electron `
                 electron/hermes-local-control.test.ts `
                 electron/hermes-local-update.test.ts `
+                electron/hermes-local-security-progress.test.ts `
                 electron/hermes-local-benchmark-progress.test.ts
               $focusedTestExit = $LASTEXITCODE
+              if ($focusedTestExit -eq 0) {
+                & npm.cmd --prefix $source exec -- vitest run `
+                  src/app/local-workstation/task-centre.test.tsx `
+                  src/app/local-workstation/security-task-view.test.tsx
+                $focusedTestExit = $LASTEXITCODE
+              }
             } finally {
               Pop-Location
             }
