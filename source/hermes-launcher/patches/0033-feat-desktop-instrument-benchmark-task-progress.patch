@@ -13,7 +13,7 @@ Subject: [PATCH 33/33] feat(desktop): instrument benchmark task progress
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
-@@ -212,13 +212,16 @@ function redacted(text: string): string {
+@@ -212,11 +212,13 @@ function redacted(text: string): string {
  function appendTaskOutput(task: ActionTask, chunk: Buffer | string): void {
    const text = redacted(String(chunk))
    const result = boundedTaskOutput(task.output, text, MAX_TASK_OUTPUT)
@@ -29,7 +29,7 @@ diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electr
    task.updatedAt = new Date().toISOString()
    scheduleTaskRegistryPersistence()
  }
-@@ -330,12 +333,45 @@ function newestArchiveEvidence(relativeDirectory: string, prefix: string): null
+@@ -330,8 +333,43 @@ function newestArchiveEvidence(relativeDirectory: string, prefix: string): null
    }
  }
  
@@ -73,7 +73,7 @@ diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electr
      return jsonEvidence('benchmarks\\results\\latest.json', document => {
        const complete = document.lifecycle?.state === 'complete'
        const failed = Array.isArray(document.cases) && document.cases.some((entry: any) => entry?.succeeded === false)
-@@ -452,6 +488,24 @@ function reconcileTaskRegistry(): void {
+@@ -452,6 +488,27 @@ function reconcileTaskRegistry(): void {
        continue
      }
  
@@ -111,7 +111,7 @@ diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electr
        },
        shell: false,
        windowsHide: true
-@@ -741,6 +796,39 @@ function cancelActionTask(taskId: unknown): TaskView {
+@@ -741,6 +796,30 @@ function cancelActionTask(taskId: unknown): TaskView {
      throw new Error(`Task '${task.id}' no longer has a cancellable Desktop-owned process`)
    }
  
@@ -154,7 +154,7 @@ diff --git a/apps/desktop/electron/hermes-local-task-model.ts b/apps/desktop/ele
  }
  
  export interface TaskView extends TaskRecord {
-@@ -301,7 +301,13 @@ export function reconcileRecoveredTask(
+@@ -301,7 +301,12 @@ export function reconcileRecoveredTask(
    const evidenceTime = evidence ? Date.parse(evidence.observedAt) : Number.NaN
  
    if (evidence && Number.isFinite(evidenceTime) && evidenceTime >= taskStart) {
@@ -168,11 +168,11 @@ diff --git a/apps/desktop/electron/hermes-local-task-model.ts b/apps/desktop/ele
        exitCode: evidence.exitCode,
        failure: evidence.failure,
        result: evidence.result
-diff --git a/apps/desktop/electron/hermes-local-benchmark-progress.test.ts b/apps/desktop/electron/hermes-local-benchmark-progress.test.ts
+ diff --git a/apps/desktop/electron/hermes-local-benchmark-progress.test.ts b/apps/desktop/electron/hermes-local-benchmark-progress.test.ts
 new file mode 100644
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-benchmark-progress.test.ts
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,35 @@
 +import { describe, expect, it } from 'vitest'
 +
 +import {
