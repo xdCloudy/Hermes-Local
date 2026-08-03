@@ -15,7 +15,6 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
         self.assertTrue(path.is_file(), f"missing {relative}")
         return path.read_text(encoding="utf-8")
 
-
     def read_embedded(self, relative: str) -> str:
         wrapper = self.read(relative)
         block = wrapper.split("$payload = @(", 1)[1].split(") -join", 1)[0]
@@ -23,7 +22,7 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
         return gzip.decompress(base64.b64decode(payload)).decode("utf-8")
 
     def test_detached_helper_is_fail_closed_and_data_preserving(self) -> None:
-        text = self.read_embedded("Invoke-Hermes-DesktopUpdate.ps1")
+        text = self.read("Invoke-Hermes-DesktopUpdate.ps1")
         for required in (
             "Wait-HermesDesktopUpdateParent",
             "Test-HermesDesktopUpdateOrigin",
@@ -31,13 +30,19 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
             "Enter-HermesDesktopUpdateLock",
             "Setup-Hermes-Local.ps1",
             "Update-Hermes-Local.ps1",
-            "-Component Launcher",
+            "'-Component', 'Launcher'",
             "Restore-PreviousLauncher",
             "SkipModel",
         ):
             self.assertIn(required, text)
         self.assertNotRegex(text, re.compile(r"\bgit\s+clean\b", re.I))
-        self.assertNotRegex(text, re.compile(r"Remove-Item[^\n]+(?:models|data\\hermes|config\\launcher)", re.I))
+        self.assertNotRegex(
+            text,
+            re.compile(
+                r"Remove-Item[^\n]+(?:models|data\\hermes|config\\launcher)",
+                re.I,
+            ),
+        )
 
     def test_overlay_replaces_dead_end_and_restores_source(self) -> None:
         wrapper = self.read("Apply-Hermes-LauncherOverlay.ps1")
@@ -56,16 +61,29 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
 
     def test_bridge_validates_component_channel_and_native_arguments(self) -> None:
         text = self.read(
-            "source/hermes-launcher/overlay-src/apps/desktop/electron/hermes-local-desktop-update.ts"
+            "source/hermes-launcher/overlay-src/apps/desktop/electron/"
+            "hermes-local-desktop-update.ts"
         )
         self.assertIn("HERMES_LOCAL_APPLICATION_COMPONENT", text)
-        self.assertIn("Pinned Hermes Local updates require a target commit", text)
+        self.assertIn(
+            "Pinned Hermes Local updates require a target commit",
+            text,
+        )
         self.assertRegex(text, r"\^\[0-9a-f\]\{40\}\$")
-        self.assertIn("scriptRelative: 'Invoke-Hermes-DesktopUpdate.ps1'", text)
-        self.assertIn("scriptRelative: 'Update-Hermes-Local.ps1'", text)
+        self.assertIn(
+            "scriptRelative: 'Invoke-Hermes-DesktopUpdate.ps1'",
+            text,
+        )
+        self.assertIn(
+            "scriptRelative: 'Update-Hermes-Local.ps1'",
+            text,
+        )
 
-    def test_build_and_release_packages_include_overlay_with_finally_restore(self) -> None:
-        for relative in ("Build-Hermes-Launcher.ps1", "Package-Hermes-Launcher.ps1"):
+    def test_build_and_release_packages_restore_overlay(self) -> None:
+        for relative in (
+            "Build-Hermes-Launcher.ps1",
+            "Package-Hermes-Launcher.ps1",
+        ):
             text = self.read(relative)
             self.assertIn("Apply-Hermes-LauncherOverlay.ps1", text)
             self.assertIn("-Mode Apply", text)
@@ -74,11 +92,18 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
 
     def test_automated_bridge_tests_cover_handoff_and_agent_route(self) -> None:
         text = self.read(
-            "source/hermes-launcher/overlay-src/apps/desktop/electron/hermes-local-desktop-update.test.ts"
+            "source/hermes-launcher/overlay-src/apps/desktop/electron/"
+            "hermes-local-desktop-update.test.ts"
         )
         self.assertIn("routes application checks", text)
-        self.assertIn("preserves the existing Hermes Agent transactional route", text)
-        self.assertIn("parses status and detached-helper handoff markers", text)
+        self.assertIn(
+            "preserves the existing Hermes Agent transactional route",
+            text,
+        )
+        self.assertIn(
+            "parses status and detached-helper handoff markers",
+            text,
+        )
         self.assertIn("rejects unsafe pinned identities", text)
 
 
