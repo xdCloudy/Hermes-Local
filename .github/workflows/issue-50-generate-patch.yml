@@ -61,6 +61,7 @@ jobs:
             }
             uv run python -m pytest `
               tests/hermes_cli/test_projects_db.py `
+              tests/tui_gateway/test_project_tree.py `
               tests/tui_gateway/test_projects_rpc.py `
               -q
           } finally {
