@@ -65,18 +65,10 @@ jobs:
               extracted / '0036-feat-desktop-instrument-security-scan-task-progress.patch': root / 'source' / 'hermes-launcher' / 'patches' / '0036-feat-desktop-instrument-security-scan-task-progress.patch',
           }
           for source, target in targets.items():
+              if not source.is_file():
+                  raise RuntimeError(f'Payload file is missing: {source}')
               target.parent.mkdir(parents=True, exist_ok=True)
               shutil.copyfile(source, target)
-
-          powershell = root / '.github' / 'workflows' / 'powershell-validation.yml'
-          text = powershell.read_text(encoding='utf-8')
-          needle = "          & '.\\tests\\Test-BenchmarkProgressContract.ps1'\n"
-          addition = needle + "          & '.\\tests\\Test-HermesSecurityScanProgress.ps1'\n"
-          if 'Test-HermesSecurityScanProgress.ps1' not in text:
-              if needle not in text:
-                  raise RuntimeError('PowerShell validation insertion point not found')
-              text = text.replace(needle, addition, 1)
-          powershell.write_text(text, encoding='utf-8', newline='\n')
 
           compatibility = root / 'scripts' / 'ci' / 'compatibility.py'
           text = compatibility.read_text(encoding='utf-8')
@@ -92,16 +84,6 @@ jobs:
                   1,
               )
           compatibility.write_text(text, encoding='utf-8', newline='\n')
-
-          smoke = root / '.github' / 'workflows' / 'hermes-agent-patch-smoke.yml'
-          text = smoke.read_text(encoding='utf-8')
-          needle = "                electron/hermes-local-update.test.ts `\n                electron/hermes-local-benchmark-progress.test.ts\n              $focusedTestExit = $LASTEXITCODE\n"
-          replacement = "                electron/hermes-local-update.test.ts `\n                electron/hermes-local-security-progress.test.ts `\n                electron/hermes-local-benchmark-progress.test.ts\n              $focusedTestExit = $LASTEXITCODE\n              if ($focusedTestExit -eq 0) {\n                & npm.cmd --prefix $source exec -- vitest run `\n                  src/app/local-workstation/task-centre.test.tsx `\n                  src/app/local-workstation/security-task-view.test.tsx\n                $focusedTestExit = $LASTEXITCODE\n              }\n"
-          if 'hermes-local-security-progress.test.ts' not in text:
-              if needle not in text:
-                  raise RuntimeError('Patch smoke insertion point not found')
-              text = text.replace(needle, replacement, 1)
-          smoke.write_text(text, encoding='utf-8', newline='\n')
           '@ | python -
 
       - name: Compute canonical integration identity
@@ -111,15 +93,18 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $manifest = Get-Content -Raw -LiteralPath '.\VERSION.json' | ConvertFrom-Json
           $source = Join-Path $env:RUNNER_TEMP 'issue-25-canonical-hermes-agent'
-          $patches = Get-ChildItem -LiteralPath '.\source\hermes-launcher\patches' -Filter '*.patch' -File |
+          $patches = @(Get-ChildItem -LiteralPath '.\source\hermes-launcher\patches' -Filter '*.patch' -File |
             Sort-Object Name |
-            ForEach-Object FullName
+            ForEach-Object FullName)
 
           git clone --no-checkout $manifest.sources.hermesAgent.repository $source
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to clone Hermes Agent.' }
           git -C $source checkout --detach $manifest.sources.hermesAgent.commit
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to check out the pinned Hermes Agent commit.' }
           git -C $source config user.name 'Hermes Local Integration'
           git -C $source config user.email 'hermes-local-ci@localhost'
           git -C $source am --3way --committer-date-is-author-date @patches
+          if ($LASTEXITCODE -ne 0) { throw 'The 36-patch Hermes Agent integration failed to reconstruct.' }
 
           $integrationCommit = (git -C $source rev-parse HEAD).Trim()
           $integrationTree = (git -C $source rev-parse 'HEAD^{tree}').Trim()
@@ -180,24 +165,12 @@ jobs:
             throw 'Compatibility checker failed Python syntax validation.'
           }
 
-      - name: Remove temporary issue files
+      - name: Commit permanent non-workflow implementation
         shell: pwsh
         run: |
           Remove-Item -LiteralPath '.\.github\issue-25' -Recurse -Force
-          Get-ChildItem -LiteralPath '.\.github' -Filter 'issue-25-payload.part-*' -File -ErrorAction SilentlyContinue | Remove-Item -Force
-          foreach ($temporaryWorkflow in @(
-            '.\.github\workflows\issue-25-inspect.yml',
-            '.\.github\workflows\issue-25-finalize.yml',
-            '.\.github\workflows\issue-25-fix-finalizer.yml'
-          )) {
-            if (Test-Path -LiteralPath $temporaryWorkflow -PathType Leaf) {
-              Remove-Item -LiteralPath $temporaryWorkflow -Force
-            }
-          }
-
-      - name: Commit permanent implementation
-        shell: pwsh
-        run: |
+          Get-ChildItem -LiteralPath '.\.github' -Filter 'issue-25-payload.part-*' -File -ErrorAction SilentlyContinue |
+            Remove-Item -Force
           git config user.name 'Hermes Local CI'
           git config user.email 'hermes-local-ci@localhost'
           git add --all
