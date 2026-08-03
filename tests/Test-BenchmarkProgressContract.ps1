@@ -20,7 +20,7 @@ function Assert-Equal {
     }
 }
 
-$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "hermes-benchmark-progress-$([guid]::NewGuid().ToString('N'))"
+$tempRoot = Resolve-HermesPath "temp\benchmark-progress-contract-$([guid]::NewGuid().ToString('N'))"
 [System.IO.Directory]::CreateDirectory($tempRoot) | Out-Null
 
 $originalTaskId = $env:HERMES_LOCAL_TASK_ID
