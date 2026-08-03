@@ -110,7 +110,7 @@ function Install-Gitleaks {
 
     $version = '8.30.1'
     $archiveSha256 = 'D29144DEFF3A68AA93CED33DDDF84B7FDC26070ADD4AA0F4513094C8332AFC4E'
-    $archiveUri = "https://github.com/gitleaks/gitleaks/releases/download/v$version/gitleaks_${version}_windows_x64.zip"
+    $archiveUri = 'https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_windows_x64.zip'
     $target = Resolve-HermesPath "runtimes\tools\security\gitleaks-$version"
     $executable = Join-Path $target 'gitleaks.exe'
 
@@ -152,7 +152,7 @@ function Install-OsvScanner {
 
     $version = '2.4.0'
     $sha256 = '0CDD113610126D5DFD5E12AD0E0B4F3E879291FF19BB43B0C52ED2F2C2DF1A37'
-    $uri = "https://github.com/google/osv-scanner/releases/download/v$version/osv-scanner_windows_amd64.exe"
+    $uri = 'https://github.com/google/osv-scanner/releases/download/v2.4.0/osv-scanner_windows_amd64.exe'
     $destination = Resolve-HermesPath "runtimes\tools\security\osv-scanner-$version\osv-scanner.exe"
 
     Save-SecurityArtifact `
