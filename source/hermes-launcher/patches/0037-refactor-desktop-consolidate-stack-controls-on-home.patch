@@ -105,7 +105,7 @@ index e7ca56eff..000000000 100644
 +      await expect(page.getByRole('button', { name: 'Back up', exact: true })).toBeVisible()
 +      await expect(page.getByRole('button', { name: 'Check for updates', exact: true })).toBeVisible()
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index 8b11d9f..000000000 100644
+index 3f6f19150ba95e4921a3384dcc542e63b5d86117..000000000 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -862 +862,155 @@
