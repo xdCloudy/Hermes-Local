@@ -29,7 +29,11 @@ jobs:
         run: |
           $payload = '.\.github\issue-25'
           $archive = Join-Path $payload 'payload.zip'
-          $encoded = (Get-Content -Raw -LiteralPath (Join-Path $payload 'payload.b64')).Trim()
+          $parts = @(Get-ChildItem -LiteralPath $payload -Filter 'payload.part*.b64' -File | Sort-Object Name)
+          if ($parts.Count -ne 4) {
+            throw "Issue #25 payload is incomplete: expected 4 chunks, found $($parts.Count)."
+          }
+          $encoded = (($parts | ForEach-Object { (Get-Content -Raw -LiteralPath $_.FullName).Trim() }) -join '')
           [System.IO.File]::WriteAllBytes($archive, [System.Convert]::FromBase64String($encoded))
           $digest = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($digest -ne '6f43a5bce5c9377cd022fa7cccc72963b2f2a4ba4efb44a849befe1ece832a2a') {
