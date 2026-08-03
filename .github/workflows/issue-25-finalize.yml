@@ -57,6 +57,11 @@ jobs:
           if broken_trim not in progress_text:
               raise RuntimeError('Security progress path-redaction correction point not found')
           progress_text = progress_text.replace(broken_trim, fixed_trim, 1)
+          broken_relative = "        return $relative.Replace('\\\\', '/')"
+          fixed_relative = "        return $relative.Replace([System.IO.Path]::DirectorySeparatorChar, [char]'/').Replace([System.IO.Path]::AltDirectorySeparatorChar, [char]'/')"
+          if broken_relative not in progress_text:
+              raise RuntimeError('Security progress relative-path correction point not found')
+          progress_text = progress_text.replace(broken_relative, fixed_relative, 1)
           log_block = "    if ($script:securityTaskLogPath) {\n        $logLine = '{0} [{1}] {2}: {3}' -f $now.ToString('o'), $Status, $Stage, $safeMessage\n        Add-Content -LiteralPath $script:securityTaskLogPath -Value $logLine -Encoding utf8\n    }"
           fixed_log_block = "    if ($script:securityTaskLogPath) {\n        $logDirectory = [System.IO.Path]::GetDirectoryName($script:securityTaskLogPath)\n        if ($logDirectory) {\n            [System.IO.Directory]::CreateDirectory($logDirectory) | Out-Null\n        }\n        $logLine = '{0} [{1}] {2}: {3}' -f $now.ToString('o'), $Status, $Stage, $safeMessage\n        Add-Content -LiteralPath $script:securityTaskLogPath -Value $logLine -Encoding utf8\n    }"
           if log_block not in progress_text:
