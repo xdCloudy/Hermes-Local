@@ -1,4 +1,4 @@
-From cd479531adc9a0177d178d67ceb9fe2fea871efc Mon Sep 17 00:00:00 2001
+From f60ed315de7fb09c842647f4007deb2a18730b21 Mon Sep 17 00:00:00 2001
 From: Hermes Local Compatibility CI <hermes-local-ci@localhost>
 Date: Mon, 3 Aug 2026 05:12:25 +0000
 Subject: [PATCH] feat(desktop): instrument benchmark task progress
@@ -12,7 +12,7 @@ Subject: [PATCH] feat(desktop): instrument benchmark task progress
 
 diff --git a/apps/desktop/electron/hermes-local-benchmark-progress.test.ts b/apps/desktop/electron/hermes-local-benchmark-progress.test.ts
 new file mode 100644
-index 000000000..b51e9a7cf
+index 000000000..228d0e198
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-benchmark-progress.test.ts
 @@ -0,0 +1,35 @@
@@ -21,8 +21,8 @@ index 000000000..b51e9a7cf
 +import {
 +  createTaskRecord,
 +  reconcileRecoveredTask,
-+  transitionTask,
-+  type TaskCompletionEvidence
++  type TaskCompletionEvidence,
++  transitionTask
 +} from './hermes-local-task-model'
 +
 +describe('Hermes Local benchmark task recovery', () => {
