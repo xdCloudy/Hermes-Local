@@ -111,8 +111,8 @@ jobs:
 
           $integrationCommit = (git -C $source rev-parse HEAD).Trim()
           $integrationTree = (git -C $source rev-parse 'HEAD^{tree}').Trim()
-          if ($integrationTree -ne '43c9e6b2b5cc9cf904f8206e31287b1e4efbe96d') {
-            throw "Issue #25 integration tree mismatch: expected 43c9e6b2b5cc9cf904f8206e31287b1e4efbe96d, got $integrationTree"
+          if ($integrationTree -ne 'facb49e58567e5ef9be8ff10bd1e4d208293c09e') {
+            throw "Issue #25 integration tree mismatch: expected facb49e58567e5ef9be8ff10bd1e4d208293c09e, got $integrationTree"
           }
 
           $env:ISSUE25_INTEGRATION_COMMIT = $integrationCommit
