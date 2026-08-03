@@ -57,18 +57,8 @@ jobs:
           if broken_trim not in progress_text:
               raise RuntimeError('Security progress path-redaction correction point not found')
           progress_text = progress_text.replace(broken_trim, fixed_trim, 1)
-          log_block = """    if ($script:securityTaskLogPath) {
-        $logLine = '{0} [{1}] {2}: {3}' -f $now.ToString('o'), $Status, $Stage, $safeMessage
-        Add-Content -LiteralPath $script:securityTaskLogPath -Value $logLine -Encoding utf8
-    }"""
-          fixed_log_block = """    if ($script:securityTaskLogPath) {
-        $logDirectory = [System.IO.Path]::GetDirectoryName($script:securityTaskLogPath)
-        if ($logDirectory) {
-            [System.IO.Directory]::CreateDirectory($logDirectory) | Out-Null
-        }
-        $logLine = '{0} [{1}] {2}: {3}' -f $now.ToString('o'), $Status, $Stage, $safeMessage
-        Add-Content -LiteralPath $script:securityTaskLogPath -Value $logLine -Encoding utf8
-    }"""
+          log_block = "    if ($script:securityTaskLogPath) {\n        $logLine = '{0} [{1}] {2}: {3}' -f $now.ToString('o'), $Status, $Stage, $safeMessage\n        Add-Content -LiteralPath $script:securityTaskLogPath -Value $logLine -Encoding utf8\n    }"
+          fixed_log_block = "    if ($script:securityTaskLogPath) {\n        $logDirectory = [System.IO.Path]::GetDirectoryName($script:securityTaskLogPath)\n        if ($logDirectory) {\n            [System.IO.Directory]::CreateDirectory($logDirectory) | Out-Null\n        }\n        $logLine = '{0} [{1}] {2}: {3}' -f $now.ToString('o'), $Status, $Stage, $safeMessage\n        Add-Content -LiteralPath $script:securityTaskLogPath -Value $logLine -Encoding utf8\n    }"
           if log_block not in progress_text:
               raise RuntimeError('Security progress log-directory correction point not found')
           progress_text = progress_text.replace(log_block, fixed_log_block, 1)
