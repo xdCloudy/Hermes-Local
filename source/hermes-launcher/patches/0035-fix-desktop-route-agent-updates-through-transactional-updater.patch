@@ -1,0 +1,938 @@
+From 78e28485b6012691f8841c6d133bd8ba607ebc69 Mon Sep 17 00:00:00 2001
+From: Hermes Local Integration <hermes-local-ci@localhost>
+Date: Mon, 3 Aug 2026 11:20:00 +0100
+Subject: [PATCH] fix: route Desktop backend updates through transactional
+ updater
+
+---
+ apps/desktop/electron/hermes-local-control.ts | 284 +++++++++++++++++-
+ .../electron/hermes-local-update.test.ts      | 177 +++++++++++
+ .../src/app/local-workstation/index.tsx       | 157 ++++++++--
+ .../src/app/local-workstation/types.ts        |  55 +++-
+ apps/desktop/src/global.d.ts                  |  11 +-
+ 5 files changed, 648 insertions(+), 36 deletions(-)
+ create mode 100644 apps/desktop/electron/hermes-local-update.test.ts
+
+diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
+index 501bb42..69ccf19 100644
+--- a/apps/desktop/electron/hermes-local-control.ts
++++ b/apps/desktop/electron/hermes-local-control.ts
+@@ -216,7 +216,9 @@ function appendTaskOutput(task: ActionTask, chunk: Buffer | string): void {
+   const result = boundedTaskOutput(task.output, text, MAX_TASK_OUTPUT)
+   const modelStageMatches = [...text.matchAll(/::hermes-model-switch-stage::([a-z0-9-]+)::([^\r\n]+)/gi)]
+   const benchmarkStageMatches = [...text.matchAll(/::hermes-benchmark-stage::([a-z0-9-]+)::([^\r\n]+)/gi)]
+-  const stage = benchmarkStageMatches.at(-1)?.[1] || modelStageMatches.at(-1)?.[1]
++  const updateStageMatches = [...text.matchAll(/::hermes-update-stage::([a-z0-9-]+)::([^\r\n]+)/gi)]
++  const stage =
++    updateStageMatches.at(-1)?.[1] || benchmarkStageMatches.at(-1)?.[1] || modelStageMatches.at(-1)?.[1]
+ 
+   task.output = result.output
+   task.outputTruncated ||= result.truncated
+@@ -367,6 +369,189 @@ function benchmarkProgressSummary(progress: Record<string, any>): string {
+   return `Benchmark progress: ${String(progress.stage || 'running')}${units} · ${String(progress.message || '')}`.trim()
+ }
+ 
++function readInstalledVersion(): null | Record<string, any> {
++  const version = safeReadJson<Record<string, any>>('VERSION.json')
++  const overrides = safeReadJson<Record<string, any>>('config\\launcher\\source-overrides.json')
++  const hermesAgentOverride = overrides?.sources?.hermesAgent
++
++  if (!version || !hermesAgentOverride) {
++    return version
++  }
++
++  return {
++    ...version,
++    sources: {
++      ...version.sources,
++      hermesAgent: {
++        ...version.sources?.hermesAgent,
++        ...hermesAgentOverride
++      }
++    }
++  }
++}
++
++function updateOperationDocument(): null | Record<string, any> {
++  return safeReadJson<Record<string, any>>('data\\runtime\\update-operations\\LATEST.json')
++}
++
++function updateOperationForTask(task: TaskRecord): null | Record<string, any> {
++  const operation = updateOperationDocument()
++
++  if (!operation || String(operation.identity?.component || '') !== 'HermesAgent') {
++    return null
++  }
++
++  if (String(operation.taskId || '') === task.id) {
++    return operation
++  }
++
++  const requestedAt = Date.parse(String(operation.identity?.requestedAt || operation.createdAt || ''))
++  const taskCreatedAt = Date.parse(task.createdAt)
++
++  return (
++    operation.caller === 'Desktop' &&
++    Number.isFinite(requestedAt) &&
++    Number.isFinite(taskCreatedAt) &&
++    requestedAt >= taskCreatedAt
++  )
++    ? operation
++    : null
++}
++
++function relativeUpdatePath(value: unknown, fallback: string): string {
++  const text = String(value || '').trim()
++
++  if (!text) {
++    return fallback
++  }
++
++  const root = localRoot()
++  const candidate = path.isAbsolute(text) ? path.resolve(text) : path.resolve(root, text)
++  const relative = path.relative(root, candidate)
++
++  if (!relative || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))) {
++    return (relative || path.basename(candidate)).replaceAll('\\', '/')
++  }
++
++  return fallback
++}
++
++function updateOperationTarget(operation: null | Record<string, any>) {
++  const check = operation?.stageResults?.check
++  const compatibility = operation?.stageResults?.compatibility
++  const source = compatibility?.candidate ? compatibility : check
++
++  if (!source) {
++    return null
++  }
++
++  return {
++    candidate: source.candidate ? String(source.candidate) : null,
++    current: source.current ? String(source.current) : null,
++    updateAvailable:
++      typeof source.updateAvailable === 'boolean'
++        ? source.updateAvailable
++        : source.candidate && source.current
++          ? String(source.candidate) !== String(source.current)
++          : null
++  }
++}
++
++function publicUpdateOperation(operation: null | Record<string, any>) {
++  if (!operation?.operationId) {
++    return null
++  }
++
++  const failure = operation.failure
++
++  return {
++    completedAt: operation.completedAt ? String(operation.completedAt) : null,
++    currentStage: operation.currentStage ? String(operation.currentStage) : null,
++    failure: failure
++      ? {
++          activePreserved:
++            typeof failure.activePreserved === 'boolean' ? Boolean(failure.activePreserved) : undefined,
++          code: String(failure.code || 'update-operation-failed'),
++          message: String(failure.message || 'Hermes Agent update failed'),
++          rollback: failure.rollback || undefined,
++          stage: failure.stage ? String(failure.stage) : undefined
++        }
++      : null,
++    mode: String(operation.identity?.mode || 'Check'),
++    operationId: String(operation.operationId),
++    progress: {
++      completed: Number(operation.progress?.completed || 0),
++      percent: Number(operation.progress?.percent || 0),
++      total: Number(operation.progress?.total || 0)
++    },
++    recovery: {
++      previousOperationId: operation.recovery?.previousOperationId
++        ? String(operation.recovery.previousOperationId)
++        : null,
++      recoveredLockPath: operation.recovery?.recoveredLockPath
++        ? relativeUpdatePath(operation.recovery.recoveredLockPath, 'data/runtime/locks')
++        : null,
++      staleLockRecovered: Boolean(operation.recovery?.staleLockRecovered)
++    },
++    reportPath: operation.reportPath
++      ? relativeUpdatePath(
++          operation.reportPath,
++          `build/updates/operations/${String(operation.operationId)}.json`
++        )
++      : null,
++    requestedAt: String(operation.identity?.requestedAt || operation.createdAt || ''),
++    result: operation.result && typeof operation.result === 'object' ? operation.result : null,
++    stageResults:
++      operation.stageResults && typeof operation.stageResults === 'object' ? operation.stageResults : {},
++    status: String(operation.status || 'queued'),
++    taskId: operation.taskId ? String(operation.taskId) : null,
++    target: updateOperationTarget(operation),
++    updatedAt: String(operation.updatedAt || operation.createdAt || '')
++  }
++}
++
++function updateOperationSummary(operation: Record<string, any>): string {
++  const stage = String(operation.failure?.stage || operation.currentStage || operation.status || 'running')
++  const message = String(
++    operation.failure?.message ||
++      [...(Array.isArray(operation.logs) ? operation.logs : [])].reverse().find(entry => entry?.message)?.message ||
++      `Hermes Agent update ${String(operation.status || 'running')}`
++  )
++
++  return `Hermes Agent update: ${stage} · ${message}`
++}
++
++function updateCompletionEvidence(task: TaskRecord): null | TaskCompletionEvidence {
++  const operation = updateOperationForTask(task)
++  const status = String(operation?.status || '')
++
++  if (!operation || !['failed', 'rolled-back', 'succeeded'].includes(status)) {
++    return null
++  }
++
++  const reportPath = relativeUpdatePath(
++    operation.reportPath,
++    `build/updates/operations/${String(operation.operationId)}.json`
++  )
++  const succeeded = status === 'succeeded'
++  const rolledBack = status === 'rolled-back'
++
++  return {
++    exitCode: succeeded ? 0 : 1,
++    failure: succeeded
++      ? null
++      : {
++          code: rolledBack ? 'update-rolled-back' : String(operation.failure?.code || 'update-operation-failed'),
++          message: rolledBack
++            ? `Update failed during ${String(operation.failure?.stage || 'apply')} and the previous backend was restored.`
++            : String(operation.failure?.message || 'Hermes Agent update failed')
++        },
++    observedAt: String(operation.completedAt || operation.updatedAt || new Date().toISOString()),
++    result: { kind: 'report', path: reportPath },
++    status: succeeded ? 'succeeded' : 'failed'
++  }
++}
++
+ function taskCompletionEvidence(task: TaskRecord): null | TaskCompletionEvidence {
+   if (task.action === 'benchmark') {
+     const progress = benchmarkProgress(task)
+@@ -426,14 +611,7 @@ function taskCompletionEvidence(task: TaskRecord): null | TaskCompletionEvidence
+   }
+ 
+   if (task.action === 'update') {
+-    return jsonEvidence('build\\updates\\LATEST.json', document =>
+-      typeof document.checkedAt === 'string'
+-        ? { status: 'succeeded' }
+-        : {
+-            failure: { code: 'update-report-invalid', message: 'Recovered update report is incomplete' },
+-            status: 'failed'
+-          }
+-    )
++    return updateCompletionEvidence(task)
+   }
+ 
+   if (task.action === 'backup') {
+@@ -517,6 +695,27 @@ function reconcileTaskRegistry(): void {
+       }
+     }
+ 
++    if (task.action === 'update') {
++      const operation = updateOperationForTask(task)
++      const observedAt = Date.parse(String(operation?.updatedAt || ''))
++
++      if (
++        operation &&
++        Number.isFinite(observedAt) &&
++        observedAt > Date.parse(task.updatedAt) &&
++        !['failed', 'rolled-back', 'succeeded'].includes(String(operation.status || ''))
++      ) {
++        const summary = updateOperationSummary(operation)
++        const output = boundedTaskOutput(task.output, `\n${summary}\n`, MAX_TASK_OUTPUT)
++
++        task.output = output.output
++        task.outputTruncated ||= output.truncated
++        task.stage = String(operation.currentStage || task.stage || '') || null
++        task.updatedAt = new Date(observedAt).toISOString()
++        changed = true
++      }
++    }
++
+     const recovered = reconcileRecoveredTask(
+       task,
+       processAlive(task.owner.pid),
+@@ -585,13 +784,15 @@ function completeTask(
+   task: ActionTask,
+   status: 'cancelled' | 'failed' | 'interrupted' | 'succeeded',
+   exitCode: null | number,
+-  failure: TaskRecord['failure'] = null
++  failure: TaskRecord['failure'] = null,
++  result: TaskRecord['result'] = null
+ ): void {
+   replaceTaskRecord(
+     task,
+     transitionTask(task, status, new Date().toISOString(), {
+       exitCode,
+-      failure
++      failure,
++      result
+     })
+   )
+   task.events.emit('terminal', task)
+@@ -629,7 +830,27 @@ function actionArguments(action: ActionName, input: Record<string, unknown>): st
+   }
+ 
+   if (action === 'update') {
+-    args.push('-Mode', 'Check')
++    const mode = String(input.mode || 'Check')
++    const targetCommit = String(input.targetCommit || '').trim()
++    const targetBranch = String(input.targetBranch || '').trim()
++
++    if (!['Apply', 'Check', 'Compatibility', 'Rollback'].includes(mode)) {
++      throw new Error('Unsupported Hermes Agent update mode')
++    }
++    if (targetCommit && !/^[0-9a-f]{40}$/i.test(targetCommit)) {
++      throw new Error('Hermes Agent target commit must be a full 40-character SHA')
++    }
++    if (targetBranch && !/^[A-Za-z0-9._/-]+$/.test(targetBranch)) {
++      throw new Error('Hermes Agent target branch contains unsupported characters')
++    }
++
++    args.push('-Mode', mode, '-Component', 'HermesAgent', '-Caller', 'Desktop')
++    if (targetCommit && mode !== 'Rollback') {
++      args.push('-TargetCommit', targetCommit)
++    }
++    if (targetBranch && mode !== 'Rollback') {
++      args.push('-TargetBranch', targetBranch)
++    }
+   }
+ 
+   args.push('-NonInteractive')
+@@ -662,7 +883,11 @@ function spawnActionTask(task: ActionTask): void {
+     child.stderr.on('data', chunk => appendTaskOutput(task, chunk))
+     child.on('error', error => appendTaskOutput(task, `\n${error.message}\n`))
+     child.on('close', code => {
+-      if (task.status === 'cancelling') {
++      const evidence = task.action === 'update' ? updateCompletionEvidence(task) : null
++
++      if (evidence) {
++        completeTask(task, evidence.status, evidence.exitCode, evidence.failure, evidence.result)
++      } else if (task.status === 'cancelling') {
+         completeTask(task, 'cancelled', code)
+       } else if (code === 0) {
+         completeTask(task, 'succeeded', code)
+@@ -715,6 +940,14 @@ function pruneCompletedTasks(taskMap: Map<string, ActionTask> = tasks, maximum =
+ }
+ 
+ function taskContext(action: ActionName, input: Record<string, unknown>): Record<string, string> {
++  if (action === 'update') {
++    return Object.fromEntries(
++      ['mode', 'targetBranch', 'targetCommit']
++        .map(key => [key, String(input[key] || (key === 'mode' ? 'Check' : ''))])
++        .filter(([, value]) => value)
++    )
++  }
++
+   if (action !== 'switch-model') {
+     return {}
+   }
+@@ -1077,8 +1310,15 @@ async function buildWorkstationSnapshot() {
+   reconcileTaskRegistry()
+ 
+   const state = readJson<Record<string, any>>('data\\runtime\\status.json')
+-  const version = readJson<Record<string, any>>('VERSION.json')
++  const version = readInstalledVersion()
+   const gpu = await gpuSnapshot()
++  const latestUpdate = updateOperationDocument()
++  const patchSeries = String(version?.sources?.hermesAgent?.patchSeries || 'source/hermes-launcher/patches')
++  const patchDirectory = resolveUnderRoot(patchSeries)
++  const patchCount = fs.existsSync(patchDirectory)
++    ? fs.readdirSync(patchDirectory, { withFileTypes: true }).filter(entry => entry.isFile() && entry.name.endsWith('.patch'))
++        .length
++    : 0
+   const configuration = readLocalConfiguration(localRoot(), os.cpus().length, gpu?.memoryTotalMiB || 0)
+   const modelBase = `http://${configuration.network.host}:${configuration.network.modelPort}`
+   const hermesBase = `http://${configuration.network.host}:${configuration.network.hermesPort}`
+@@ -1171,6 +1411,19 @@ async function buildWorkstationSnapshot() {
+           ? `Configured model '${configuration.selectedModel.alias}' does not match the active runtime`
+           : null
+     },
++    updates: {
++      installed: {
++        baseCommit: version?.sources?.hermesAgent?.commit ? String(version.sources.hermesAgent.commit) : null,
++        integrationCommit: version?.sources?.hermesAgent?.integrationCommit
++          ? String(version.sources.hermesAgent.integrationCommit)
++          : null,
++        integrationTree: version?.sources?.hermesAgent?.integrationTree
++          ? String(version.sources.hermesAgent.integrationTree)
++          : null,
++        patchCount
++      },
++      latest: publicUpdateOperation(latestUpdate)
++    },
+     version,
+     gpu
+   }
+@@ -1477,6 +1730,9 @@ export const hermesLocalControlTest = {
+   sanitizeEditableProfile,
+   serviceHealth,
+   setLoginItem,
++  actionArguments,
++  publicUpdateOperation,
+   taskCompletionEvidence,
++  updateOperationSummary,
+   waitForActionTask
+ }
+diff --git a/apps/desktop/electron/hermes-local-update.test.ts b/apps/desktop/electron/hermes-local-update.test.ts
+new file mode 100644
+index 0000000..801bf57
+--- /dev/null
++++ b/apps/desktop/electron/hermes-local-update.test.ts
+@@ -0,0 +1,177 @@
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++
++vi.mock('electron', () => ({
++  app: {
++    getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
++    isReady: vi.fn(() => true),
++    setLoginItemSettings: vi.fn()
++  },
++  ipcMain: { handle: vi.fn() },
++  session: { fromPartition: vi.fn() },
++  WebContentsView: vi.fn(),
++  shell: {
++    openExternal: vi.fn(),
++    openPath: vi.fn()
++  }
++}))
++
++import { hermesLocalControlTest } from './hermes-local-control'
++import { createTaskRecord, reconcileRecoveredTask, transitionTask } from './hermes-local-task-model'
++
++const originalRoot = process.env.HERMES_LOCAL_ROOT
++let testRoot = ''
++
++function writeJson(relativePath: string, value: unknown) {
++  const filePath = path.join(testRoot, relativePath)
++
++  fs.mkdirSync(path.dirname(filePath), { recursive: true })
++  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
++}
++
++describe('Hermes Local transactional Desktop updater', () => {
++  beforeEach(() => {
++    testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-local-update-test-'))
++    process.env.HERMES_LOCAL_ROOT = testRoot
++    fs.writeFileSync(path.join(testRoot, 'Update-Hermes-Local.ps1'), '', 'utf8')
++  })
++
++  afterEach(() => {
++    fs.rmSync(testRoot, { force: true, recursive: true })
++
++    if (originalRoot === undefined) {
++      delete process.env.HERMES_LOCAL_ROOT
++    } else {
++      process.env.HERMES_LOCAL_ROOT = originalRoot
++    }
++  })
++
++  it('routes Desktop apply through the authoritative typed updater entrypoint', () => {
++    const targetCommit = 'a'.repeat(40)
++    const args = hermesLocalControlTest.actionArguments('update', {
++      mode: 'Apply',
++      targetCommit
++    })
++
++    expect(args).toContain(path.join(testRoot, 'Update-Hermes-Local.ps1'))
++    expect(args).toEqual(
++      expect.arrayContaining([
++        '-Mode',
++        'Apply',
++        '-Component',
++        'HermesAgent',
++        '-Caller',
++        'Desktop',
++        '-TargetCommit',
++        targetCommit,
++        '-NonInteractive'
++      ])
++    )
++    expect(() =>
++      hermesLocalControlTest.actionArguments('update', {
++        mode: 'Apply',
++        targetCommit: 'not-a-sha'
++      })
++    ).toThrow(/40-character SHA/i)
++  })
++
++  it('projects specific compatibility and stale-lock evidence for the update UI', () => {
++    const operation = hermesLocalControlTest.publicUpdateOperation({
++      completedAt: '2026-08-03T08:00:09.000Z',
++      createdAt: '2026-08-03T08:00:00.000Z',
++      currentStage: null,
++      failure: null,
++      identity: {
++        component: 'HermesAgent',
++        mode: 'Compatibility',
++        requestedAt: '2026-08-03T08:00:00.000Z'
++      },
++      operationId: 'operation-1',
++      progress: { completed: 2, percent: 100, total: 2 },
++      recovery: {
++        previousOperationId: 'stale-operation',
++        recoveredLockPath: path.join(testRoot, 'data', 'runtime', 'locks', 'recovered.json'),
++        staleLockRecovered: true
++      },
++      reportPath: path.join(testRoot, 'build', 'updates', 'operations', 'operation-1.json'),
++      stageResults: {
++        compatibility: {
++          candidate: 'b'.repeat(40),
++          compatible: true,
++          current: 'a'.repeat(40)
++        }
++      },
++      status: 'succeeded',
++      taskId: 'task-1',
++      updatedAt: '2026-08-03T08:00:09.000Z'
++    })
++
++    expect(operation).toMatchObject({
++      mode: 'Compatibility',
++      recovery: { previousOperationId: 'stale-operation', staleLockRecovered: true },
++      reportPath: 'build/updates/operations/operation-1.json',
++      target: { updateAvailable: true }
++    })
++  })
++
++  it('recovers the original opaque failure as a typed rolled-back Task Centre result', () => {
++    const created = createTaskRecord(
++      'update',
++      'update-task',
++      { kind: 'desktop-child-process', pid: 4242 },
++      '2026-08-03T08:00:00.000Z',
++      { mode: 'Apply' }
++    )
++    const running = transitionTask(created, 'running', '2026-08-03T08:00:01.000Z', {
++      owner: { kind: 'desktop-child-process', pid: 4242 }
++    })
++    const reportPath = path.join(testRoot, 'build', 'updates', 'operations', 'operation-2.json')
++
++    writeJson('data/runtime/update-operations/LATEST.json', {
++      completedAt: '2026-08-03T08:00:10.000Z',
++      failure: {
++        activePreserved: true,
++        code: 'build-failed',
++        message: 'Desktop build failed.',
++        rollback: { status: 'succeeded' },
++        stage: 'build'
++      },
++      identity: {
++        component: 'HermesAgent',
++        mode: 'Apply',
++        requestedAt: '2026-08-03T08:00:00.000Z'
++      },
++      operationId: 'operation-2',
++      reportPath,
++      status: 'rolled-back',
++      taskId: 'update-task',
++      updatedAt: '2026-08-03T08:00:10.000Z'
++    })
++    writeJson('build/updates/operations/operation-2.json', { status: 'rolled-back' })
++
++    const evidence = hermesLocalControlTest.taskCompletionEvidence(running)
++    const recovered = reconcileRecoveredTask(
++      running,
++      false,
++      evidence,
++      '2026-08-03T08:00:11.000Z'
++    )
++
++    expect(evidence).toMatchObject({
++      failure: {
++        code: 'update-rolled-back',
++        message: expect.stringMatching(/previous backend was restored/i)
++      },
++      result: { kind: 'report', path: 'build/updates/operations/operation-2.json' },
++      status: 'failed'
++    })
++    expect(recovered).toMatchObject({
++      failure: { code: 'update-rolled-back' },
++      result: { path: 'build/updates/operations/operation-2.json' },
++      status: 'failed'
++    })
++  })
++})
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index 72c0103..bead569 100644
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -42,6 +42,7 @@ import type {
+   LocalInferenceProfile,
+   LocalLog,
+   LocalModel,
++  LocalUpdateMode,
+   LocalWorkstationSettings,
+   LocalWorkstationSnapshot
+ } from './types'
+@@ -153,6 +154,7 @@ function ActionButton({
+   action,
+   available,
+   children,
++  input,
+   onRun,
+   tasks,
+   variant = 'outline'
+@@ -160,7 +162,8 @@ function ActionButton({
+   action: LocalAction
+   available: boolean
+   children: ReactNode
+-  onRun: (action: LocalAction) => void
++  input?: Record<string, unknown>
++  onRun: (action: LocalAction, input?: Record<string, unknown>) => void
+   tasks: LocalActionTask[]
+   variant?: 'default' | 'destructive' | 'outline'
+ }) {
+@@ -172,7 +175,7 @@ function ActionButton({
+     <Button
+       className="h-8 gap-1.5 px-3 text-xs"
+       disabled={!available || busy}
+-      onClick={() => onRun(action)}
++      onClick={() => onRun(action, input)}
+       size="sm"
+       variant={variant}
+     >
+@@ -879,7 +882,7 @@ function HomeContent({
+   snapshot
+ }: {
+   onNavigate: (path: string) => void
+-  onRun: (action: LocalAction) => void
++  onRun: (action: LocalAction, input?: Record<string, unknown>) => void
+   snapshot: LocalWorkstationSnapshot
+ }) {
+   const status = deriveLocalWorkstationStatus(snapshot)
+@@ -1267,7 +1270,7 @@ function SectionContent({
+   onRefresh: () => void
+   onRegisterModel: (model: Partial<LocalModel> & { localPath: string }) => Promise<void>
+   onRemoveModel: (id: string) => Promise<void>
+-  onRun: (action: LocalAction) => void
++  onRun: (action: LocalAction, input?: Record<string, unknown>) => void
+   onSaveProfile: (profile: LocalInferenceProfile, originalName: string) => Promise<void>
+   onSaveSettings: (settings: Partial<LocalWorkstationSettings>) => Promise<void>
+   onSetLaunchAtLogin: (enabled: boolean) => Promise<void>
+@@ -1327,6 +1330,16 @@ function SectionContent({
+   }
+ 
+   if (section === 'services') {
++    const latestUpdate = snapshot.updates.latest
++    const updateBusy = snapshot.tasks.some(
++      task =>
++        task.action === 'update' &&
++        (task.status === 'queued' || task.status === 'running' || task.status === 'cancelling')
++    )
++    const compatibilityReady =
++      latestUpdate?.mode === 'Compatibility' &&
++      latestUpdate.status === 'succeeded' &&
++      latestUpdate.target?.updateAvailable === true
+     const latestTask =
+       snapshot.tasks.findLast(
+         candidate => candidate.status === 'queued' || candidate.status === 'running' || candidate.status === 'cancelling'
+@@ -1380,9 +1393,6 @@ function SectionContent({
+             <ActionButton action="diagnostics" available={snapshot.actions.diagnostics} onRun={onRun} tasks={snapshot.tasks}>
+               <IconFileAnalytics className="size-3.5" /> Export diagnostics
+             </ActionButton>
+-            <ActionButton action="update" available={snapshot.actions.update} onRun={onRun} tasks={snapshot.tasks}>
+-              <IconRefresh className="size-3.5" /> Check updates
+-            </ActionButton>
+             <ActionButton action="backup" available={snapshot.actions.backup} onRun={onRun} tasks={snapshot.tasks}>
+               <IconDatabase className="size-3.5" /> Back up
+             </ActionButton>
+@@ -1400,6 +1410,104 @@ function SectionContent({
+             </div>
+           )}
+         </Surface>
++        <Surface title="Hermes Agent update centre">
++          <div className="grid gap-4 p-4 xl:grid-cols-[1.1fr_0.9fr]">
++            <div>
++              <div className="grid gap-3 sm:grid-cols-2">
++                {[
++                  ['Installed upstream base', shortCommit(snapshot.updates.installed.baseCommit)],
++                  ['Integrated commit', shortCommit(snapshot.updates.installed.integrationCommit)],
++                  ['Integrated tree', shortCommit(snapshot.updates.installed.integrationTree)],
++                  ['Patch series', `${snapshot.updates.installed.patchCount} patches`],
++                  ['Target', shortCommit(latestUpdate?.target?.candidate)],
++                  [
++                    'Compatibility',
++                    latestUpdate?.mode === 'Compatibility' && latestUpdate.status === 'succeeded'
++                      ? 'Passed'
++                      : latestUpdate?.failure?.stage || 'Not checked'
++                  ]
++                ].map(([label, value]) => (
++                  <div className="rounded-lg border border-(--ui-stroke-secondary) px-3 py-2.5" key={label}>
++                    <p className="text-[0.6875rem] font-medium text-(--ui-text-tertiary)">{label}</p>
++                    <p className="mt-1 truncate font-mono text-xs font-semibold">{value}</p>
++                  </div>
++                ))}
++              </div>
++              {latestUpdate?.recovery.staleLockRecovered && (
++                <p className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-500">
++                  A stale update lock was recovered from operation {latestUpdate.recovery.previousOperationId || 'unknown'}.
++                </p>
++              )}
++              {latestUpdate?.failure && (
++                <p className="mt-3 rounded-lg border border-red-500/25 bg-red-500/8 px-3 py-2 text-xs text-red-500">
++                  {latestUpdate.failure.stage || latestUpdate.currentStage || 'update'}: {latestUpdate.failure.message}
++                  {latestUpdate.failure.rollback?.status && ` · rollback ${latestUpdate.failure.rollback.status}`}
++                </p>
++              )}
++            </div>
++            <div className="flex flex-col justify-between gap-4 rounded-lg bg-(--ui-control-background) p-4">
++              <div>
++                <p className="text-xs font-semibold">Transactional workflow</p>
++                <p className="mt-1 text-xs leading-5 text-(--ui-text-tertiary)">
++                  Check resolves the upstream target. Compatibility reconstructs the patch series and runs dependency,
++                  schema, test and build gates without touching the active backend. Apply promotes only a verified candidate
++                  and restores the previous installation if promotion or health checks fail.
++                </p>
++                {latestUpdate && (
++                  <p className="mt-3 font-mono text-[0.6875rem] text-(--ui-text-tertiary)">
++                    {latestUpdate.mode} · {latestUpdate.currentStage || latestUpdate.status} · {latestUpdate.progress.percent}%
++                  </p>
++                )}
++              </div>
++              <div className="flex flex-wrap gap-2">
++                <ActionButton
++                  action="update"
++                  available={snapshot.actions.update}
++                  input={{ mode: 'Check' satisfies LocalUpdateMode }}
++                  onRun={onRun}
++                  tasks={snapshot.tasks}
++                >
++                  <IconRefresh className="size-3.5" /> Check for updates
++                </ActionButton>
++                <ActionButton
++                  action="update"
++                  available={snapshot.actions.update && latestUpdate?.target?.updateAvailable === true}
++                  input={{
++                    mode: 'Compatibility' satisfies LocalUpdateMode,
++                    targetCommit: latestUpdate?.target?.candidate || undefined
++                  }}
++                  onRun={onRun}
++                  tasks={snapshot.tasks}
++                >
++                  <IconShieldCheck className="size-3.5" /> Check compatibility
++                </ActionButton>
++                <ActionButton
++                  action="update"
++                  available={snapshot.actions.update && compatibilityReady}
++                  input={{
++                    mode: 'Apply' satisfies LocalUpdateMode,
++                    targetCommit: latestUpdate?.target?.candidate || undefined
++                  }}
++                  onRun={onRun}
++                  tasks={snapshot.tasks}
++                  variant="default"
++                >
++                  <IconRocket className="size-3.5" /> Apply verified update
++                </ActionButton>
++                <ActionButton
++                  action="update"
++                  available={snapshot.actions.update && !updateBusy}
++                  input={{ mode: 'Rollback' satisfies LocalUpdateMode }}
++                  onRun={onRun}
++                  tasks={snapshot.tasks}
++                  variant="destructive"
++                >
++                  <IconRestore className="size-3.5" /> Recover previous backend
++                </ActionButton>
++              </div>
++            </div>
++          </div>
++        </Surface>
+       </div>
+     )
+   }
+@@ -1655,15 +1763,20 @@ function SectionContent({
+               Windows-native local AI workstation built on the official Hermes Agent Desktop and pinned llama.cpp
+               runtime.
+             </p>
+-            <dl className="mt-4 grid gap-3 text-xs sm:grid-cols-2">
+-              <div>
+-                <dt className="text-(--ui-text-tertiary)">Version</dt>
+-                <dd className="mt-1 font-mono">{snapshot.version?.product.version || 'Unavailable'}</dd>
+-              </div>
+-              <div>
+-                <dt className="text-(--ui-text-tertiary)">Project root</dt>
+-                <dd className="mt-1 truncate font-mono">{snapshot.root}</dd>
+-              </div>
++            <dl className="mt-4 grid gap-3 text-xs sm:grid-cols-2 xl:grid-cols-3">
++              {[
++                ['Version', snapshot.version?.product.version || 'Unavailable'],
++                ['Upstream base', snapshot.updates.installed.baseCommit || 'Unavailable'],
++                ['Integration commit', snapshot.updates.installed.integrationCommit || 'Unavailable'],
++                ['Integration tree', snapshot.updates.installed.integrationTree || 'Unavailable'],
++                ['Patch series', `${snapshot.updates.installed.patchCount} patches`],
++                ['Project root', snapshot.root]
++              ].map(([label, value]) => (
++                <div key={label}>
++                  <dt className="text-(--ui-text-tertiary)">{label}</dt>
++                  <dd className="mt-1 truncate font-mono">{value}</dd>
++                </div>
++              ))}
+             </dl>
+           </div>
+           <Button
+@@ -1755,21 +1868,25 @@ export function LocalWorkstationView() {
+   }, [refreshVersion])
+ 
+   const run = useCallback(
+-    async (action: LocalAction) => {
++    async (action: LocalAction, input: Record<string, unknown> = {}) => {
+       if (!snapshot) {
+         return
+       }
+ 
+       try {
+         await window.hermesDesktop.localWorkstation.startAction(action, {
+-          profile: snapshot.profiles?.selected
++          profile: snapshot.profiles?.selected,
++          ...input
+         })
++        if (action === 'update') {
++          navigate('/tasks')
++        }
+         refresh()
+       } catch (nextError) {
+         setError(nextError instanceof Error ? nextError.message : String(nextError))
+       }
+     },
+-    [refresh, snapshot]
++    [navigate, refresh, snapshot]
+   )
+ 
+   const saveProfile = useCallback(
+@@ -1960,7 +2077,7 @@ export function LocalWorkstationView() {
+             onRefresh={refresh}
+             onRegisterModel={registerModel}
+             onRemoveModel={removeModel}
+-            onRun={action => void run(action)}
++            onRun={(action, input) => void run(action, input)}
+             onSaveProfile={saveProfile}
+             onSaveSettings={saveSettings}
+             onSelectModel={selectModel}
+diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
+index aea0500..ae60d54 100644
+--- a/apps/desktop/src/app/local-workstation/types.ts
++++ b/apps/desktop/src/app/local-workstation/types.ts
+@@ -36,6 +36,44 @@ export type LocalAction =
+ 
+ export type LocalLog = 'dashboard' | 'hermes' | 'launcher' | 'model' | 'security' | 'supervisor'
+ 
++export type LocalUpdateMode = 'Apply' | 'Check' | 'Compatibility' | 'Rollback'
++
++export interface LocalUpdateOperation {
++  completedAt: null | string
++  currentStage: null | string
++  failure: null | {
++    activePreserved?: boolean
++    code: string
++    message: string
++    rollback?: { status?: string }
++    stage?: string
++  }
++  mode: LocalUpdateMode
++  operationId: string
++  progress: {
++    completed: number
++    percent: number
++    total: number
++  }
++  recovery: {
++    previousOperationId: null | string
++    recoveredLockPath: null | string
++    staleLockRecovered: boolean
++  }
++  reportPath: null | string
++  requestedAt: string
++  result: null | Record<string, unknown>
++  stageResults: Record<string, unknown>
++  status: 'failed' | 'queued' | 'rolled-back' | 'running' | 'succeeded'
++  taskId: null | string
++  target: null | {
++    candidate: null | string
++    current: null | string
++    updateAvailable: null | boolean
++  }
++  updatedAt: string
++}
++
+ export interface LocalActionTask {
+   action: LocalAction
+   context?: Record<string, string>
+@@ -247,6 +285,15 @@ export interface LocalWorkstationSnapshot {
+     startedAt?: string
+     updatedAt?: string
+   }
++  updates: {
++    installed: {
++      baseCommit: null | string
++      integrationCommit: null | string
++      integrationTree: null | string
++      patchCount: number
++    }
++    latest: LocalUpdateOperation | null
++  }
+   version: null | {
+     product: {
+       name: string
+@@ -254,7 +301,13 @@ export interface LocalWorkstationSnapshot {
+       version: string
+     }
+     sources: {
+-      hermesAgent: { commit: string }
++      hermesAgent: {
++        branch?: string
++        commit: string
++        integrationCommit?: string
++        integrationTree?: string
++        patchSeries?: string
++      }
+       llamaCpp: { commit: string }
+     }
+   }
+diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
+index 411f9ce..ee2ef92 100644
+--- a/apps/desktop/src/global.d.ts
++++ b/apps/desktop/src/global.d.ts
+@@ -9,6 +9,7 @@ import type {
+   LocalLog,
+   LocalLogResult,
+   LocalModel,
++  LocalUpdateMode,
+   LocalWorkstationSettings,
+   LocalWorkstationSnapshot
+ } from './app/local-workstation/types'
+@@ -160,7 +161,15 @@ declare global {
+         }>
+         selectProfile: (name: string) => Promise<{ name: string }>
+         snapshot: () => Promise<LocalWorkstationSnapshot>
+-        startAction: (action: LocalAction, input?: { profile?: string }) => Promise<LocalActionTask>
++        startAction: (
++          action: LocalAction,
++          input?: {
++            mode?: LocalUpdateMode
++            profile?: string
++            targetBranch?: string
++            targetCommit?: string
++          }
++        ) => Promise<LocalActionTask>
+         retryAction: (taskId: string) => Promise<LocalActionTask>
+       }
+       api: <T>(request: HermesApiRequest) => Promise<T>
+-- 
+2.47.3
+

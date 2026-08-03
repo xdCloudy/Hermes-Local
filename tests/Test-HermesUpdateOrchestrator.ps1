@@ -151,6 +151,23 @@ try {
         (($callerStates.Cli | ConvertTo-Json -Depth 16 -Compress) -eq ($callerStates.Desktop | ConvertTo-Json -Depth 16 -Compress)) `
         'CLI and Desktop callers produced different normalized state.'
 
+    $compatibilityStore = New-FixtureStore
+    $stores.Add($compatibilityStore)
+    $compatibility = Invoke-HermesUpdateOperation `
+        -Mode Compatibility `
+        -Component Fixture `
+        -Caller Desktop `
+        -Input @{ TaskId = 'desktop-task-36' } `
+        -StoreRoot $compatibilityStore
+    Assert-True ($compatibility.status -eq 'succeeded') 'Desktop compatibility operation did not succeed.'
+    Assert-True ($compatibility.taskId -eq 'desktop-task-36') 'Desktop task identity was not persisted.'
+    Assert-True ((Get-Content -Raw -LiteralPath (Join-Path $compatibilityStore 'fixture\active.txt')) -eq 'old') 'Compatibility changed the active component.'
+    Assert-True ($compatibility.stageResults.check.updateAvailable) 'Compatibility did not retain check-stage output.'
+    Assert-True ($compatibility.stageResults.compatibility.compatible) 'Compatibility result was not retained by stage.'
+    $compatibilityReport = Get-Content -Raw -LiteralPath $compatibility.reportPath | ConvertFrom-Json -Depth 64
+    Assert-True ($compatibilityReport.taskId -eq 'desktop-task-36') 'Desktop task identity was missing from the report.'
+    Assert-True ($compatibilityReport.stageResults.compatibility.compatible) 'Report omitted compatibility evidence.'
+
     $durableStore = New-FixtureStore
     $stores.Add($durableStore)
     $durable = Invoke-HermesUpdateOperation -Mode Apply -Component Fixture -Caller Desktop -Input @{} -StoreRoot $durableStore

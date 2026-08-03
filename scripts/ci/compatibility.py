@@ -496,6 +496,7 @@ def hermes_agent(args: argparse.Namespace) -> int:
                 vitest = source / "node_modules/.bin" / ("vitest.cmd" if os.name == "nt" else "vitest")
                 if vitest.exists():
                     run([vitest, "run", "--project", "electron", "electron/hermes-local-control.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")
+                    run([vitest, "run", "--project", "electron", "electron/hermes-local-update.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")
                     run([vitest, "run", "src/store/projects.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")
                 done.append("desktop:typecheck,lint,focused-electron,project-registry")
             stage_pass(report, "tests", checks=done) if done else stage_warning(report, "tests", "No test suites requested.")

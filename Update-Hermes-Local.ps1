@@ -1,6 +1,6 @@
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 param(
-    [ValidateSet('Check', 'Apply', 'Rollback')]
+    [ValidateSet('Check', 'Compatibility', 'Apply', 'Rollback')]
     [string] $Mode = 'Check',
 
     [ValidateSet(
@@ -32,7 +32,7 @@ try {
     Initialize-HermesLayout
     Set-HermesProcessEnvironment
 
-    if ($Mode -ne 'Check' -and -not $NonInteractive) {
+    if ($Mode -in @('Apply', 'Rollback') -and -not $NonInteractive) {
         if (-not $PSCmdlet.ShouldProcess("Hermes Local $Component", $Mode)) {
             Write-Host "$Mode cancelled."
             exit 2
@@ -45,6 +45,13 @@ try {
     }
     if ($TargetBranch) {
         $inputRecord.TargetBranch = $TargetBranch
+    }
+    $desktopTaskId = [Environment]::GetEnvironmentVariable('HERMES_LOCAL_TASK_ID')
+    if ($desktopTaskId) {
+        if ($desktopTaskId -notmatch '^[0-9a-fA-F-]{16,64}$') {
+            throw 'HERMES_LOCAL_TASK_ID contains an invalid task identity.'
+        }
+        $inputRecord.TaskId = $desktopTaskId
     }
 
     $result = Invoke-HermesUpdateOperation `
