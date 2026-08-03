@@ -1,0 +1,63 @@
+name: Issue 25 security scan inspection
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/issue-25-inspect.yml'
+      - 'VERSION.json'
+      - 'source/hermes-launcher/patches/**'
+      - 'Security-Scan-Hermes-Local.ps1'
+
+permissions:
+  contents: read
+
+jobs:
+  reconstruct:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Reconstruct pinned integrated Hermes Agent source
+        shell: pwsh
+        run: |
+          $manifest = Get-Content -Raw -LiteralPath '.\VERSION.json' | ConvertFrom-Json
+          $source = Join-Path $env:RUNNER_TEMP 'issue-25-hermes-agent'
+          $patches = Get-ChildItem -LiteralPath '.\source\hermes-launcher\patches' -Filter '*.patch' -File |
+            Sort-Object Name |
+            ForEach-Object FullName
+
+          git clone --no-checkout $manifest.sources.hermesAgent.repository $source
+          git -C $source checkout --detach $manifest.sources.hermesAgent.commit
+          git -C $source config user.name 'Hermes Local Integration'
+          git -C $source config user.email 'hermes-local-ci@localhost'
+          git -C $source am --3way --committer-date-is-author-date @patches
+
+          $tree = (git -C $source rev-parse 'HEAD^{tree}').Trim()
+          if ($tree -ne [string]$manifest.sources.hermesAgent.integrationTree) {
+            throw "Pinned integration tree mismatch: expected $($manifest.sources.hermesAgent.integrationTree), got $tree"
+          }
+
+          $out = '.\artifacts\issue-25-inspect'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          Copy-Item -LiteralPath (Join-Path $source 'apps\desktop') -Destination (Join-Path $out 'desktop') -Recurse -Force
+          Copy-Item -LiteralPath (Join-Path $source 'package.json') -Destination $out -Force
+          Copy-Item -LiteralPath (Join-Path $source 'package-lock.json') -Destination $out -Force
+          Copy-Item -LiteralPath '.\Security-Scan-Hermes-Local.ps1' -Destination $out -Force
+          Copy-Item -LiteralPath '.\VERSION.json' -Destination $out -Force
+
+          Push-Location $source
+          try {
+            git grep -n -I -E 'security|scan|findings|Task Centre|task center|taskCentre' -- apps/desktop `
+              | Set-Content -LiteralPath "$env:GITHUB_WORKSPACE\artifacts\issue-25-inspect\matches.txt" -Encoding utf8
+          } finally {
+            Pop-Location
+          }
+
+      - name: Upload integrated sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-25-integrated-security
+          path: artifacts/issue-25-inspect
+          retention-days: 2
