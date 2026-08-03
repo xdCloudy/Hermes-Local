@@ -497,8 +497,10 @@ def hermes_agent(args: argparse.Namespace) -> int:
                 if vitest.exists():
                     run([vitest, "run", "--project", "electron", "electron/hermes-local-control.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")
                     run([vitest, "run", "--project", "electron", "electron/hermes-local-update.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")
+                    run([vitest, "run", "--project", "electron", "electron/hermes-local-security-progress.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")
+                    run([vitest, "run", "src/app/local-workstation/task-centre.test.tsx", "src/app/local-workstation/security-task-view.test.tsx"], cwd=source / "apps/desktop", log=logs / "tests.log")
                     run([vitest, "run", "src/store/projects.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")
-                done.append("desktop:typecheck,lint,focused-electron,project-registry")
+                done.append("desktop:typecheck,lint,focused-electron,security-task-ui,project-registry")
             stage_pass(report, "tests", checks=done) if done else stage_warning(report, "tests", "No test suites requested.")
         except Exception as exc:
             fail_report(report, stage="tests", message="Candidate regression tests failed.", error=exc)

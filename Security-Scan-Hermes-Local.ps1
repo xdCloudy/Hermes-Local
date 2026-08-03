@@ -9,6 +9,23 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
 
+$script:securityRoot = $null
+$script:securityProgressPath = $null
+$script:securityCancelPath = $null
+$script:securityTaskLogPath = $null
+$script:securityTaskId = $null
+$script:securityProgressStartedAt = $null
+$script:securityProgressTerminalStatus = $null
+$script:securityCancellationObserved = $false
+$script:securityCompletedChecks = 0
+$script:securityTotalChecks = 0
+$script:securityTargetCount = 0
+$script:securityFindingCount = 0
+$script:securityCurrentStage = 'scope-validation'
+$script:securityCurrentTool = $null
+
+. (Join-Path $PSScriptRoot 'scripts\security\Security-Progress.ps1')
+
 function Invoke-SecurityProcess {
     [CmdletBinding()]
     param(
@@ -23,8 +40,18 @@ function Invoke-SecurityProcess {
         [Parameter(Mandatory)]
         [string] $EvidenceName,
 
+        [Parameter(Mandatory)]
+        [ValidateSet('tool-preparation', 'discovery', 'crawling', 'passive-checks', 'active-checks')]
+        [string] $Stage,
+
+        [Parameter(Mandatory)]
+        [string] $Message,
+
         [int[]] $AcceptExitCode = @(0)
     )
+
+    Assert-SecurityNotCancelled
+    Start-SecurityCheck -Stage $Stage -Tool $EvidenceName -Message $Message -WorkerPid $null
 
     $command = Get-Command $FilePath -ErrorAction SilentlyContinue | Select-Object -First 1
     $resolvedFile = if ($command) {
@@ -66,10 +93,30 @@ function Invoke-SecurityProcess {
     if (-not $process.Start()) {
         throw "Failed to start security tool: $resolvedFile"
     }
+    Start-SecurityCheck -Stage $Stage -Tool $EvidenceName -Message $Message -WorkerPid $process.Id
 
     $stdoutTask = $process.StandardOutput.ReadToEndAsync()
     $stderrTask = $process.StandardError.ReadToEndAsync()
-    $process.WaitForExit()
+    while (-not $process.WaitForExit(250)) {
+        if (-not (Test-SecurityCancellationRequested)) {
+            continue
+        }
+        $script:securityCancellationObserved = $true
+        Write-SecurityScanProgress `
+            -Stage $Stage `
+            -Message 'Cancellation accepted; stopping the owned scanner process.' `
+            -CurrentTool $EvidenceName `
+            -WorkerPid $process.Id `
+            -Status 'cancelling' `
+            -Indeterminate
+        try {
+            $process.Kill($true)
+        } catch {
+            try { $process.Kill() } catch { }
+        }
+        $process.WaitForExit()
+        throw [System.OperationCanceledException]::new("Security scan cancelled while $EvidenceName was running.")
+    }
     $stdout = $stdoutTask.GetAwaiter().GetResult()
     $stderr = $stderrTask.GetAwaiter().GetResult()
     $elapsed = ((Get-Date) - $startedAt).TotalSeconds
@@ -151,6 +198,9 @@ try {
     Set-HermesProcessEnvironment
 
     $root = Get-HermesRoot
+    $script:securityRoot = $root
+    $script:securityProgressPath = Resolve-HermesPath 'data\runtime\security-scan-progress.json'
+    $script:securityCancelPath = Resolve-HermesPath 'data\runtime\security-scan-cancel.json'
     $source = Resolve-HermesPath 'source\hermes-agent'
     $python = Resolve-HermesPath 'runtimes\python\hermes\Scripts\python.exe'
     $gitleaks = Resolve-HermesPath 'runtimes\tools\security\gitleaks-8.30.1\gitleaks.exe'
@@ -159,8 +209,13 @@ try {
     $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
     $script:RunDirectory = Resolve-HermesPath "security\scans\$stamp"
     [System.IO.Directory]::CreateDirectory($script:RunDirectory) | Out-Null
+    $script:securityTaskLogPath = Join-Path $script:RunDirectory 'task.log'
     $script:CommandRecords = [System.Collections.Generic.List[object]]::new()
+    $totalChecks = if ($Quick) { 8 } elseif ($SkipDefender) { 12 } else { 13 }
+    $targetCount = if (-not $Quick -and -not $SkipDefender) { 2 } else { 1 }
+    Initialize-SecurityScanProgress -TotalChecks $totalChecks -TargetCount $targetCount -Quick:$Quick -SkipDefender:$SkipDefender
 
+    Write-SecurityScanProgress -Stage 'tool-preparation' -Message 'Verifying scanner executables and local configuration.' -Indeterminate
     foreach ($required in @($python, $gitleaks, $osv, $gitleaksConfig)) {
         if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
             throw "Required security dependency is missing: $required"
@@ -169,15 +224,19 @@ try {
 
     $npmProductionRun = Invoke-SecurityProcess -FilePath 'npm.cmd' -ArgumentList @(
         'audit', '--omit=dev', '--json'
-    ) -WorkingDirectory $source -EvidenceName 'npm-audit-production' -AcceptExitCode @(0, 1)
+    ) -WorkingDirectory $source -EvidenceName 'npm-audit-production' -Stage discovery -Message 'Auditing production Node dependencies.' -AcceptExitCode @(0, 1)
     $npmProductionPath = Write-JsonEvidence -Name 'npm-audit-production.json' -Content $npmProductionRun.stdout
     $npmProduction = Get-Content -Raw -LiteralPath $npmProductionPath | ConvertFrom-Json -Depth 64
+    $npmProductionFindingCount = [int]$npmProduction.metadata.vulnerabilities.total
+    Complete-SecurityCheck -Stage discovery -Tool 'npm-audit-production' -Message 'Production Node dependency audit completed.' -FindingsAdded $npmProductionFindingCount
 
     $npmFullRun = Invoke-SecurityProcess -FilePath 'npm.cmd' -ArgumentList @(
         'audit', '--json'
-    ) -WorkingDirectory $source -EvidenceName 'npm-audit-full' -AcceptExitCode @(0, 1)
+    ) -WorkingDirectory $source -EvidenceName 'npm-audit-full' -Stage discovery -Message 'Auditing the full Node dependency graph.' -AcceptExitCode @(0, 1)
     $npmFullPath = Write-JsonEvidence -Name 'npm-audit-full.json' -Content $npmFullRun.stdout
     $npmFull = Get-Content -Raw -LiteralPath $npmFullPath | ConvertFrom-Json -Depth 64
+    $npmFullFindingCount = [int]$npmFull.metadata.vulnerabilities.total
+    Complete-SecurityCheck -Stage discovery -Tool 'npm-audit-full' -Message 'Full Node dependency audit completed.' -FindingsAdded $npmFullFindingCount
 
     $pipAuditPath = Join-Path $script:RunDirectory 'pip-audit.json'
     $null = Invoke-SecurityProcess -FilePath 'uvx' -ArgumentList @(
@@ -185,7 +244,7 @@ try {
         '--path', (Resolve-HermesPath 'runtimes\python\hermes\Lib\site-packages'),
         '--format', 'json',
         '--output', $pipAuditPath
-    ) -WorkingDirectory $root -EvidenceName 'pip-audit'
+    ) -WorkingDirectory $root -EvidenceName 'pip-audit' -Stage discovery -Message 'Auditing installed Python dependencies.'
     $pipAudit = Get-Content -Raw -LiteralPath $pipAuditPath | ConvertFrom-Json -Depth 64
     $pipVulnerabilities = @(
         $pipAudit.dependencies |
@@ -194,6 +253,7 @@ try {
             ForEach-Object { $_.id } |
             Sort-Object -Unique
     )
+    Complete-SecurityCheck -Stage discovery -Tool 'pip-audit' -Message 'Python dependency audit completed.' -FindingsAdded $pipVulnerabilities.Count
 
     $osvPath = Join-Path $script:RunDirectory 'osv-lockfiles.json'
     $null = Invoke-SecurityProcess -FilePath $osv -ArgumentList @(
@@ -203,7 +263,7 @@ try {
         '--format', 'json',
         '--output-file', $osvPath,
         '--all-packages'
-    ) -WorkingDirectory $root -EvidenceName 'osv-lockfiles' -AcceptExitCode @(0, 1)
+    ) -WorkingDirectory $root -EvidenceName 'osv-lockfiles' -Stage discovery -Message 'Scanning lockfiles against the OSV database.' -AcceptExitCode @(0, 1)
     $osvDocument = Get-Content -Raw -LiteralPath $osvPath | ConvertFrom-Json -Depth 100
     $osvPackages = @(
         foreach ($result in $osvDocument.results) {
@@ -225,6 +285,7 @@ try {
             }
         }
     )
+    Complete-SecurityCheck -Stage discovery -Tool 'osv-lockfiles' -Message 'OSV lockfile scan completed.' -FindingsAdded $osvPackages.Count
 
     $gitleaksPath = Join-Path $script:RunDirectory 'gitleaks-production-source.json'
     $null = Invoke-SecurityProcess -FilePath $gitleaks -ArgumentList @(
@@ -234,22 +295,26 @@ try {
         '--no-banner',
         '--report-format', 'json',
         '--report-path', $gitleaksPath
-    ) -WorkingDirectory $root -EvidenceName 'gitleaks-production-source'
+    ) -WorkingDirectory $root -EvidenceName 'gitleaks-production-source' -Stage crawling -Message 'Crawling production source for credential patterns.'
     $gitleaksFindings = if ((Get-Item -LiteralPath $gitleaksPath).Length -gt 0) {
         @(Get-Content -Raw -LiteralPath $gitleaksPath | ConvertFrom-Json -Depth 64).Count
     } else {
         0
     }
+    Complete-SecurityCheck -Stage crawling -Tool 'gitleaks-production-source' -Message 'Credential-pattern crawl completed.' -FindingsAdded $gitleaksFindings
 
     $null = Invoke-SecurityProcess -FilePath 'uvx' -ArgumentList @(
         'ruff', 'check', '.'
-    ) -WorkingDirectory $source -EvidenceName 'ruff'
+    ) -WorkingDirectory $source -EvidenceName 'ruff' -Stage passive-checks -Message 'Running Python static checks.'
+    Complete-SecurityCheck -Stage passive-checks -Tool 'ruff' -Message 'Python static checks completed.'
     $null = Invoke-SecurityProcess -FilePath 'npm.cmd' -ArgumentList @(
         'run', 'typecheck', '--workspace', 'apps/desktop'
-    ) -WorkingDirectory $source -EvidenceName 'typescript'
+    ) -WorkingDirectory $source -EvidenceName 'typescript' -Stage passive-checks -Message 'Validating Desktop TypeScript contracts.'
+    Complete-SecurityCheck -Stage passive-checks -Tool 'typescript' -Message 'Desktop TypeScript validation completed.'
     $eslintRun = Invoke-SecurityProcess -FilePath 'npm.cmd' -ArgumentList @(
         'run', 'lint', '--workspace', 'apps/desktop'
-    ) -WorkingDirectory $source -EvidenceName 'eslint'
+    ) -WorkingDirectory $source -EvidenceName 'eslint' -Stage passive-checks -Message 'Running Desktop lint and unsafe-pattern checks.'
+    Complete-SecurityCheck -Stage passive-checks -Tool 'eslint' -Message 'Desktop lint checks completed.'
 
     $semgrepSummary = $null
     $defenderSummary = $null
@@ -268,7 +333,7 @@ try {
             '--exclude', 'build',
             '--exclude', '.venv',
             '.'
-        ) -WorkingDirectory $source -EvidenceName 'semgrep'
+        ) -WorkingDirectory $source -EvidenceName 'semgrep' -Stage active-checks -Message 'Running Semgrep security and secret rules.'
         $semgrep = Get-Content -Raw -LiteralPath $semgrepPath | ConvertFrom-Json -Depth 100
         $semgrepSummary = [ordered]@{
             candidates = @($semgrep.results).Count
@@ -279,6 +344,7 @@ try {
                     Where-Object { $_.check_id -match '(?i)(secret|credential|api.key|private.key|password)' }
             ).Count
         }
+        Complete-SecurityCheck -Stage active-checks -Tool 'semgrep' -Message 'Semgrep rule evaluation completed.' -FindingsAdded $semgrepSummary.candidates
 
         $nodeSbom = Resolve-HermesPath 'security\sbom\node-launcher.cdx.json'
         $null = Invoke-SecurityProcess -FilePath 'npm.cmd' -ArgumentList @(
@@ -293,7 +359,8 @@ try {
             '--output-format', 'JSON',
             '--output-file', $nodeSbom,
             '--validate'
-        ) -WorkingDirectory $source -EvidenceName 'sbom-node'
+        ) -WorkingDirectory $source -EvidenceName 'sbom-node' -Stage active-checks -Message 'Generating and validating the Node SBOM.'
+        Complete-SecurityCheck -Stage active-checks -Tool 'sbom-node' -Message 'Node SBOM generation completed.'
 
         $pythonSbom = Resolve-HermesPath 'security\sbom\python-runtime.cdx.json'
         $null = Invoke-SecurityProcess -FilePath 'uvx' -ArgumentList @(
@@ -305,18 +372,19 @@ try {
             '--output-reproducible',
             '--output-file', $pythonSbom,
             '--validate'
-        ) -WorkingDirectory $root -EvidenceName 'sbom-python'
+        ) -WorkingDirectory $root -EvidenceName 'sbom-python' -Stage active-checks -Message 'Generating and validating the Python SBOM.'
+        Complete-SecurityCheck -Stage active-checks -Tool 'sbom-python' -Message 'Python SBOM generation completed.'
 
         $nodeBomDocument = Get-Content -Raw -LiteralPath $nodeSbom | ConvertFrom-Json -Depth 100
         $pythonBomDocument = Get-Content -Raw -LiteralPath $pythonSbom | ConvertFrom-Json -Depth 100
         $sbomSummary = [ordered]@{
             node = [ordered]@{
-                path = $nodeSbom
+                path = ConvertTo-SecurityRelativePath $nodeSbom
                 specVersion = $nodeBomDocument.specVersion
                 components = @($nodeBomDocument.components).Count
             }
             python = [ordered]@{
-                path = $pythonSbom
+                path = ConvertTo-SecurityRelativePath $pythonSbom
                 specVersion = $pythonBomDocument.specVersion
                 components = @($pythonBomDocument.components).Count
             }
@@ -329,7 +397,8 @@ try {
             '--format', 'json',
             '--with-urls',
             '--output-file', (Resolve-HermesPath 'security\sbom\python-licenses.json')
-        ) -WorkingDirectory $root -EvidenceName 'licenses-python'
+        ) -WorkingDirectory $root -EvidenceName 'licenses-python' -Stage active-checks -Message 'Generating the Python licence inventory.'
+        Complete-SecurityCheck -Stage active-checks -Tool 'licenses-python' -Message 'Python licence inventory completed.'
 
         if (-not $SkipDefender) {
             $defenderPlatform = Get-ChildItem -LiteralPath 'C:\ProgramData\Microsoft\Windows Defender\Platform' -Directory |
@@ -348,15 +417,18 @@ try {
                 '-File', (Resolve-HermesPath 'dist'),
                 '-DisableRemediation',
                 '-CpuThrottling'
-            ) -WorkingDirectory $root -EvidenceName 'defender-dist'
+            ) -WorkingDirectory $root -EvidenceName 'defender-dist' -Stage active-checks -Message 'Scanning the packaged distribution with Windows Defender.'
             $defenderSummary = [ordered]@{
                 clean = $defenderRun.stdout -match 'found no threats'
-                engine = $defender
+                engine = [System.IO.Path]::GetFileName($defender)
                 exitCode = $defenderRun.exitCode
             }
+            Complete-SecurityCheck -Stage active-checks -Tool 'defender-dist' -Message 'Windows Defender distribution scan completed.' -FindingsAdded $(if ($defenderSummary.clean) { 0 } else { 1 })
         }
     }
 
+    Assert-SecurityNotCancelled
+    Write-SecurityScanProgress -Stage validation -Message 'Validating findings against the release security gate.' -CompletedChecks $script:securityCompletedChecks -TotalChecks $script:securityTotalChecks
     $productionSummary = Get-NpmVulnerabilitySummary $npmProduction
     $fullSummary = Get-NpmVulnerabilitySummary $npmFull
     $unexpectedProductionPackages = @(
@@ -393,7 +465,8 @@ try {
     }
 
     $summary = [ordered]@{
-        schemaVersion = 1
+        schemaVersion = 2
+        taskId = $script:securityTaskId
         generatedAt = (Get-Date).ToUniversalTime().ToString('o')
         status = if ($gateFailures.Count -eq 0) { 'pass-with-triaged-residuals' } else { 'failed' }
         quick = [bool]$Quick
@@ -411,7 +484,7 @@ try {
             }
             gitleaks = [ordered]@{
                 findings = $gitleaksFindings
-                config = $gitleaksConfig
+                config = ConvertTo-SecurityRelativePath $gitleaksConfig
             }
             semgrep = $semgrepSummary
             eslintWarnings = ([regex]::Matches($eslintRun.stdout, '(?m)\bwarning\b')).Count
@@ -425,7 +498,33 @@ try {
             'PyNaCl 1.5.0 advisory: optional Discord voice lock entry, excluded from the installed workstation environment; discord.py 2.7.1 caps PyNaCl below 1.6.'
         )
         failures = $gateFailures
+        progress = [ordered]@{
+            completedChecks = $script:securityCompletedChecks
+            totalChecks = $script:securityTotalChecks
+            targets = $script:securityTargetCount
+            findings = $script:securityFindingCount
+        }
     }
+
+    Assert-SecurityNotCancelled
+    Write-SecurityScanProgress -Stage report-generation -Message 'Writing the scan summary, findings index and durable result links.' -CompletedChecks $script:securityCompletedChecks -TotalChecks $script:securityTotalChecks
+    $findings = [ordered]@{
+        schemaVersion = 1
+        taskId = $script:securityTaskId
+        generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+        status = $summary.status
+        counters = $summary.progress
+        gateFailures = @($gateFailures)
+        npmProduction = $productionSummary
+        npmFull = $fullSummary
+        pipVulnerabilities = $pipVulnerabilities
+        osvPackages = $osvPackages
+        gitleaksFindings = $gitleaksFindings
+        semgrep = $semgrepSummary
+        defender = $defenderSummary
+    }
+    $findingsPath = Join-Path $script:RunDirectory 'findings.json'
+    Write-HermesAtomicText -Path $findingsPath -Content (($findings | ConvertTo-Json -Depth 100) + [Environment]::NewLine)
 
     $summaryJson = ($summary | ConvertTo-Json -Depth 100) + [Environment]::NewLine
     $summaryPath = Join-Path $script:RunDirectory 'summary.json'
@@ -437,15 +536,49 @@ try {
         throw "Security gate failed: $($gateFailures -join ' ')"
     }
 
+    Complete-SecurityScanProgress `
+        -Status succeeded `
+        -Message 'Security scan completed with triaged residuals.' `
+        -ResultDirectory $script:RunDirectory `
+        -ReportPath $summaryPath `
+        -FindingsPath $findingsPath `
+        -LogPath $script:securityTaskLogPath
     Write-HermesLog -Component security -Message "Security scan completed with triaged residuals. Evidence: $script:RunDirectory"
     Write-Host "Hermes Local security scan passed with triaged residuals. Evidence: $script:RunDirectory"
     exit 0
 } catch {
     $failure = $_.Exception
-    try {
-        Write-HermesLog -Component security -Level WARN -Message $failure.ToString()
-    } catch {
+    $cancelled = $failure -is [System.OperationCanceledException] -or $script:securityCancellationObserved
+    $status = if ($cancelled) { 'cancelled' } else { 'failed' }
+    $failureCode = if ($cancelled) {
+        'security-scan-cancelled'
+    } elseif ($failure.Message -match 'exited with code') {
+        'security-tool-exit'
+    } elseif ($failure.Message -match 'dependency is missing|tool not found') {
+        'security-tool-missing'
+    } elseif ($script:securityCurrentStage) {
+        "security-$($script:securityCurrentStage)-failed"
+    } else {
+        'security-scan-failed'
     }
-    Write-Host "Hermes Local security scan failed: $($failure.Message)" -ForegroundColor Red
+    try {
+        if ($script:securityTaskId) {
+            Complete-SecurityScanProgress `
+                -Status $status `
+                -Message $(if ($cancelled) { 'Security scan cancelled safely.' } else { 'Security scan failed.' }) `
+                -ResultDirectory $script:RunDirectory `
+                -ReportPath $(if ($script:RunDirectory) { Join-Path $script:RunDirectory 'summary.json' } else { $null }) `
+                -FindingsPath $(if ($script:RunDirectory) { Join-Path $script:RunDirectory 'findings.json' } else { $null }) `
+                -LogPath $script:securityTaskLogPath `
+                -FailureCode $failureCode `
+                -ErrorMessage $failure.Message
+        }
+        Write-HermesLog -Component security -Level WARN -Message $failure.ToString()
+    } catch { }
+    if ($cancelled) {
+        Write-Host "Hermes Local security scan cancelled. Evidence: $script:RunDirectory" -ForegroundColor Yellow
+        exit 130
+    }
+    Write-Host "Hermes Local security scan failed: $(Protect-SecurityTaskText $failure.Message)" -ForegroundColor Red
     exit 1
 }
