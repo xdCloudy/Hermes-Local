@@ -14,6 +14,7 @@ visible from Home.
 
 ---
 diff --git a/apps/desktop/src/app/chat/sidebar/index.tsx b/apps/desktop/src/app/chat/sidebar/index.tsx
+index d1c5f70d2..000000000 100644
 --- a/apps/desktop/src/app/chat/sidebar/index.tsx
 +++ b/apps/desktop/src/app/chat/sidebar/index.tsx
 @@ -112,5 +112,4 @@
@@ -34,6 +35,7 @@ diff --git a/apps/desktop/src/app/chat/sidebar/index.tsx b/apps/desktop/src/app/
 -  {
      id: 'models',
 diff --git a/apps/desktop/src/app/contrib/surfaces.tsx b/apps/desktop/src/app/contrib/surfaces.tsx
+index 5857c9cfb..000000000 100644
 --- a/apps/desktop/src/app/contrib/surfaces.tsx
 +++ b/apps/desktop/src/app/contrib/surfaces.tsx
 @@ -19 +19,8 @@
@@ -52,6 +54,7 @@ diff --git a/apps/desktop/src/app/contrib/surfaces.tsx b/apps/desktop/src/app/co
 +      <Route element={<Navigate replace to={LEGACY_SERVICES_REDIRECT_ROUTE} />} path="services" />
        <Route element={page(<LocalWorkstationView />)} path="models" />
 diff --git a/apps/desktop/src/app/routes.ts b/apps/desktop/src/app/routes.ts
+index 46875a01b..000000000 100644
 --- a/apps/desktop/src/app/routes.ts
 +++ b/apps/desktop/src/app/routes.ts
 @@ -33,2 +33,3 @@
@@ -59,6 +62,7 @@ diff --git a/apps/desktop/src/app/routes.ts b/apps/desktop/src/app/routes.ts
 +export const LEGACY_SERVICES_REDIRECT_ROUTE = HOME_ROUTE
  export const LEGACY_TOOLS_REDIRECT_ROUTE = SKILLS_ROUTE
 diff --git a/apps/desktop/src/app/routes.test.ts b/apps/desktop/src/app/routes.test.ts
+index 3c3c00772..000000000 100644
 --- a/apps/desktop/src/app/routes.test.ts
 +++ b/apps/desktop/src/app/routes.test.ts
 @@ -1,8 +1,11 @@
@@ -85,6 +89,7 @@ diff --git a/apps/desktop/src/app/routes.test.ts b/apps/desktop/src/app/routes.t
 +  })
 +})
 diff --git a/apps/desktop/e2e/hermes-local-portable.spec.ts b/apps/desktop/e2e/hermes-local-portable.spec.ts
+index e7ca56eff..000000000 100644
 --- a/apps/desktop/e2e/hermes-local-portable.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-portable.spec.ts
 @@ -135,5 +135,11 @@
@@ -100,6 +105,7 @@ diff --git a/apps/desktop/e2e/hermes-local-portable.spec.ts b/apps/desktop/e2e/h
 +      await expect(page.getByRole('button', { name: 'Back up', exact: true })).toBeVisible()
 +      await expect(page.getByRole('button', { name: 'Check for updates', exact: true })).toBeVisible()
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index 8b11d9f..000000000 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -862 +862,155 @@
