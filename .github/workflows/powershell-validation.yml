@@ -66,6 +66,17 @@ jobs:
           & '.\tests\Test-BenchmarkProgressContract.ps1'
           & '.\tests\Test-ModelArtifactContract.ps1'
           & '.\tests\Test-HermesUpdateOrchestrator.ps1'
+          & '.\tests\Test-HermesUpdateFailurePaths.ps1' `
+            -EvidencePath '.\artifacts\test-evidence\issue-44-update-failure-paths.json'
+
+      - name: Upload updater failure-path evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-44-update-failure-path-evidence
+          path: artifacts/test-evidence/issue-44-update-failure-paths.json
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Verify source override merge
         shell: pwsh
