@@ -18,6 +18,14 @@ param(
     [ValidatePattern('^[A-Za-z0-9._/-]+$')]
     [string] $TargetBranch,
 
+    [string] $ReleaseManifestPath,
+
+    [string] $ArtifactRoot,
+
+    [string] $AttestationBundleDirectory,
+
+    [string] $TrustedRootPath,
+
     [switch] $NonInteractive
 )
 
@@ -26,6 +34,76 @@ $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-UpdateOrchestrator.psm1') -Force
+
+function Invoke-HermesReleasePreflight {
+    param(
+        [Parameter(Mandatory)][string] $ManifestPath,
+        [string] $Root,
+        [string] $BundleDirectory,
+        [string] $TrustedRoot
+    )
+
+    $manifest = [System.IO.Path]::GetFullPath($ManifestPath)
+    if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) {
+        throw "Release manifest is missing: $manifest"
+    }
+    $artifactDirectory = if ($Root) {
+        [System.IO.Path]::GetFullPath($Root)
+    } else {
+        [System.IO.Path]::GetDirectoryName($manifest)
+    }
+    if (-not (Test-Path -LiteralPath $artifactDirectory -PathType Container)) {
+        throw "Release artifact root is missing: $artifactDirectory"
+    }
+
+    $managedPython = Resolve-HermesPath 'runtimes\python\hermes\Scripts\python.exe'
+    $pythonPath = if (Test-Path -LiteralPath $managedPython -PathType Leaf) {
+        $managedPython
+    } else {
+        $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
+        if (-not $pythonCommand) {
+            $pythonCommand = Get-Command python -ErrorAction Stop
+        }
+        $pythonCommand.Source
+    }
+    $tool = Resolve-HermesPath 'scripts\ci\release_integrity.py'
+    if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) {
+        throw "Release integrity verifier is missing: $tool"
+    }
+    $report = Resolve-HermesPath 'build\release-integrity\LATEST.json'
+    $arguments = @(
+        $tool, 'verify',
+        '--manifest', $manifest,
+        '--artifact-root', $artifactDirectory,
+        '--require-attestation',
+        '--report', $report
+    )
+    if ($BundleDirectory) {
+        $arguments += @('--attestation-bundle-dir', [System.IO.Path]::GetFullPath($BundleDirectory))
+    }
+    if ($TrustedRoot) {
+        $arguments += @('--trusted-root', [System.IO.Path]::GetFullPath($TrustedRoot))
+    }
+
+    $null = Invoke-HermesProcess `
+        -FilePath $pythonPath `
+        -ArgumentList $arguments `
+        -WorkingDirectory (Get-HermesRoot) `
+        -LogComponent update
+
+    $verification = Get-Content -Raw -LiteralPath $report | ConvertFrom-Json -Depth 64
+    if ([string]$verification.status -ne 'verified') {
+        throw 'Release integrity verification did not produce a verified result.'
+    }
+    Write-Host "Release integrity verified for $([string]$verification.release.version) ($([string]$verification.release.channel))." -ForegroundColor Green
+    [ordered]@{
+        manifest = $manifest
+        artifactRoot = $artifactDirectory
+        report = $report
+        status = [string]$verification.status
+        release = $verification.release
+    }
+}
 
 try {
     Assert-HermesRoot
@@ -52,6 +130,19 @@ try {
             throw 'HERMES_LOCAL_TASK_ID contains an invalid task identity.'
         }
         $inputRecord.TaskId = $desktopTaskId
+    }
+
+    # Installer/update-package promotion is blocked before lock acquisition,
+    # backup or mutation unless every required release control verifies.
+    if ($Mode -eq 'Apply' -and $Caller -eq 'Installer' -and -not $ReleaseManifestPath) {
+        throw 'Installer promotion requires -ReleaseManifestPath and verified release provenance.'
+    }
+    if ($Mode -eq 'Apply' -and $ReleaseManifestPath) {
+        $inputRecord.ReleaseIntegrity = Invoke-HermesReleasePreflight `
+            -ManifestPath $ReleaseManifestPath `
+            -Root $ArtifactRoot `
+            -BundleDirectory $AttestationBundleDirectory `
+            -TrustedRoot $TrustedRootPath
     }
 
     $result = Invoke-HermesUpdateOperation `

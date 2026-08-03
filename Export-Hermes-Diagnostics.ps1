@@ -28,6 +28,36 @@ function Read-SafeLogTail {
     )
 }
 
+function Get-HermesReleaseIntegrityDiagnostic {
+    $manifestPath = Resolve-HermesPath 'dist\release-manifest.json'
+    $verificationPath = Resolve-HermesPath 'build\release-integrity\LATEST.json'
+    $manifest = if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
+        try { Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json -Depth 64 } catch { $null }
+    } else {
+        $null
+    }
+    $verification = if (Test-Path -LiteralPath $verificationPath -PathType Leaf) {
+        try { Get-Content -Raw -LiteralPath $verificationPath | ConvertFrom-Json -Depth 64 } catch { $null }
+    } else {
+        $null
+    }
+
+    [ordered]@{
+        manifestPresent = [bool]$manifest
+        manifestPath = if ($manifest) { 'dist/release-manifest.json' } else { $null }
+        release = if ($manifest) { $manifest.release } else { $null }
+        sourceRevisions = if ($manifest) { $manifest.sources } else { $null }
+        provenanceRequired = if ($manifest) { [bool]$manifest.provenance.required } else { $null }
+        authenticodeRequiredFor = if ($manifest) { @($manifest.signing.authenticode.requiredFor) } else { @() }
+        sboms = if ($manifest) { @($manifest.sboms | ForEach-Object { $_.scope }) } else { @() }
+        verificationPresent = [bool]$verification
+        verificationStatus = if ($verification) { [string]$verification.status } else { 'not-verified' }
+        verificationFailure = if ($verification -and $verification.failure) { [string]$verification.failure.message } else { $null }
+        verifiedAt = if ($verification) { [string]$verification.verifiedAt } else { $null }
+        verificationReport = if ($verification) { 'build/release-integrity/LATEST.json' } else { $null }
+    }
+}
+
 try {
     Assert-HermesRoot
     Initialize-HermesLayout
@@ -72,6 +102,7 @@ try {
         }
     }
 
+    $releaseIntegrity = Get-HermesReleaseIntegrityDiagnostic
     $report = [ordered]@{
         schemaVersion = 1
         generatedAt = (Get-Date).ToUniversalTime().ToString('o')
@@ -117,8 +148,12 @@ try {
             }
         }
         environment = $allowListedEnvironment
+        releaseIntegrity = $releaseIntegrity
         artefacts = [ordered]@{
             packageManifest = Test-Path -LiteralPath (Resolve-HermesPath 'dist\package-manifest.json')
+            releaseManifest = Test-Path -LiteralPath (Resolve-HermesPath 'dist\release-manifest.json')
+            releaseChecksums = Test-Path -LiteralPath (Resolve-HermesPath 'dist\SHA256SUMS')
+            releaseVerification = Test-Path -LiteralPath (Resolve-HermesPath 'build\release-integrity\LATEST.json')
             benchmarkReport = Test-Path -LiteralPath (Resolve-HermesPath 'benchmarks\reports\LATEST.md')
             securityReport = Test-Path -LiteralPath (Resolve-HermesPath 'security\reports\LATEST.md')
             sbom = Test-Path -LiteralPath (Resolve-HermesPath 'security\sbom')
@@ -137,7 +172,14 @@ try {
         (($report | ConvertTo-Json -Depth 32) + [Environment]::NewLine),
         [System.Text.UTF8Encoding]::new($false)
     )
-    foreach ($relative in @('VERSION.json', 'logs\diagnostics\latest-test.json', 'dist\package-manifest.json')) {
+    foreach ($relative in @(
+        'VERSION.json',
+        'logs\diagnostics\latest-test.json',
+        'dist\package-manifest.json',
+        'dist\release-manifest.json',
+        'dist\SHA256SUMS',
+        'build\release-integrity\LATEST.json'
+    )) {
         $source = Resolve-HermesPath $relative
         if (Test-Path -LiteralPath $source -PathType Leaf) {
             Copy-Item -LiteralPath $source -Destination (Join-Path $staging ([System.IO.Path]::GetFileName($source)))

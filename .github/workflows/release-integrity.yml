@@ -1,0 +1,350 @@
+name: Release integrity
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/release-integrity.yml'
+      - 'scripts/ci/release_integrity*.py'
+      - 'tests/test_release_integrity.py'
+      - 'tests/test_release_integrity_integration.py'
+      - 'config/schemas/release-manifest.schema.json'
+      - 'Package-Hermes-Launcher.ps1'
+      - 'Update-Hermes-Local.ps1'
+      - 'Export-Hermes-Diagnostics.ps1'
+      - 'docs/RELEASE_INTEGRITY.md'
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel recorded in the manifest
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - beta
+          - nightly
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-integrity-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tooling-tests:
+    name: Release integrity tooling tests
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Validate release integrity tooling
+        shell: pwsh
+        run: |
+          python -m py_compile `
+            '.\scripts\ci\release_integrity.py' `
+            '.\scripts\ci\release_integrity_common.py' `
+            '.\scripts\ci\release_integrity_create.py' `
+            '.\scripts\ci\release_integrity_verify.py' `
+            '.\tests\test_release_integrity.py' `
+            '.\tests\test_release_integrity_integration.py'
+          python -m unittest discover `
+            -s '.\tests' `
+            -p 'test_release_integrity*.py' `
+            -v
+          Get-Content -Raw '.\config\schemas\release-manifest.schema.json' |
+            ConvertFrom-Json -Depth 64 | Out-Null
+
+  release:
+    name: Build, sign and attest release
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    needs: tooling-tests
+    runs-on: windows-latest
+    timeout-minutes: 120
+    environment: stable-release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Check out trusted release source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Enforce trusted release revision
+        shell: pwsh
+        run: |
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor $env:GITHUB_SHA origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Release revisions must be reachable from the protected main branch.'
+          }
+
+      - name: Prepare launcher source and dependencies
+        shell: pwsh
+        run: |
+          .\Setup-Hermes-Local.ps1 `
+            -SkipModel `
+            -SkipLauncherBuild `
+            -NonInteractive
+
+      - name: Build installer and portable artifacts
+        shell: pwsh
+        run: .\Package-Hermes-Launcher.ps1 -NonInteractive
+
+      - name: Generate launcher CycloneDX SBOM
+        uses: anchore/sbom-action@v0.16.0
+        with:
+          path: source/hermes-agent/apps/desktop
+          format: cyclonedx-json
+          output-file: dist/sbom/launcher.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Generate Python CycloneDX SBOM
+        uses: anchore/sbom-action@v0.16.0
+        with:
+          path: source/hermes-agent
+          format: cyclonedx-json
+          output-file: dist/sbom/python.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Generate native runtime CycloneDX SBOM
+        uses: anchore/sbom-action@v0.16.0
+        with:
+          path: runtimes/llama.cpp
+          format: cyclonedx-json
+          output-file: dist/sbom/runtime.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Authenticode-sign executable artifacts when configured
+        id: authenticode
+        shell: pwsh
+        env:
+          HERMES_SIGNING_CERTIFICATE_PFX: ${{ secrets.HERMES_SIGNING_CERTIFICATE_PFX }}
+          HERMES_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.HERMES_SIGNING_CERTIFICATE_PASSWORD }}
+          HERMES_TIMESTAMP_URL: ${{ vars.HERMES_TIMESTAMP_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:HERMES_SIGNING_CERTIFICATE_PFX)) {
+            'configured=false' | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            Write-Warning 'No protected Authenticode certificate is configured. The manifest will not claim publisher verification.'
+            exit 0
+          }
+          if ([string]::IsNullOrWhiteSpace($env:HERMES_SIGNING_CERTIFICATE_PASSWORD)) {
+            throw 'The signing certificate exists but HERMES_SIGNING_CERTIFICATE_PASSWORD is missing.'
+          }
+
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'hermes-release-signing.pfx'
+          try {
+            [IO.File]::WriteAllBytes(
+              $certificatePath,
+              [Convert]::FromBase64String($env:HERMES_SIGNING_CERTIFICATE_PFX)
+            )
+            $signtool = Get-ChildItem `
+              -LiteralPath "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
+              -Filter 'signtool.exe' `
+              -Recurse `
+              -File |
+                Where-Object FullName -Match '\\x64\\signtool\.exe$' |
+                Sort-Object FullName -Descending |
+                Select-Object -First 1
+            if (-not $signtool) {
+              throw 'signtool.exe was not found on the trusted Windows runner.'
+            }
+            $timestamp = if ($env:HERMES_TIMESTAMP_URL) {
+              $env:HERMES_TIMESTAMP_URL
+            } else {
+              'http://timestamp.digicert.com'
+            }
+            foreach ($artifact in Get-ChildItem -LiteralPath '.\dist' -Filter '*.exe' -File) {
+              & $signtool.FullName sign `
+                /fd SHA256 /td SHA256 /tr $timestamp `
+                /f $certificatePath /p $env:HERMES_SIGNING_CERTIFICATE_PASSWORD `
+                $artifact.FullName
+              if ($LASTEXITCODE -ne 0) {
+                throw "Authenticode signing failed for $($artifact.Name)."
+              }
+            }
+            'configured=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          } finally {
+            if (Test-Path -LiteralPath $certificatePath) {
+              Remove-Item -LiteralPath $certificatePath -Force
+            }
+          }
+
+      - name: Refresh legacy package hashes after signing
+        shell: pwsh
+        run: |
+          $records = @(
+            Get-ChildItem -LiteralPath '.\dist' -File |
+              Where-Object { $_.Name -like 'Hermes-Launcher-*.exe' -or $_.Name -like 'Hermes-Launcher-*.blockmap' -or $_.Name -eq 'Hermes Launcher.exe' } |
+              Sort-Object Name |
+              ForEach-Object {
+                [ordered]@{
+                  name = $_.Name
+                  sizeBytes = $_.Length
+                  sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+                }
+              }
+          )
+          [ordered]@{
+            schemaVersion = 1
+            createdAt = (Get-Date).ToUniversalTime().ToString('o')
+            artifacts = $records
+          } | ConvertTo-Json -Depth 8 |
+            Set-Content -LiteralPath '.\dist\package-manifest.json' -Encoding utf8NoBOM
+
+      - name: Generate aggregate bundle CycloneDX SBOM
+        uses: anchore/sbom-action@v0.16.0
+        with:
+          path: dist
+          format: cyclonedx-json
+          output-file: dist/sbom/bundle.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Create release manifest and checksums
+        shell: pwsh
+        env:
+          RELEASE_CHANNEL: ${{ inputs.channel || 'stable' }}
+          AUTHENTICODE_CONFIGURED: ${{ steps.authenticode.outputs.configured }}
+        run: |
+          $workflowIdentity = "$env:GITHUB_REPOSITORY/.github/workflows/release-integrity.yml"
+          $arguments = @(
+            '.\scripts\ci\release_integrity.py', 'create',
+            '--root', '.\dist',
+            '--output', '.\dist\release-manifest.json',
+            '--version-manifest', '.\VERSION.json',
+            '--channel', $env:RELEASE_CHANNEL,
+            '--repository', $env:GITHUB_REPOSITORY,
+            '--source-commit', $env:GITHUB_SHA,
+            '--workflow', $workflowIdentity,
+            '--run-id', $env:GITHUB_RUN_ID,
+            '--artifact', 'Hermes-Launcher-*.exe',
+            '--artifact', 'Hermes-Launcher-*.blockmap',
+            '--artifact', 'Hermes Launcher.exe',
+            '--artifact', 'package-manifest.json',
+            '--sbom', 'launcher=sbom/launcher.cdx.json',
+            '--sbom', 'python=sbom/python.cdx.json',
+            '--sbom', 'runtime=sbom/runtime.cdx.json',
+            '--sbom', 'bundle=sbom/bundle.cdx.json',
+            '--build-command', 'Setup-Hermes-Local.ps1 -SkipModel -SkipLauncherBuild',
+            '--build-command', 'Package-Hermes-Launcher.ps1',
+            '--toolchain', "python=$(& python --version 2>&1)",
+            '--toolchain', "node=$(& node --version 2>&1)",
+            '--toolchain', "npm=$(& npm --version 2>&1)"
+          )
+          foreach ($lock in @(
+            @{ Name = 'node'; Path = '.\source\hermes-agent\package-lock.json' },
+            @{ Name = 'python'; Path = '.\source\hermes-agent\uv.lock' }
+          )) {
+            if (Test-Path -LiteralPath $lock.Path -PathType Leaf) {
+              $arguments += @('--dependency-lock', "$($lock.Name)=$($lock.Path)")
+            }
+          }
+          if ($env:AUTHENTICODE_CONFIGURED -eq 'true') {
+            $arguments += @('--authenticode-required', '*.exe')
+          }
+          & python @arguments
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Release manifest generation failed.'
+          }
+
+      - name: Attest release artifacts and checksum inventory
+        id: artifact-attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/Hermes-Launcher-*.exe
+            dist/Hermes-Launcher-*.blockmap
+            dist/Hermes Launcher.exe
+            dist/package-manifest.json
+            dist/SHA256SUMS
+            dist/sbom/*.cdx.json
+
+      - name: Attest release manifest
+        id: manifest-attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/release-manifest.json
+
+      - name: Bind launcher SBOM to executable artifacts
+        id: sbom-attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/Hermes-Launcher-*-setup.exe
+            dist/Hermes-Launcher-*-portable.exe
+          sbom-path: dist/sbom/launcher.cdx.json
+
+      - name: Retain offline attestation bundles
+        shell: pwsh
+        env:
+          ARTIFACT_BUNDLE: ${{ steps.artifact-attestation.outputs.bundle-path }}
+          MANIFEST_BUNDLE: ${{ steps.manifest-attestation.outputs.bundle-path }}
+          SBOM_BUNDLE: ${{ steps.sbom-attestation.outputs.bundle-path }}
+        run: |
+          New-Item -ItemType Directory -Path '.\dist\attestations' -Force | Out-Null
+          Copy-Item -LiteralPath $env:ARTIFACT_BUNDLE -Destination '.\dist\attestations\artifacts.jsonl'
+          Copy-Item -LiteralPath $env:MANIFEST_BUNDLE -Destination '.\dist\attestations\manifest.jsonl'
+          Copy-Item -LiteralPath $env:SBOM_BUNDLE -Destination '.\dist\attestations\launcher-sbom.jsonl'
+
+      - name: Verify release before publication
+        shell: pwsh
+        run: |
+          python '.\scripts\ci\release_integrity.py' verify `
+            --manifest '.\dist\release-manifest.json' `
+            --artifact-root '.\dist' `
+            --require-attestation `
+            --report '.\build\release-integrity\LATEST.json'
+
+      - name: Upload verified release bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hermes-local-release-${{ github.sha }}
+          path: |
+            dist
+            build/release-integrity/LATEST.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish tag release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          gh release view $tag 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --verify-tag --generate-notes --title "Hermes Local $tag"
+          }
+          Get-ChildItem -LiteralPath '.\dist' -Recurse -File |
+            ForEach-Object { gh release upload $tag $_.FullName --clobber }
+          gh release upload $tag '.\build\release-integrity\LATEST.json' --clobber
+
+      - name: Add release integrity summary
+        if: always()
+        shell: pwsh
+        run: |
+          @(
+            '# Release integrity',
+            '',
+            "**Source:** ``$env:GITHUB_SHA``",
+            "**Workflow run:** ``$env:GITHUB_RUN_ID``",
+            "**Authenticode configured:** ``${{ steps.authenticode.outputs.configured || 'false' }}``",
+            '',
+            'The release job publishes only after manifest, SHA-256, SBOM, Authenticode policy and provenance verification succeed.'
+          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
