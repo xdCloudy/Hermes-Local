@@ -1,9 +1,7 @@
 name: Issue 25 security scan finalizer
 
 on:
-  push:
-    branches:
-      - agent/issue-25-security-scan-tasks
+  pull_request:
     paths:
       - '.github/issue-25/**'
       - '.github/workflows/issue-25-finalize.yml'
