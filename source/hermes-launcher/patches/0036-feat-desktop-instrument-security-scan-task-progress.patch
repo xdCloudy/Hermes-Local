@@ -1058,11 +1058,11 @@ index 80ac244..b7705ba 100644
 +                    ? `${ACTION_COPY[selected.action].label} progress is indeterminate`
 +                    : `${ACTION_COPY[selected.action].label} progress ${selectedProgressPercent}%`
 +                }
-+                className="h-1 bg-(--ui-control-background)"
-+                role="progressbar"
 +                aria-valuemax={100}
 +                aria-valuemin={0}
 +                aria-valuenow={selectedProgressPercent ?? undefined}
++                className="h-1 bg-(--ui-control-background)"
++                role="progressbar"
 +              >
                  <div
                    className={cn(
