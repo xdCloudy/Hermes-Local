@@ -56,7 +56,23 @@ jobs:
           fixed_trim = ".TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar))"
           if broken_trim not in progress_text:
               raise RuntimeError('Security progress path-redaction correction point not found')
-          progress.write_text(progress_text.replace(broken_trim, fixed_trim, 1), encoding='utf-8', newline='\n')
+          progress_text = progress_text.replace(broken_trim, fixed_trim, 1)
+          log_block = """    if ($script:securityTaskLogPath) {
+        $logLine = '{0} [{1}] {2}: {3}' -f $now.ToString('o'), $Status, $Stage, $safeMessage
+        Add-Content -LiteralPath $script:securityTaskLogPath -Value $logLine -Encoding utf8
+    }"""
+          fixed_log_block = """    if ($script:securityTaskLogPath) {
+        $logDirectory = [System.IO.Path]::GetDirectoryName($script:securityTaskLogPath)
+        if ($logDirectory) {
+            [System.IO.Directory]::CreateDirectory($logDirectory) | Out-Null
+        }
+        $logLine = '{0} [{1}] {2}: {3}' -f $now.ToString('o'), $Status, $Stage, $safeMessage
+        Add-Content -LiteralPath $script:securityTaskLogPath -Value $logLine -Encoding utf8
+    }"""
+          if log_block not in progress_text:
+              raise RuntimeError('Security progress log-directory correction point not found')
+          progress_text = progress_text.replace(log_block, fixed_log_block, 1)
+          progress.write_text(progress_text, encoding='utf-8', newline='\n')
 
           targets = {
               extracted / 'Security-Scan-Hermes-Local.ps1': root / 'Security-Scan-Hermes-Local.ps1',
@@ -84,6 +100,7 @@ jobs:
                   1,
               )
           compatibility.write_text(text, encoding='utf-8', newline='\n')
+
           '@ | python -
 
       - name: Compute canonical integration identity
