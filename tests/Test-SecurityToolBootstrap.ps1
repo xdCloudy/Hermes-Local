@@ -23,7 +23,7 @@ foreach ($path in @($installerPath, $wrapperPath, $implementationPath)) {
     ) | Out-Null
     if (@($errors).Count -gt 0) {
         $details = @($errors | ForEach-Object { $_.Message }) -join '; '
-        throw "PowerShell parser errors in $path: $details"
+        throw "PowerShell parser errors in ${path}: $details"
     }
 }
 
