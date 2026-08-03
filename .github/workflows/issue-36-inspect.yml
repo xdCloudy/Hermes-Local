@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/issue-36-inspect.yml'
+      - 'VERSION.json'
+      - 'source/hermes-launcher/patches/**'
 
 permissions:
   contents: read
@@ -16,17 +18,26 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Reconstruct integrated Hermes Agent source
+      - name: Reconstruct pinned integrated Hermes Agent source
         shell: pwsh
         run: |
-          python .\scripts\ci\compatibility.py hermes-agent `
-            --repository-root . `
-            --work-dir .\temp\issue-36-inspect `
-            --log-dir .\artifacts\issue-36-inspect\logs `
-            --report .\artifacts\issue-36-inspect\report.json `
-            --keep-workspace
+          $manifest = Get-Content -Raw -LiteralPath '.\VERSION.json' | ConvertFrom-Json
+          $source = Join-Path $env:RUNNER_TEMP 'issue-36-hermes-agent'
+          $patches = Get-ChildItem -LiteralPath '.\source\hermes-launcher\patches' -Filter '*.patch' -File |
+            Sort-Object Name |
+            ForEach-Object FullName
 
-          $source = Resolve-Path '.\temp\issue-36-inspect\hermes-agent'
+          git clone --no-checkout $manifest.sources.hermesAgent.repository $source
+          git -C $source checkout --detach $manifest.sources.hermesAgent.commit
+          git -C $source config user.name 'Hermes Local Integration'
+          git -C $source config user.email 'hermes-local-ci@localhost'
+          git -C $source am --3way --committer-date-is-author-date @patches
+
+          $tree = (git -C $source rev-parse 'HEAD^{tree}').Trim()
+          if ($tree -ne [string]$manifest.sources.hermesAgent.integrationTree) {
+            throw "Pinned integration tree mismatch: expected $($manifest.sources.hermesAgent.integrationTree), got $tree"
+          }
+
           $out = '.\artifacts\issue-36-inspect\source'
           New-Item -ItemType Directory -Force -Path $out | Out-Null
           Copy-Item -LiteralPath (Join-Path $source 'apps\desktop') -Destination $out -Recurse -Force
@@ -37,6 +48,8 @@ jobs:
           try {
             git grep -n -I -E 'Backend update failed|check.*update|updateAvailable|Update-Hermes-Agent|Task Centre|task center|taskCentre|version' -- apps/desktop `
               | Set-Content -LiteralPath "$env:GITHUB_WORKSPACE\artifacts\issue-36-inspect\matches.txt" -Encoding utf8
+            git show --stat --oneline HEAD `
+              | Set-Content -LiteralPath "$env:GITHUB_WORKSPACE\artifacts\issue-36-inspect\integration.txt" -Encoding utf8
           } finally {
             Pop-Location
           }
