@@ -1,0 +1,46 @@
+name: Issue 25 finalizer correction
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/issue-25-fix-finalizer.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: issue-25-finalizer-correction
+  cancel-in-progress: false
+
+jobs:
+  correct:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out issue branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/issue-25-security-scan-tasks
+          fetch-depth: 0
+
+      - name: Correct canonical tree and remove redundant staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/issue-25-finalize.yml')
+          text = path.read_text(encoding='utf-8')
+          old = '43c9e6b2b5cc9cf904f8206e31287b1e4efbe96d'
+          new = 'facb49e58567e5ef9be8ff10bd1e4d208293c09e'
+          if old not in text:
+              raise SystemExit('Expected stale integration tree constant was not found')
+          path.write_text(text.replace(old, new), encoding='utf-8', newline='\n')
+          PY
+          rm -f .github/issue-25-payload.part-*
+          rm -f .github/workflows/issue-25-fix-finalizer.yml
+          git config user.name 'Hermes Local CI'
+          git config user.email 'hermes-local-ci@localhost'
+          git add --all
+          git commit -m 'ci: correct issue 25 canonical integration tree'
+          git push origin HEAD:agent/issue-25-security-scan-tasks
