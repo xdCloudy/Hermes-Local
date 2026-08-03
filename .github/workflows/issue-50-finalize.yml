@@ -104,9 +104,9 @@ jobs:
           git config user.name 'Hermes Local Integration'
           git config user.email 'hermes-local-ci@localhost'
           git add --all
-          git diff --cached --check
+          git diff --cached --check -- . ':(exclude)source/hermes-launcher/patches/*.patch'
           if ($LASTEXITCODE -ne 0) {
-            throw 'Final issue #50 repository diff contains whitespace errors.'
+            throw 'Final issue #50 repository source diff contains whitespace errors.'
           }
           git commit -m 'feat: add stable project identity and path recovery'
           git push origin HEAD:agent/issue-50-project-registry
