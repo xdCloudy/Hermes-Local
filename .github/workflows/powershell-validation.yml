@@ -8,6 +8,8 @@ on:
       - 'models/manifests/*.json'
       - 'scripts/gateway_snapshot.py'
       - 'tests/test_gateway_snapshot.py'
+      - 'tests/test_hermes_desktop_update_contract.py'
+      - 'source/hermes-launcher/overlay-src/**'
       - '.github/workflows/powershell-validation.yml'
   push:
     branches:
@@ -18,6 +20,8 @@ on:
       - 'models/manifests/*.json'
       - 'scripts/gateway_snapshot.py'
       - 'tests/test_gateway_snapshot.py'
+      - 'tests/test_hermes_desktop_update_contract.py'
+      - 'source/hermes-launcher/overlay-src/**'
       - '.github/workflows/powershell-validation.yml'
 
 permissions:
@@ -60,8 +64,13 @@ jobs:
         shell: pwsh
         run: |
           python -m unittest discover -s tests -p 'test_gateway_snapshot.py' -v
-          python -m py_compile '.\scripts\gateway_snapshot.py' '.\tests\test_gateway_snapshot.py'
+          python -m unittest discover -s tests -p 'test_hermes_desktop_update_contract.py' -v
+          python -m py_compile `
+            '.\scripts\gateway_snapshot.py' `
+            '.\tests\test_gateway_snapshot.py' `
+            '.\tests\test_hermes_desktop_update_contract.py'
           & '.\tests\Test-HermesGatewayModule.ps1'
+          & '.\tests\Test-HermesDesktopUpdate.ps1'
           & '.\tests\Test-BenchmarkLifecycleContract.ps1'
           & '.\tests\Test-BenchmarkProgressContract.ps1'
           & '.\tests\Test-HermesSecurityScanProgress.ps1'
