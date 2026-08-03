@@ -173,6 +173,10 @@ try {
             -Message "Starting '$caseName'; llama-bench will load the selected model for this measured case." `
             -Indeterminate
         Write-BenchmarkProgress `
+            -Stage 'warm-up' `
+            -Message "The native llama-bench warm-up for '$caseName' is beginning; benchmark arguments and timing semantics are unchanged." `
+            -Indeterminate
+        Write-BenchmarkProgress `
             -Stage 'prompt-execution' `
             -Message "Executing '$caseName' without changing its arguments or measurement semantics." `
             -CompletedUnits $completedCaseCount `
