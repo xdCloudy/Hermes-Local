@@ -44,6 +44,7 @@ jobs:
             '--report', $reportPath,
             '--keep-workspace',
             '--run-desktop-checks',
+            '--run-python-checks',
             '--run-package-checks'
           )
 
