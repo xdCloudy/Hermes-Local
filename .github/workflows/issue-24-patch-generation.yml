@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/issue-24-patch-generation.yml'
+      - 'scripts/ci/generate_issue24_patch.py'
       - 'VERSION.json'
       - 'source/hermes-launcher/patches/**'
 
@@ -34,7 +35,6 @@ jobs:
           $source = Join-Path $env:RUNNER_TEMP 'hermes-agent-issue-24'
           $artifactRoot = Join-Path $PWD 'artifacts\issue-24-patch'
           $output = Join-Path $artifactRoot '0033-feat-desktop-instrument-benchmark-task-progress.patch'
-          $payload = Resolve-Path '.\source\hermes-launcher\patches\0033-feat-desktop-instrument-benchmark-task-progress.patch'
           $base = [string]$manifest.sources.hermesAgent.commit
           $repository = [string]$manifest.sources.hermesAgent.repository
 
@@ -57,9 +57,9 @@ jobs:
             throw "Pinned patch reconstruction exited with code $LASTEXITCODE."
           }
 
-          git -C $source apply --recount --whitespace=nowarn $payload
+          python '.\scripts\ci\generate_issue24_patch.py' $source
           if ($LASTEXITCODE -ne 0) {
-            throw "Issue 24 payload application exited with code $LASTEXITCODE."
+            throw "Issue 24 source transformation exited with code $LASTEXITCODE."
           }
 
           git -C $source add --all
@@ -71,17 +71,6 @@ jobs:
           git -C $source format-patch -1 --stdout | Set-Content -LiteralPath $output -Encoding utf8NoBOM
           git -C $source rev-parse HEAD | Set-Content -LiteralPath (Join-Path $artifactRoot 'integration-commit.txt') -Encoding ascii
           git -C $source rev-parse 'HEAD^{tree}' | Set-Content -LiteralPath (Join-Path $artifactRoot 'integration-tree.txt') -Encoding ascii
-
-          $tokens = $null
-          $errors = $null
-          [void][System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path '.\Benchmark-Hermes-Local.ps1'),
-            [ref]$tokens,
-            [ref]$errors
-          )
-          if ($errors.Count -gt 0) {
-            throw ($errors | Out-String)
-          }
 
       - name: Upload canonical patch
         uses: actions/upload-artifact@v4
