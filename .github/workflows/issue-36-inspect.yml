@@ -1,0 +1,49 @@
+name: Issue 36 source inspection
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/issue-36-inspect.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  reconstruct:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Reconstruct integrated Hermes Agent source
+        shell: pwsh
+        run: |
+          python .\scripts\ci\compatibility.py hermes-agent `
+            --repository-root . `
+            --work-dir .\temp\issue-36-inspect `
+            --log-dir .\artifacts\issue-36-inspect\logs `
+            --report .\artifacts\issue-36-inspect\report.json `
+            --keep-workspace
+
+          $source = Resolve-Path '.\temp\issue-36-inspect\hermes-agent'
+          $out = '.\artifacts\issue-36-inspect\source'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          Copy-Item -LiteralPath (Join-Path $source 'apps\desktop') -Destination $out -Recurse -Force
+          Copy-Item -LiteralPath (Join-Path $source 'package.json') -Destination $out -Force
+          Copy-Item -LiteralPath (Join-Path $source 'package-lock.json') -Destination $out -Force
+
+          Push-Location $source
+          try {
+            git grep -n -I -E 'Backend update failed|check.*update|updateAvailable|Update-Hermes-Agent|Task Centre|task center|taskCentre|version' -- apps/desktop `
+              | Set-Content -LiteralPath "$env:GITHUB_WORKSPACE\artifacts\issue-36-inspect\matches.txt" -Encoding utf8
+          } finally {
+            Pop-Location
+          }
+
+      - name: Upload integrated Desktop sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-36-integrated-desktop
+          path: artifacts/issue-36-inspect
+          retention-days: 2
