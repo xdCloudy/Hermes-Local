@@ -1,0 +1,81 @@
+name: Issue 25 reusable materializer
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/issue-25-materialize-v6.yml'
+      - '.github/issue-25/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: issue-25-materialize-v6
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out issue branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/issue-25-security-scan-tasks
+          fetch-depth: 0
+
+      - name: Materialize corrected implementation
+        shell: pwsh
+        run: |
+          python '.\.github\issue-25\materialize-v6.py'
+          if ($LASTEXITCODE -ne 0) { throw "Issue #25 materialization failed with exit code $LASTEXITCODE." }
+
+      - name: Validate security contract
+        shell: pwsh
+        run: |
+          $failures = [System.Collections.Generic.List[string]]::new()
+          foreach ($file in @(
+            '.\Security-Scan-Hermes-Local.ps1',
+            '.\scripts\security\Security-Progress.ps1',
+            '.\tests\Test-HermesSecurityScanProgress.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file), [ref]$tokens, [ref]$errors)
+            foreach ($error in @($errors)) {
+              $failures.Add("${file}:$($error.Extent.StartLineNumber): $($error.Message)")
+            }
+          }
+          if ($failures.Count -gt 0) { throw ($failures -join [Environment]::NewLine) }
+          & '.\tests\Test-HermesSecurityScanProgress.ps1'
+          if ($LASTEXITCODE -ne 0) { throw "Security contract failed with exit code $LASTEXITCODE." }
+          python -m py_compile '.\scripts\ci\compatibility.py'
+          if ($LASTEXITCODE -ne 0) { throw 'Compatibility Python syntax failed.' }
+
+      - name: Verify canonical integration
+        shell: pwsh
+        run: |
+          $manifest = Get-Content -Raw -LiteralPath '.\VERSION.json' | ConvertFrom-Json
+          $source = Join-Path $env:RUNNER_TEMP 'issue-25-v6-agent'
+          $patches = @(Get-ChildItem '.\source\hermes-launcher\patches' -Filter '*.patch' -File | Sort-Object Name | ForEach-Object FullName)
+          git clone --no-checkout $manifest.sources.hermesAgent.repository $source
+          git -C $source checkout --detach $manifest.sources.hermesAgent.commit
+          git -C $source config user.name 'Hermes Local Integration'
+          git -C $source config user.email 'hermes-local-ci@localhost'
+          git -C $source am --3way --committer-date-is-author-date @patches
+          if ($LASTEXITCODE -ne 0) { throw 'The 36-patch integration failed.' }
+          $commit = (git -C $source rev-parse HEAD).Trim()
+          $tree = (git -C $source rev-parse 'HEAD^{tree}').Trim()
+          if ($commit -ne '2328d03544cfc4cbbccf1e7a6a2ea0742d6adbaa') { throw "Canonical commit mismatch: $commit" }
+          if ($tree -ne 'facb49e58567e5ef9be8ff10bd1e4d208293c09e') { throw "Canonical tree mismatch: $tree" }
+
+      - name: Commit permanent implementation
+        shell: pwsh
+        run: |
+          git config user.name 'Hermes Local CI'
+          git config user.email 'hermes-local-ci@localhost'
+          git add -- 'Security-Scan-Hermes-Local.ps1' 'scripts/security/Security-Progress.ps1' 'tests/Test-HermesSecurityScanProgress.ps1' 'source/hermes-launcher/patches/0036-feat-desktop-instrument-security-scan-task-progress.patch' 'scripts/ci/compatibility.py' 'VERSION.json'
+          git rm -r --ignore-unmatch '.github/issue-25'
+          Get-ChildItem '.\.github' -Filter 'issue-25-payload.part-*' -File -ErrorAction SilentlyContinue | ForEach-Object { git rm -- $_.FullName }
+          git commit -m 'feat: instrument security scans with durable task progress'
+          git push origin HEAD:agent/issue-25-security-scan-tasks
