@@ -28,29 +28,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Resolve issue 31 preimage blob
-        shell: pwsh
-        run: |
-          $manifest = Get-Content -Raw -LiteralPath '.\VERSION.json' | ConvertFrom-Json
-          $source = Join-Path $env:RUNNER_TEMP 'issue-31-preimage'
-          git clone --no-checkout ([string]$manifest.sources.hermesAgent.repository) $source
-          Push-Location $source
-          try {
-            git checkout --detach ([string]$manifest.sources.hermesAgent.commit)
-            git config user.name 'Hermes Local Compatibility CI'
-            git config user.email 'hermes-local-ci@localhost'
-            $patches = Get-ChildItem -LiteralPath "$env:GITHUB_WORKSPACE\source\hermes-launcher\patches" -Filter '*.patch' |
-              Sort-Object Name |
-              Select-Object -First 36 |
-              ForEach-Object FullName
-            git am --3way --committer-date-is-author-date @patches
-            Write-Host "LOCAL_WORKSTATION_BLOB=$(git rev-parse HEAD:apps/desktop/src/app/local-workstation/index.tsx)"
-            Write-Host "INTEGRATION_COMMIT=$(git rev-parse HEAD)"
-            Write-Host "INTEGRATION_TREE=$(git rev-parse 'HEAD^{tree}')"
-          } finally {
-            Pop-Location
-          }
-
       - name: Reconstruct and validate pinned release integration
         shell: pwsh
         run: |
