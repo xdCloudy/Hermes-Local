@@ -27,20 +27,23 @@ jobs:
       - name: Materialize permanent implementation
         shell: pwsh
         run: |
+          $payload = '.\.github\issue-25'
+          $archive = Join-Path $payload 'payload.zip'
+          $encoded = (Get-Content -Raw -LiteralPath (Join-Path $payload 'payload.b64')).Trim()
+          [System.IO.File]::WriteAllBytes($archive, [System.Convert]::FromBase64String($encoded))
+          $digest = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($digest -ne '6f43a5bce5c9377cd022fa7cccc72963b2f2a4ba4efb44a849befe1ece832a2a') {
+            throw "Issue #25 payload digest mismatch: $digest"
+          }
+          $extracted = Join-Path $payload 'extracted'
+          Expand-Archive -LiteralPath $archive -DestinationPath $extracted -Force
+
           @'
           from pathlib import Path
-          import base64
           import shutil
-          import zipfile
 
           root = Path.cwd()
-          payload = root / '.github' / 'issue-25'
-          archive = payload / 'payload.zip'
-          archive.write_bytes(base64.b64decode((payload / 'payload.b64').read_text(encoding='ascii')))
-          extracted = payload / 'extracted'
-          with zipfile.ZipFile(archive) as bundle:
-              bundle.extractall(extracted)
-
+          extracted = root / '.github' / 'issue-25' / 'extracted'
           targets = {
               extracted / 'Security-Scan-Hermes-Local.ps1': root / 'Security-Scan-Hermes-Local.ps1',
               extracted / 'Security-Progress.ps1': root / 'scripts' / 'security' / 'Security-Progress.ps1',
