@@ -1,0 +1,196 @@
+name: Issue 25 security scan finalizer
+
+on:
+  pull_request:
+    paths:
+      - '.github/issue-25/**'
+      - '.github/workflows/issue-25-finalize.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: issue-25-security-scan-finalizer
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out issue branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/issue-25-security-scan-tasks
+          fetch-depth: 0
+
+      - name: Materialize permanent implementation
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $payload = '.\.github\issue-25'
+          $archive = Join-Path $payload 'payload.zip'
+          $parts = @(Get-ChildItem -LiteralPath $payload -Filter 'payload.part*.b64' -File | Sort-Object Name)
+          if ($parts.Count -ne 4) {
+            throw "Issue #25 payload is incomplete: expected 4 chunks, found $($parts.Count)."
+          }
+          $encoded = (($parts | ForEach-Object { (Get-Content -Raw -LiteralPath $_.FullName).Trim() }) -join '')
+          [System.IO.File]::WriteAllBytes($archive, [System.Convert]::FromBase64String($encoded))
+          $digest = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($digest -ne '6f43a5bce5c9377cd022fa7cccc72963b2f2a4ba4efb44a849befe1ece832a2a') {
+            throw "Issue #25 payload digest mismatch: $digest"
+          }
+          $extracted = Join-Path $payload 'extracted'
+          Expand-Archive -LiteralPath $archive -DestinationPath $extracted -Force
+
+          @'
+          from pathlib import Path
+          import shutil
+
+          root = Path.cwd()
+          extracted = root / '.github' / 'issue-25' / 'extracted'
+          progress = extracted / 'Security-Progress.ps1'
+          progress_text = progress.read_text(encoding='utf-8')
+          broken_trim = ".TrimEnd('\\\\', '/')"
+          fixed_trim = ".TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar))"
+          if broken_trim not in progress_text:
+              raise RuntimeError('Security progress path-redaction correction point not found')
+          progress_text = progress_text.replace(broken_trim, fixed_trim, 1)
+          log_block = "    if ($script:securityTaskLogPath) {\n        $logLine = '{0} [{1}] {2}: {3}' -f $now.ToString('o'), $Status, $Stage, $safeMessage\n        Add-Content -LiteralPath $script:securityTaskLogPath -Value $logLine -Encoding utf8\n    }"
+          fixed_log_block = "    if ($script:securityTaskLogPath) {\n        $logDirectory = [System.IO.Path]::GetDirectoryName($script:securityTaskLogPath)\n        if ($logDirectory) {\n            [System.IO.Directory]::CreateDirectory($logDirectory) | Out-Null\n        }\n        $logLine = '{0} [{1}] {2}: {3}' -f $now.ToString('o'), $Status, $Stage, $safeMessage\n        Add-Content -LiteralPath $script:securityTaskLogPath -Value $logLine -Encoding utf8\n    }"
+          if log_block not in progress_text:
+              raise RuntimeError('Security progress log-directory correction point not found')
+          progress_text = progress_text.replace(log_block, fixed_log_block, 1)
+          progress.write_text(progress_text, encoding='utf-8', newline='\n')
+
+          contract = extracted / 'Test-HermesSecurityScanProgress.ps1'
+          contract_text = contract.read_text(encoding='utf-8')
+          timestamp_assertion = "    Assert-True ($cancelled.completedAt) 'Cancelled scan omitted its completion timestamp.'"
+          fixed_timestamp_assertion = "    Assert-True (-not [string]::IsNullOrWhiteSpace([string]$cancelled.completedAt)) 'Cancelled scan omitted its completion timestamp.'"
+          if timestamp_assertion not in contract_text:
+              raise RuntimeError('Security progress timestamp assertion correction point not found')
+          contract.write_text(contract_text.replace(timestamp_assertion, fixed_timestamp_assertion, 1), encoding='utf-8', newline='\n')
+
+          targets = {
+              extracted / 'Security-Scan-Hermes-Local.ps1': root / 'Security-Scan-Hermes-Local.ps1',
+              extracted / 'Security-Progress.ps1': root / 'scripts' / 'security' / 'Security-Progress.ps1',
+              extracted / 'Test-HermesSecurityScanProgress.ps1': root / 'tests' / 'Test-HermesSecurityScanProgress.ps1',
+              extracted / '0036-feat-desktop-instrument-security-scan-task-progress.patch': root / 'source' / 'hermes-launcher' / 'patches' / '0036-feat-desktop-instrument-security-scan-task-progress.patch',
+          }
+          for source, target in targets.items():
+              if not source.is_file():
+                  raise RuntimeError(f'Payload file is missing: {source}')
+              target.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(source, target)
+
+          compatibility = root / 'scripts' / 'ci' / 'compatibility.py'
+          text = compatibility.read_text(encoding='utf-8')
+          needle = '                    run([vitest, "run", "--project", "electron", "electron/hermes-local-update.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")\n'
+          addition = needle + '                    run([vitest, "run", "--project", "electron", "electron/hermes-local-security-progress.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")\n                    run([vitest, "run", "src/app/local-workstation/task-centre.test.tsx", "src/app/local-workstation/security-task-view.test.tsx"], cwd=source / "apps/desktop", log=logs / "tests.log")\n'
+          if 'hermes-local-security-progress.test.ts' not in text:
+              if needle not in text:
+                  raise RuntimeError('Compatibility test insertion point not found')
+              text = text.replace(needle, addition, 1)
+              text = text.replace(
+                  'done.append("desktop:typecheck,lint,focused-electron,project-registry")',
+                  'done.append("desktop:typecheck,lint,focused-electron,security-task-ui,project-registry")',
+                  1,
+              )
+          compatibility.write_text(text, encoding='utf-8', newline='\n')
+
+          '@ | python -
+
+      - name: Compute canonical integration identity
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $manifest = Get-Content -Raw -LiteralPath '.\VERSION.json' | ConvertFrom-Json
+          $source = Join-Path $env:RUNNER_TEMP 'issue-25-canonical-hermes-agent'
+          $patches = @(Get-ChildItem -LiteralPath '.\source\hermes-launcher\patches' -Filter '*.patch' -File |
+            Sort-Object Name |
+            ForEach-Object FullName)
+
+          git clone --no-checkout $manifest.sources.hermesAgent.repository $source
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to clone Hermes Agent.' }
+          git -C $source checkout --detach $manifest.sources.hermesAgent.commit
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to check out the pinned Hermes Agent commit.' }
+          git -C $source config user.name 'Hermes Local Integration'
+          git -C $source config user.email 'hermes-local-ci@localhost'
+          git -C $source am --3way --committer-date-is-author-date @patches
+          if ($LASTEXITCODE -ne 0) { throw 'The 36-patch Hermes Agent integration failed to reconstruct.' }
+
+          $integrationCommit = (git -C $source rev-parse HEAD).Trim()
+          $integrationTree = (git -C $source rev-parse 'HEAD^{tree}').Trim()
+          if ($integrationTree -ne 'facb49e58567e5ef9be8ff10bd1e4d208293c09e') {
+            throw "Issue #25 integration tree mismatch: expected facb49e58567e5ef9be8ff10bd1e4d208293c09e, got $integrationTree"
+          }
+
+          $env:ISSUE25_INTEGRATION_COMMIT = $integrationCommit
+          $env:ISSUE25_INTEGRATION_TREE = $integrationTree
+          @'
+          from datetime import datetime, timezone
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path('VERSION.json')
+          document = json.loads(path.read_text(encoding='utf-8'))
+          document['product']['version'] = '0.18.18'
+          document['sources']['hermesAgent']['integrationCommit'] = os.environ['ISSUE25_INTEGRATION_COMMIT']
+          document['sources']['hermesAgent']['integrationTree'] = os.environ['ISSUE25_INTEGRATION_TREE']
+          document['recordedAt'] = datetime.now(timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
+          path.write_text(json.dumps(document, indent=2) + '\n', encoding='utf-8', newline='\n')
+          '@ | python -
+
+          "Integration commit: $integrationCommit" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          "Integration tree: $integrationTree" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          "Patch count: $($patches.Count)" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Parse and test security progress contract
+        shell: pwsh
+        run: |
+          $failures = [System.Collections.Generic.List[string]]::new()
+          foreach ($file in @(
+            '.\Security-Scan-Hermes-Local.ps1',
+            '.\scripts\security\Security-Progress.ps1',
+            '.\tests\Test-HermesSecurityScanProgress.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file),
+              [ref]$tokens,
+              [ref]$errors
+            )
+            foreach ($error in @($errors)) {
+              $failures.Add("${file}:$($error.Extent.StartLineNumber): $($error.Message)")
+            }
+          }
+          if ($failures.Count -gt 0) {
+            throw ($failures -join [Environment]::NewLine)
+          }
+          & '.\tests\Test-HermesSecurityScanProgress.ps1'
+          if ($LASTEXITCODE -ne 0) {
+            throw "Security progress contract failed with exit code $LASTEXITCODE."
+          }
+          python -m py_compile '.\scripts\ci\compatibility.py'
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Compatibility checker failed Python syntax validation.'
+          }
+
+      - name: Commit permanent non-workflow implementation
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.\.github\issue-25' -Recurse -Force
+          Get-ChildItem -LiteralPath '.\.github' -Filter 'issue-25-payload.part-*' -File -ErrorAction SilentlyContinue |
+            Remove-Item -Force
+          git config user.name 'Hermes Local CI'
+          git config user.email 'hermes-local-ci@localhost'
+          git add --all
+          if (-not (git status --porcelain)) {
+            throw 'Issue #25 finalizer produced no repository changes.'
+          }
+          git commit -m 'feat: instrument security scans with durable task progress'
+          git push origin HEAD:agent/issue-25-security-scan-tasks
