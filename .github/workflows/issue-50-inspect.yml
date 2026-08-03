@@ -44,6 +44,7 @@ jobs:
             temp/issue-50-inspect/hermes-agent/apps/desktop/src
             temp/issue-50-inspect/hermes-agent/apps/desktop/electron
             temp/issue-50-inspect/hermes-agent/apps/desktop/e2e
+            temp/issue-50-inspect/hermes-agent/hermes_cli
             temp/issue-50-inspect/hermes-agent/hermes_state.py
             temp/issue-50-inspect/hermes-agent/tui_gateway
             temp/issue-50-inspect/hermes-agent/tests
