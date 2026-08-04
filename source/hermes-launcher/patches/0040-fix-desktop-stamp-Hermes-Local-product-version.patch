@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
+Date: Wed, 5 Aug 2026 00:22:00 +0100
+Subject: [PATCH 40/40] fix(desktop): stamp Hermes Local product version
+
+---
+ apps/desktop/scripts/run-electron-builder.mjs | 25 ++++++++++++++++++++++++--
+ 1 file changed, 24 insertions(+), 1 deletion(-)
+
+diff --git a/apps/desktop/scripts/run-electron-builder.mjs b/apps/desktop/scripts/run-electron-builder.mjs
+--- a/apps/desktop/scripts/run-electron-builder.mjs
++++ b/apps/desktop/scripts/run-electron-builder.mjs
+@@ -36,8 +36,31 @@ function electronBuilderCli() {
+   return path.join(path.dirname(pkgJson), rel)
+ }
+ 
++function hermesLocalProductVersion() {
++  const configuredRoot = process.env.HERMES_LOCAL_ROOT?.trim()
++  const root = configuredRoot
++    ? path.resolve(configuredRoot)
++    : path.resolve(import.meta.dirname, "../../../../..")
++  const manifestPath = path.join(root, "VERSION.json")
++  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"))
++  const version = manifest?.product?.version
++
++  if (
++    typeof version !== "string" ||
++    !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)
++  ) {
++    throw new Error(
++      `[run-electron-builder] Hermes Local product version is invalid in ${manifestPath}`
++    )
++  }
++
++  return version
++}
++
++const productVersion = hermesLocalProductVersion()
+ const dist = electronDistDir()
+-const args = []
++const args = [`-c.extraMetadata.version=${productVersion}`]
++console.log(`[run-electron-builder] Hermes Local product version ${productVersion}`)
+ if (dist && fs.existsSync(distBinary(dist))) {
+   args.push(`-c.electronDist=${dist}`)
+ } else {
