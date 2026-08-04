@@ -14,6 +14,59 @@ $candidateRuntime = $null
 $rollbackRuntime = $null
 $runtimeActivated = $false
 
+function Get-HermesRuntimeSyncArguments {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string] $Source,
+        [Parameter(Mandatory)][string] $ManagedPython,
+        [switch] $ForceReinstall
+    )
+
+    $arguments = @(
+        'sync',
+        '--project', $Source,
+        '--locked',
+        '--active',
+        '--python', $ManagedPython,
+        '--managed-python',
+        '--extra', 'all',
+        '--extra', 'dev',
+        '--extra', 'voice',
+        '--extra', 'edge-tts',
+        '--extra', 'messaging'
+    )
+    if ($ForceReinstall) {
+        $arguments += '--reinstall'
+    }
+
+    $arguments
+}
+
+function Invoke-HermesRuntimeDependencySync {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string] $Runtime,
+        [Parameter(Mandatory)][string] $Source,
+        [Parameter(Mandatory)][string] $ManagedPython,
+        [Parameter(Mandatory)][string] $ManagedRoot,
+        [Parameter(Mandatory)][string] $UvCache,
+        [switch] $ForceReinstall
+    )
+
+    Invoke-HermesProcess -FilePath 'uv.exe' -ArgumentList (
+        Get-HermesRuntimeSyncArguments `
+            -Source $Source `
+            -ManagedPython $ManagedPython `
+            -ForceReinstall:$ForceReinstall
+    ) -Environment @{
+        VIRTUAL_ENV = $Runtime
+        UV_PROJECT_ENVIRONMENT = $Runtime
+        UV_PYTHON_INSTALL_DIR = $ManagedRoot
+        UV_PYTHON = $ManagedPython
+        UV_CACHE_DIR = $UvCache
+    } -LogComponent setup
+}
+
 try {
     Assert-HermesRoot
     Initialize-HermesLayout
@@ -87,30 +140,13 @@ try {
         throw "Candidate Hermes runtime uses Python '$createdVersion'; expected '$targetVersion'."
     }
 
-    $syncArguments = @(
-        'sync',
-        '--project', $source,
-        '--locked',
-        '--active',
-        '--python', $managedPython,
-        '--managed-python',
-        '--extra', 'all',
-        '--extra', 'dev',
-        '--extra', 'voice',
-        '--extra', 'edge-tts',
-        '--extra', 'messaging'
-    )
-    if ($Reinstall) {
-        $syncArguments += '--reinstall'
-    }
-
-    Invoke-HermesProcess -FilePath 'uv.exe' -ArgumentList $syncArguments -Environment @{
-        VIRTUAL_ENV = $candidateRuntime
-        UV_PROJECT_ENVIRONMENT = $candidateRuntime
-        UV_PYTHON_INSTALL_DIR = $managedRoot
-        UV_PYTHON = $managedPython
-        UV_CACHE_DIR = $uvCache
-    } -LogComponent setup
+    Invoke-HermesRuntimeDependencySync `
+        -Runtime $candidateRuntime `
+        -Source $source `
+        -ManagedPython $managedPython `
+        -ManagedRoot $managedRoot `
+        -UvCache $uvCache `
+        -ForceReinstall:$Reinstall
 
     $candidateVerification = (@(
         Invoke-HermesProcess -FilePath $candidatePython -ArgumentList @(
@@ -145,6 +181,18 @@ try {
         throw
     }
 
+    # uv's Windows console-script trampolines retain the absolute environment
+    # path used when they are generated. The candidate runtime is deliberately
+    # built in a sibling directory and atomically renamed, so regenerate every
+    # installed entry point from the final active path before validating it.
+    Invoke-HermesRuntimeDependencySync `
+        -Runtime $runtime `
+        -Source $source `
+        -ManagedPython $managedPython `
+        -ManagedRoot $managedRoot `
+        -UvCache $uvCache `
+        -ForceReinstall
+
     $runtimePython = Join-Path $runtime 'Scripts\python.exe'
     $activeVerification = (@(
         Invoke-HermesProcess -FilePath $runtimePython -ArgumentList @(
@@ -153,9 +201,21 @@ try {
         ) -LogComponent setup -PassThruOutput
     ) -join [Environment]::NewLine).Trim()
 
+    $runtimeHermes = Join-Path $runtime 'Scripts\hermes.exe'
+    if (-not (Test-Path -LiteralPath $runtimeHermes -PathType Leaf)) {
+        throw "Hermes runtime entry point is missing after activation: $runtimeHermes"
+    }
+    $entryPointVerification = (@(
+        Invoke-HermesProcess -FilePath $runtimeHermes -ArgumentList @(
+            '--help'
+        ) -LogComponent setup -PassThruOutput
+    ) -join [Environment]::NewLine).Trim()
+
     Write-HermesLog -Component setup -Message (
         "Hermes Python runtime synchronized with Python $targetVersion. " +
-        "Candidate verification: $candidateVerification Active verification: $activeVerification"
+        "Candidate verification: $candidateVerification " +
+        "Active verification: $activeVerification " +
+        "Entry-point verification: $entryPointVerification"
     )
     Write-Host "Hermes Python runtime synchronized with Python $targetVersion."
     if ($rollbackRuntime) {
