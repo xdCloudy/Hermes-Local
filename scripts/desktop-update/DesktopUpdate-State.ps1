@@ -21,6 +21,48 @@ function Read-HermesDesktopPendingUpdate {
     }
 }
 
+function Get-HermesDesktopObjectValue {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object] $InputObject,
+        [Parameter(Mandatory)][string] $Name,
+        $Default = $null
+    )
+
+    if (
+        $InputObject -is [System.Collections.IDictionary] -and
+        $InputObject.Contains($Name)
+    ) {
+        return $InputObject[$Name]
+    }
+
+    $property = $InputObject.PSObject.Properties[$Name]
+    if ($property) {
+        return $property.Value
+    }
+
+    $Default
+}
+
+function Set-HermesDesktopObjectValue {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object] $InputObject,
+        [Parameter(Mandatory)][string] $Name,
+        $Value
+    )
+
+    if ($InputObject -is [System.Collections.IDictionary]) {
+        $InputObject[$Name] = $Value
+        return
+    }
+
+    $InputObject | Add-Member `
+        -NotePropertyName $Name `
+        -NotePropertyValue $Value `
+        -Force
+}
+
 function Get-HermesDesktopProcessStartTime {
     [CmdletBinding()]
     param([int] $ProcessId)
@@ -165,8 +207,8 @@ function Set-HermesDesktopPlanParent {
     $resolvedPid = Resolve-HermesDesktopParentPid -RequestedPid $ProcessId
     $startedAt = Get-HermesDesktopProcessStartTime -ProcessId $resolvedPid
 
-    $Plan | Add-Member -NotePropertyName parentPid -NotePropertyValue $resolvedPid -Force
-    $Plan | Add-Member -NotePropertyName parentStartedAt -NotePropertyValue $startedAt -Force
+    Set-HermesDesktopObjectValue -InputObject $Plan -Name parentPid -Value $resolvedPid
+    Set-HermesDesktopObjectValue -InputObject $Plan -Name parentStartedAt -Value $startedAt
     Write-HermesDesktopUpdateJson -Path ([string]$Plan.planPath) -Value $Plan
     $Plan
 }
@@ -188,16 +230,10 @@ function New-HermesDesktopPendingUpdateRecord {
         planPath = [string]$Plan.planPath
         pendingDist = [string]$Plan.pendingDist
         helperScript = [string]$Plan.helperScript
-        parentPid = if ($Plan.PSObject.Properties['parentPid']) { [int]$Plan.parentPid } else { 0 }
-        parentStartedAt = if (
-            $Plan.PSObject.Properties['parentStartedAt'] -and
-            $Plan.parentStartedAt
-        ) {
-            [string]$Plan.parentStartedAt
-        } else {
-            $null
-        }
+        parentPid = [int](Get-HermesDesktopObjectValue -InputObject $Plan -Name parentPid -Default 0)
+        parentStartedAt = Get-HermesDesktopObjectValue -InputObject $Plan -Name parentStartedAt
         promotionPid = if ($PromotionPid -gt 0) { $PromotionPid } else { $null }
+        promotionStartedAt = $null
         stagedAt = (Get-Date).ToUniversalTime().ToString('o')
         activationDeferred = $true
         relaunchOnActivation = $false
@@ -247,7 +283,10 @@ function Start-HermesDesktopPromotionHelper {
         -PassThru
 
     $pending['promotionPid'] = [int]$process.Id
-    Write-HermesDesktopPendingUpdate -Value $pending
+    $pending['promotionStartedAt'] = Get-HermesDesktopProcessStartTime -ProcessId $process.Id
+    if (Test-Path -LiteralPath ([string]$pending.pendingDist) -PathType Container) {
+        Write-HermesDesktopPendingUpdate -Value $pending
+    }
     [pscustomobject]$pending
 }
 
@@ -258,14 +297,21 @@ function Ensure-HermesDesktopPromotionHelper {
         [int] $ProcessId
     )
 
-    $promotionPid = if ($Pending.PSObject.Properties['promotionPid']) {
-        [int]$Pending.promotionPid
-    } else {
-        0
-    }
+    $promotionPid = [int](Get-HermesDesktopObjectValue `
+        -InputObject $Pending `
+        -Name promotionPid `
+        -Default 0
+    )
+    $promotionStartedAt = [string](Get-HermesDesktopObjectValue `
+        -InputObject $Pending `
+        -Name promotionStartedAt `
+        -Default ''
+    )
 
     if (
-        (Test-HermesDesktopProcessIdentity -ProcessId $promotionPid -StartedAt '') -and
+        (Test-HermesDesktopProcessIdentity `
+            -ProcessId $promotionPid `
+            -StartedAt $promotionStartedAt) -and
         (Test-Path -LiteralPath ([string]$Pending.pendingDist) -PathType Container)
     ) {
         return $Pending
@@ -303,6 +349,20 @@ function Get-HermesDesktopUpdateStatus {
     }
 
     $pending = Read-HermesDesktopPendingUpdate
+    if (
+        $pending -and
+        (
+            -not $pending.pendingDist -or
+            -not (Test-Path -LiteralPath ([string]$pending.pendingDist) -PathType Container)
+        )
+    ) {
+        try {
+            Remove-Item -LiteralPath (Get-HermesDesktopPendingUpdatePath) -Force
+        } catch {
+        }
+        $pending = $null
+    }
+
     if (
         $pending -and
         $pending.pendingDist -and
@@ -348,7 +408,7 @@ function Get-HermesDesktopUpdateStatus {
             commits = @()
             releaseNotes = $null
             message = 'Update ready. Close and reopen Hermes Launcher when convenient to activate it.'
-            promotionPid = if ($pending.PSObject.Properties['promotionPid'] -and $pending.promotionPid) { [int]$pending.promotionPid } else { $null }
+            promotionPid = Get-HermesDesktopObjectValue -InputObject $pending -Name promotionPid
             fetchedAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
         }
     }
