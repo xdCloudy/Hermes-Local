@@ -53,6 +53,7 @@ foreach ($part in @(
     'DesktopUpdate-State.ps1',
     'DesktopUpdate-Promotion.ps1',
     'DesktopUpdate-Stage.ps1',
+    'DesktopUpdate-NestedSource.ps1',
     'DesktopUpdate-SafeActivation.ps1'
 )) {
     $partPath = Join-Path $script:desktopUpdatePartsRoot $part
