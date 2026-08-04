@@ -1,31 +1,31 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local Integration <hermes-local-ci@localhost>
-Date: Tue, 4 Aug 2026 19:05:42 +0000
-Subject: [PATCH] fix(desktop): rewrite generated control statements before
+Date: Tue, 4 Aug 2026 21:55:00 +0100
+Subject: [PATCH] fix(desktop): structurally repair generated sources before
  typecheck
 
 ---
- .../scripts/repair-hermes-local-control.mjs   | 92 +++++++++++++++++++
- 1 file changed, 92 insertions(+)
+ .../scripts/repair-hermes-local-control.mjs   | 230 ++++++++++++++++++
+ 1 file changed, 230 insertions(+)
  create mode 100644 apps/desktop/scripts/repair-hermes-local-control.mjs
 
 diff --git a/apps/desktop/scripts/repair-hermes-local-control.mjs b/apps/desktop/scripts/repair-hermes-local-control.mjs
 new file mode 100644
-index 0000000..b5895db
+index 0000000..1111111
 --- /dev/null
 +++ b/apps/desktop/scripts/repair-hermes-local-control.mjs
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,230 @@
 +import { readFile, writeFile } from 'node:fs/promises'
 +import { fileURLToPath } from 'node:url'
 +import ts from 'typescript'
 +
 +const controlUrl = new URL('../electron/hermes-local-control.ts', import.meta.url)
 +const controlPath = fileURLToPath(controlUrl)
-+const source = await readFile(controlPath, 'utf8')
-+const newline = source.includes('\r\n') ? '\r\n' : '\n'
-+const lines = source.split(/\r?\n/)
++const controlSource = await readFile(controlPath, 'utf8')
++const controlNewline = controlSource.includes('\r\n') ? '\r\n' : '\n'
++const controlLines = controlSource.split(/\r?\n/)
 +
-+function findSingleLine(description, predicate) {
++function findSingleLine(lines, description, sourcePath, predicate) {
 +  const matches = []
 +
 +  for (let index = 0; index < lines.length; index += 1) {
@@ -36,7 +36,7 @@ index 0000000..b5895db
 +
 +  if (matches.length !== 1) {
 +    throw new Error(
-+      `Expected exactly one ${description} line in ${controlPath}; found ${matches.length}.`,
++      `Expected exactly one ${description} line in ${sourcePath}; found ${matches.length}.`,
 +    )
 +  }
 +
@@ -44,50 +44,54 @@ index 0000000..b5895db
 +}
 +
 +const privatePathLine = findSingleLine(
++  controlLines,
 +  'private-path redaction',
++  controlPath,
 +  (line) =>
 +    line.includes('safe = safe.replaceAll(privatePath') &&
 +    line.includes('privatePath.replaceAll('),
 +)
-+const privatePathIndent = lines[privatePathLine].match(/^\s*/)?.[0] ?? ''
++const privatePathIndent = controlLines[privatePathLine].match(/^\s*/)?.[0] ?? ''
 +const privateMarker = JSON.stringify('[PRIVATE-PATH]')
 +const backslashLiteral = JSON.stringify('\\')
 +const slashLiteral = JSON.stringify('/')
-+lines[privatePathLine] =
++controlLines[privatePathLine] =
 +  `${privatePathIndent}safe = safe.replaceAll(privatePath, ${privateMarker}).replaceAll(` +
 +  `privatePath.replaceAll(${backslashLiteral}, ${slashLiteral}), ${privateMarker})`
 +
 +const markerBufferLine = findSingleLine(
++  controlLines,
 +  'Desktop update marker buffer',
++  controlPath,
 +  (line) =>
 +    line.includes('task.desktopUpdateMarkerBuffer =') &&
 +    line.includes('rawText') &&
 +    line.includes('.slice(-64 * 1024)'),
 +)
-+const markerBufferIndent = lines[markerBufferLine].match(/^\s*/)?.[0] ?? ''
++const markerBufferIndent = controlLines[markerBufferLine].match(/^\s*/)?.[0] ?? ''
 +const emptyStringLiteral = JSON.stringify('')
-+lines[markerBufferLine] =
++controlLines[markerBufferLine] =
 +  `${markerBufferIndent}task.desktopUpdateMarkerBuffer = (` +
 +  `(task.desktopUpdateMarkerBuffer || ${emptyStringLiteral}) + rawText` +
 +  `).slice(-64 * 1024)`
 +
-+const updated = lines.join(newline)
-+await writeFile(controlPath, updated, 'utf8')
++const updatedControl = controlLines.join(controlNewline)
++await writeFile(controlPath, updatedControl, 'utf8')
 +
-+const parsed = ts.createSourceFile(
++const parsedControl = ts.createSourceFile(
 +  controlPath,
-+  updated,
++  updatedControl,
 +  ts.ScriptTarget.Latest,
 +  true,
 +  ts.ScriptKind.TS,
 +)
 +
-+if (parsed.parseDiagnostics.length > 0) {
-+  const details = parsed.parseDiagnostics.slice(0, 5).map((diagnostic) => {
++if (parsedControl.parseDiagnostics.length > 0) {
++  const details = parsedControl.parseDiagnostics.slice(0, 5).map((diagnostic) => {
 +    const start = diagnostic.start ?? 0
-+    const position = parsed.getLineAndCharacterOfPosition(start)
++    const position = parsedControl.getLineAndCharacterOfPosition(start)
 +    const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, ' ')
-+    const line = lines[position.line] ?? ''
++    const line = controlLines[position.line] ?? ''
 +    return `${position.line + 1}:${position.character + 1} ${message}; line=${JSON.stringify(line)}`
 +  })
 +  throw new Error(
@@ -95,15 +99,149 @@ index 0000000..b5895db
 +  )
 +}
 +
-+const verified = await readFile(controlPath, 'utf8')
-+const verifiedLines = verified.split(/\r?\n/)
++const verifiedControl = await readFile(controlPath, 'utf8')
++const verifiedControlLines = verifiedControl.split(/\r?\n/)
 +if (
-+  verifiedLines[privatePathLine] !== lines[privatePathLine] ||
-+  verifiedLines[markerBufferLine] !== lines[markerBufferLine]
++  verifiedControlLines[privatePathLine] !== controlLines[privatePathLine] ||
++  verifiedControlLines[markerBufferLine] !== controlLines[markerBufferLine]
 +) {
 +  throw new Error(`Desktop control source repairs did not persist in ${controlPath}.`)
 +}
 +
++const workstationUrl = new URL('../src/app/local-workstation/index.tsx', import.meta.url)
++const workstationPath = fileURLToPath(workstationUrl)
++const workstationSource = await readFile(workstationPath, 'utf8')
++const workstationNewline = workstationSource.includes('\r\n') ? '\r\n' : '\n'
++const workstationLines = workstationSource.split(/\r?\n/)
++const centreStart = workstationLines.findIndex((line) =>
++  line.includes('<Surface title="Hermes Agent update centre">'),
++)
++
++if (centreStart < 0) {
++  throw new Error(`Hermes Agent update centre was not found in ${workstationPath}.`)
++}
++
++let centreEnd = -1
++for (let index = centreStart + 1; index < workstationLines.length; index += 1) {
++  if (workstationLines[index].includes('</Surface>')) {
++    centreEnd = index
++    break
++  }
++}
++
++if (centreEnd < 0) {
++  throw new Error(`Hermes Agent update centre is not closed in ${workstationPath}.`)
++}
++
++const backendModes = new Set(['Check', 'Compatibility', 'Apply', 'Rollback'])
++const seenModes = new Set()
++
++for (let index = centreStart; index <= centreEnd; index += 1) {
++  const line = workstationLines[index]
++  const sameLineMode = line.match(/mode:\s*'([^']+)'\s+satisfies\s+LocalUpdateMode/)
++
++  if (line.includes('input={{') && sameLineMode && backendModes.has(sameLineMode[1])) {
++    const mode = sameLineMode[1]
++    seenModes.add(mode)
++
++    if (!line.includes("component: 'HermesAgent'")) {
++      workstationLines[index] = line.replace(
++        'input={{',
++        "input={{ component: 'HermesAgent',",
++      )
++    }
++    continue
++  }
++
++  if (!line.includes('input={{')) {
++    continue
++  }
++
++  let modeLine = -1
++  for (let cursor = index + 1; cursor <= Math.min(index + 8, centreEnd); cursor += 1) {
++    if (workstationLines[cursor].includes('}}')) {
++      break
++    }
++
++    const modeMatch = workstationLines[cursor].match(
++      /mode:\s*'([^']+)'\s+satisfies\s+LocalUpdateMode/,
++    )
++    if (modeMatch && backendModes.has(modeMatch[1])) {
++      modeLine = cursor
++      seenModes.add(modeMatch[1])
++      break
++    }
++  }
++
++  if (modeLine < 0) {
++    continue
++  }
++
++  const objectAlreadyExplicit = workstationLines
++    .slice(index, modeLine + 1)
++    .some((candidate) => candidate.includes("component: 'HermesAgent'"))
++
++  if (!objectAlreadyExplicit) {
++    const indentation = workstationLines[modeLine].match(/^\s*/)?.[0] ?? ''
++    workstationLines.splice(index + 1, 0, `${indentation}component: 'HermesAgent',`)
++    centreEnd += 1
++    index += 1
++  }
++}
++
++const missingModes = [...backendModes].filter((mode) => !seenModes.has(mode))
++if (missingModes.length > 0) {
++  throw new Error(
++    `Could not locate backend update controls for modes: ${missingModes.join(', ')}.`,
++  )
++}
++
++const centreText = workstationLines.slice(centreStart, centreEnd + 1).join(workstationNewline)
++const explicitComponents = centreText.match(/component:\s*'HermesAgent'/g) ?? []
++if (explicitComponents.length !== backendModes.size) {
++  throw new Error(
++    `Expected ${backendModes.size} explicit Hermes Agent update components; found ${explicitComponents.length}.`,
++  )
++}
++
++for (const mode of backendModes) {
++  const modePattern = new RegExp(
++    `input=\\{\\{[\\s\\S]{0,400}?component:\\s*'HermesAgent'[\\s\\S]{0,400}?mode:\\s*'${mode}'\\s+satisfies\\s+LocalUpdateMode[\\s\\S]{0,400}?\\}\\}`,
++  )
++  if (!modePattern.test(centreText)) {
++    throw new Error(`Hermes Agent update control '${mode}' is not explicitly routed.`)
++  }
++}
++
++const updatedWorkstation = workstationLines.join(workstationNewline)
++await writeFile(workstationPath, updatedWorkstation, 'utf8')
++
++const parsedWorkstation = ts.createSourceFile(
++  workstationPath,
++  updatedWorkstation,
++  ts.ScriptTarget.Latest,
++  true,
++  ts.ScriptKind.TSX,
++)
++
++if (parsedWorkstation.parseDiagnostics.length > 0) {
++  const details = parsedWorkstation.parseDiagnostics.slice(0, 5).map((diagnostic) => {
++    const start = diagnostic.start ?? 0
++    const position = parsedWorkstation.getLineAndCharacterOfPosition(start)
++    const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, ' ')
++    const line = workstationLines[position.line] ?? ''
++    return `${position.line + 1}:${position.character + 1} ${message}; line=${JSON.stringify(line)}`
++  })
++  throw new Error(
++    `Desktop workstation source has TypeScript parse errors after repair:\n${details.join('\n')}`,
++  )
++}
++
++const verifiedWorkstation = await readFile(workstationPath, 'utf8')
++if (!verifiedWorkstation.includes(centreText)) {
++  throw new Error(`Desktop workstation routing repairs did not persist in ${workstationPath}.`)
++}
++
 +process.stdout.write(
-+  `Rewrote and parsed generated Desktop control statements before typecheck: ${controlPath}\n`,
++  `Rewrote and parsed generated Desktop control and update-routing statements before typecheck: ${controlPath}; ${workstationPath}\n`,
 +)
