@@ -163,19 +163,39 @@ try {
     }
     exit 0
 } catch {
-    if (
-        -not $runtimeActivated -and
-        $rollbackRuntime -and
-        (Test-Path -LiteralPath $rollbackRuntime -PathType Container)
-    ) {
-        try {
-            $runtime = Resolve-HermesPath 'runtimes\python\hermes'
-            if (-not (Test-Path -LiteralPath $runtime)) {
-                [IO.Directory]::Move($rollbackRuntime, $runtime)
-                $rollbackRuntime = $null
+    try {
+        $runtime = Resolve-HermesPath 'runtimes\python\hermes'
+        if (
+            $runtimeActivated -and
+            $rollbackRuntime -and
+            (Test-Path -LiteralPath $rollbackRuntime -PathType Container)
+        ) {
+            if (Test-Path -LiteralPath $runtime -PathType Container) {
+                $failedRuntime = Join-Path ([IO.Path]::GetDirectoryName($runtime)) (
+                    'hermes-failed-' + [guid]::NewGuid().ToString('N')
+                )
+                [IO.Directory]::Move($runtime, $failedRuntime)
             }
-        } catch {
+            [IO.Directory]::Move($rollbackRuntime, $runtime)
+            $rollbackRuntime = $null
+            $runtimeActivated = $false
+        } elseif (
+            -not $runtimeActivated -and
+            $rollbackRuntime -and
+            (Test-Path -LiteralPath $rollbackRuntime -PathType Container) -and
+            -not (Test-Path -LiteralPath $runtime)
+        ) {
+            [IO.Directory]::Move($rollbackRuntime, $runtime)
+            $rollbackRuntime = $null
+        } elseif (
+            $runtimeActivated -and
+            -not $rollbackRuntime -and
+            (Test-Path -LiteralPath $runtime -PathType Container)
+        ) {
+            Remove-Item -LiteralPath $runtime -Recurse -Force
+            $runtimeActivated = $false
         }
+    } catch {
     }
 
     try {
