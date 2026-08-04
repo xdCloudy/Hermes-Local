@@ -1,0 +1,265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.hermes.invalid/schemas/runtime/adapter.schema.json",
+  "title": "Hermes Local runtime adapter",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "schemaVersion",
+    "id",
+    "displayName",
+    "ownership",
+    "protocol",
+    "manifestRevision",
+    "lifecycleOperations",
+    "capabilities",
+    "configurationSchemaId",
+    "commandPolicy",
+    "boundary"
+  ],
+  "properties": {
+    "kind": {
+      "const": "runtimeAdapter"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "$ref": "https://local.hermes.invalid/schemas/runtime/common.schema.json#/$defs/identifier"
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "ownership": {
+      "$ref": "https://local.hermes.invalid/schemas/runtime/common.schema.json#/$defs/ownership"
+    },
+    "protocol": {
+      "type": "string",
+      "enum": [
+        "openai-compatible"
+      ]
+    },
+    "manifestRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "lifecycleOperations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "https://local.hermes.invalid/schemas/runtime/common.schema.json#/$defs/lifecycleOperation"
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "modelFormats",
+        "hardwareBackends",
+        "optimisations",
+        "streaming",
+        "toolCalling",
+        "embeddings"
+      ],
+      "properties": {
+        "modelFormats": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://local.hermes.invalid/schemas/runtime/common.schema.json#/$defs/modelFormat"
+          }
+        },
+        "hardwareBackends": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://local.hermes.invalid/schemas/runtime/common.schema.json#/$defs/hardwareBackend"
+          }
+        },
+        "optimisations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://local.hermes.invalid/schemas/runtime/common.schema.json#/$defs/optimisationId"
+          }
+        },
+        "streaming": {
+          "type": "boolean"
+        },
+        "toolCalling": {
+          "type": "boolean"
+        },
+        "embeddings": {
+          "type": "boolean"
+        },
+        "metrics": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "tokens-per-second",
+              "prompt-tokens-per-second",
+              "time-to-first-token",
+              "context-tokens",
+              "ram-mib",
+              "vram-mib",
+              "queue-depth"
+            ]
+          }
+        }
+      }
+    },
+    "configurationSchemaId": {
+      "type": "string",
+      "format": "uri"
+    },
+    "commandPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "allowRendererArguments",
+        "executableRoles"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "adapter-generated",
+            "none"
+          ]
+        },
+        "allowRendererArguments": {
+          "const": false
+        },
+        "executableRoles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "server",
+              "cli",
+              "benchmark"
+            ]
+          }
+        }
+      }
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "endpointClass",
+        "authentication",
+        "processAuthority"
+      ],
+      "properties": {
+        "endpointClass": {
+          "type": "string",
+          "enum": [
+            "owned-loopback",
+            "external"
+          ]
+        },
+        "authentication": {
+          "type": "string",
+          "enum": [
+            "required-managed-token",
+            "configured-credential",
+            "optional"
+          ]
+        },
+        "processAuthority": {
+          "type": "string",
+          "enum": [
+            "managed-job-object",
+            "none"
+          ]
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "ownership": {
+            "const": "owned"
+          }
+        },
+        "required": [
+          "ownership"
+        ]
+      },
+      "then": {
+        "properties": {
+          "lifecycleOperations": {
+            "allOf": [
+              { "contains": { "const": "detect" } },
+              { "contains": { "const": "install" } },
+              { "contains": { "const": "validate" } },
+              { "contains": { "const": "launch" } },
+              { "contains": { "const": "stop" } },
+              { "contains": { "const": "health" } },
+              { "contains": { "const": "metrics" } },
+              { "contains": { "const": "benchmark" } },
+              { "contains": { "const": "diagnostics" } },
+              { "contains": { "const": "update" } },
+              { "contains": { "const": "rollback" } }
+            ]
+          },
+          "commandPolicy": {
+            "properties": {
+              "mode": { "const": "adapter-generated" },
+              "executableRoles": { "minItems": 1 }
+            }
+          },
+          "boundary": {
+            "properties": {
+              "endpointClass": { "const": "owned-loopback" },
+              "authentication": { "const": "required-managed-token" },
+              "processAuthority": { "const": "managed-job-object" }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "lifecycleOperations": {
+            "not": {
+              "contains": {
+                "enum": [
+                  "install",
+                  "launch",
+                  "stop",
+                  "update",
+                  "rollback"
+                ]
+              }
+            }
+          },
+          "commandPolicy": {
+            "properties": {
+              "mode": { "const": "none" },
+              "executableRoles": { "maxItems": 0 }
+            }
+          },
+          "boundary": {
+            "properties": {
+              "endpointClass": { "const": "external" },
+              "processAuthority": { "const": "none" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

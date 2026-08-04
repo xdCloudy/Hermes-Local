@@ -18,6 +18,7 @@ the operational detail, design contracts and validation evidence.
 | Diagnose a problem | [Troubleshooting](TROUBLESHOOTING.md) | [Security and safe diagnostics](SECURITY.md) |
 | Understand the system | [Architecture](ARCHITECTURE.md) | [Launcher design](design/DESIGN_SPEC.md) |
 | Understand trust and permissions | [Trust contracts](design/TRUST_CONTRACTS.md) | [Threat-test requirements](design/TRUST_CONTRACT_TEST_REQUIREMENTS.md) |
+| Understand inference runtimes | [Runtime adapter contracts](design/RUNTIME_ADAPTER_CONTRACTS.md) | [Models and profiles](MODEL_TUNING.md) |
 | Contribute code or docs | [Contributor guide](../CONTRIBUTING.md) | [Development](DEVELOPMENT.md) |
 | Validate Windows or Stable candidates | [Windows lifecycle validation](WINDOWS_LIFECYCLE_VALIDATION.md) | [Stable promotion](STABLE_PROMOTION.md) |
 | Evaluate maturity | [Acceptance results](ACCEPTANCE_RESULTS.md) | [QA reports](../reports/qa/FULL_FUNCTIONAL_QA_REPORT.md) |
@@ -49,6 +50,8 @@ the operational detail, design contracts and validation evidence.
   — shared identity, default-deny permission, secret and audit boundaries.
 - [Trust contract threat-test requirements](design/TRUST_CONTRACT_TEST_REQUIREMENTS.md)
   — mandatory gates for Skills/MCP, indexing, remote access and remote origins.
+- [Runtime adapter, capability and execution contracts](design/RUNTIME_ADAPTER_CONTRACTS.md)
+  — owned/external lifecycle, package identity, typed settings, optimisation and reproducibility boundaries.
 - [Development](DEVELOPMENT.md) — source reconstruction, testing and packaging.
 - [Security](SECURITY.md) — local threat model, controls and reporting.
 - [Upstream compatibility](UPSTREAM_COMPATIBILITY.md) — scheduled candidate

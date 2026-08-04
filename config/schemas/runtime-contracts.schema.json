@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.hermes.invalid/schemas/runtime-contracts.schema.json",
+  "title": "Hermes Local runtime contracts",
+  "description": "Canonical version 1 runtime adapter, package, configuration, optimisation, execution and lifecycle records.",
+  "oneOf": [
+    {
+      "$ref": "https://local.hermes.invalid/schemas/runtime/adapter.schema.json"
+    },
+    {
+      "$ref": "https://local.hermes.invalid/schemas/runtime/configuration.schema.json"
+    },
+    {
+      "$ref": "https://local.hermes.invalid/schemas/runtime/package-identity.schema.json"
+    },
+    {
+      "$ref": "https://local.hermes.invalid/schemas/runtime/optimisation-plan.schema.json"
+    },
+    {
+      "$ref": "https://local.hermes.invalid/schemas/runtime/execution-identity.schema.json"
+    },
+    {
+      "$ref": "https://local.hermes.invalid/schemas/runtime/operation.schema.json"
+    }
+  ]
+}

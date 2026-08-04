@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://local.hermes.invalid/schemas/runtime/configuration.schema.json","title":"Hermes Local runtime configuration","oneOf":[{"$ref":"https://local.hermes.invalid/schemas/runtime/llama-cpp-configuration.schema.json"},{"$ref":"https://local.hermes.invalid/schemas/runtime/external-openai-configuration.schema.json"}]}
