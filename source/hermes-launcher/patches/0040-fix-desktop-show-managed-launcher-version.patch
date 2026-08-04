@@ -48,7 +48,7 @@ index 0000000..468d022
 +    ).toBe(true)
 +  })
 +
-+  it.each(['agent.example.com:443', '10.0.0.5:9119', 'ssh://hermes.example']) (
++  it.each(['agent.example.com:443', '10.0.0.5:9119', 'ssh://hermes.example'])(
 +    'keeps a genuine external backend independently versioned: %s',
 +    remoteHost => {
 +      expect(
