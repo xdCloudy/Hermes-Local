@@ -8,6 +8,33 @@ $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $RepositoryRoot 'scripts\Common-Hermes.psm1') -Force
 
+function Get-PendingValue {
+    [CmdletBinding()]
+    param(
+        [AllowNull()][object] $InputObject,
+        [Parameter(Mandatory)][string] $Name,
+        $Default = $null
+    )
+
+    if ($null -eq $InputObject) {
+        return $Default
+    }
+
+    if (
+        $InputObject -is [System.Collections.IDictionary] -and
+        $InputObject.Contains($Name)
+    ) {
+        return $InputObject[$Name]
+    }
+
+    $property = $InputObject.PSObject.Properties[$Name]
+    if ($property) {
+        return $property.Value
+    }
+
+    $Default
+}
+
 function Test-HermesPendingPromotionProcess {
     [CmdletBinding()]
     param(
@@ -56,9 +83,14 @@ function Test-HermesPendingPromotionProcess {
 }
 
 try {
-    Assert-HermesRoot
-
     $root = [IO.Path]::GetFullPath($RepositoryRoot)
+    Push-Location $root
+    try {
+        Assert-HermesRoot
+    } finally {
+        Pop-Location
+    }
+
     $pendingPath = Join-Path $root 'data\runtime\pending-desktop-update.json'
 
     if (-not (Test-Path -LiteralPath $pendingPath -PathType Leaf)) {
@@ -84,18 +116,14 @@ try {
     }
 
     $currentCommit = ($currentOutput | Select-Object -Last 1).Trim().ToLowerInvariant()
-    $targetCommit = if ($pending) {
-        [string]$pending.targetCommit
-    } else {
-        ''
-    }
+    $targetCommit = [string](
+        Get-PendingValue -InputObject $pending -Name targetCommit -Default ''
+    )
     $targetCommit = $targetCommit.Trim().ToLowerInvariant()
 
-    $pendingDist = if ($pending) {
-        [string]$pending.pendingDist
-    } else {
-        ''
-    }
+    $pendingDist = [string](
+        Get-PendingValue -InputObject $pending -Name pendingDist -Default ''
+    )
 
     $validPending =
         $pending -and
@@ -111,21 +139,15 @@ try {
         exit 0
     }
 
-    $promotionPid = if ($pending) {
-        [int]($pending.promotionPid ?? 0)
-    } else {
-        0
-    }
-    $promotionStartedAt = if ($pending) {
-        [string]$pending.promotionStartedAt
-    } else {
-        ''
-    }
-    $planPath = if ($pending) {
-        [string]$pending.planPath
-    } else {
-        ''
-    }
+    $promotionPid = [int](
+        Get-PendingValue -InputObject $pending -Name promotionPid -Default 0
+    )
+    $promotionStartedAt = [string](
+        Get-PendingValue -InputObject $pending -Name promotionStartedAt -Default ''
+    )
+    $planPath = [string](
+        Get-PendingValue -InputObject $pending -Name planPath -Default ''
+    )
 
     if (
         Test-HermesPendingPromotionProcess `
