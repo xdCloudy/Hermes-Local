@@ -46,7 +46,7 @@ a paid inference API.
 <!-- BEGIN GENERATED STATUS -->
 | Release | Delivery | Repository |
 |---|---|---|
-| **Current build:** v0.18.19<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 34 open · 24 closed<br>**Overall completion:** 41%<br>**Recent commit:** [`1bdf904`](https://github.com/xdCloudy/Hermes-Local/commit/1bdf9049e5856f8b114ecae4cd1a275c02f86bb3) refactor(desktop): consolidate stack controls on Home (#101) |
+| **Current build:** v0.18.19<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 34 open · 24 closed<br>**Overall completion:** 41%<br>**Recent commit:** [`ce2bf6b`](https://github.com/xdCloudy/Hermes-Local/commit/ce2bf6b66ab7e1e7edcb51805e4264350e3105f8) fix(update): harden Hermes Agent patch replay |
 
 > Status is generated from GitHub issues, milestones, releases and commits.
 <!-- END GENERATED STATUS -->
