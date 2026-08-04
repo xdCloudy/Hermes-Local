@@ -83,9 +83,85 @@ function Resolve-HermesLauncherDestination {
     $destinationFull
 }
 
+function Get-PendingHermesLauncherPatches {
+    param(
+        [Parameter(Mandatory)][string] $Git,
+        [Parameter(Mandatory)][string] $Source
+    )
+
+    $manifest = Get-HermesVersionManifest
+    $baseCommit = [string]$manifest.sources.hermesAgent.commit
+    $patchSeries = [string]$manifest.sources.hermesAgent.patchSeries
+
+    if ($baseCommit -notmatch '^[0-9a-fA-F]{40}$') {
+        throw "Hermes Agent source commit is invalid in VERSION.json: $baseCommit"
+    }
+    if ([string]::IsNullOrWhiteSpace($patchSeries)) {
+        throw 'Hermes Agent patch series is not configured in VERSION.json.'
+    }
+
+    $patchDirectory = Resolve-HermesPath $patchSeries
+    $patches = @(
+        Get-ChildItem -LiteralPath $patchDirectory -File -Filter '*.patch' |
+            Sort-Object Name
+    )
+    if ($patches.Count -eq 0) {
+        throw "Hermes Agent patch series is empty: $patchDirectory"
+    }
+
+    $status = @(
+        Invoke-HermesProcess `
+            -FilePath $Git `
+            -ArgumentList @('-C', $Source, 'status', '--porcelain', '--untracked-files=no') `
+            -WorkingDirectory $Source `
+            -LogComponent launcher `
+            -PassThruOutput
+    ) -join [Environment]::NewLine
+    if (-not [string]::IsNullOrWhiteSpace($status)) {
+        throw "Hermes Agent source contains tracked local changes. Refusing to apply temporary launcher patches:`n$status"
+    }
+
+    $null = Invoke-HermesProcess `
+        -FilePath $Git `
+        -ArgumentList @('-C', $Source, 'merge-base', '--is-ancestor', $baseCommit, 'HEAD') `
+        -WorkingDirectory $Source `
+        -LogComponent launcher
+
+    $countText = @(
+        Invoke-HermesProcess `
+            -FilePath $Git `
+            -ArgumentList @('-C', $Source, 'rev-list', '--count', "$baseCommit..HEAD") `
+            -WorkingDirectory $Source `
+            -LogComponent launcher `
+            -PassThruOutput
+    ) -join ''
+    $appliedCount = 0
+    if (-not [int]::TryParse($countText.Trim(), [ref]$appliedCount)) {
+        throw "Could not determine the integrated Hermes Agent patch count: $countText"
+    }
+    if ($appliedCount -gt $patches.Count) {
+        throw "Hermes Agent source has $appliedCount integration commits, but only $($patches.Count) launcher patches are installed."
+    }
+
+    if ($appliedCount -eq $patches.Count) {
+        return @()
+    }
+
+    $pending = @($patches | Select-Object -Skip $appliedCount)
+    Write-HermesLog -Component launcher -Message (
+        "Temporarily applying {0} launcher patch(es) missing from the prepared source: {1}" -f
+        $pending.Count,
+        (($pending | ForEach-Object Name) -join ', ')
+    )
+    return $pending
+}
+
 $temporaryTypeDeclaration = $null
+$temporaryPatches = [System.Collections.Generic.List[string]]::new()
 $overlayState = $null
 $exitCode = 0
+$git = $null
+$source = $null
 
 try {
     Assert-HermesRoot
@@ -97,9 +173,19 @@ try {
     $desktop = Join-Path $source 'apps\desktop'
     $release = Join-Path $desktop 'release'
     $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
+    $git = (Get-Command git -ErrorAction Stop).Source
     $destination = Resolve-HermesLauncherDestination `
         -RequestedDestination $DestinationDirectory `
         -Root $hermesRoot
+
+    foreach ($patch in @(Get-PendingHermesLauncherPatches -Git $git -Source $source)) {
+        $null = Invoke-HermesProcess `
+            -FilePath $git `
+            -ArgumentList @('-C', $source, 'apply', '--whitespace=nowarn', '--', $patch.FullName) `
+            -WorkingDirectory $source `
+            -LogComponent launcher
+        $temporaryPatches.Add($patch.FullName)
+    }
 
     $overlayState = Resolve-HermesPath "temp\launcher-overlay-$([guid]::NewGuid().ToString('N')).json"
     & (Resolve-HermesPath 'Apply-Hermes-LauncherOverlay.ps1') `
@@ -163,6 +249,23 @@ try {
             $exitCode = 1
             Write-HermesLog -Component launcher -Level ERROR -Message $_.Exception.ToString()
             Write-Host "Hermes Launcher source restoration failed: $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+    if ($git -and $source -and $temporaryPatches.Count -gt 0) {
+        for ($index = $temporaryPatches.Count - 1; $index -ge 0; $index -= 1) {
+            try {
+                $null = Invoke-HermesProcess `
+                    -FilePath $git `
+                    -ArgumentList @(
+                        '-C', $source, 'apply', '--reverse', '--whitespace=nowarn', '--', $temporaryPatches[$index]
+                    ) `
+                    -WorkingDirectory $source `
+                    -LogComponent launcher
+            } catch {
+                $exitCode = 1
+                Write-HermesLog -Component launcher -Level ERROR -Message $_.Exception.ToString()
+                Write-Host "Hermes Launcher patch restoration failed: $($_.Exception.Message)" -ForegroundColor Red
+            }
         }
     }
 }
