@@ -1,24 +1,49 @@
+function Get-HermesDesktopLauncherBrowserProcesses {
+    [CmdletBinding()]
+    param()
+
+    $rootPrefix = [IO.Path]::GetFullPath($root).TrimEnd('\', '/') +
+        [IO.Path]::DirectorySeparatorChar
+
+    @(
+        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object {
+                if ([string]$_.Name -ne 'Hermes Launcher.exe') {
+                    return $false
+                }
+
+                $executablePath = [string]$_.ExecutablePath
+                if (-not $executablePath) {
+                    return $false
+                }
+
+                $resolvedExecutable = try {
+                    [IO.Path]::GetFullPath($executablePath)
+                } catch {
+                    return $false
+                }
+
+                if (-not $resolvedExecutable.StartsWith(
+                    $rootPrefix,
+                    [StringComparison]::OrdinalIgnoreCase
+                )) {
+                    return $false
+                }
+
+                # Electron renderer, GPU and utility children share the same
+                # executable but carry --type=. Only browser processes own the
+                # single-instance lock that can redirect a newly promoted dist
+                # launcher back into an old activation-backup executable.
+                [string]$_.CommandLine -notmatch '(?i)(?:^|\s)--type='
+            }
+    )
+}
+
 function Test-HermesDesktopLauncherRunning {
     [CmdletBinding()]
     param()
 
-    $launcher = [IO.Path]::GetFullPath((Join-Path $root 'dist\Hermes Launcher.exe'))
-    foreach ($process in @(Get-Process -Name 'Hermes Launcher' -ErrorAction SilentlyContinue)) {
-        try {
-            if (
-                $process.Path -and
-                [IO.Path]::GetFullPath($process.Path).Equals(
-                    $launcher,
-                    [StringComparison]::OrdinalIgnoreCase
-                )
-            ) {
-                return $true
-            }
-        } catch {
-        }
-    }
-
-    $false
+    @(Get-HermesDesktopLauncherBrowserProcesses).Count -gt 0
 }
 
 function Wait-HermesDesktopLauncherExit {
@@ -36,11 +61,8 @@ function Wait-HermesDesktopLauncherExit {
         -Default ''
     )
 
-    # The recorded parent PID is Electron's browser process. Waiting for every
-    # Hermes Launcher process is unsafe because short-lived renderer, GPU, and
-    # utility children use the same executable path and may outlive the browser
-    # briefly. The guarded promotion loop below already retries while those
-    # children release file handles.
+    # First wait for the exact browser process that initiated staging. This
+    # avoids confusing short-lived Electron children with the owning process.
     while (
         Test-HermesDesktopProcessIdentity `
             -ProcessId $processId `
@@ -49,9 +71,48 @@ function Wait-HermesDesktopLauncherExit {
         Start-Sleep -Milliseconds 250
     }
 
-    # Give normal Electron child shutdown a brief head start. Do not wait for a
-    # global process-name quiet period: a user reopening the old launcher would
-    # otherwise keep the helper blocked indefinitely.
+    # A backup-path browser can be opened during handoff and still own
+    # Electron's single-instance lock. Give every Hermes Local browser process
+    # a brief graceful-exit window, then terminate only remaining browser
+    # processes under this installation root before promotion continues.
+    $deadline = (Get-Date).AddSeconds(5)
+    while (
+        @(Get-HermesDesktopLauncherBrowserProcesses).Count -gt 0 -and
+        (Get-Date) -lt $deadline
+    ) {
+        Start-Sleep -Milliseconds 250
+    }
+
+    $remaining = @(Get-HermesDesktopLauncherBrowserProcesses)
+    foreach ($process in $remaining) {
+        Stop-Process `
+            -Id ([int]$process.ProcessId) `
+            -Force `
+            -ErrorAction SilentlyContinue
+    }
+
+    $deadline = (Get-Date).AddSeconds(15)
+    while (
+        @(Get-HermesDesktopLauncherBrowserProcesses).Count -gt 0 -and
+        (Get-Date) -lt $deadline
+    ) {
+        Start-Sleep -Milliseconds 250
+    }
+
+    $remaining = @(Get-HermesDesktopLauncherBrowserProcesses)
+    if ($remaining.Count -gt 0) {
+        $details = $remaining |
+            ForEach-Object {
+                "PID $($_.ProcessId): $($_.ExecutablePath)"
+            }
+        throw (
+            'Hermes Launcher browser processes remained active after shutdown: ' +
+            ($details -join '; ')
+        )
+    }
+
+    # Let renderer/GPU children release their final file handles. Directory
+    # promotion already retries transient Windows locks after this point.
     Start-Sleep -Milliseconds 500
 }
 
