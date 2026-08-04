@@ -34,6 +34,12 @@ foreach ($required in @(
     'Move-HermesDesktopActiveLauncherToActivationBackup',
     'Remove-HermesDesktopActivationDirectory',
     'Move-HermesDesktopActivationDirectory',
+    'Enter-HermesDesktopActivationMutex',
+    'Exit-HermesDesktopActivationMutex',
+    'Get-HermesDesktopCompletedActivationResult',
+    'Local\HermesLocalDesktopActivation-',
+    '[Threading.Mutex]::new',
+    'WaitOne([TimeSpan]::FromMinutes(30))',
     "-Description 'restored active launcher copy'",
     "-Description 'recreated active launcher path'",
     "-Description 'prepared launcher promotion'",
@@ -54,37 +60,54 @@ if (
     throw 'A recreated dist path must be replaced safely, not treated as a fatal activation error.'
 }
 
+$mutexCall = $safeActivation.IndexOf(
+    '    $lease = Enter-HermesDesktopActivationMutex -Plan $Plan',
+    [StringComparison]::Ordinal
+)
+$completedCheck = $safeActivation.IndexOf(
+    '        $completed = Get-HermesDesktopCompletedActivationResult -Plan $Plan',
+    $mutexCall,
+    [StringComparison]::Ordinal
+)
 $reserveCall = $safeActivation.IndexOf(
-    '        Move-HermesDesktopActiveLauncherToActivationBackup',
+    '            Move-HermesDesktopActiveLauncherToActivationBackup',
+    $completedCheck,
     [StringComparison]::Ordinal
 )
 $stopCall = $safeActivation.IndexOf(
-    "        Invoke-HermesDesktopProcess -FilePath 'pwsh.exe' -Arguments @(",
+    "            Invoke-HermesDesktopProcess -FilePath 'pwsh.exe' -Arguments @(",
     $reserveCall,
     [StringComparison]::Ordinal
 )
 $runtimeCall = $safeActivation.LastIndexOf(
-    '        Invoke-HermesDesktopRuntimeSync',
+    '            Invoke-HermesDesktopRuntimeSync',
     [StringComparison]::Ordinal
 )
 $clearRecreatedDist = $safeActivation.IndexOf(
-    "                -Description 'recreated active launcher path'",
+    "                    -Description 'recreated active launcher path'",
     $runtimeCall,
     [StringComparison]::Ordinal
 )
 $promoteCall = $safeActivation.IndexOf(
-    "            -Description 'prepared launcher promotion'",
+    "                -Description 'prepared launcher promotion'",
     $clearRecreatedDist,
     [StringComparison]::Ordinal
 )
+$releaseCall = $safeActivation.LastIndexOf(
+    '        Exit-HermesDesktopActivationMutex -Lease $lease',
+    [StringComparison]::Ordinal
+)
 if (
-    $reserveCall -lt 0 -or
+    $mutexCall -lt 0 -or
+    $completedCheck -le $mutexCall -or
+    $reserveCall -le $completedCheck -or
     $stopCall -le $reserveCall -or
     $runtimeCall -le $stopCall -or
     $clearRecreatedDist -le $runtimeCall -or
-    $promoteCall -le $clearRecreatedDist
+    $promoteCall -le $clearRecreatedDist -or
+    $releaseCall -le $promoteCall
 ) {
-    throw 'Activation must reserve dist, stop services, synchronize Python, clear a restored copy, then promote the staged Launcher.'
+    throw 'Activation must serialize helpers, return completed results idempotently, reserve dist, synchronize Python, promote the staged Launcher, then release the mutex.'
 }
 
 foreach ($required in @(
