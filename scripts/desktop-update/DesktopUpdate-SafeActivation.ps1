@@ -43,34 +43,30 @@ function Invoke-HermesDesktopRuntimeSync {
     ) -Description 'Hermes Local deferred Python runtime synchronisation'
 }
 
-function Move-HermesDesktopActiveLauncherToActivationBackup {
+function Remove-HermesDesktopActivationDirectory {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string] $Dist,
-        [Parameter(Mandatory)][string] $ActivationBackup
+        [Parameter(Mandatory)][string] $Path,
+        [Parameter(Mandatory)][string] $Description
     )
-
-    if (
-        (Test-Path -LiteralPath $ActivationBackup -PathType Container) -and
-        -not (Test-Path -LiteralPath $Dist)
-    ) {
-        return
-    }
-
-    if (
-        (Test-Path -LiteralPath $ActivationBackup -PathType Container) -and
-        (Test-Path -LiteralPath $Dist -PathType Container)
-    ) {
-        Remove-Item -LiteralPath $ActivationBackup -Recurse -Force
-    }
 
     $lastError = $null
     for ($attempt = 0; $attempt -lt 120; $attempt += 1) {
         try {
-            if (-not (Test-Path -LiteralPath $Dist -PathType Container)) {
-                throw "The active launcher directory is missing: $Dist"
+            if (-not (Test-Path -LiteralPath $Path)) {
+                return
             }
-            Move-Item -LiteralPath $Dist -Destination $ActivationBackup
+
+            Remove-Item `
+                -LiteralPath $Path `
+                -Recurse `
+                -Force `
+                -ErrorAction Stop
+
+            if (Test-Path -LiteralPath $Path) {
+                throw "$Description still exists after removal: $Path"
+            }
+
             return
         } catch {
             $lastError = $_
@@ -78,7 +74,73 @@ function Move-HermesDesktopActiveLauncherToActivationBackup {
         }
     }
 
-    throw "Could not reserve the active launcher for deferred activation. $($lastError.Exception.Message)"
+    throw "Could not remove $Description. $($lastError.Exception.Message)"
+}
+
+function Move-HermesDesktopActivationDirectory {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string] $Source,
+        [Parameter(Mandatory)][string] $Destination,
+        [Parameter(Mandatory)][string] $Description
+    )
+
+    $lastError = $null
+    for ($attempt = 0; $attempt -lt 120; $attempt += 1) {
+        try {
+            if (-not (Test-Path -LiteralPath $Source -PathType Container)) {
+                throw "$Description source is missing: $Source"
+            }
+            if (Test-Path -LiteralPath $Destination) {
+                throw "$Description destination already exists: $Destination"
+            }
+
+            Move-Item `
+                -LiteralPath $Source `
+                -Destination $Destination `
+                -ErrorAction Stop
+
+            if (-not (Test-Path -LiteralPath $Destination -PathType Container)) {
+                throw "$Description destination was not created: $Destination"
+            }
+
+            return
+        } catch {
+            $lastError = $_
+            Start-Sleep -Milliseconds 500
+        }
+    }
+
+    throw "Could not complete $Description. $($lastError.Exception.Message)"
+}
+
+function Move-HermesDesktopActiveLauncherToActivationBackup {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string] $Dist,
+        [Parameter(Mandatory)][string] $ActivationBackup
+    )
+
+    if (Test-Path -LiteralPath $ActivationBackup -PathType Container) {
+        # A previous activation attempt may have restored the known-good backup
+        # into dist. Keep the canonical backup and remove only the disposable
+        # restored copy before retrying the prepared payload.
+        if (Test-Path -LiteralPath $Dist) {
+            Remove-HermesDesktopActivationDirectory `
+                -Path $Dist `
+                -Description 'restored active launcher copy'
+        }
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath $Dist -PathType Container)) {
+        throw "The active launcher directory is missing: $Dist"
+    }
+
+    Move-HermesDesktopActivationDirectory `
+        -Source $Dist `
+        -Destination $ActivationBackup `
+        -Description 'active launcher backup reservation'
 }
 
 function Promote-HermesDesktopPendingLauncher {
@@ -148,23 +210,46 @@ function Promote-HermesDesktopPendingLauncher {
         if (Test-HermesDesktopLauncherRunning) {
             throw 'Hermes Launcher restarted before update activation completed.'
         }
+
+        # Runtime/setup recovery may recreate dist from the known-good backup.
+        # That copy is disposable because activationBackup remains intact. Clear
+        # it with retries, then move the prepared launcher into the active path.
         if (Test-Path -LiteralPath $dist) {
-            throw 'The active launcher path was recreated during deferred activation.'
+            Remove-HermesDesktopActivationDirectory `
+                -Path $dist `
+                -Description 'recreated active launcher path'
         }
 
-        Move-Item -LiteralPath $pendingDist -Destination $dist
+        Move-HermesDesktopActivationDirectory `
+            -Source $pendingDist `
+            -Destination $dist `
+            -Description 'prepared launcher promotion'
+
         $launcher = Join-Path $dist 'Hermes Launcher.exe'
         if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
             throw 'Deferred launcher promotion did not produce the launcher executable.'
         }
 
         if (Test-Path -LiteralPath $activationBackup) {
-            Remove-Item -LiteralPath $activationBackup -Recurse -Force
+            Remove-HermesDesktopActivationDirectory `
+                -Path $activationBackup `
+                -Description 'completed activation backup'
         }
 
         $pendingState = Get-HermesDesktopPendingUpdatePath
         if (Test-Path -LiteralPath $pendingState -PathType Leaf) {
             Remove-Item -LiteralPath $pendingState -Force
+        }
+
+        $relaunched = $false
+        $relaunchWarning = $null
+        try {
+            Start-Process `
+                -FilePath $launcher `
+                -WorkingDirectory $root
+            $relaunched = $true
+        } catch {
+            $relaunchWarning = $_.Exception.Message
         }
 
         $result = [ordered]@{
@@ -175,7 +260,8 @@ function Promote-HermesDesktopPendingLauncher {
             activationDeferred = $true
             runtimeSynchronizedAfterExit = $true
             activatedAt = (Get-Date).ToUniversalTime().ToString('o')
-            relaunched = $false
+            relaunched = $relaunched
+            relaunchWarning = $relaunchWarning
         }
 
         try {
@@ -184,7 +270,11 @@ function Promote-HermesDesktopPendingLauncher {
                 -Plan $Plan `
                 -Stage activated `
                 -Status succeeded `
-                -Message 'Update activated. Start Hermes Launcher to use the new version.' `
+                -Message $(if ($relaunched) {
+                    'Update activated and the new Hermes Launcher was started.'
+                } else {
+                    'Update activated. Start Hermes Launcher to use the new version.'
+                }) `
                 -Percent 100 `
                 -Failure $null `
                 -Result $result | Out-Null
