@@ -89,7 +89,8 @@ try {
             }
         }
 
-        & $hostExecutable @($implementationArguments.ToArray())
+        $implementationArgumentArray = $implementationArguments.ToArray()
+        & $hostExecutable @implementationArgumentArray
         $implementationExitCode = $LASTEXITCODE
     } finally {
         if ($diagnosticDeferred) {
