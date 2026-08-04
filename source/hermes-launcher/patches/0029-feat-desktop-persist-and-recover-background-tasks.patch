@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local Compatibility CI <hermes-local-ci@localhost>
 Date: Sat, 1 Aug 2026 19:14:29 +0100
-Subject: [PATCH 29/30] feat(desktop): persist and recover background tasks
+Subject: [PATCH 29/36] feat(desktop): persist and recover background tasks
 
 ---
  .../electron/hermes-local-control.test.ts     |  39 ++-
@@ -19,7 +19,7 @@ Subject: [PATCH 29/30] feat(desktop): persist and recover background tasks
  create mode 100644 apps/desktop/electron/hermes-local-task-store.ts
 
 diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
-index 1f72dbf64..fbedb48b4 100644
+index 1f72dbf643b0d6ed47fc2740449983536e199d50..fbedb48b465c80bb3114840f4e4682f6cce04154 100644
 --- a/apps/desktop/electron/hermes-local-control.test.ts
 +++ b/apps/desktop/electron/hermes-local-control.test.ts
 @@ -1,4 +1,5 @@
@@ -99,7 +99,7 @@ index 1f72dbf64..fbedb48b4 100644
      const urls: string[] = []
  
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index 1f79fadee..fb915b16a 100644
+index 1f79fadeef3a9479a3608b7a78b47fcd21a7a434..fb915b16a741b51efd0c92dde7717f4725d372ca 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -31,14 +31,19 @@ import {
@@ -521,7 +521,7 @@ index 1f79fadee..fb915b16a 100644
    waitForActionTask
  }
 diff --git a/apps/desktop/electron/hermes-local-task-model.test.ts b/apps/desktop/electron/hermes-local-task-model.test.ts
-index a780d2de9..1d52fe7c8 100644
+index a780d2de9f98ce1f5c594cc4648197162f5774e2..1d52fe7c897e9c6ee4955bd6519a1522b13a74ca 100644
 --- a/apps/desktop/electron/hermes-local-task-model.test.ts
 +++ b/apps/desktop/electron/hermes-local-task-model.test.ts
 @@ -4,6 +4,7 @@ import {
@@ -606,7 +606,7 @@ index a780d2de9..1d52fe7c8 100644
      expect(boundedTaskOutput('1234', '5678', 6)).toEqual({ output: '345678', truncated: true })
      expect(boundedTaskOutput('12', '34', 6)).toEqual({ output: '1234', truncated: false })
 diff --git a/apps/desktop/electron/hermes-local-task-model.ts b/apps/desktop/electron/hermes-local-task-model.ts
-index 546dc7a33..af7fb705a 100644
+index 546dc7a334076d09cbef7f8085dba586371dc23e..af7fb705adf9c7466daa6a2f49a6c514f9f4898f 100644
 --- a/apps/desktop/electron/hermes-local-task-model.ts
 +++ b/apps/desktop/electron/hermes-local-task-model.ts
 @@ -40,6 +40,11 @@ export interface TaskFailure {
@@ -849,7 +849,7 @@ index 546dc7a33..af7fb705a 100644
      throw new Error('Task output bound must be a positive integer')
 diff --git a/apps/desktop/electron/hermes-local-task-store.test.ts b/apps/desktop/electron/hermes-local-task-store.test.ts
 new file mode 100644
-index 000000000..5b4e0e356
+index 0000000000000000000000000000000000000000..5b4e0e35600cf52f346ba074e180e3b472c665dc
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-task-store.test.ts
 @@ -0,0 +1,106 @@
@@ -961,7 +961,7 @@ index 000000000..5b4e0e356
 +})
 diff --git a/apps/desktop/electron/hermes-local-task-store.ts b/apps/desktop/electron/hermes-local-task-store.ts
 new file mode 100644
-index 000000000..3b9e07d6a
+index 0000000000000000000000000000000000000000..3b9e07d6ab896a4db100371ff957206c0ae86708
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-task-store.ts
 @@ -0,0 +1,134 @@
@@ -1100,7 +1100,7 @@ index 000000000..3b9e07d6a
 +  }
 +}
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
-index 288e2ea4a..e9bcd3203 100644
+index 288e2ea4ab38ad9e7f5277310c4b95d9d379d002..e9bcd32035ff2f5abaf205400fef245e5cda0e19 100644
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
 @@ -112,6 +112,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
@@ -1112,7 +1112,7 @@ index 288e2ea4a..e9bcd3203 100644
      saveProfile: (profile, originalName) => ipcRenderer.invoke('hermes:local:profile:save', profile, originalName),
      deleteProfile: name => ipcRenderer.invoke('hermes:local:profile:delete', name),
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index daf689616..ed8997711 100644
+index daf689616627d2ea776e215a94e8603ae9e83d51..ed8997711c1a349bc1a9e69372ad7dbe5a79da95 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -1694,7 +1694,13 @@ export function LocalWorkstationView() {
@@ -1130,7 +1130,7 @@ index daf689616..ed8997711 100644
            next.profiles?.profiles.some(profile => profile.name === current) ? current : next.profiles?.selected || ''
          )
 diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
-index c1531b127..95bcc5948 100644
+index c1531b1275a4d75f0f25dad45ea44772bb23f43a..95bcc5948d7d9d6462a94b71c9d1bf5990460380 100644
 --- a/apps/desktop/src/app/local-workstation/types.ts
 +++ b/apps/desktop/src/app/local-workstation/types.ts
 @@ -57,6 +57,10 @@ export interface LocalActionTask {
@@ -1153,7 +1153,7 @@ index c1531b127..95bcc5948 100644
      controllerAlive: boolean
      controllerPid?: null | number
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index a31f5eb89..8117ce722 100644
+index a31f5eb897af7b9e21fabd4c2f0a66ea9bfda02b..8117ce722cadd3580ade13360e31fe3573e4fcc3 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
 @@ -130,6 +130,7 @@ declare global {

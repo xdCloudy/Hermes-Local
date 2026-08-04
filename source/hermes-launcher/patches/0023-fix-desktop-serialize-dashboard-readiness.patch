@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
 Date: Fri, 31 Jul 2026 03:20:00 +0000
-Subject: [PATCH 23/30] fix(desktop): serialize dashboard readiness
+Subject: [PATCH 23/36] fix(desktop): serialize dashboard readiness
 
 Use successful main-frame completion as an authoritative readiness signal and coalesce concurrent show calls onto one navigation.
 ---
@@ -10,7 +10,7 @@ Use successful main-frame completion as an authoritative readiness signal and co
  2 files changed, 89 insertions(+), 9 deletions(-)
 
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.test.ts b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
-index cca0509bb..91612ee11 100644
+index cca0509bbc10bba5d9cbf1545269bfbda7aff50e..91612ee11746fea280b8002a912046d0fdf0b417 100644
 --- a/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 @@ -23,13 +23,24 @@ const TOKEN = 'A'.repeat(48)
@@ -120,7 +120,7 @@ index cca0509bb..91612ee11 100644
      const { controller, timers, views } = harness()
      const bounds = { height: 500, width: 800, x: 20, y: 100 }
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop/electron/hermes-local-dashboard-view.ts
-index 634521f32..de13c921b 100644
+index 634521f3297f94670822f80e3f846ca91873d78d..de13c921be21df2b209c8e2281d01032674fee21 100644
 --- a/apps/desktop/electron/hermes-local-dashboard-view.ts
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.ts
 @@ -219,6 +219,7 @@ export function createHermesLocalDashboardViewController(

@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Tue, 28 Jul 2026 14:29:35 +0100
-Subject: [PATCH 08/30] fix(desktop): start local workstation before connecting
+Subject: [PATCH 08/36] fix(desktop): start local workstation before connecting
 
 ---
  .../e2e/hermes-local-workstation.spec.ts      |  5 ++-
@@ -13,7 +13,7 @@ Subject: [PATCH 08/30] fix(desktop): start local workstation before connecting
  6 files changed, 72 insertions(+), 4 deletions(-)
 
 diff --git a/apps/desktop/e2e/hermes-local-workstation.spec.ts b/apps/desktop/e2e/hermes-local-workstation.spec.ts
-index 1cf838bd7..dd265c6d9 100644
+index 1cf838bd73233733c702e10bd712dfe19978ee3f..dd265c6d93cf9b523831961d2daf667cfc6de64c 100644
 --- a/apps/desktop/e2e/hermes-local-workstation.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-workstation.spec.ts
 @@ -190,7 +190,10 @@ test.describe('Hermes Local packaged workstation', () => {
@@ -29,7 +29,7 @@ index 1cf838bd7..dd265c6d9 100644
        await expect(page.getByText('Ready for local inference')).toBeVisible()
        await expect(page.getByText(/and Hermes are online/)).toBeVisible()
 diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
-index 983346bc1..afbba9648 100644
+index 983346bc1f467e875a14f94b5ec117e51c65c1cb..afbba9648d69d4a1c2232c35164bea7b50ad2ff4 100644
 --- a/apps/desktop/electron/hermes-local-control.test.ts
 +++ b/apps/desktop/electron/hermes-local-control.test.ts
 @@ -1,3 +1,4 @@
@@ -73,7 +73,7 @@ index 983346bc1..afbba9648 100644
 +  })
  })
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index 428c6e8e4..1f96b1284 100644
+index 428c6e8e4e7d5f3018a5db17a714321bdc9ee512..1f96b1284b53b9ad6bf1d3dce9643aad89319f63 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -289,6 +289,33 @@ function getActionTask(taskId: unknown) {
@@ -119,7 +119,7 @@ index 428c6e8e4..1f96b1284 100644
 +  waitForActionTask
  }
 diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
-index 7d6348fff..fb8b169a3 100644
+index 4a16743685500c0ce8db76d56bbf8552e18b15ed..a637ef36640d7e3bb09df6728c8a54ae05141afe 100644
 --- a/apps/desktop/electron/main.ts
 +++ b/apps/desktop/electron/main.ts
 @@ -136,6 +136,7 @@ import {
@@ -130,7 +130,7 @@ index 7d6348fff..fb8b169a3 100644
    hermesLocalTuiLaunch,
    registerHermesLocalControlIpc
  } from './hermes-local-control'
-@@ -8419,6 +8420,11 @@ async function startHermes() {
+@@ -8425,6 +8426,11 @@ async function startHermes() {
        backendArgs.unshift('--profile', activeProfile)
      }
  
@@ -143,7 +143,7 @@ index 7d6348fff..fb8b169a3 100644
        connectRemote,
        ensureLocalRuntime: ensureRuntime,
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
-index 11f66eacd..f45628979 100644
+index 11f66eacd65fc376a63cc297aa9587571935cbf3..f4562897905bc2dc436ead6ccae30b4000c22e82 100644
 --- a/apps/desktop/package.json
 +++ b/apps/desktop/package.json
 @@ -2,7 +2,7 @@
@@ -156,7 +156,7 @@ index 11f66eacd..f45628979 100644
    "author": "Nous Research",
    "type": "module",
 diff --git a/package-lock.json b/package-lock.json
-index 4a6cea00f..dd1ab6a35 100644
+index 4a6cea00fc0fb1dd5e308ef8a798e38ab91cb527..dd1ab6a35d14d8c50a3f1da5526fa16ac7ffe209 100644
 --- a/package-lock.json
 +++ b/package-lock.json
 @@ -69,7 +69,7 @@

@@ -1,7 +1,7 @@
-From f60ed315de7fb09c842647f4007deb2a18730b21 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local Compatibility CI <hermes-local-ci@localhost>
 Date: Mon, 3 Aug 2026 05:12:25 +0000
-Subject: [PATCH] feat(desktop): instrument benchmark task progress
+Subject: [PATCH 33/36] feat(desktop): instrument benchmark task progress
 
 ---
  .../hermes-local-benchmark-progress.test.ts   | 35 ++++++++
@@ -12,7 +12,7 @@ Subject: [PATCH] feat(desktop): instrument benchmark task progress
 
 diff --git a/apps/desktop/electron/hermes-local-benchmark-progress.test.ts b/apps/desktop/electron/hermes-local-benchmark-progress.test.ts
 new file mode 100644
-index 000000000..228d0e198
+index 0000000000000000000000000000000000000000..228d0e19859f4b31fdd29cf87b596c8ba734ae02
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-benchmark-progress.test.ts
 @@ -0,0 +1,35 @@
@@ -52,7 +52,7 @@ index 000000000..228d0e198
 +  })
 +})
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index 491a87658..501bb42a3 100644
+index 491a87658b6dc8ea70700beccee1023a5a9207b6..501bb42a3d876a876524cadf34507a124310270f 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -214,11 +214,13 @@ function redacted(text: string): string {
@@ -186,7 +186,7 @@ index 491a87658..501bb42a3 100644
    flushScheduledTaskPersistence()
  
 diff --git a/apps/desktop/electron/hermes-local-task-model.ts b/apps/desktop/electron/hermes-local-task-model.ts
-index 63ac85553..01d356716 100644
+index 63ac8555346542659115d1b7f69ca29537211c40..01d3567166c985d9e0e374052358140d3c3d09fa 100644
 --- a/apps/desktop/electron/hermes-local-task-model.ts
 +++ b/apps/desktop/electron/hermes-local-task-model.ts
 @@ -90,7 +90,7 @@ export interface TaskCompletionEvidence {
@@ -212,6 +212,3 @@ index 63ac85553..01d356716 100644
        exitCode: evidence.exitCode,
        failure: evidence.failure,
        result: evidence.result
--- 
-2.55.0.windows.2
-

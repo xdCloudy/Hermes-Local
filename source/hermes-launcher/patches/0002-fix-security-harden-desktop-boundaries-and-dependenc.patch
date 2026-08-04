@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Tue, 28 Jul 2026 09:40:30 +0100
-Subject: [PATCH 02/30] fix(security): harden desktop boundaries and
+Subject: [PATCH 02/36] fix(security): harden desktop boundaries and
  dependencies
 
 ---
@@ -36,7 +36,7 @@ Subject: [PATCH 02/30] fix(security): harden desktop boundaries and
  create mode 100644 tests/security/test_xml_hardening.py
 
 diff --git a/apps/desktop/e2e/hermes-local-portable.spec.ts b/apps/desktop/e2e/hermes-local-portable.spec.ts
-index 8aa16b4b1..27f3a870c 100644
+index 8aa16b4b1b333200a45a0a769848a7523e118f61..27f3a870cb4e26fdeaa382b69f82c3ba5b90981f 100644
 --- a/apps/desktop/e2e/hermes-local-portable.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-portable.spec.ts
 @@ -107,7 +107,6 @@ test.describe('Hermes Local portable workstation', () => {
@@ -58,7 +58,7 @@ index 8aa16b4b1..27f3a870c 100644
    })
  })
 diff --git a/apps/desktop/e2e/hermes-local-workstation.spec.ts b/apps/desktop/e2e/hermes-local-workstation.spec.ts
-index 00c3e47ac..d486230a5 100644
+index 00c3e47ac55c77282fdf3055cc35c2f4afe1ba16..d486230a570a2b30f6d4d0c016d5b22c86dce5f7 100644
 --- a/apps/desktop/e2e/hermes-local-workstation.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-workstation.spec.ts
 @@ -2,12 +2,45 @@ import fs from 'node:fs'
@@ -129,7 +129,7 @@ index 00c3e47ac..d486230a5 100644
          if (message.type() === 'error') {
            rendererErrors.push(`console: ${message.text()}`)
 diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
-index bd3cce0aa..7d6348fff 100644
+index bb827424bab315bb32403e9e7b3eab91f32409eb..4a16743685500c0ce8db76d56bbf8552e18b15ed 100644
 --- a/apps/desktop/electron/main.ts
 +++ b/apps/desktop/electron/main.ts
 @@ -141,6 +141,7 @@ import {
@@ -148,7 +148,7 @@ index bd3cce0aa..7d6348fff 100644
  import { fetchPrimaryProfileSessions } from './profile-session-routing'
  import { createQuickEntryShortcut, quickEntryWindowBounds, sanitizeQuickEntrySettings } from './quick-entry'
  import { type ActiveWork, mergeActiveWork, normalizeActiveWork, quitPromptFor } from './quit-guard'
-@@ -5757,56 +5759,30 @@ function installContextMenu(window) {
+@@ -5763,56 +5765,30 @@ function installContextMenu(window) {
    })
  }
  
@@ -223,7 +223,7 @@ index bd3cce0aa..7d6348fff 100644
    })
  }
  
-@@ -8017,7 +7993,7 @@ function profileRouteOptions(profile) {
+@@ -8023,7 +7999,7 @@ function profileRouteOptions(profile) {
  // resolveProfileBackendRoute(). An empty / unknown profile resolves to the
  // primary, so legacy callers are unchanged.
  async function ensureBackend(profile) {
@@ -232,7 +232,7 @@ index bd3cce0aa..7d6348fff 100644
    const route = resolveProfileBackendRoute(key, profileRouteOptions(key))
  
    if (route.backend === 'primary') {
-@@ -8713,7 +8689,12 @@ function wireCommonWindowHandlers(win, { zoom = true }: { zoom?: boolean } = {})
+@@ -8719,7 +8695,12 @@ function wireCommonWindowHandlers(win, { zoom = true }: { zoom?: boolean } = {})
      return { action: 'deny' }
    })
    win.webContents.on('will-navigate', (event, url) => {
@@ -246,7 +246,7 @@ index bd3cce0aa..7d6348fff 100644
        return
      }
  
-@@ -8947,6 +8928,7 @@ function spawnPetOverlayWindow(bounds) {
+@@ -8953,6 +8934,7 @@ function spawnPetOverlayWindow(bounds) {
        contextIsolation: true,
        sandbox: true,
        nodeIntegration: false,
@@ -254,7 +254,7 @@ index bd3cce0aa..7d6348fff 100644
        devTools: true,
        // Keep the sprite animating + bubble updating while the main window is
        // minimized/blurred — the whole point of the overlay.
-@@ -9107,6 +9089,7 @@ function spawnQuickEntryWindow() {
+@@ -9113,6 +9095,7 @@ function spawnQuickEntryWindow() {
        contextIsolation: true,
        sandbox: true,
        nodeIntegration: false,
@@ -264,7 +264,7 @@ index bd3cce0aa..7d6348fff 100644
    })
 diff --git a/apps/desktop/electron/media-permissions.test.ts b/apps/desktop/electron/media-permissions.test.ts
 new file mode 100644
-index 000000000..24d691ac3
+index 0000000000000000000000000000000000000000..24d691ac311422decd084d3b2280a4bd3967e078
 --- /dev/null
 +++ b/apps/desktop/electron/media-permissions.test.ts
 @@ -0,0 +1,105 @@
@@ -375,7 +375,7 @@ index 000000000..24d691ac3
 +})
 diff --git a/apps/desktop/electron/media-permissions.ts b/apps/desktop/electron/media-permissions.ts
 new file mode 100644
-index 000000000..c1f744847
+index 0000000000000000000000000000000000000000..c1f744847ebc35a7e4f39ffaef08533fc032a6f2
 --- /dev/null
 +++ b/apps/desktop/electron/media-permissions.ts
 @@ -0,0 +1,71 @@
@@ -452,7 +452,7 @@ index 000000000..c1f744847
 +}
 diff --git a/apps/desktop/electron/profile-name.test.ts b/apps/desktop/electron/profile-name.test.ts
 new file mode 100644
-index 000000000..7d4eb89b7
+index 0000000000000000000000000000000000000000..7d4eb89b7e14e0dce039bf49ea29102b472d6dde
 --- /dev/null
 +++ b/apps/desktop/electron/profile-name.test.ts
 @@ -0,0 +1,27 @@
@@ -485,7 +485,7 @@ index 000000000..7d4eb89b7
 +})
 diff --git a/apps/desktop/electron/profile-name.ts b/apps/desktop/electron/profile-name.ts
 new file mode 100644
-index 000000000..f4d25869a
+index 0000000000000000000000000000000000000000..f4d25869af7714105fa050b684d15b919b3c5468
 --- /dev/null
 +++ b/apps/desktop/electron/profile-name.ts
 @@ -0,0 +1,22 @@
@@ -512,7 +512,7 @@ index 000000000..f4d25869a
 +  return profile
 +}
 diff --git a/apps/desktop/electron/session-windows.test.ts b/apps/desktop/electron/session-windows.test.ts
-index a3dbfc04e..8da16c2aa 100644
+index a3dbfc04e4a0092d4af53e77f78fbf4feee87543..8da16c2aa4f68f0554e78f961d4b8339221107da 100644
 --- a/apps/desktop/electron/session-windows.test.ts
 +++ b/apps/desktop/electron/session-windows.test.ts
 @@ -210,6 +210,7 @@ test('chatWindowWebPreferences passes the preload path through and keeps the har
@@ -524,7 +524,7 @@ index a3dbfc04e..8da16c2aa 100644
  
  test('chatWindowWebPreferences allows autoplay so wake-started voice speaks its first reply', () => {
 diff --git a/apps/desktop/electron/session-windows.ts b/apps/desktop/electron/session-windows.ts
-index 81736908f..c82376e3a 100644
+index 81736908fcea071f43bffd375c01a3c82a9b3212..c82376e3a7112d074c9e517d5cbdfd83cfed7090 100644
 --- a/apps/desktop/electron/session-windows.ts
 +++ b/apps/desktop/electron/session-windows.ts
 @@ -44,6 +44,7 @@ function chatWindowWebPreferences(preloadPath: string) {
@@ -536,7 +536,7 @@ index 81736908f..c82376e3a 100644
      autoplayPolicy: 'no-user-gesture-required' as const
    }
 diff --git a/apps/desktop/index.html b/apps/desktop/index.html
-index 831478f6e..ce14b58c7 100644
+index 831478f6e938949975a94bf43ad13f3230d99288..ce14b58c7035c5a43e5eb0f784534a64435fda7a 100644
 --- a/apps/desktop/index.html
 +++ b/apps/desktop/index.html
 @@ -5,32 +5,15 @@
@@ -578,7 +578,7 @@ index 831478f6e..ce14b58c7 100644
    <body>
      <div id="root" class="scrollbar-dt"></div>
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
-index 1d746f829..266a594e9 100644
+index 1d746f82902f5102330caa97e184b6a91a27bf65..266a594e908b5347b65712e2c6fedcbadcfcfe5f 100644
 --- a/apps/desktop/package.json
 +++ b/apps/desktop/package.json
 @@ -152,6 +152,7 @@
@@ -591,7 +591,7 @@ index 1d746f829..266a594e9 100644
      "tsx": "4.23.1",
 diff --git a/apps/desktop/public/boot-theme.js b/apps/desktop/public/boot-theme.js
 new file mode 100644
-index 000000000..eab38c34b
+index 0000000000000000000000000000000000000000..eab38c34ba87c5607e46e5e2fa5ef0b5e4a3b0c7
 --- /dev/null
 +++ b/apps/desktop/public/boot-theme.js
 @@ -0,0 +1,21 @@
@@ -617,7 +617,7 @@ index 000000000..eab38c34b
 +  // localStorage unavailable — keep UA defaults.
 +}
 diff --git a/optional-skills/devops/watchers/scripts/watch_rss.py b/optional-skills/devops/watchers/scripts/watch_rss.py
-index 6e0963040..08e9f9f94 100755
+index 6e09630404f93ca1c0e6752055616304b2a32453..08e9f9f9478d65b12dc2fdd0f0f7a9d5720b5ffb 100755
 --- a/optional-skills/devops/watchers/scripts/watch_rss.py
 +++ b/optional-skills/devops/watchers/scripts/watch_rss.py
 @@ -19,7 +19,9 @@ import sys
@@ -641,7 +641,7 @@ index 6e0963040..08e9f9f94 100755
          sys.exit(2)
  
 diff --git a/package-lock.json b/package-lock.json
-index d7cd4adf5..8146777ad 100644
+index d7cd4adf58606b0029da83e5e7877d2b59904bce..8146777adb66be46fcfe65d134c33e8dfd88f553 100644
 --- a/package-lock.json
 +++ b/package-lock.json
 @@ -68,7 +68,7 @@
@@ -739,7 +739,7 @@ index d7cd4adf5..8146777ad 100644
        "version": "0.25.1",
        "resolved": "https://registry.npmjs.org/hermes-parser/-/hermes-parser-0.25.1.tgz",
 diff --git a/package.json b/package.json
-index 81a56b1b8..45313fda8 100644
+index 81a56b1b83905214586536feb6cfdab165e9cd48..45313fda8e408ba996a816336d0eba2e9e99bc81 100644
 --- a/package.json
 +++ b/package.json
 @@ -48,6 +48,7 @@
@@ -751,7 +751,7 @@ index 81a56b1b8..45313fda8 100644
      "protobufjs": "^8.7.1",
      "brace-expansion": "5.0.8"
 diff --git a/pyproject.toml b/pyproject.toml
-index 35d4949a5..1ec12684a 100644
+index b9578f3fc53e701c2c9966d7aa5b7eeae574a2db..080b8fd3c7705a406593ef8c6de7603d39836ad5 100644
 --- a/pyproject.toml
 +++ b/pyproject.toml
 @@ -123,6 +123,10 @@ dependencies = [
@@ -766,7 +766,7 @@ index 35d4949a5..1ec12684a 100644
    # ``os.rename()`` which fails with ``PermissionError [WinError 32]`` on
    # Windows whenever any other process holds an append-mode handle on
 diff --git a/scripts/run_tests.sh b/scripts/run_tests.sh
-index 0db80ffb1..3b7bc3f78 100755
+index 0db80ffb13ee1a415ddb3f4c8c8db85c154c7ed3..3b7bc3f78b27a3a82091470b2d6831755b246afa 100755
 --- a/scripts/run_tests.sh
 +++ b/scripts/run_tests.sh
 @@ -117,7 +117,7 @@ fi
@@ -787,7 +787,7 @@ index 0db80ffb1..3b7bc3f78 100755
    ${HERMES_E2E_BROWSER:+HERMES_E2E_BROWSER="$HERMES_E2E_BROWSER"} \
    ${EXTRA_PYTHONPATH:+PYTHONPATH="$EXTRA_PYTHONPATH"} \
 diff --git a/skills/research/arxiv/scripts/search_arxiv.py b/skills/research/arxiv/scripts/search_arxiv.py
-index 0bd6b2370..f522f9c7c 100644
+index 0bd6b2370f447acfba22979212e4800aa18795a7..f522f9c7ce369f3637d8a2846388e09ce032463b 100644
 --- a/skills/research/arxiv/scripts/search_arxiv.py
 +++ b/skills/research/arxiv/scripts/search_arxiv.py
 @@ -11,9 +11,10 @@ Usage:
@@ -805,7 +805,7 @@ index 0bd6b2370..f522f9c7c 100644
  
 diff --git a/tests/security/test_xml_hardening.py b/tests/security/test_xml_hardening.py
 new file mode 100644
-index 000000000..542891cc5
+index 0000000000000000000000000000000000000000..542891cc5275c4bd13c8d0a1d264380db5ceb3a6
 --- /dev/null
 +++ b/tests/security/test_xml_hardening.py
 @@ -0,0 +1,61 @@
@@ -871,7 +871,7 @@ index 000000000..542891cc5
 +        with pytest.raises(DefusedXmlException):
 +            arxiv.search(query="security-regression")
 diff --git a/tests/tools/test_read_extract.py b/tests/tools/test_read_extract.py
-index 1025c428b..fc780782f 100644
+index 1025c428b2211f4f42ed157770bcd86c2b4146cc..fc780782f410f225481ecf096c3b619e597ce379 100644
 --- a/tests/tools/test_read_extract.py
 +++ b/tests/tools/test_read_extract.py
 @@ -141,6 +141,19 @@ class TestDocxExtraction(unittest.TestCase):
@@ -895,7 +895,7 @@ index 1025c428b..fc780782f 100644
  # ---------------------------------------------------------------------------
  # Excel workbooks (.xlsx) — #10740
 diff --git a/tools/read_extract.py b/tools/read_extract.py
-index 3607703de..84105ba4a 100644
+index 3607703de6002eb380938edcb6bca7311852c832..84105ba4ad8f61822681babd45024a3a709749c4 100644
 --- a/tools/read_extract.py
 +++ b/tools/read_extract.py
 @@ -11,7 +11,9 @@ import json
@@ -946,14 +946,14 @@ index 3607703de..84105ba4a 100644
      rel_tag = f"{{{_NS_PKG_REL}}}Relationship"
      return {rel.get("Id", ""): rel.get("Target", "") for rel in root.iter(rel_tag) if rel.get("Id")}
 diff --git a/uv.lock b/uv.lock
-index b6f906e47..3f198ac3c 100644
+index 592d5db2612fc0e306a42e8eccabf9b7856cd3c4..623c53cf32400218f371bcdbf4a1740acb324564 100644
 --- a/uv.lock
 +++ b/uv.lock
 @@ -8,7 +8,7 @@ resolution-markers = [
  ]
  
  [options]
--exclude-newer = "2026-07-18T05:39:53.300543645Z"
+-exclude-newer = "2026-07-20T16:38:42.729819205Z"
 +exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
  exclude-newer-span = "P14D"
  
@@ -974,7 +974,7 @@ index b6f906e47..3f198ac3c 100644
      { name = "defusedxml", marker = "extra == 'wecom'", specifier = "==0.7.1" },
      { name = "dingtalk-stream", marker = "extra == 'dingtalk'", specifier = "==0.24.3" },
      { name = "discord-py", extras = ["voice"], marker = "extra == 'messaging'", specifier = "==2.7.1" },
-@@ -3997,7 +3999,7 @@ resolution-markers = [
+@@ -3998,7 +4000,7 @@ resolution-markers = [
      "python_full_version < '3.12'",
  ]
  dependencies = [
@@ -983,7 +983,7 @@ index b6f906e47..3f198ac3c 100644
  ]
  sdist = { url = "https://files.pythonhosted.org/packages/7a/97/5a3609c4f8d58b039179648e62dd220f89864f56f7357f5d4f45c29eb2cc/scipy-1.17.1.tar.gz", hash = "sha256:95d8e012d8cb8816c226aef832200b1d45109ed4464303e997c5b13122b297c0", size = 30573822, upload-time = "2026-02-23T00:26:24.851Z" }
  wheels = [
-@@ -4052,7 +4054,7 @@ resolution-markers = [
+@@ -4053,7 +4055,7 @@ resolution-markers = [
      "python_full_version == '3.12.*'",
  ]
  dependencies = [
@@ -992,7 +992,7 @@ index b6f906e47..3f198ac3c 100644
  ]
  sdist = { url = "https://files.pythonhosted.org/packages/a7/25/c2700dfaf6442b4effaa91af24ebce5dc9d31bb4a69706313aae70d72cd0/scipy-1.18.0.tar.gz", hash = "sha256:67b2ad2ad54c72ca6d04975a9b2df8c3638c34ddd5b28738e94fc2b57929d378", size = 30774447, upload-time = "2026-06-19T15:01:43.456Z" }
  wheels = [
-@@ -4691,11 +4693,11 @@ name = "vercel-workers"
+@@ -4692,11 +4694,11 @@ name = "vercel-workers"
  version = "0.0.25"
  source = { registry = "https://pypi.org/simple" }
  dependencies = [

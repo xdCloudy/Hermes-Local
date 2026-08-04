@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
 Date: Fri, 31 Jul 2026 02:31:00 +0000
-Subject: [PATCH 22/30] fix(desktop): complete dashboard on DOM readiness
+Subject: [PATCH 22/36] fix(desktop): complete dashboard on DOM readiness
 
 Do not keep the embedded dashboard hidden while waiting indefinitely for
 Electron's did-finish-load event. Track the committed main-frame response and
@@ -13,7 +13,7 @@ did-finish-load as a compatibility fallback.
  2 files changed, 76 insertions(+), 24 deletions(-)
 
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.test.ts b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
-index 98551f7b1..cca0509bb 100644
+index 98551f7b102a83094533849209c930c4ab96fcca..cca0509bbc10bba5d9cbf1545269bfbda7aff50e 100644
 --- a/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 @@ -23,11 +23,17 @@ const TOKEN = 'A'.repeat(48)
@@ -74,7 +74,7 @@ index 98551f7b1..cca0509bb 100644
      const { controller, timers, views } = harness()
      const bounds = { height: 500, width: 800, x: 20, y: 100 }
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop/electron/hermes-local-dashboard-view.ts
-index be14a0c8a..634521f32 100644
+index be14a0c8a5579026dbecd265505e3430a0d9a0b8..634521f3297f94670822f80e3f846ca91873d78d 100644
 --- a/apps/desktop/electron/hermes-local-dashboard-view.ts
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.ts
 @@ -218,6 +218,7 @@ export function createHermesLocalDashboardViewController(

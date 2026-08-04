@@ -1,7 +1,7 @@
-From 2f626728887d110aa0c8f453fd285b21ebd268ee Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local Integration <hermes-local-ci@localhost>
 Date: Mon, 3 Aug 2026 07:30:00 +0100
-Subject: [PATCH] feat: add stable project identity and path recovery
+Subject: [PATCH 34/36] feat: add stable project identity and path recovery
 
 ---
  apps/desktop/src/store/projects.test.ts |  99 ++++-
@@ -16,7 +16,7 @@ Subject: [PATCH] feat: add stable project identity and path recovery
  9 files changed, 1015 insertions(+), 49 deletions(-)
 
 diff --git a/apps/desktop/src/store/projects.test.ts b/apps/desktop/src/store/projects.test.ts
-index ffcbcfcd3..d9282be53 100644
+index ffcbcfcd320d8e27dc70e83b0bea88a069526a9d..d9282be53482c9f8266ad48fc57736afeba38f6b 100644
 --- a/apps/desktop/src/store/projects.test.ts
 +++ b/apps/desktop/src/store/projects.test.ts
 @@ -8,6 +8,7 @@ import { $currentCwd, $selectedStoredSessionId, $sessions, applyConfiguredDefaul
@@ -153,7 +153,7 @@ index ffcbcfcd3..d9282be53 100644
 +  })
 +})
 diff --git a/apps/desktop/src/store/projects.ts b/apps/desktop/src/store/projects.ts
-index 7184c8ed7..1e237a9b7 100644
+index 7184c8ed70ee77179b2d3221960872f315617275..1e237a9b728e3af2e6de3a35622e873c6ed3ae90 100644
 --- a/apps/desktop/src/store/projects.ts
 +++ b/apps/desktop/src/store/projects.ts
 @@ -582,6 +582,7 @@ export interface CreateProjectInput {
@@ -296,10 +296,10 @@ index 7184c8ed7..1e237a9b7 100644
  // A single dialog mounted in the sidebar reads this atom, so a project node's
  // menu can open create / rename / add-folder flows without prop threading
 diff --git a/apps/desktop/src/types/hermes.ts b/apps/desktop/src/types/hermes.ts
-index 796784ff6..b8bc36fa5 100644
+index bc1fb5c581bf070045461e545442af65b47a8e2a..fcbcd679c4f85c58dbd4a8bbaa4a0caa54d6349a 100644
 --- a/apps/desktop/src/types/hermes.ts
 +++ b/apps/desktop/src/types/hermes.ts
-@@ -878,6 +878,17 @@ export interface ProjectFolder {
+@@ -879,6 +879,17 @@ export interface ProjectFolder {
    label: null | string
    is_primary: boolean
    added_at: number
@@ -317,7 +317,7 @@ index 796784ff6..b8bc36fa5 100644
  }
  
  export interface ProjectInfo {
-@@ -891,7 +902,11 @@ export interface ProjectInfo {
+@@ -892,7 +903,11 @@ export interface ProjectInfo {
    primary_path: null | string
    archived: boolean
    created_at: number
@@ -330,7 +330,7 @@ index 796784ff6..b8bc36fa5 100644
  
  export interface ProjectsPayload {
 diff --git a/hermes_cli/projects_db.py b/hermes_cli/projects_db.py
-index 53bead222..704815809 100644
+index 53bead2227aab50721d71ab6c763694765b87348..704815809b395fdb5ec6e9ae49b4314dc5833116 100644
 --- a/hermes_cli/projects_db.py
 +++ b/hermes_cli/projects_db.py
 @@ -63,22 +63,42 @@ CREATE TABLE IF NOT EXISTS projects (
@@ -1012,7 +1012,7 @@ index 53bead222..704815809 100644
  _BRANCH_SAFE_RE = re.compile(r"[^a-z0-9._-]+")
  
 diff --git a/tests/hermes_cli/test_projects_db.py b/tests/hermes_cli/test_projects_db.py
-index fc0347eee..bf826b0bb 100644
+index fc0347eee982bf392bca2648b03acb5e45f1799d..bf826b0bb9c5125f351de935b227e88e4225ba1c 100644
 --- a/tests/hermes_cli/test_projects_db.py
 +++ b/tests/hermes_cli/test_projects_db.py
 @@ -46,8 +46,9 @@ def test_create_get_list(conn):
@@ -1184,7 +1184,7 @@ index fc0347eee..bf826b0bb 100644
 +    finally:
 +        upgraded.close()
 diff --git a/tests/tui_gateway/test_project_tree.py b/tests/tui_gateway/test_project_tree.py
-index a5774097d..8ac24ab38 100644
+index a5774097dc270ca4074c27a1ae23718887e1bc3c..8ac24ab380ac2434d15b0b8fb722e182956aad76 100644
 --- a/tests/tui_gateway/test_project_tree.py
 +++ b/tests/tui_gateway/test_project_tree.py
 @@ -515,3 +515,31 @@ def test_colliding_repo_basenames_disambiguate_labels():
@@ -1220,7 +1220,7 @@ index a5774097d..8ac24ab38 100644
 +        for row in group["sessions"]
 +    ] == ["legacy-chat"]
 diff --git a/tests/tui_gateway/test_projects_rpc.py b/tests/tui_gateway/test_projects_rpc.py
-index cb9638420..c33540040 100644
+index cb9638420fc5271720d8387d788c8f7d8346f7ca..c33540040cd3e97eb95f120d3ff3ffdd304e595c 100644
 --- a/tests/tui_gateway/test_projects_rpc.py
 +++ b/tests/tui_gateway/test_projects_rpc.py
 @@ -379,3 +379,107 @@ def test_nondefault_policy_rejects_stale_or_legacy_results(monkeypatch, tmp_path
@@ -1332,7 +1332,7 @@ index cb9638420..c33540040 100644
 +    assert server._is_repo_junk(str(install)) is True
 +    assert server._is_repo_junk(str(nested)) is True
 diff --git a/tui_gateway/project_tree.py b/tui_gateway/project_tree.py
-index 413f85023..38e74aabc 100644
+index 413f8502386fa98a6d051614dc28bd1ee078fef4..38e74aabcf3f4f4f65d5104d67eba3784b84be4b 100644
 --- a/tui_gateway/project_tree.py
 +++ b/tui_gateway/project_tree.py
 @@ -457,7 +457,8 @@ class _FolderIndex:
@@ -1346,7 +1346,7 @@ index 413f85023..38e74aabc 100644
                  if not segs:
                      continue
 diff --git a/tui_gateway/server.py b/tui_gateway/server.py
-index cb5fb91b2..08146cb87 100644
+index fd5217bafbf56d56fc8dcf99433965fe2c817313..5b256af102414aebd37c30d09b05f3dc85508a88 100644
 --- a/tui_gateway/server.py
 +++ b/tui_gateway/server.py
 @@ -252,6 +252,7 @@ _LONG_HANDLERS = frozenset(
@@ -1357,7 +1357,7 @@ index cb5fb91b2..08146cb87 100644
          "projects.tree",
          "projects.project_sessions",
          # Setup readiness RPCs are polled by the Desktop frontend on connect
-@@ -11049,7 +11050,9 @@ def _(rid, params, pdb, conn) -> dict:
+@@ -11269,7 +11270,9 @@ def _(rid, params, pdb, conn) -> dict:
  
  @_projects_method("projects.get")
  def _(rid, params, pdb, conn) -> dict:
@@ -1368,7 +1368,7 @@ index cb5fb91b2..08146cb87 100644
  
  
  @_projects_method("projects.create")
-@@ -11064,6 +11067,7 @@ def _(rid, params, pdb, conn) -> dict:
+@@ -11284,6 +11287,7 @@ def _(rid, params, pdb, conn) -> dict:
          icon=params.get("icon"),
          color=params.get("color"),
          board_slug=params.get("board_slug"),
@@ -1376,7 +1376,7 @@ index cb5fb91b2..08146cb87 100644
      )
      if params.get("use"):
          pdb.set_active(conn, pid)
-@@ -11095,6 +11099,7 @@ def _(rid, params, pdb, conn) -> dict:
+@@ -11315,6 +11319,7 @@ def _(rid, params, pdb, conn) -> dict:
          str(params.get("path") or ""),
          label=params.get("label"),
          is_primary=bool(params.get("is_primary")),
@@ -1384,7 +1384,7 @@ index cb5fb91b2..08146cb87 100644
      )
      return _ok(rid, {"project": pdb.get_project(conn, proj.id).to_dict()})
  
-@@ -11140,6 +11145,66 @@ def _(rid, params, pdb, conn) -> dict:
+@@ -11360,6 +11365,66 @@ def _(rid, params, pdb, conn) -> dict:
      return _ok(rid, {"project": proj.to_dict() if proj else None, "cwd": cwd, "branch": _git_branch_for_cwd(cwd)})
  
  
@@ -1451,7 +1451,7 @@ index cb5fb91b2..08146cb87 100644
  def _is_repo_junk(root: str) -> bool:
      """A git root we never auto-surface as a project: the bare home dir or
      anything under HERMES_HOME (~/.hermes by default) — config/sessions/skills,
-@@ -11149,11 +11214,17 @@ def _is_repo_junk(root: str) -> bool:
+@@ -11369,11 +11434,17 @@ def _is_repo_junk(root: str) -> bool:
  
      from hermes_constants import get_hermes_home
  
@@ -1473,6 +1473,3 @@ index cb5fb91b2..08146cb87 100644
  
  
  def _is_session_cwd_junk(cwd: str) -> bool:
--- 
-2.55.0.windows.3
-

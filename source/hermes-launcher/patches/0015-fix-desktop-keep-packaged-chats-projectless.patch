@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Thu, 30 Jul 2026 04:47:48 +0100
-Subject: [PATCH 15/30] fix(desktop): keep packaged chats projectless
+Subject: [PATCH 15/36] fix(desktop): keep packaged chats projectless
 
 ---
  .../e2e/hermes-local-functional.spec.ts       |  51 ++++++++
@@ -22,7 +22,7 @@ Subject: [PATCH 15/30] fix(desktop): keep packaged chats projectless
  15 files changed, 344 insertions(+), 149 deletions(-)
 
 diff --git a/apps/desktop/e2e/hermes-local-functional.spec.ts b/apps/desktop/e2e/hermes-local-functional.spec.ts
-index f4edde2ef..84b50002d 100644
+index f4edde2ef42ca104f96adff7756700b12bb95d4c..84b50002d40492a1e4bee540bf439eaa3f9878ea 100644
 --- a/apps/desktop/e2e/hermes-local-functional.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-functional.spec.ts
 @@ -35,6 +35,20 @@ interface LoginItemWindow {
@@ -98,7 +98,7 @@ index f4edde2ef..84b50002d 100644
        await expect(page.getByRole('button', { name: 'Refresh workstation' })).toBeEnabled({ timeout: 30_000 })
        await page.screenshot({ fullPage: true, path: path.join(evidence, 'packaged-home.png') })
 diff --git a/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx b/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
-index 326cdfcfd..12286dab3 100644
+index 326cdfcfd6fb2081e9fd4c7856b67d72d2892847..12286dab38e33f5000fef01842df79275a54296b 100644
 --- a/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
 +++ b/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
 @@ -6,20 +6,34 @@ import { $notifications, clearNotifications } from '@/store/notifications'
@@ -167,7 +167,7 @@ index 326cdfcfd..12286dab3 100644
 +  })
  })
 diff --git a/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx b/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
-index 842b1ac37..a94fa3d53 100644
+index 842b1ac37ec381acca5975fa573aafb1f1714756..a94fa3d5350e7ad56f65c0bf2145f3ca9091020c 100644
 --- a/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
 +++ b/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
 @@ -24,6 +24,9 @@ import { $newWorktreeRequest } from '@/store/projects'
@@ -215,7 +215,7 @@ index 842b1ac37..a94fa3d53 100644
            // once `status` exists, so a spinner here only ever fired on *refreshes*
            // of an already-loaded repo (window focus, turn settle), reading as an
 diff --git a/apps/desktop/src/app/gateway/hooks/use-gateway-boot.ts b/apps/desktop/src/app/gateway/hooks/use-gateway-boot.ts
-index f02ee69f5..4d4cfd6eb 100644
+index 99ccc0564cbdbb3972cabefd679958a3df2cc32a..4ed561153b1406428370385fa0a3285797260331 100644
 --- a/apps/desktop/src/app/gateway/hooks/use-gateway-boot.ts
 +++ b/apps/desktop/src/app/gateway/hooks/use-gateway-boot.ts
 @@ -4,7 +4,6 @@ import { useEffect, useRef } from 'react'
@@ -223,10 +223,10 @@ index f02ee69f5..4d4cfd6eb 100644
  import { HermesGateway } from '@/hermes'
  import { translateNow } from '@/i18n'
 -import { desktopDefaultCwd } from '@/lib/desktop-fs'
+ import { reconnectBackoffDelayMs } from '@/lib/reconnect-backoff'
  import {
    $desktopBoot,
-   applyDesktopBootProgress,
-@@ -27,14 +26,10 @@ import { $gatewaySwitching, wipeSessionListsForGatewaySwitch } from '@/store/gat
+@@ -28,14 +27,10 @@ import { $gatewaySwitching, wipeSessionListsForGatewaySwitch } from '@/store/gat
  import { notify, notifyError } from '@/store/notifications'
  import { $activeGatewayProfile, normalizeProfileKey, touchActiveGatewayBackend } from '@/store/profile'
  import {
@@ -241,7 +241,7 @@ index f02ee69f5..4d4cfd6eb 100644
    setSessionsLoading
  } from '@/store/session'
  import { $attentionSessionIds, $workingSessionIds, resetTileRuntimeBindings } from '@/store/session-states'
-@@ -247,16 +242,11 @@ export function useGatewayBoot({
+@@ -266,16 +261,11 @@ export function useGatewayBoot({
        }
      }
  
@@ -262,7 +262,7 @@ index f02ee69f5..4d4cfd6eb 100644
  
      // Soft gateway-mode apply: main tore down the primary without reloading.
 diff --git a/apps/desktop/src/app/session/hooks/use-session-actions.test.tsx b/apps/desktop/src/app/session/hooks/use-session-actions.test.tsx
-index 35110e481..7fc1aa386 100644
+index 1bdb521efabcb290138f6314b0a57bd37dfca60f..5b691ffd31fcafc883895ee0063e27ae20c38a9a 100644
 --- a/apps/desktop/src/app/session/hooks/use-session-actions.test.tsx
 +++ b/apps/desktop/src/app/session/hooks/use-session-actions.test.tsx
 @@ -546,7 +546,7 @@ describe('createBackendSessionForSend profile routing', () => {
@@ -284,7 +284,7 @@ index 35110e481..7fc1aa386 100644
  })
  
 diff --git a/apps/desktop/src/store/projects.test.ts b/apps/desktop/src/store/projects.test.ts
-index 8ab7d165e..ffcbcfcd3 100644
+index 8ab7d165ee565da48dfdc51e70ac10dcad774ca7..ffcbcfcd320d8e27dc70e83b0bea88a069526a9d 100644
 --- a/apps/desktop/src/store/projects.test.ts
 +++ b/apps/desktop/src/store/projects.test.ts
 @@ -140,7 +140,22 @@ describe('resolveNewSessionCwd', () => {
@@ -312,7 +312,7 @@ index 8ab7d165e..ffcbcfcd3 100644
    })
  
 diff --git a/apps/desktop/src/store/projects.ts b/apps/desktop/src/store/projects.ts
-index 2ba0d7e59..7184c8ed7 100644
+index 2ba0d7e59bbc9298d255192dd7f40a61f25c4967..7184c8ed70ee77179b2d3221960872f315617275 100644
 --- a/apps/desktop/src/store/projects.ts
 +++ b/apps/desktop/src/store/projects.ts
 @@ -16,15 +16,7 @@ import { $gateway, activeGateway, ensureActiveGatewayOpen } from '@/store/gatewa
@@ -425,7 +425,7 @@ index 2ba0d7e59..7184c8ed7 100644
    child === parent || child.startsWith(parent.endsWith('/') ? parent : `${parent}/`)
  
 diff --git a/apps/desktop/src/store/session.test.ts b/apps/desktop/src/store/session.test.ts
-index 415c167a1..a7dca1dec 100644
+index 415c167a195e2039f7f5b613933b3c7ed2e46bda..a7dca1dec86514e3c8d11dc37f61a83b5f05edab 100644
 --- a/apps/desktop/src/store/session.test.ts
 +++ b/apps/desktop/src/store/session.test.ts
 @@ -12,6 +12,7 @@ import {
@@ -498,7 +498,7 @@ index 415c167a1..a7dca1dec 100644
      // Back on local with no configured default: a bare new chat is detached and
      // never reads the remote keys (nor inherits the sticky local workspace).
 diff --git a/apps/desktop/src/store/session.ts b/apps/desktop/src/store/session.ts
-index 19e56b2c1..7042e9092 100644
+index 19e56b2c1b1292ae255ff2bde54914ab46ce89d5..7042e9092614d4dfed2d4ee9f69201f2425bc7ca 100644
 --- a/apps/desktop/src/store/session.ts
 +++ b/apps/desktop/src/store/session.ts
 @@ -125,9 +125,14 @@ export async function syncConfiguredDefaultProjectDir(): Promise<string> {
@@ -570,7 +570,7 @@ index 19e56b2c1..7042e9092 100644
  
    // A bare new chat starts DETACHED — no inherited cwd, so the composer's coding
 diff --git a/apps/desktop/src/store/updates.test.ts b/apps/desktop/src/store/updates.test.ts
-index 9dd1cbed6..d2b4f4311 100644
+index 9dd1cbed6a38761f7df86875494dfc2faaefec80..d2b4f43117badaa825b837c3fae11ed30a485917 100644
 --- a/apps/desktop/src/store/updates.test.ts
 +++ b/apps/desktop/src/store/updates.test.ts
 @@ -134,7 +134,7 @@ describe('reportBackendContract', () => {
@@ -594,7 +594,7 @@ index 9dd1cbed6..d2b4f4311 100644
    })
  })
 diff --git a/apps/desktop/src/store/updates.ts b/apps/desktop/src/store/updates.ts
-index c5e7b8587..2464e6a82 100644
+index c5e7b8587149bbeb63e846dc2db4f3b032e39fee..2464e6a82c78d0212730b61a32adb1003af5eaa9 100644
 --- a/apps/desktop/src/store/updates.ts
 +++ b/apps/desktop/src/store/updates.ts
 @@ -94,7 +94,8 @@ function isUpdateToastSnoozed(): boolean {
@@ -608,10 +608,10 @@ index c5e7b8587..2464e6a82 100644
  // The contract check runs on every session.resume (applyRuntimeInfo), so
  // without a snooze the warning re-popped on every thread the user opened, even
 diff --git a/tests/test_tui_gateway_server.py b/tests/test_tui_gateway_server.py
-index 024081748..165bca38c 100644
+index 18dae86177d8cab7257c429503baa328e14ea5b2..707945be60aa1806614e72caddf25614609ef857 100644
 --- a/tests/test_tui_gateway_server.py
 +++ b/tests/test_tui_gateway_server.py
-@@ -4961,6 +4961,110 @@ def test_ensure_session_db_row_defaults_desktop_to_no_workspace(monkeypatch, tmp
+@@ -5154,6 +5154,110 @@ def test_ensure_session_db_row_defaults_desktop_to_no_workspace(monkeypatch, tmp
      ]
  
  
@@ -722,7 +722,7 @@ index 024081748..165bca38c 100644
  def test_ensure_session_db_row_persists_session_model_override(monkeypatch):
      """The session's composer pick (model + effort + fast) must own the DB row.
  
-@@ -11021,6 +11125,7 @@ def test_session_branch_writes_to_parent_profile_db(monkeypatch, tmp_path):
+@@ -11434,6 +11538,7 @@ def test_session_branch_writes_to_parent_profile_db(monkeypatch, tmp_path):
              seen["created"] = new_key
              seen["parent"] = kwargs.get("parent_session_id")
              seen["profile_name"] = kwargs.get("profile_name")
@@ -730,7 +730,7 @@ index 024081748..165bca38c 100644
  
          def append_message(self, **kwargs):
              seen["msgs"].append(kwargs)
-@@ -11030,7 +11135,7 @@ def test_session_branch_writes_to_parent_profile_db(monkeypatch, tmp_path):
+@@ -11448,7 +11553,7 @@ def test_session_branch_writes_to_parent_profile_db(monkeypatch, tmp_path):
              return True
  
          def get_session(self, key):
@@ -739,7 +739,7 @@ index 024081748..165bca38c 100644
  
          def update_session_cwd(self, *a, **k):
              return None
-@@ -11050,7 +11155,8 @@ def test_session_branch_writes_to_parent_profile_db(monkeypatch, tmp_path):
+@@ -11468,7 +11573,8 @@ def test_session_branch_writes_to_parent_profile_db(monkeypatch, tmp_path):
          "running": False,
          "cols": 80,
          "profile_home": str(profile_home),
@@ -749,7 +749,7 @@ index 024081748..165bca38c 100644
          "agent": FakeAgent(),
          "created_at": 1.0,
          "last_active": 1.0,
-@@ -11086,12 +11192,15 @@ def test_session_branch_writes_to_parent_profile_db(monkeypatch, tmp_path):
+@@ -11504,12 +11610,15 @@ def test_session_branch_writes_to_parent_profile_db(monkeypatch, tmp_path):
          # The branch row is self-describing: stamped with the parent's owning
          # profile, not left NULL for aggregators to mis-tag as "default".
          assert seen.get("profile_name") == "mlperf"
@@ -766,7 +766,7 @@ index 024081748..165bca38c 100644
          # not just the row. Otherwise its own flushes (and a later compression
          # rotation) land on the launch db, splitting the lineage again.
 diff --git a/tests/tui_gateway/test_session_cwd_follow.py b/tests/tui_gateway/test_session_cwd_follow.py
-index 109e0c169..62e2e7819 100644
+index 109e0c1693a56777e3f3f6362dfc468efb5c6ffa..62e2e78198284e3f2156259ea76672c2c3cc0c5c 100644
 --- a/tests/tui_gateway/test_session_cwd_follow.py
 +++ b/tests/tui_gateway/test_session_cwd_follow.py
 @@ -48,7 +48,12 @@ def session(repo_with_worktree):
@@ -784,7 +784,7 @@ index 109e0c169..62e2e7819 100644
  
  
 diff --git a/tui_gateway/methods_session.py b/tui_gateway/methods_session.py
-index 44ef31ca8..8b7417bc0 100644
+index 1a3e09f16e49c5c75a42ca94e4fbfd8f36c290f0..b46ed702c521542feadc04ad04d1982ac0bec420 100644
 --- a/tui_gateway/methods_session.py
 +++ b/tui_gateway/methods_session.py
 @@ -124,6 +124,8 @@ def _(rid, params: dict) -> dict:
@@ -809,7 +809,7 @@ index 44ef31ca8..8b7417bc0 100644
                  "lazy": True,
                  "desktop_contract": DESKTOP_BACKEND_CONTRACT,
                  "profile_name": _response_profile_name(profile),
-@@ -369,7 +371,8 @@ def _(rid, params: dict) -> dict:
+@@ -373,7 +375,8 @@ def _(rid, params: dict) -> dict:
              target = tip
              found = db.get_session(target) or found
  
@@ -819,7 +819,7 @@ index 44ef31ca8..8b7417bc0 100644
          profile_home
      )
  
-@@ -431,6 +434,7 @@ def _(rid, params: dict) -> dict:
+@@ -436,6 +439,7 @@ def _(rid, params: dict) -> dict:
              close_on_disconnect=is_truthy_value(params.get("close_on_disconnect", False)),
              profile_home=profile_home,
              lazy=True,
@@ -827,10 +827,10 @@ index 44ef31ca8..8b7417bc0 100644
          )
          if (live := _claim_or_reuse_live(sid, target, record, lease)) is not None:
              return _ok(rid, _reuse_live_payload(*live))
-@@ -458,7 +462,9 @@ def _(rid, params: dict) -> dict:
-                 "resumed": target,
-                 "message_count": len(messages),
+@@ -464,7 +468,9 @@ def _(rid, params: dict) -> dict:
+                 "message_count": len(display_history) if omit_messages else len(messages),
                  "messages": messages,
+                 "messages_omitted": omit_messages,
 -                "info": _lazy_resume_info(cwd, profile=profile),
 +                "info": _lazy_resume_info(
 +                    _display_session_cwd(record), profile=profile
@@ -838,7 +838,7 @@ index 44ef31ca8..8b7417bc0 100644
                  "inflight": None,
                  "running": child_running,
                  "session_key": target,
-@@ -520,6 +526,7 @@ def _(rid, params: dict) -> dict:
+@@ -532,6 +538,7 @@ def _(rid, params: dict) -> dict:
              close_on_disconnect=is_truthy_value(params.get("close_on_disconnect", False)),
              display_history_prefix=prefix,
              profile_home=profile_home,
@@ -846,16 +846,16 @@ index 44ef31ca8..8b7417bc0 100644
              model_override=overrides.get("model_override"),
              resume_runtime_overrides=overrides or None,
          )
-@@ -537,7 +544,7 @@ def _(rid, params: dict) -> dict:
-             "message_count": len(messages),
+@@ -550,7 +557,7 @@ def _(rid, params: dict) -> dict:
              "messages": messages,
+             "messages_omitted": omit_messages,
              "info": _lazy_resume_info(
 -                cwd,
 +                _display_session_cwd(record),
                  model=model_override.get("model") or "",
                  provider=overrides.get("provider_override") or "",
                  profile=profile,
-@@ -656,6 +663,7 @@ def _(rid, params: dict) -> dict:
+@@ -678,6 +685,7 @@ def _(rid, params: dict) -> dict:
                      cwd=profile_resume_cwd,
                      session_db=db,
                      source=source,
@@ -863,7 +863,7 @@ index 44ef31ca8..8b7417bc0 100644
                  )
              finally:
                  if init_home_token is not None:
-@@ -2615,7 +2623,7 @@ def _(rid, params: dict) -> dict:
+@@ -2639,7 +2647,7 @@ def _(rid, params: dict) -> dict:
                  # thing that surfaces TUI branches. See issue #20856.
                  model_config={"_branched_from": old_key},
                  parent_session_id=old_key,
@@ -872,19 +872,19 @@ index 44ef31ca8..8b7417bc0 100644
                  # The branch stays on its parent's profile. Explicit stamp (not
                  # just the parent-backfill) so it holds even when the parent row
                  # predates the profile_name column.
-@@ -2678,6 +2686,7 @@ def _(rid, params: dict) -> dict:
+@@ -2720,6 +2728,7 @@ def _(rid, params: dict) -> dict:
                  session_db=branch_db,
                  source=source,
                  profile_home=parent_home,
 +                explicit_cwd=bool(session.get("explicit_cwd")),
              )
          finally:
-             if home_token is not None:
+             if secret_token is not None:
 diff --git a/tui_gateway/server.py b/tui_gateway/server.py
-index 029d8ae72..9df94c1e4 100644
+index 9d5fd00ce7d0becfd4581a5a3867c516a6d3b20a..01edaeb771abb7304100b21e168fba19b6cd4b43 100644
 --- a/tui_gateway/server.py
 +++ b/tui_gateway/server.py
-@@ -2313,10 +2313,21 @@ def _is_local_terminal_backend() -> bool:
+@@ -2447,10 +2447,21 @@ def _is_local_terminal_backend() -> bool:
  def _display_session_cwd(session: dict | None) -> str:
      """Session cwd for display/probe surfaces, healed past deleted worktrees.
  
@@ -906,7 +906,7 @@ index 029d8ae72..9df94c1e4 100644
      cwd = _session_cwd(session)
      if not _is_local_terminal_backend():
          return cwd
-@@ -4813,7 +4824,8 @@ def _current_profile_name() -> str:
+@@ -4958,7 +4969,8 @@ def _current_profile_name() -> str:
  # v3: adds approvals.mode config RPCs and session.info reconciliation.
  # v4: session.create fast=false is an explicit per-session normal-tier override.
  # v5: uvicorn ws_max_size raised for one-shot base64 file.attach frames (>16 MiB).
@@ -916,7 +916,7 @@ index 029d8ae72..9df94c1e4 100644
  
  
  def _session_usage_snapshot(session: dict | None) -> dict:
-@@ -6328,6 +6340,7 @@ def _init_session(
+@@ -6473,6 +6485,7 @@ def _init_session(
      session_db=None,
      source: str | None = None,
      profile_home: str | None = None,
@@ -924,7 +924,7 @@ index 029d8ae72..9df94c1e4 100644
  ):
      now = time.time()
      with _sessions_lock:
-@@ -6344,6 +6357,7 @@ def _init_session(
+@@ -6489,6 +6502,7 @@ def _init_session(
              "attached_images": [],
              "image_counter": 0,
              "cwd": cwd or _completion_cwd(),
@@ -932,7 +932,7 @@ index 029d8ae72..9df94c1e4 100644
              "cols": cols,
              "slash_worker": None,
              "show_reasoning": _load_show_reasoning(),
-@@ -6383,13 +6397,15 @@ def _init_session(
+@@ -6528,13 +6542,15 @@ def _init_session(
                  with _sessions_lock:
                      if sid in _sessions:
                          _sessions[sid]["cwd"] = row["cwd"]
@@ -953,7 +953,7 @@ index 029d8ae72..9df94c1e4 100644
                  except Exception:
                      logger.debug(
                          "failed to persist resumed session cwd", exc_info=True
-@@ -7522,6 +7538,7 @@ def _deferred_session_record(
+@@ -7667,6 +7683,7 @@ def _deferred_session_record(
      display_history_prefix: list | None = None,
      profile_home: Path | None = None,
      lazy: bool = False,
@@ -961,7 +961,7 @@ index 029d8ae72..9df94c1e4 100644
      model_override=None,
      resume_runtime_overrides: dict | None = None,
  ) -> dict:
-@@ -7540,7 +7557,7 @@ def _deferred_session_record(
+@@ -7685,7 +7702,7 @@ def _deferred_session_record(
          "cwd": cwd,
          "display_history_prefix": display_history_prefix or [],
          "edit_snapshots": {},
@@ -970,7 +970,7 @@ index 029d8ae72..9df94c1e4 100644
          "history": history,
          "history_lock": threading.Lock(),
          "history_version": 0,
-@@ -7689,9 +7706,11 @@ def _fallback_session_info(session: dict) -> dict:
+@@ -7834,9 +7851,11 @@ def _fallback_session_info(session: dict) -> dict:
      agent = session.get("agent")
      if agent is not None:
          return _session_info(agent)

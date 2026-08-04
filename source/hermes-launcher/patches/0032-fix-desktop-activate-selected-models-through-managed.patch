@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local CI <hermes-local-ci@localhost>
 Date: Sun, 2 Aug 2026 19:48:03 +0000
-Subject: [PATCH] fix(desktop): activate selected models through managed
+Subject: [PATCH 32/36] fix(desktop): activate selected models through managed
  restart
 
 ---
@@ -21,7 +21,7 @@ Subject: [PATCH] fix(desktop): activate selected models through managed
  create mode 100644 apps/desktop/electron/hermes-local-model-switch.ts
 
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index 1922d9218..491a87658 100644
+index 1922d921848c545ee4140cef4e1b9cec46eef5b6..491a87658b6dc8ea70700beccee1023a5a9207b6 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -14,6 +14,7 @@ import {
@@ -280,7 +280,7 @@ index 1922d9218..491a87658 100644
    )
 diff --git a/apps/desktop/electron/hermes-local-model-switch.test.ts b/apps/desktop/electron/hermes-local-model-switch.test.ts
 new file mode 100644
-index 000000000..5777cbb65
+index 0000000000000000000000000000000000000000..5777cbb65e2b4e1e80734776e69521a86dfe1b6a
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-model-switch.test.ts
 @@ -0,0 +1,81 @@
@@ -367,7 +367,7 @@ index 000000000..5777cbb65
 +})
 diff --git a/apps/desktop/electron/hermes-local-model-switch.ts b/apps/desktop/electron/hermes-local-model-switch.ts
 new file mode 100644
-index 000000000..c1099a10b
+index 0000000000000000000000000000000000000000..c1099a10bfed8c6eb2bb7ff4a8b5d24d81338b84
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-model-switch.ts
 @@ -0,0 +1,61 @@
@@ -433,7 +433,7 @@ index 000000000..c1099a10b
 +  return active && normalized !== 'GET' && normalized !== 'HEAD'
 +}
 diff --git a/apps/desktop/electron/hermes-local-task-model.test.ts b/apps/desktop/electron/hermes-local-task-model.test.ts
-index e76f82aec..b836a7b93 100644
+index e76f82aec13e6d45f61b320150ebcde1a46b01ce..b836a7b938d92a2533837a7dc3743a34b40d2091 100644
 --- a/apps/desktop/electron/hermes-local-task-model.test.ts
 +++ b/apps/desktop/electron/hermes-local-task-model.test.ts
 @@ -47,6 +47,14 @@ describe('Hermes Local task model', () => {
@@ -452,7 +452,7 @@ index e76f82aec..b836a7b93 100644
      const benchmark = running('benchmark')
  
 diff --git a/apps/desktop/electron/hermes-local-task-model.ts b/apps/desktop/electron/hermes-local-task-model.ts
-index 49e642b79..63ac85553 100644
+index 49e642b7936c9a0d4a8a1fb35075f933901e84e3..63ac8555346542659115d1b7f69ca29537211c40 100644
 --- a/apps/desktop/electron/hermes-local-task-model.ts
 +++ b/apps/desktop/electron/hermes-local-task-model.ts
 @@ -9,6 +9,7 @@ export type TaskAction =
@@ -564,7 +564,7 @@ index 49e642b79..63ac85553 100644
      status,
      updatedAt
 diff --git a/apps/desktop/electron/hermes-local-task-store.test.ts b/apps/desktop/electron/hermes-local-task-store.test.ts
-index 5b4e0e356..0d2d6588f 100644
+index 5b4e0e35600cf52f346ba074e180e3b472c665dc..0d2d6588f0f565656964b533e83d23f105b01c07 100644
 --- a/apps/desktop/electron/hermes-local-task-store.test.ts
 +++ b/apps/desktop/electron/hermes-local-task-store.test.ts
 @@ -45,6 +45,24 @@ describe('Hermes Local durable task store', () => {
@@ -593,7 +593,7 @@ index 5b4e0e356..0d2d6588f 100644
      const active = transitionTask(
        createTaskRecord('start', 'active', { kind: 'desktop-child-process', pid: 4242 }, createdAt),
 diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
-index a5d0c8826..5c3e01ae9 100644
+index 10f57d6961d42e6b01131df46d50ebc48f5b3669..23cf54faf5a17d9239c10456d202b83c5181a7b9 100644
 --- a/apps/desktop/electron/main.ts
 +++ b/apps/desktop/electron/main.ts
 @@ -138,9 +138,11 @@ import {
@@ -608,7 +608,7 @@ index a5d0c8826..5c3e01ae9 100644
  import { createLinkTitleWindow, guardLinkTitleSession, readLinkTitleWindowTitle } from './link-title-window'
  import { ensureMainWindow } from './main-window-lifecycle'
  import { isTrustedRendererUrl, shouldAllowRendererPermission } from './media-permissions'
-@@ -10247,6 +10249,10 @@ async function mergeRemoteProfileSessions(searchParams, remoteProfiles) {
+@@ -10253,6 +10255,10 @@ async function mergeRemoteProfileSessions(searchParams, remoteProfiles) {
  }
  
  ipcMain.handle('hermes:api', async (_event, request) => {
@@ -620,7 +620,7 @@ index a5d0c8826..5c3e01ae9 100644
    // each profile's on-disk state.db — fine for local profiles, but a remote
    // profile's sessions live on its remote host, so the UI's IDs 404 (or mutations
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index 6ef487692..72c01039c 100644
+index 6ef487692b1c8721d724d2665667f8fa1319ca30..72c01039c96e4c5670389b9a512d01c0b69f5786 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -544,9 +544,18 @@ function ModelManager({
@@ -746,7 +746,7 @@ index 6ef487692..72c01039c 100644
  
    const removeModel = useCallback(
 diff --git a/apps/desktop/src/app/local-workstation/task-centre.tsx b/apps/desktop/src/app/local-workstation/task-centre.tsx
-index 97d765547..bab3f1b81 100644
+index 97d7655472e23964e3b80b49cbfd60a2f3a3d5da..bab3f1b81529fec90f469d012cb911330ede0774 100644
 --- a/apps/desktop/src/app/local-workstation/task-centre.tsx
 +++ b/apps/desktop/src/app/local-workstation/task-centre.tsx
 @@ -42,6 +42,7 @@ const ACTION_COPY: Record<LocalActionTask['action'], { feature: string; label: s
@@ -767,7 +767,7 @@ index 97d765547..bab3f1b81 100644
    if (task.status === 'interrupted') {return 'Owner exited without a conclusive result'}
  
 diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
-index 095a6279b..aea0500f2 100644
+index 095a6279b9c80d4673bd5294fb99a56d718a87c3..aea0500f263e857c6f33b94b50b114ff1a7d84c1 100644
 --- a/apps/desktop/src/app/local-workstation/types.ts
 +++ b/apps/desktop/src/app/local-workstation/types.ts
 @@ -30,6 +30,7 @@ export type LocalAction =
@@ -820,7 +820,7 @@ index 095a6279b..aea0500f2 100644
      profile?: string
      restartCount?: number
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index 602d031ec..411f9ce23 100644
+index 602d031ecda14dead11c11f1a9e4ce03aac65773..411f9ce23f425df368bb1f0a6d47631861c1f156 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
 @@ -153,7 +153,11 @@ declare global {
@@ -836,6 +836,3 @@ index 602d031ec..411f9ce23 100644
          selectProfile: (name: string) => Promise<{ name: string }>
          snapshot: () => Promise<LocalWorkstationSnapshot>
          startAction: (action: LocalAction, input?: { profile?: string }) => Promise<LocalActionTask>
--- 
-2.55.0.windows.2
-

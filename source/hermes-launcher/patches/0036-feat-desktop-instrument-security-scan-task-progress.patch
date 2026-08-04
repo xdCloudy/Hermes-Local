@@ -1,7 +1,7 @@
-From d1f4c0843f5e3dd0133e3a291e02a5186f82d9e9 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local Integration <hermes-local-ci@localhost>
 Date: Mon, 3 Aug 2026 13:58:33 +0000
-Subject: [PATCH] feat(desktop): instrument security scan task progress
+Subject: [PATCH 36/36] feat(desktop): instrument security scan task progress
 
 ---
  apps/desktop/electron/hermes-local-control.ts | 228 +++++++++++++++++-
@@ -19,7 +19,7 @@ Subject: [PATCH] feat(desktop): instrument security scan task progress
  create mode 100644 apps/desktop/src/app/local-workstation/security-task.ts
 
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index 110f20c..c711326 100644
+index 69ccf19a037edee13b14eb93431ef3996d95a10a..f389ac0df474266c242434d6143d4fc1d0bc3573 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -37,6 +37,7 @@ import {
@@ -347,7 +347,7 @@ index 110f20c..c711326 100644
  }
 diff --git a/apps/desktop/electron/hermes-local-security-progress.test.ts b/apps/desktop/electron/hermes-local-security-progress.test.ts
 new file mode 100644
-index 0000000..b100314
+index 0000000000000000000000000000000000000000..9056b0ee16c25056a4a8d53373cda97ea693cfa1
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-security-progress.test.ts
 @@ -0,0 +1,191 @@
@@ -543,7 +543,7 @@ index 0000000..b100314
 +  })
 +})
 diff --git a/apps/desktop/electron/hermes-local-task-model.ts b/apps/desktop/electron/hermes-local-task-model.ts
-index f95ef25..7818e7e 100644
+index 01d3567166c985d9e0e374052358140d3c3d09fa..d148eda36ec54b4e1a2ade599e6dbf2dab21b016 100644
 --- a/apps/desktop/electron/hermes-local-task-model.ts
 +++ b/apps/desktop/electron/hermes-local-task-model.ts
 @@ -46,6 +46,15 @@ export interface TaskResult {
@@ -644,7 +644,7 @@ index f95ef25..7818e7e 100644
      resources: policy.resources.map(claim => ({ ...claim })),
      result,
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index 591b392..8b11d9f 100644
+index bead569e87bef2decb7cb9bba8fd447165df81d1..3f6f19150ba95e4921a3384dcc542e63b5d86117 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -33,6 +33,7 @@ import { Button } from '@/components/ui/button'
@@ -907,7 +907,7 @@ index 591b392..8b11d9f 100644
              onNavigate={navigate}
 diff --git a/apps/desktop/src/app/local-workstation/security-task-view.test.tsx b/apps/desktop/src/app/local-workstation/security-task-view.test.tsx
 new file mode 100644
-index 0000000..40bd1b8
+index 0000000000000000000000000000000000000000..7fb546e4193f914d98a1c8f390cb3d50b508e611
 --- /dev/null
 +++ b/apps/desktop/src/app/local-workstation/security-task-view.test.tsx
 @@ -0,0 +1,40 @@
@@ -953,7 +953,7 @@ index 0000000..40bd1b8
 +})
 diff --git a/apps/desktop/src/app/local-workstation/security-task.ts b/apps/desktop/src/app/local-workstation/security-task.ts
 new file mode 100644
-index 0000000..1d3c420
+index 0000000000000000000000000000000000000000..1559fde4dfcad1b9835a8d78a3716e9dfef570d5
 --- /dev/null
 +++ b/apps/desktop/src/app/local-workstation/security-task.ts
 @@ -0,0 +1,19 @@
@@ -977,7 +977,7 @@ index 0000000..1d3c420
 +      : task.status.charAt(0).toUpperCase() + task.status.slice(1)
 +}
 diff --git a/apps/desktop/src/app/local-workstation/task-centre.test.tsx b/apps/desktop/src/app/local-workstation/task-centre.test.tsx
-index 4e20d42..f1e5161 100644
+index 095c62b23357611b2019cc4f6ea622683435ef75..af939e60493a505352e89452e6459c07a8d1206c 100644
 --- a/apps/desktop/src/app/local-workstation/task-centre.test.tsx
 +++ b/apps/desktop/src/app/local-workstation/task-centre.test.tsx
 @@ -133,4 +133,43 @@ describe('Task Centre', () => {
@@ -1025,7 +1025,7 @@ index 4e20d42..f1e5161 100644
 +
  })
 diff --git a/apps/desktop/src/app/local-workstation/task-centre.tsx b/apps/desktop/src/app/local-workstation/task-centre.tsx
-index 80ac244..b7705ba 100644
+index bab3f1b81529fec90f469d012cb911330ede0774..67499e28d62850b1d8bcd67f51ef3b93e0eaad6c 100644
 --- a/apps/desktop/src/app/local-workstation/task-centre.tsx
 +++ b/apps/desktop/src/app/local-workstation/task-centre.tsx
 @@ -1,4 +1,5 @@
@@ -1116,7 +1116,7 @@ index 80ac244..b7705ba 100644
                  <span className="font-mono">{taskElapsed(selected)}</span>
                </DetailRow>
 diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
-index fc320d6..f338c80 100644
+index ae60d54b166bf1d9319877f75ea205c56b9c750a..1d6ae8ace1c96443cff4e106293c4c455fe3c64b 100644
 --- a/apps/desktop/src/app/local-workstation/types.ts
 +++ b/apps/desktop/src/app/local-workstation/types.ts
 @@ -98,6 +98,14 @@ export interface LocalActionTask {
@@ -1134,6 +1134,3 @@ index fc320d6..f338c80 100644
    queuedAt: string
    resources: {
      mode: 'exclusive' | 'shared'
--- 
-2.47.3
-

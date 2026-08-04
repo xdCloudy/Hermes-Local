@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
 Date: Fri, 31 Jul 2026 01:36:56 +0000
-Subject: [PATCH 20/30] feat(desktop): embed loopback dashboard securely
+Subject: [PATCH 20/36] feat(desktop): embed loopback dashboard securely
 
 Add a sandboxed WebContentsView for the configured loopback dashboard, keep authentication in the Electron session boundary, block cross-origin navigation and requests, preserve view state across Desktop routes, and recover from backend or renderer restarts.
 ---
@@ -21,7 +21,7 @@ Add a sandboxed WebContentsView for the configured loopback dashboard, keep auth
  create mode 100644 apps/desktop/electron/hermes-local-dashboard-view.ts
 
 diff --git a/apps/desktop/e2e/hermes-local-functional.spec.ts b/apps/desktop/e2e/hermes-local-functional.spec.ts
-index 85b9342bd..24c52a969 100644
+index 85b9342bd667c0cb1e3d813da2c2353c9b4feaba..24c52a969d0adfb29ec8c832e2b0aae996e77397 100644
 --- a/apps/desktop/e2e/hermes-local-functional.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-functional.spec.ts
 @@ -245,7 +245,7 @@ test.describe('Hermes Local packaged functional acceptance', () => {
@@ -34,7 +34,7 @@ index 85b9342bd..24c52a969 100644
        await nav.getByRole('button', { exact: true, name: 'Models' }).click()
        await expect(page.getByRole('button', { exact: true, name: 'Register GGUF' })).toBeEnabled()
 diff --git a/apps/desktop/e2e/hermes-local-workstation.spec.ts b/apps/desktop/e2e/hermes-local-workstation.spec.ts
-index dd265c6d9..c1ac6a2dc 100644
+index dd265c6d93cf9b523831961d2daf667cfc6de64c..c1ac6a2dc2860536907006017fc05f616a107004 100644
 --- a/apps/desktop/e2e/hermes-local-workstation.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-workstation.spec.ts
 @@ -208,7 +208,7 @@ test.describe('Hermes Local packaged workstation', () => {
@@ -47,7 +47,7 @@ index dd265c6d9..c1ac6a2dc 100644
        await workstationNav.getByRole('button', { name: 'Sessions', exact: true }).click()
        await expect(page.getByRole('heading', { name: 'Sessions', exact: true })).toBeVisible()
 diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
-index ae9ca57f7..c2d859cfb 100644
+index ae9ca57f70086341c894a8f510dbf3f96d2019fb..c2d859cfbf57f71c18c84332b5f5eff52e287164 100644
 --- a/apps/desktop/electron/hermes-local-control.test.ts
 +++ b/apps/desktop/electron/hermes-local-control.test.ts
 @@ -8,9 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -64,7 +64,7 @@ index ae9ca57f7..c2d859cfb 100644
      openExternal: vi.fn(),
      openPath: vi.fn()
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index 9c4cfb8c2..d8c11d545 100644
+index 9c4cfb8c2112d0717070b4cf6b4b618889bf0ef7..d8c11d545f5b77b92b12cbc9606395dc859f4002 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -7,6 +7,12 @@ import { promisify } from 'node:util'
@@ -143,7 +143,7 @@ index 9c4cfb8c2..d8c11d545 100644
  
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.test.ts b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 new file mode 100644
-index 000000000..5cbbb0595
+index 0000000000000000000000000000000000000000..5cbbb0595eaff6fce608b8880709a71e71d28a0c
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.test.ts
 @@ -0,0 +1,253 @@
@@ -402,7 +402,7 @@ index 000000000..5cbbb0595
 +})
 diff --git a/apps/desktop/electron/hermes-local-dashboard-view.ts b/apps/desktop/electron/hermes-local-dashboard-view.ts
 new file mode 100644
-index 000000000..ddc518f72
+index 0000000000000000000000000000000000000000..ddc518f72d1e2f0cd48de575e9fd011deba0003b
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-dashboard-view.ts
 @@ -0,0 +1,596 @@
@@ -1003,7 +1003,7 @@ index 000000000..ddc518f72
 +  }
 +}
 diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
-index 46d16d0ec..cfc733af7 100644
+index 13a15d8d167c984954a369a0268946e5b8595d0e..4a158ca594ebb860f041468a72d2fbcadb0a20c1 100644
 --- a/apps/desktop/electron/main.ts
 +++ b/apps/desktop/electron/main.ts
 @@ -140,6 +140,7 @@ import {
@@ -1029,7 +1029,7 @@ index 46d16d0ec..cfc733af7 100644
  const backendConnectionState = createBackendConnectionState<ReturnType<typeof spawn>, any>()
  const remoteLiveness = new RemoteLivenessTracker()
  const remoteRevalidation = new RemoteRevalidationCoordinator()
-@@ -9339,6 +9348,7 @@ function createWindow() {
+@@ -9345,6 +9354,7 @@ function createWindow() {
    mainWindow.on('closed', () => {
      closePetOverlay()
      wakeIndicatorController.close()
@@ -1037,7 +1037,7 @@ index 46d16d0ec..cfc733af7 100644
  
      if (mainWindow === createdMainWindow) {
        mainWindow = null
-@@ -9453,7 +9463,7 @@ function createWindow() {
+@@ -9459,7 +9469,7 @@ function createWindow() {
    })
  }
  
@@ -1046,7 +1046,7 @@ index 46d16d0ec..cfc733af7 100644
  
  ipcMain.handle('hermes:connection', async (_event, profile) => ensureBackend(profile))
  // Reconnect-after-wake recovery. A REMOTE primary backend has no child process,
-@@ -11999,6 +12009,10 @@ app.on('before-quit', event => {
+@@ -12005,6 +12015,10 @@ app.on('before-quit', event => {
      }
    }
  
@@ -1058,7 +1058,7 @@ index 46d16d0ec..cfc733af7 100644
    // pet can't keep the process alive or float over a quit app.
    closePetOverlay()
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
-index 149c29dc5..288e2ea4a 100644
+index 149c29dc565a7f49f1b90fe61b80a21072652a6d..288e2ea4ab38ad9e7f5277310c4b95d9d379d002 100644
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
 @@ -120,6 +120,19 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
@@ -1082,7 +1082,7 @@ index 149c29dc5..288e2ea4a 100644
      openRoot: () => ipcRenderer.invoke('hermes:local:root:open')
    },
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index b47a7a72d..a4187b821 100644
+index b47a7a72d462530dcc2ad7dd2868492a43b4ed12..a4187b8215fd549b3b8b17ef31a6de185e2a923e 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -24,7 +24,7 @@ import IconSquare from '@tabler/icons-react/dist/esm/icons/IconSquare.mjs'
@@ -1321,7 +1321,7 @@ index b47a7a72d..a4187b821 100644
  
    if (section === 'tasks') {
 diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
-index cfa9be5b6..cd428766d 100644
+index cfa9be5b67424723c4563931f5b7055fa31b4026..cd428766d093eefb546f0bf179f56f354626a6a1 100644
 --- a/apps/desktop/src/app/local-workstation/types.ts
 +++ b/apps/desktop/src/app/local-workstation/types.ts
 @@ -1,3 +1,26 @@
@@ -1352,7 +1352,7 @@ index cfa9be5b6..cd428766d 100644
    | 'backup'
    | 'benchmark'
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index a1cc14131..a31f5eb89 100644
+index a1cc14131b95314716abf7fbc121ed6a0aeb9fe2..a31f5eb897af7b9e21fabd4c2f0a66ea9bfda02b 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
 @@ -2,6 +2,8 @@ import type { GatewayWsUrlResult } from '@hermes/shared'

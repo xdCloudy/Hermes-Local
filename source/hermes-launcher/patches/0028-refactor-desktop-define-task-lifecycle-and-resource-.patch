@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local Compatibility CI <hermes-local-ci@localhost>
 Date: Sat, 1 Aug 2026 18:13:44 +0100
-Subject: [PATCH 28/30] refactor(desktop): define task lifecycle and resource
+Subject: [PATCH 28/36] refactor(desktop): define task lifecycle and resource
  locks
 
 ---
@@ -16,7 +16,7 @@ Subject: [PATCH 28/30] refactor(desktop): define task lifecycle and resource
  create mode 100644 apps/desktop/electron/hermes-local-task-model.ts
 
 diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
-index 90bb47083..1f72dbf64 100644
+index 90bb47083834f8c2f1db627d07a3e4971ad6cb42..1f72dbf643b0d6ed47fc2740449983536e199d50 100644
 --- a/apps/desktop/electron/hermes-local-control.test.ts
 +++ b/apps/desktop/electron/hermes-local-control.test.ts
 @@ -138,17 +138,28 @@ describe('Hermes Local Electron boundary', () => {
@@ -113,7 +113,7 @@ index 90bb47083..1f72dbf64 100644
      expect(taskMap.has('completed-54')).toBe(true)
    })
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index 8ec12e7ee..1f79fadee 100644
+index 8ec12e7ee4f943506cae62798f3a4df79c11d1ac..1f79fadeef3a9479a3608b7a78b47fcd21a7a434 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -1,5 +1,6 @@
@@ -464,7 +464,7 @@ index 8ec12e7ee..1f79fadee 100644
    setLoginItem,
 diff --git a/apps/desktop/electron/hermes-local-task-model.test.ts b/apps/desktop/electron/hermes-local-task-model.test.ts
 new file mode 100644
-index 000000000..a780d2de9
+index 0000000000000000000000000000000000000000..a780d2de9f98ce1f5c594cc4648197162f5774e2
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-task-model.test.ts
 @@ -0,0 +1,113 @@
@@ -583,7 +583,7 @@ index 000000000..a780d2de9
 +})
 diff --git a/apps/desktop/electron/hermes-local-task-model.ts b/apps/desktop/electron/hermes-local-task-model.ts
 new file mode 100644
-index 000000000..546dc7a33
+index 0000000000000000000000000000000000000000..546dc7a334076d09cbef7f8085dba586371dc23e
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-task-model.ts
 @@ -0,0 +1,281 @@
@@ -869,7 +869,7 @@ index 000000000..546dc7a33
 +  }
 +}
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index aa91f80e0..daf689616 100644
+index aa91f80e01aea76a6d6f1a8b22c379d07075ddf3..daf689616627d2ea776e215a94e8603ae9e83d51 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -163,13 +163,13 @@ function ActionButton({
@@ -899,7 +899,7 @@ index aa91f80e0..daf689616 100644
            next = await window.hermesDesktop.localWorkstation.actionStatus(next.id)
            setTask(next)
 diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
-index cd428766d..c1531b127 100644
+index cd428766d093eefb546f0bf179f56f354626a6a1..c1531b1275a4d75f0f25dad45ea44772bb23f43a 100644
 --- a/apps/desktop/src/app/local-workstation/types.ts
 +++ b/apps/desktop/src/app/local-workstation/types.ts
 @@ -38,11 +38,29 @@ export type LocalLog = 'dashboard' | 'hermes' | 'launcher' | 'model' | 'security

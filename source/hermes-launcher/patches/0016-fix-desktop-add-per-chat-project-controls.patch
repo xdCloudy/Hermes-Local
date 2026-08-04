@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Thu, 30 Jul 2026 05:05:40 +0100
-Subject: [PATCH 16/30] fix(desktop): add per-chat project controls
+Subject: [PATCH 16/36] fix(desktop): add per-chat project controls
 
 ---
  apps/desktop/src/app/chat/composer/index.tsx  |  20 +++
@@ -30,7 +30,7 @@ Subject: [PATCH 16/30] fix(desktop): add per-chat project controls
  23 files changed, 360 insertions(+), 67 deletions(-)
 
 diff --git a/apps/desktop/src/app/chat/composer/index.tsx b/apps/desktop/src/app/chat/composer/index.tsx
-index 3767a4ad4..bf6034080 100644
+index 28dbcf23a67b193b54ef9dc5b6cac9b7e0a1a614..dd8e03f9e293e86dc2af052d7c0548f6bf2c74ee 100644
 --- a/apps/desktop/src/app/chat/composer/index.tsx
 +++ b/apps/desktop/src/app/chat/composer/index.tsx
 @@ -8,6 +8,7 @@ import { Slot as ContribSlot } from '@/contrib/react/slot'
@@ -72,7 +72,7 @@ index 3767a4ad4..bf6034080 100644
    // The draft engine — detached source of truth (DOM + draftRef + edge
    // selectors); typing never re-renders the chrome. ChatBar owns `queueEditRef`
    // and threads it in so the draft↔queue coupling is an explicit dep, not a tangle.
-@@ -1193,6 +1211,7 @@ export function ChatBar({
+@@ -1191,6 +1209,7 @@ export function ChatBar({
                  />
                  <CodingStatusRow
                    onBranchOff={handleBranchOff}
@@ -80,7 +80,7 @@ index 3767a4ad4..bf6034080 100644
                    onConvertBranch={handleConvertBranch}
                    onListBranches={handleListBranches}
                    // A tile's rail reviews ITS worktree: pin the pane's scope to
-@@ -1200,6 +1219,7 @@ export function ChatBar({
+@@ -1198,6 +1217,7 @@ export function ChatBar({
                    // active-session scope (null).
                    onOpen={() => toggleReview(scope.target === 'main' ? null : (cwd ?? null))}
                    onOpenWorktree={openInWorktree}
@@ -89,7 +89,7 @@ index 3767a4ad4..bf6034080 100644
                    repoPath={cwd}
                  />
 diff --git a/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx b/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
-index 12286dab3..b7e22137c 100644
+index 12286dab38e33f5000fef01842df79275a54296b..b7e22137c616771c0449efbd0a84b96e8db6e5a4 100644
 --- a/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
 +++ b/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
 @@ -27,8 +27,12 @@ vi.mock('@/store/coding-status', () => ({
@@ -141,7 +141,7 @@ index 12286dab3..b7e22137c 100644
    })
  })
 diff --git a/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx b/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
-index a94fa3d53..7d533ca43 100644
+index a94fa3d5350e7ad56f65c0bf2145f3ca9091020c..7d533ca4373078b6f196e60746bdee0e6e829509 100644
 --- a/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
 +++ b/apps/desktop/src/app/chat/composer/status-stack/coding-row.tsx
 @@ -40,8 +40,12 @@ interface CodingStatusRowProps {
@@ -339,7 +339,7 @@ index a94fa3d53..7d533ca43 100644
                    size="icon-xs"
                    variant="ghost"
 diff --git a/apps/desktop/src/app/chat/composer/types.ts b/apps/desktop/src/app/chat/composer/types.ts
-index 24abcf373..77187d35e 100644
+index 24abcf3736971ffac03681ead772078b8265e497..77187d35eb0d843452a6acf3f3d0fc7d1331f50c 100644
 --- a/apps/desktop/src/app/chat/composer/types.ts
 +++ b/apps/desktop/src/app/chat/composer/types.ts
 @@ -42,6 +42,7 @@ export interface ChatBarProps {
@@ -351,7 +351,7 @@ index 24abcf373..77187d35e 100644
    onAddUrl?: (url: string) => void
    onAttachImageBlob?: (blob: Blob) => Promise<boolean | void> | boolean | void
 diff --git a/apps/desktop/src/app/chat/index.tsx b/apps/desktop/src/app/chat/index.tsx
-index 3d72bf341..78f4106e5 100644
+index 7a0c0a2674c302102b7f72b9b94d6044e2dc139a..a3ae03f00f8b958a496fe01d42ac1c95bd05f6ba 100644
 --- a/apps/desktop/src/app/chat/index.tsx
 +++ b/apps/desktop/src/app/chat/index.tsx
 @@ -70,6 +70,7 @@ interface ChatViewProps extends Omit<React.ComponentProps<'div'>, 'onSubmit'> {
@@ -362,7 +362,7 @@ index 3d72bf341..78f4106e5 100644
    onAddContextRef: (refText: string, label?: string, detail?: string) => void
    onAddUrl: (url: string) => void
    onBranchInNewChat?: (messageId: string) => void
-@@ -247,6 +248,7 @@ export function ChatView({
+@@ -250,6 +251,7 @@ export const ChatView = memo(function ChatView({
    onToggleSelectedPin,
    onDeleteSelectedSession,
    onCancel,
@@ -370,7 +370,7 @@ index 3d72bf341..78f4106e5 100644
    onAddContextRef,
    onAddUrl,
    onAttachImageBlob,
-@@ -579,6 +581,7 @@ export function ChatView({
+@@ -582,6 +584,7 @@ export const ChatView = memo(function ChatView({
                onAttachDroppedItems={onAttachDroppedItems}
                onAttachImageBlob={onAttachImageBlob}
                onCancel={onCancel}
@@ -379,7 +379,7 @@ index 3d72bf341..78f4106e5 100644
                onPickFiles={onPickFiles}
                onPickFolders={onPickFolders}
 diff --git a/apps/desktop/src/app/contrib/latest-actions.ts b/apps/desktop/src/app/contrib/latest-actions.ts
-index 7d191208a..b8f38eac8 100644
+index 7d191208a27c762087f07aaf79027a55fed6803d..b8f38eac819552a6bdcb351c648ded31788ef4ce 100644
 --- a/apps/desktop/src/app/contrib/latest-actions.ts
 +++ b/apps/desktop/src/app/contrib/latest-actions.ts
 @@ -36,6 +36,7 @@ export function latestChatActions(actions: ChatActions): ChatActions {
@@ -391,7 +391,7 @@ index 7d191208a..b8f38eac8 100644
      onDismissError: latestOptional(() => actions.onDismissError),
      onEdit: (...args) => actions.onEdit(...args),
 diff --git a/apps/desktop/src/app/contrib/types.ts b/apps/desktop/src/app/contrib/types.ts
-index 1e2c60ac7..947026d56 100644
+index 1e2c60ac776a0f5ee84b84b1cc028bda296d0921..947026d56ca32e4be411c56d10b0a0a5df357b20 100644
 --- a/apps/desktop/src/app/contrib/types.ts
 +++ b/apps/desktop/src/app/contrib/types.ts
 @@ -34,6 +34,7 @@ export type ChatActions = Pick<
@@ -403,7 +403,7 @@ index 1e2c60ac7..947026d56 100644
    | 'onDismissError'
    | 'onEdit'
 diff --git a/apps/desktop/src/app/contrib/wiring.tsx b/apps/desktop/src/app/contrib/wiring.tsx
-index a39a16dd8..306bd7162 100644
+index a39a16dd86158ec55dd0401499fbadf39ddc467f..306bd71625c46c85f46380307068221dd8537059 100644
 --- a/apps/desktop/src/app/contrib/wiring.tsx
 +++ b/apps/desktop/src/app/contrib/wiring.tsx
 @@ -270,7 +270,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
@@ -424,7 +424,7 @@ index a39a16dd8..306bd7162 100644
        const id = $selectedStoredSessionId.get()
  
 diff --git a/apps/desktop/src/app/session/hooks/use-cwd-actions.test.tsx b/apps/desktop/src/app/session/hooks/use-cwd-actions.test.tsx
-index 213c5d205..3c1208202 100644
+index 213c5d2054d61a7023a0c48f3d4575517a576e42..3c1208202249432cb4208376fbfe2a1682b3d8a8 100644
 --- a/apps/desktop/src/app/session/hooks/use-cwd-actions.test.tsx
 +++ b/apps/desktop/src/app/session/hooks/use-cwd-actions.test.tsx
 @@ -29,15 +29,18 @@ function deferred<T>() {
@@ -506,7 +506,7 @@ index 213c5d205..3c1208202 100644
 +  })
  })
 diff --git a/apps/desktop/src/app/session/hooks/use-cwd-actions.ts b/apps/desktop/src/app/session/hooks/use-cwd-actions.ts
-index 0943131d0..742537993 100644
+index 0943131d0d2c4d89c5bdbd843ce789f3c24ae3d7..742537993c95d59e1d6542d2038119909d3ae413 100644
 --- a/apps/desktop/src/app/session/hooks/use-cwd-actions.ts
 +++ b/apps/desktop/src/app/session/hooks/use-cwd-actions.ts
 @@ -49,10 +49,6 @@ export function useCwdActions({ activeSessionIdRef, onSessionRuntimeInfo, reques
@@ -561,7 +561,7 @@ index 0943131d0..742537993 100644
          setCurrentBranch('')
          notify({
 diff --git a/apps/desktop/src/i18n/ar.ts b/apps/desktop/src/i18n/ar.ts
-index 6c37bec28..d5019672e 100644
+index 1d3e86cf6d39952099c71ec2e2720eb6f72a6984..60f05e10f6d5974e6466287fac68e451cb7f7fc9 100644
 --- a/apps/desktop/src/i18n/ar.ts
 +++ b/apps/desktop/src/i18n/ar.ts
 @@ -2126,6 +2126,7 @@ export const ar = defineLocale({
@@ -573,7 +573,7 @@ index 6c37bec28..d5019672e 100644
      remotePickerDescription: 'استعرض المجلدات على الخادم الخلفي المتصل.',
      remotePickerSelect: 'تحديد المجلد',
 diff --git a/apps/desktop/src/i18n/en.ts b/apps/desktop/src/i18n/en.ts
-index cfe5e227b..c5a4164c3 100644
+index 1ec774b30098492423611e90f89a7f95eee0e291..15b398f928a702e977074c1bbf08e83433787a6a 100644
 --- a/apps/desktop/src/i18n/en.ts
 +++ b/apps/desktop/src/i18n/en.ts
 @@ -2548,6 +2548,7 @@ export const en: Translations = {
@@ -585,7 +585,7 @@ index cfe5e227b..c5a4164c3 100644
      remotePickerDescription: 'Browse folders on the connected backend.',
      remotePickerSelect: 'Select folder',
 diff --git a/apps/desktop/src/i18n/ja.ts b/apps/desktop/src/i18n/ja.ts
-index c855cb209..1d8892557 100644
+index 2a003ab57172b8245253da705c41f5b660856092..4bf502e1eecc8617628e81af5af161cbaee13b99 100644
 --- a/apps/desktop/src/i18n/ja.ts
 +++ b/apps/desktop/src/i18n/ja.ts
 @@ -2377,6 +2377,7 @@ export const ja = defineLocale({
@@ -597,7 +597,7 @@ index c855cb209..1d8892557 100644
      remotePickerDescription: '接続中のバックエンド上のフォルダーを参照します。',
      remotePickerSelect: 'フォルダーを選択',
 diff --git a/apps/desktop/src/i18n/types.ts b/apps/desktop/src/i18n/types.ts
-index 79b56030d..242f87299 100644
+index b82feb40011e11158376d15d34a9a866fed94588..4305b3e646e666a62ac281deb47b73321257f883 100644
 --- a/apps/desktop/src/i18n/types.ts
 +++ b/apps/desktop/src/i18n/types.ts
 @@ -2133,6 +2133,7 @@ export interface Translations {
@@ -609,7 +609,7 @@ index 79b56030d..242f87299 100644
      remotePickerDescription: string
      remotePickerSelect: string
 diff --git a/apps/desktop/src/i18n/zh-hant.ts b/apps/desktop/src/i18n/zh-hant.ts
-index f51b2f0c7..adac34f8b 100644
+index d139bf3b8fae7740f5c2ed2c83e34142dca93f6a..1d1d5582ab338ba9b944c52bad5a9c5205243061 100644
 --- a/apps/desktop/src/i18n/zh-hant.ts
 +++ b/apps/desktop/src/i18n/zh-hant.ts
 @@ -2300,6 +2300,7 @@ export const zhHant = defineLocale({
@@ -621,7 +621,7 @@ index f51b2f0c7..adac34f8b 100644
      remotePickerDescription: '瀏覽已連線後端上的資料夾。',
      remotePickerSelect: '選擇資料夾',
 diff --git a/apps/desktop/src/i18n/zh.ts b/apps/desktop/src/i18n/zh.ts
-index 7c264933a..99caad166 100644
+index b03447dd247a4f94c77dbb31cafb63674d5cc896..0c2b7b5e73366d77f7b88cbb308edff39fda3f2a 100644
 --- a/apps/desktop/src/i18n/zh.ts
 +++ b/apps/desktop/src/i18n/zh.ts
 @@ -2729,6 +2729,7 @@ export const zh: Translations = {
@@ -633,7 +633,7 @@ index 7c264933a..99caad166 100644
      remotePickerDescription: '浏览已连接后端上的文件夹。',
      remotePickerSelect: '选择文件夹',
 diff --git a/apps/desktop/src/store/updates.test.ts b/apps/desktop/src/store/updates.test.ts
-index d2b4f4311..9298491f1 100644
+index d2b4f43117badaa825b837c3fae11ed30a485917..9298491f1927be91e31e120c3fc3208c0de7a09b 100644
 --- a/apps/desktop/src/store/updates.test.ts
 +++ b/apps/desktop/src/store/updates.test.ts
 @@ -134,7 +134,7 @@ describe('reportBackendContract', () => {
@@ -657,7 +657,7 @@ index d2b4f4311..9298491f1 100644
    })
  })
 diff --git a/apps/desktop/src/store/updates.ts b/apps/desktop/src/store/updates.ts
-index 2464e6a82..0fe6eaafd 100644
+index 2464e6a82c78d0212730b61a32adb1003af5eaa9..0fe6eaafdb2db0d43b75e8e8f1d6f8cbefdd70a6 100644
 --- a/apps/desktop/src/store/updates.ts
 +++ b/apps/desktop/src/store/updates.ts
 @@ -95,7 +95,8 @@ function isUpdateToastSnoozed(): boolean {
@@ -671,10 +671,10 @@ index 2464e6a82..0fe6eaafd 100644
  // The contract check runs on every session.resume (applyRuntimeInfo), so
  // without a snooze the warning re-popped on every thread the user opened, even
 diff --git a/hermes_state.py b/hermes_state.py
-index 4f7b64534..c06340efb 100644
+index 0396567c80b724d84af075a60ce1eee4850da6c5..9f1d4148e7ffe4f15e810615ae2bc5be6d61b9a3 100644
 --- a/hermes_state.py
 +++ b/hermes_state.py
-@@ -3482,6 +3482,19 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
+@@ -3603,6 +3603,19 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
  
          self._execute_write(_do)
  
@@ -695,10 +695,10 @@ index 4f7b64534..c06340efb 100644
          """Persist resolved git repo roots for cwds that don't have one yet.
  
 diff --git a/tests/test_hermes_state.py b/tests/test_hermes_state.py
-index dd54682ef..067ff9fe8 100644
+index 74a028c754713a321dcd50ce27187dba6aaf858b..45a849cdf539ec63f110ced0192a98a3b27966f9 100644
 --- a/tests/test_hermes_state.py
 +++ b/tests/test_hermes_state.py
-@@ -108,6 +108,22 @@ class TestSessionLifecycle:
+@@ -213,6 +213,22 @@ class TestSessionLifecycle:
          assert session["cwd"] == "/work/repo"
          assert session["git_branch"] == "pets-feature"
  
@@ -722,10 +722,10 @@ index dd54682ef..067ff9fe8 100644
  
  
 diff --git a/tests/test_tui_gateway_server.py b/tests/test_tui_gateway_server.py
-index 165bca38c..45ae312b2 100644
+index 707945be60aa1806614e72caddf25614609ef857..22ed91faf159eb8f86a6178ae7b48b4e38eacb72 100644
 --- a/tests/test_tui_gateway_server.py
 +++ b/tests/test_tui_gateway_server.py
-@@ -2981,6 +2981,61 @@ def test_session_cwd_set_profile_session_updates_profile_db(monkeypatch, tmp_pat
+@@ -2994,6 +2994,61 @@ def test_session_cwd_set_profile_session_updates_profile_db(monkeypatch, tmp_pat
      assert "launch_update" not in captured
  
  
@@ -788,10 +788,10 @@ index 165bca38c..45ae312b2 100644
      """A bare billing bucket ("custom"/"auto"/"openrouter") must not be restored as the
      provider identity on resume. A custom endpoint that never used `/model` persists only
 diff --git a/tui_gateway/methods_session.py b/tui_gateway/methods_session.py
-index 8b7417bc0..22dc08039 100644
+index b46ed702c521542feadc04ad04d1982ac0bec420..e94ba932d4979b14d752694e200fef8c7e008d08 100644
 --- a/tui_gateway/methods_session.py
 +++ b/tui_gateway/methods_session.py
-@@ -716,18 +716,25 @@ def _(rid, params: dict) -> dict:
+@@ -739,18 +739,25 @@ def _(rid, params: dict) -> dict:
          return _err(rid, 4009, "session busy")
      raw = str(params.get("cwd", "") or "").strip()
      if not raw:
@@ -829,10 +829,10 @@ index 8b7417bc0..22dc08039 100644
      return _ok(rid, info)
  
 diff --git a/tui_gateway/server.py b/tui_gateway/server.py
-index 9df94c1e4..cb5fb91b2 100644
+index 01edaeb771abb7304100b21e168fba19b6cd4b43..fd5217bafbf56d56fc8dcf99433965fe2c817313 100644
 --- a/tui_gateway/server.py
 +++ b/tui_gateway/server.py
-@@ -2740,6 +2740,29 @@ def _set_session_cwd(session: dict, cwd: str) -> str:
+@@ -2884,6 +2884,29 @@ def _set_session_cwd(session: dict, cwd: str) -> str:
      return resolved
  
  
@@ -862,7 +862,7 @@ index 9df94c1e4..cb5fb91b2 100644
  # ── Config I/O ────────────────────────────────────────────────────────
  
  
-@@ -4825,7 +4848,8 @@ def _current_profile_name() -> str:
+@@ -4970,7 +4993,8 @@ def _current_profile_name() -> str:
  # v4: session.create fast=false is an explicit per-session normal-tier override.
  # v5: uvicorn ws_max_size raised for one-shot base64 file.attach frames (>16 MiB).
  # v6: implicit desktop execution cwd is never reported as an attached workspace.

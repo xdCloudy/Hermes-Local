@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local Compatibility CI <hermes-local-ci@localhost>
 Date: Sat, 1 Aug 2026 20:25:51 +0100
-Subject: [PATCH 30/30] feat(desktop): build authoritative Task Centre
+Subject: [PATCH 30/36] feat(desktop): build authoritative Task Centre
 
 ---
  apps/desktop/electron/hermes-local-control.ts | 106 +++-
@@ -19,7 +19,7 @@ Subject: [PATCH 30/30] feat(desktop): build authoritative Task Centre
  create mode 100644 apps/desktop/src/app/local-workstation/task-centre.tsx
 
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index fb915b16a..1922d9218 100644
+index fb915b16a741b51efd0c92dde7717f4725d372ca..1922d921848c545ee4140cef4e1b9cec46eef5b6 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -32,9 +32,12 @@ import {
@@ -177,7 +177,7 @@ index fb915b16a..1922d9218 100644
    ipcMain.handle('hermes:local:login-item:get', loginItemStatus)
    ipcMain.handle('hermes:local:login-item:set', (_event, enabled) => setLoginItem(enabled))
 diff --git a/apps/desktop/electron/hermes-local-task-model.test.ts b/apps/desktop/electron/hermes-local-task-model.test.ts
-index 1d52fe7c8..e76f82aec 100644
+index 1d52fe7c897e9c6ee4955bd6519a1522b13a74ca..e76f82aec13e6d45f61b320150ebcde1a46b01ce 100644
 --- a/apps/desktop/electron/hermes-local-task-model.test.ts
 +++ b/apps/desktop/electron/hermes-local-task-model.test.ts
 @@ -8,6 +8,7 @@ import {
@@ -206,7 +206,7 @@ index 1d52fe7c8..e76f82aec 100644
 +  })
  })
 diff --git a/apps/desktop/electron/hermes-local-task-model.ts b/apps/desktop/electron/hermes-local-task-model.ts
-index af7fb705a..49e642b79 100644
+index af7fb705adf9c7466daa6a2f49a6c514f9f4898f..49e642b7936c9a0d4a8a1fb35075f933901e84e3 100644
 --- a/apps/desktop/electron/hermes-local-task-model.ts
 +++ b/apps/desktop/electron/hermes-local-task-model.ts
 @@ -45,6 +45,13 @@ export interface TaskResult {
@@ -255,7 +255,7 @@ index af7fb705a..49e642b79 100644
    action: TaskAction,
    id: string,
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
-index e9bcd3203..41f2d67f3 100644
+index e9bcd32035ff2f5abaf205400fef245e5cda0e19..41f2d67f3a060d9a7b1f09432f7ff32c54831632 100644
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
 @@ -113,6 +113,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
@@ -269,7 +269,7 @@ index e9bcd3203..41f2d67f3 100644
      saveProfile: (profile, originalName) => ipcRenderer.invoke('hermes:local:profile:save', profile, originalName),
      deleteProfile: name => ipcRenderer.invoke('hermes:local:profile:delete', name),
 diff --git a/apps/desktop/src/app/chat/sidebar/index.tsx b/apps/desktop/src/app/chat/sidebar/index.tsx
-index aad405012..d1c5f70d2 100644
+index aad405012a89a839b79fdd064730886e387a7675..d1c5f70d2039dfc04181c90c5d893b5ef61127f6 100644
 --- a/apps/desktop/src/app/chat/sidebar/index.tsx
 +++ b/apps/desktop/src/app/chat/sidebar/index.tsx
 @@ -380,6 +380,37 @@ export function ChatSidebar({
@@ -326,7 +326,7 @@ index aad405012..d1c5f70d2 100644
                        <KbdGroup
                          className={cn('ml-auto opacity-55', newSessionKbdFlash && 'opacity-100!')}
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index ed8997711..6ef487692 100644
+index ed8997711c1a349bc1a9e69372ad7dbe5a79da95..6ef487692b1c8721d724d2665667f8fa1319ca30 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -33,6 +33,7 @@ import { Button } from '@/components/ui/button'
@@ -651,7 +651,7 @@ index ed8997711..6ef487692 100644
        </div>
 diff --git a/apps/desktop/src/app/local-workstation/task-centre.test.tsx b/apps/desktop/src/app/local-workstation/task-centre.test.tsx
 new file mode 100644
-index 000000000..095c62b23
+index 0000000000000000000000000000000000000000..095c62b23357611b2019cc4f6ea622683435ef75
 --- /dev/null
 +++ b/apps/desktop/src/app/local-workstation/task-centre.test.tsx
 @@ -0,0 +1,136 @@
@@ -793,7 +793,7 @@ index 000000000..095c62b23
 +})
 diff --git a/apps/desktop/src/app/local-workstation/task-centre.tsx b/apps/desktop/src/app/local-workstation/task-centre.tsx
 new file mode 100644
-index 000000000..97d765547
+index 0000000000000000000000000000000000000000..97d7655472e23964e3b80b49cbfd60a2f3a3d5da
 --- /dev/null
 +++ b/apps/desktop/src/app/local-workstation/task-centre.tsx
 @@ -0,0 +1,484 @@
@@ -1282,7 +1282,7 @@ index 000000000..97d765547
 +  )
 +}
 diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
-index 95bcc5948..095a6279b 100644
+index 95bcc5948d7d9d6462a94b71c9d1bf5990460380..095a6279b9c80d4673bd5294fb99a56d718a87c3 100644
 --- a/apps/desktop/src/app/local-workstation/types.ts
 +++ b/apps/desktop/src/app/local-workstation/types.ts
 @@ -37,6 +37,12 @@ export type LocalLog = 'dashboard' | 'hermes' | 'launcher' | 'model' | 'security
@@ -1299,7 +1299,7 @@ index 95bcc5948..095a6279b 100644
    conflictPolicy: 'queue' | 'reject'
    createdAt: string
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index 8117ce722..84ea93c55 100644
+index 8117ce722cadd3580ade13360e31fe3573e4fcc3..84ea93c55fc5302fdc779e59cd0f31684f285399 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
 @@ -130,7 +130,9 @@ declare global {

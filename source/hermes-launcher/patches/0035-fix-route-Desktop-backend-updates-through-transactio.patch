@@ -1,8 +1,8 @@
-From 78e28485b6012691f8841c6d133bd8ba607ebc69 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local Integration <hermes-local-ci@localhost>
 Date: Mon, 3 Aug 2026 11:20:00 +0100
-Subject: [PATCH] fix: route Desktop backend updates through transactional
- updater
+Subject: [PATCH 35/36] fix: route Desktop backend updates through
+ transactional updater
 
 ---
  apps/desktop/electron/hermes-local-control.ts | 284 +++++++++++++++++-
@@ -14,7 +14,7 @@ Subject: [PATCH] fix: route Desktop backend updates through transactional
  create mode 100644 apps/desktop/electron/hermes-local-update.test.ts
 
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index 501bb42..69ccf19 100644
+index 501bb42a3d876a876524cadf34507a124310270f..69ccf19a037edee13b14eb93431ef3996d95a10a 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -216,7 +216,9 @@ function appendTaskOutput(task: ActionTask, chunk: Buffer | string): void {
@@ -386,7 +386,7 @@ index 501bb42..69ccf19 100644
  }
 diff --git a/apps/desktop/electron/hermes-local-update.test.ts b/apps/desktop/electron/hermes-local-update.test.ts
 new file mode 100644
-index 0000000..801bf57
+index 0000000000000000000000000000000000000000..801bf579791a95c654e0e3c48e90a4608577ab82
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-update.test.ts
 @@ -0,0 +1,177 @@
@@ -568,7 +568,7 @@ index 0000000..801bf57
 +  })
 +})
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index 72c0103..bead569 100644
+index 72c01039c96e4c5670389b9a512d01c0b69f5786..bead569e87bef2decb7cb9bba8fd447165df81d1 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -42,6 +42,7 @@ import type {
@@ -825,7 +825,7 @@ index 72c0103..bead569 100644
              onSaveSettings={saveSettings}
              onSelectModel={selectModel}
 diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
-index aea0500..ae60d54 100644
+index aea0500f263e857c6f33b94b50b114ff1a7d84c1..ae60d54b166bf1d9319877f75ea205c56b9c750a 100644
 --- a/apps/desktop/src/app/local-workstation/types.ts
 +++ b/apps/desktop/src/app/local-workstation/types.ts
 @@ -36,6 +36,44 @@ export type LocalAction =
@@ -905,7 +905,7 @@ index aea0500..ae60d54 100644
      }
    }
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index 411f9ce..ee2ef92 100644
+index 411f9ce23f425df368bb1f0a6d47631861c1f156..ee2ef92cd80ea0ebbd28c0be1ad9fc94d78a030b 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
 @@ -9,6 +9,7 @@ import type {
@@ -933,6 +933,3 @@ index 411f9ce..ee2ef92 100644
          retryAction: (taskId: string) => Promise<LocalActionTask>
        }
        api: <T>(request: HermesApiRequest) => Promise<T>
--- 
-2.47.3
-

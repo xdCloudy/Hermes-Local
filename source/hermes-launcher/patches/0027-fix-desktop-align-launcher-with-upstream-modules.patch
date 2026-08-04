@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local Compatibility CI <hermes-local-ci@localhost>
 Date: Sat, 1 Aug 2026 17:31:50 +0100
-Subject: [PATCH 27/30] fix(desktop): align launcher with upstream modules
+Subject: [PATCH 27/36] fix(desktop): align launcher with upstream modules
 
 ---
  .../composer/status-stack/coding-row.test.tsx |  2 +-
@@ -11,7 +11,7 @@ Subject: [PATCH 27/30] fix(desktop): align launcher with upstream modules
  4 files changed, 34 insertions(+), 31 deletions(-)
 
 diff --git a/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx b/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
-index b7e22137c..b5d58c4a0 100644
+index b7e22137c616771c0449efbd0a84b96e8db6e5a4..b5d58c4a0cd229674202904903512312b9dde498 100644
 --- a/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
 +++ b/apps/desktop/src/app/chat/composer/status-stack/coding-row.test.tsx
 @@ -33,7 +33,7 @@ vi.mock('@/i18n', () => ({
@@ -24,7 +24,7 @@ index b7e22137c..b5d58c4a0 100644
    })
  }))
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index a5e2bd213..aa91f80e0 100644
+index a5e2bd2139735c186c38c373e64d939e2ce1ab47..aa91f80e01aea76a6d6f1a8b22c379d07075ddf3 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -1,31 +1,33 @@
@@ -97,7 +97,7 @@ index a5e2bd213..aa91f80e0 100644
      (specType !== undefined && specType !== 'none') ||
      serverArguments.some(argument =>
 diff --git a/apps/desktop/src/app/local-workstation/tui-panel.tsx b/apps/desktop/src/app/local-workstation/tui-panel.tsx
-index 67a2ed251..c3bd8292b 100644
+index 67a2ed251eb6d7ea2548c3db04d2fcb9079e6831..c3bd8292bd67a7ee0d76ee5068798ea14efb4f93 100644
 --- a/apps/desktop/src/app/local-workstation/tui-panel.tsx
 +++ b/apps/desktop/src/app/local-workstation/tui-panel.tsx
 @@ -1,8 +1,6 @@
@@ -111,7 +111,7 @@ index 67a2ed251..c3bd8292b 100644
  import { Unicode11Addon } from '@xterm/addon-unicode11'
  import { Terminal } from '@xterm/xterm'
 diff --git a/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx b/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
-index 2bf975276..b15cf639f 100644
+index 2bf9752762bd188c5b10d075fab4f8bfc283ac19..b15cf639f6d8d8144a008ab53b17e3c7b2b605f2 100644
 --- a/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
 +++ b/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
 @@ -49,7 +49,9 @@ import type { StatusResponse, UsageStats } from '@/types/hermes'

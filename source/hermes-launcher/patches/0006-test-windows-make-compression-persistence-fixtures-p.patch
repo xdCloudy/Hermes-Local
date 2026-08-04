@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Tue, 28 Jul 2026 10:40:36 +0100
-Subject: [PATCH 06/30] test(windows): make compression persistence fixtures
+Subject: [PATCH 06/36] test(windows): make compression persistence fixtures
  portable
 
 ---
@@ -9,7 +9,7 @@ Subject: [PATCH 06/30] test(windows): make compression persistence fixtures
  1 file changed, 10 insertions(+), 2 deletions(-)
 
 diff --git a/tests/run_agent/test_compression_persistence.py b/tests/run_agent/test_compression_persistence.py
-index 6af2248f8..87cb4b76d 100644
+index 6af2248f8629e42b2e4b48e1c2f4402c5d678006..87cb4b76d3640203710331932f3055149dcf58c5 100644
 --- a/tests/run_agent/test_compression_persistence.py
 +++ b/tests/run_agent/test_compression_persistence.py
 @@ -99,6 +99,7 @@ class TestFlushAfterCompression:

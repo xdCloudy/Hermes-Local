@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Thu, 30 Jul 2026 05:36:36 +0100
-Subject: [PATCH 17/30] fix(desktop): theme all launcher dropdowns
+Subject: [PATCH 17/36] fix(desktop): theme all launcher dropdowns
 
 ---
  .../e2e/hermes-local-configuration.spec.ts    |  67 +++++++---
@@ -14,7 +14,7 @@ Subject: [PATCH 17/30] fix(desktop): theme all launcher dropdowns
  create mode 100644 apps/desktop/src/components/ui/select.test.tsx
 
 diff --git a/apps/desktop/e2e/hermes-local-configuration.spec.ts b/apps/desktop/e2e/hermes-local-configuration.spec.ts
-index 2f26f1ade..72ee002e8 100644
+index 2f26f1adeae7947e81a90b4c34379328e71bf339..72ee002e84fdd628eb438f1b43a1c7af4d673c54 100644
 --- a/apps/desktop/e2e/hermes-local-configuration.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-configuration.spec.ts
 @@ -2,7 +2,7 @@ import fs from 'node:fs'
@@ -199,7 +199,7 @@ index 2f26f1ade..72ee002e8 100644
      }
    })
 diff --git a/apps/desktop/e2e/hermes-local-functional.spec.ts b/apps/desktop/e2e/hermes-local-functional.spec.ts
-index 84b50002d..85b9342bd 100644
+index 84b50002d40492a1e4bee540bf439eaa3f9878ea..85b9342bd667c0cb1e3d813da2c2353c9b4feaba 100644
 --- a/apps/desktop/e2e/hermes-local-functional.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-functional.spec.ts
 @@ -259,14 +259,16 @@ test.describe('Hermes Local packaged functional acceptance', () => {
@@ -222,7 +222,7 @@ index 84b50002d..85b9342bd 100644
        await expect(page.locator('pre')).not.toBeEmpty()
  
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index 086aa7251..5da675f0d 100644
+index 086aa72519453f8fd7e236ee9a673f111b6a93ef..5da675f0d6977d4bcf766bc71f914fd2cddcda57 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -29,6 +29,7 @@ import { type ComponentType, type ReactNode, useCallback, useEffect, useState }
@@ -409,7 +409,7 @@ index 086aa7251..5da675f0d 100644
                <IconRefresh className={cn('size-3.5', refreshing && 'animate-spin motion-reduce:animate-none')} />
                <span className="sr-only">Refresh workstation</span>
 diff --git a/apps/desktop/src/app/quick-entry/quick-entry-app.tsx b/apps/desktop/src/app/quick-entry/quick-entry-app.tsx
-index 3f5d54835..24f70a473 100644
+index 3f5d54835d6b303e1f944ae830951fca2401e1d5..24f70a4734b7234af64ee66c820dfaba33fb7e63 100644
 --- a/apps/desktop/src/app/quick-entry/quick-entry-app.tsx
 +++ b/apps/desktop/src/app/quick-entry/quick-entry-app.tsx
 @@ -1,5 +1,6 @@
@@ -484,7 +484,7 @@ index 3f5d54835..24f70a473 100644
      </div>
 diff --git a/apps/desktop/src/components/ui/select.test.tsx b/apps/desktop/src/components/ui/select.test.tsx
 new file mode 100644
-index 000000000..3a14affde
+index 0000000000000000000000000000000000000000..3a14affde12fdc1c4c582612fc971487f89a6ef1
 --- /dev/null
 +++ b/apps/desktop/src/components/ui/select.test.tsx
 @@ -0,0 +1,45 @@
@@ -534,7 +534,7 @@ index 000000000..3a14affde
 +  })
 +})
 diff --git a/apps/desktop/src/components/ui/select.tsx b/apps/desktop/src/components/ui/select.tsx
-index 059575a1c..d48a140cd 100644
+index 059575a1c82624555949c6a8152d13b8ccf8aa17..d48a140cdf62d1b82a9cb123d1876d661d7e6857 100644
 --- a/apps/desktop/src/components/ui/select.tsx
 +++ b/apps/desktop/src/components/ui/select.tsx
 @@ -41,6 +41,7 @@ function SelectValue({ ...props }: React.ComponentProps<typeof SelectPrimitive.V

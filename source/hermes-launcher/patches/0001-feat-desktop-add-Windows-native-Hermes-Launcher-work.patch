@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Tue, 28 Jul 2026 08:45:53 +0100
-Subject: [PATCH 01/30] feat(desktop): add Windows-native Hermes Launcher
+Subject: [PATCH 01/36] feat(desktop): add Windows-native Hermes Launcher
  workstation
 
 ---
@@ -37,7 +37,7 @@ Subject: [PATCH 01/30] feat(desktop): add Windows-native Hermes Launcher
 
 diff --git a/apps/desktop/e2e/hermes-local-portable.spec.ts b/apps/desktop/e2e/hermes-local-portable.spec.ts
 new file mode 100644
-index 000000000..8aa16b4b1
+index 0000000000000000000000000000000000000000..8aa16b4b1b333200a45a0a769848a7523e118f61
 --- /dev/null
 +++ b/apps/desktop/e2e/hermes-local-portable.spec.ts
 @@ -0,0 +1,169 @@
@@ -212,7 +212,7 @@ index 000000000..8aa16b4b1
 +})
 diff --git a/apps/desktop/e2e/hermes-local-workstation.spec.ts b/apps/desktop/e2e/hermes-local-workstation.spec.ts
 new file mode 100644
-index 000000000..00c3e47ac
+index 0000000000000000000000000000000000000000..00c3e47ac55c77282fdf3055cc35c2f4afe1ba16
 --- /dev/null
 +++ b/apps/desktop/e2e/hermes-local-workstation.spec.ts
 @@ -0,0 +1,135 @@
@@ -353,7 +353,7 @@ index 000000000..00c3e47ac
 +})
 diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
 new file mode 100644
-index 000000000..7b35b0b6a
+index 0000000000000000000000000000000000000000..7b35b0b6a749bcd5ea739f8c3ed7f9b6ef0a6bb9
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-control.test.ts
 @@ -0,0 +1,89 @@
@@ -448,7 +448,7 @@ index 000000000..7b35b0b6a
 +})
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
 new file mode 100644
-index 000000000..8a206a37a
+index 0000000000000000000000000000000000000000..8a206a37af20d533dbdb6be54f5dfb9ea45ec9c3
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -0,0 +1,605 @@
@@ -1058,7 +1058,7 @@ index 000000000..8a206a37a
 +  sanitizeEditableProfile
 +}
 diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
-index 834a67ece..bd3cce0aa 100644
+index 200ecb5fed2a44bb2ef0d62a22193ea317d444f5..bb827424bab315bb32403e9e7b3eab91f32409eb 100644
 --- a/apps/desktop/electron/main.ts
 +++ b/apps/desktop/electron/main.ts
 @@ -134,6 +134,11 @@ import {
@@ -1082,7 +1082,7 @@ index 834a67ece..bd3cce0aa 100644
  const USER_DATA_OVERRIDE = process.env.HERMES_DESKTOP_USER_DATA_DIR
  
  if (USER_DATA_OVERRIDE) {
-@@ -9233,6 +9240,7 @@ function closeQuickEntryWindow() {
+@@ -9239,6 +9246,7 @@ function closeQuickEntryWindow() {
  function createWindow() {
    const icon = getAppIconPath()
    const savedWindowState = readWindowState()
@@ -1090,7 +1090,7 @@ index 834a67ece..bd3cce0aa 100644
    mainWindow = new BrowserWindow({
      ...computeWindowOptions(savedWindowState, screen.getAllDisplays()),
      minWidth: WINDOW_MIN_WIDTH,
-@@ -9287,7 +9295,7 @@ function createWindow() {
+@@ -9293,7 +9301,7 @@ function createWindow() {
    }
  
    mainWindow.once('ready-to-show', () => {
@@ -1099,7 +1099,7 @@ index 834a67ece..bd3cce0aa 100644
        mainWindow.show()
      }
  
-@@ -9317,7 +9325,7 @@ function createWindow() {
+@@ -9323,7 +9331,7 @@ function createWindow() {
  
    // Under Playright testing, instantly show the window.
    // `ready-to-show` doesn't fire in some testing envs.
@@ -1108,7 +1108,7 @@ index 834a67ece..bd3cce0aa 100644
      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
        mainWindow.show()
      }
-@@ -9459,6 +9467,8 @@ function createWindow() {
+@@ -9465,6 +9473,8 @@ function createWindow() {
    })
  }
  
@@ -1117,7 +1117,7 @@ index 834a67ece..bd3cce0aa 100644
  ipcMain.handle('hermes:connection', async (_event, profile) => ensureBackend(profile))
  // Reconnect-after-wake recovery. A REMOTE primary backend has no child process,
  // so the 'exit'/'error' handlers that would clear a dead connection promise never
-@@ -11294,8 +11304,20 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
+@@ -11300,8 +11310,20 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
    ensureNodePtySpawnHelper()
  
    const id = crypto.randomUUID()
@@ -1139,7 +1139,7 @@ index 834a67ece..bd3cce0aa 100644
    const cols = Math.max(2, Number.parseInt(String(payload?.cols || 80), 10) || 80)
    const rows = Math.max(2, Number.parseInt(String(payload?.rows || 24), 10) || 24)
  
-@@ -11303,6 +11325,10 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
+@@ -11309,6 +11331,10 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
    const remote = Boolean(sshTarget)
    const remoteState = remote ? sshConnections.get(sshTarget.scope) : null
  
@@ -1150,7 +1150,7 @@ index 834a67ece..bd3cce0aa 100644
    const remoteCommand =
      remoteState?.remotePlatform === 'Windows'
        ? buildWindowsInteractiveCommand(String(payload?.cwd || '').trim())
-@@ -11316,7 +11342,13 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
+@@ -11322,7 +11348,13 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
          buildInteractiveSshArgs(sshTarget.ssh, String(payload?.cwd || '').trim(), undefined, remoteCommand),
          { cols, cwd: app.getPath('home'), env: terminalShellEnv(), name: 'xterm-256color', rows }
        )
@@ -1165,7 +1165,7 @@ index 834a67ece..bd3cce0aa 100644
  
    terminalSessions.set(id, {
      pty: ptyProcess,
-@@ -11339,7 +11371,7 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
+@@ -11345,7 +11377,7 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
    })
    event.sender.once('destroyed', () => disposeTerminalSession(id))
  
@@ -1174,7 +1174,7 @@ index 834a67ece..bd3cce0aa 100644
  })
  
  ipcMain.handle('hermes:terminal:write', (_event, id, data) => {
-@@ -11380,23 +11412,40 @@ ipcMain.handle('hermes:terminal:cwd', async (_event, id) => {
+@@ -11386,23 +11418,40 @@ ipcMain.handle('hermes:terminal:cwd', async (_event, id) => {
  
  ipcMain.handle('hermes:terminal:dispose', (_event, id) => disposeTerminalSession(String(id || '')))
  
@@ -1222,7 +1222,7 @@ index 834a67ece..bd3cce0aa 100644
  ipcMain.handle('hermes:updates:branch:get', async () => readDesktopUpdateConfig())
  
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
-index 11483d9ce..67f05297c 100644
+index 11483d9ce826875ee40d0edfb8417ff6270b9a6a..67f05297c808fed994e74c4734d4c873c055dc0b 100644
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
 @@ -104,6 +104,16 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
@@ -1243,7 +1243,7 @@ index 11483d9ce..67f05297c 100644
    notify: payload => ipcRenderer.invoke('hermes:notify', payload),
    requestMicrophoneAccess: () => ipcRenderer.invoke('hermes:requestMicrophoneAccess'),
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
-index 1a0f10007..1d746f829 100644
+index 1a0f100075b955d3e49c28e77fb1de985ce4f350..1d746f82902f5102330caa97e184b6a91a27bf65 100644
 --- a/apps/desktop/package.json
 +++ b/apps/desktop/package.json
 @@ -1,6 +1,6 @@
@@ -1328,7 +1328,7 @@ index 1a0f10007..1d746f829 100644
    }
  }
 diff --git a/apps/desktop/scripts/after-pack.mjs b/apps/desktop/scripts/after-pack.mjs
-index 509cbb424..00ced32f3 100644
+index 509cbb42481475a3335b5a0e8daf0d2ff7092b8f..00ced32f312c5d0180a6f661c8dcd9f889cc171a 100644
 --- a/apps/desktop/scripts/after-pack.mjs
 +++ b/apps/desktop/scripts/after-pack.mjs
 @@ -19,23 +19,14 @@
@@ -1360,7 +1360,7 @@ index 509cbb424..00ced32f3 100644
 +  console.log(`[after-pack] ${productName}.exe identity was stamped by electron-builder`)
  }
 diff --git a/apps/desktop/src/app/chat/sidebar/index.tsx b/apps/desktop/src/app/chat/sidebar/index.tsx
-index 10ec6e472..b8ef206ce 100644
+index 10ec6e4720941639e2df03e8eb2bf7e6235d75b5..b8ef206ce0982389e336686746a4aa003e547c9a 100644
 --- a/apps/desktop/src/app/chat/sidebar/index.tsx
 +++ b/apps/desktop/src/app/chat/sidebar/index.tsx
 @@ -99,12 +99,26 @@ import {
@@ -1522,7 +1522,7 @@ index 10ec6e472..b8ef206ce 100644
  ]
  
 diff --git a/apps/desktop/src/app/contrib/surfaces.tsx b/apps/desktop/src/app/contrib/surfaces.tsx
-index 750248fbf..125324704 100644
+index 750248fbfebfb52116aae7047ee227e0f7854ec7..1253247040fdf61ac8e14fea173c0cab95311081 100644
 --- a/apps/desktop/src/app/contrib/surfaces.tsx
 +++ b/apps/desktop/src/app/contrib/surfaces.tsx
 @@ -35,6 +35,8 @@ import type { SidebarActions, WiringActions } from './types'
@@ -1558,7 +1558,7 @@ index 750248fbf..125324704 100644
        <Route element={null} path="cron" />
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
 new file mode 100644
-index 000000000..92d8df748
+index 0000000000000000000000000000000000000000..92d8df7487d2e38697874219048ec624e4a389ac
 --- /dev/null
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -0,0 +1,1170 @@
@@ -2734,7 +2734,7 @@ index 000000000..92d8df748
 +}
 diff --git a/apps/desktop/src/app/local-workstation/tui-panel.tsx b/apps/desktop/src/app/local-workstation/tui-panel.tsx
 new file mode 100644
-index 000000000..cc689816f
+index 0000000000000000000000000000000000000000..cc689816f16398f75c759da67a04aa69bf2ab50a
 --- /dev/null
 +++ b/apps/desktop/src/app/local-workstation/tui-panel.tsx
 @@ -0,0 +1,160 @@
@@ -2900,7 +2900,7 @@ index 000000000..cc689816f
 +}
 diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
 new file mode 100644
-index 000000000..543a6d0b3
+index 0000000000000000000000000000000000000000..543a6d0b39514c9415768e143fb6b0395c3bc17d
 --- /dev/null
 +++ b/apps/desktop/src/app/local-workstation/types.ts
 @@ -0,0 +1,152 @@
@@ -3057,7 +3057,7 @@ index 000000000..543a6d0b3
 +  path: string
 +}
 diff --git a/apps/desktop/src/app/routes.ts b/apps/desktop/src/app/routes.ts
-index 9ee9365c3..2c1f45af7 100644
+index 9ee9365c328775b62e8c0003d7d0aa6d64055739..2c1f45af709cdbbdb09cb85e65f034d2f76f65e4 100644
 --- a/apps/desktop/src/app/routes.ts
 +++ b/apps/desktop/src/app/routes.ts
 @@ -18,6 +18,21 @@ export const CRON_ROUTE = '/cron'
@@ -3137,7 +3137,7 @@ index 9ee9365c3..2c1f45af7 100644
  
  const APP_VIEW_BY_PATH = new Map<string, AppView>(APP_ROUTES.map(route => [route.path, route.view]))
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index c2b677619..9860c76fa 100644
+index c2b677619ec41478d3a85c122766764631d1e804..9860c76faa6b33cc3203b1fef78b4444c137e134 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
 @@ -1,6 +1,14 @@
@@ -3195,7 +3195,7 @@ index c2b677619..9860c76fa 100644
  }
  
 diff --git a/apps/desktop/src/i18n/ar.ts b/apps/desktop/src/i18n/ar.ts
-index d71aab885..6c37bec28 100644
+index 6091c916c335ba5c237a3462b1d4b2290a76bd37..1d3e86cf6d39952099c71ec2e2720eb6f72a6984 100644
 --- a/apps/desktop/src/i18n/ar.ts
 +++ b/apps/desktop/src/i18n/ar.ts
 @@ -1526,10 +1526,26 @@ export const ar = defineLocale({
@@ -3227,7 +3227,7 @@ index d71aab885..6c37bec28 100644
        cron: 'المهام المجدولة',
        agents: 'الوكلاء'
 diff --git a/apps/desktop/src/i18n/en.ts b/apps/desktop/src/i18n/en.ts
-index 5d72bd090..cfe5e227b 100644
+index fe764eb310a4a0ebf33d47e952405457ffd9a409..1ec774b30098492423611e90f89a7f95eee0e291 100644
 --- a/apps/desktop/src/i18n/en.ts
 +++ b/apps/desktop/src/i18n/en.ts
 @@ -1822,9 +1822,27 @@ export const en: Translations = {
@@ -3261,7 +3261,7 @@ index 5d72bd090..cfe5e227b 100644
      searchAria: 'Search sessions',
      searchPlaceholder: 'Search sessions…',
 diff --git a/apps/desktop/src/i18n/ja.ts b/apps/desktop/src/i18n/ja.ts
-index 13bfd18c3..c855cb209 100644
+index 16d58834c62f3ac548cf42cb6885a0950ddfc33b..2a003ab57172b8245253da705c41f5b660856092 100644
 --- a/apps/desktop/src/i18n/ja.ts
 +++ b/apps/desktop/src/i18n/ja.ts
 @@ -1663,6 +1663,24 @@ export const ja = defineLocale({
@@ -3290,7 +3290,7 @@ index 13bfd18c3..c855cb209 100644
        messaging: 'メッセージング',
        artifacts: 'アーティファクト'
 diff --git a/apps/desktop/src/i18n/zh-hant.ts b/apps/desktop/src/i18n/zh-hant.ts
-index 7f0fcfde8..f51b2f0c7 100644
+index 31a0b62a53e889af2d6f67b020d6a1743aca999e..d139bf3b8fae7740f5c2ed2c83e34142dca93f6a 100644
 --- a/apps/desktop/src/i18n/zh-hant.ts
 +++ b/apps/desktop/src/i18n/zh-hant.ts
 @@ -1608,6 +1608,24 @@ export const zhHant = defineLocale({
@@ -3319,7 +3319,7 @@ index 7f0fcfde8..f51b2f0c7 100644
        messaging: '訊息平台',
        artifacts: '成品'
 diff --git a/apps/desktop/src/i18n/zh.ts b/apps/desktop/src/i18n/zh.ts
-index a9ccfee50..7c264933a 100644
+index 10b472724597a946275bd49e641ad14512230af1..b03447dd247a4f94c77dbb31cafb63674d5cc896 100644
 --- a/apps/desktop/src/i18n/zh.ts
 +++ b/apps/desktop/src/i18n/zh.ts
 @@ -2016,6 +2016,24 @@ export const zh: Translations = {
@@ -3348,7 +3348,7 @@ index a9ccfee50..7c264933a 100644
        messaging: '消息平台',
        artifacts: '产物'
 diff --git a/apps/desktop/src/store/updates.ts b/apps/desktop/src/store/updates.ts
-index 0b46920e3..c5e7b8587 100644
+index 0b46920e30d26bca9a6d310493ebaaabaac56b41..c5e7b8587149bbeb63e846dc2db4f3b032e39fee 100644
 --- a/apps/desktop/src/store/updates.ts
 +++ b/apps/desktop/src/store/updates.ts
 @@ -671,6 +671,13 @@ export function startUpdatePoller(): void {

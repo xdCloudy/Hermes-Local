@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Tue, 28 Jul 2026 10:36:05 +0100
-Subject: [PATCH 05/30] fix(windows): keep skill preprocessing native
+Subject: [PATCH 05/36] fix(windows): keep skill preprocessing native
 
 ---
  agent/skill_commands.py                       |  15 ++-
@@ -10,7 +10,7 @@ Subject: [PATCH 05/30] fix(windows): keep skill preprocessing native
  3 files changed, 162 insertions(+), 3 deletions(-)
 
 diff --git a/agent/skill_commands.py b/agent/skill_commands.py
-index 3f1156a85..886e0d144 100644
+index 3f1156a859290b55a4c02656358c35040ef5b113..886e0d14485dad4bfb4c3f0248bb4883e856e4f0 100644
 --- a/agent/skill_commands.py
 +++ b/agent/skill_commands.py
 @@ -341,7 +341,13 @@ def _build_skill_message(
@@ -43,7 +43,7 @@ index 3f1156a85..886e0d144 100644
              f'\nLoad any of these with skill_view(name="{skill_view_target}", '
              f'file_path="<path>"), or run scripts directly by absolute path '
 diff --git a/agent/skill_preprocessing.py b/agent/skill_preprocessing.py
-index 44c5714b9..4b4f86e7b 100644
+index 44c5714b9b3915319d37d2bf8e866f962d928756..4b4f86e7b2c44cbfb4ccd465121d2922ead0aff1 100644
 --- a/agent/skill_preprocessing.py
 +++ b/agent/skill_preprocessing.py
 @@ -1,7 +1,9 @@
@@ -185,7 +185,7 @@ index 44c5714b9..4b4f86e7b 100644
          output = output[:_INLINE_SHELL_MAX_OUTPUT] + "...[truncated]"
      return output
 diff --git a/tests/test_windows_subprocess_no_window_flags.py b/tests/test_windows_subprocess_no_window_flags.py
-index 5ccc6b74d..39f321b65 100644
+index 5ccc6b74dda1a5b11792a515c8675afa57b1ead1..39f321b65641f7a5d0432c411ad839cfca91e21d 100644
 --- a/tests/test_windows_subprocess_no_window_flags.py
 +++ b/tests/test_windows_subprocess_no_window_flags.py
 @@ -171,6 +171,49 @@ def test_shell_hooks_hide_hook_command_windows(monkeypatch):

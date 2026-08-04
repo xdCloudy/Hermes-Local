@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: OpenAI <noreply@openai.com>
 Date: Fri, 31 Jul 2026 04:20:00 +0100
-Subject: [PATCH 25/30] fix(desktop): scale dashboard bounds for UI zoom
+Subject: [PATCH 25/36] fix(desktop): scale dashboard bounds for UI zoom
 
 ---
  .../electron/hermes-local-control.test.ts     | 26 +++++++++++++++++
@@ -9,7 +9,7 @@ Subject: [PATCH 25/30] fix(desktop): scale dashboard bounds for UI zoom
  2 files changed, 53 insertions(+), 2 deletions(-)
 
 diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
-index c2d859cfb..90bb47083 100644
+index c2d859cfbf57f71c18c84332b5f5eff52e287164..90bb47083834f8c2f1db627d07a3e4971ad6cb42 100644
 --- a/apps/desktop/electron/hermes-local-control.test.ts
 +++ b/apps/desktop/electron/hermes-local-control.test.ts
 @@ -53,6 +53,32 @@ describe('Hermes Local Electron boundary', () => {
@@ -46,7 +46,7 @@ index c2d859cfb..90bb47083 100644
      process.env.HERMES_LOCAL_ROOT = 'relative-root'
      expect(() => hermesLocalControlTest.localRoot()).toThrow(/must be absolute/i)
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index 5bf3705fe..8ec12e7ee 100644
+index 5bf3705fec64f7d923bf8306738925fd04f5e0a2..8ec12e7ee4f943506cae62798f3a4df79c11d1ac 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -708,6 +708,24 @@ function dashboardConfiguration() {

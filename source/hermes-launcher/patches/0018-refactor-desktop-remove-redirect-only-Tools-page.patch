@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Thu, 30 Jul 2026 17:18:26 +0000
-Subject: [PATCH 18/30] refactor(desktop): remove redirect-only Tools page
+Subject: [PATCH 18/36] refactor(desktop): remove redirect-only Tools page
 
 ---
  .../desktop/e2e/hermes-local-portable.spec.ts |  2 ++
@@ -13,7 +13,7 @@ Subject: [PATCH 18/30] refactor(desktop): remove redirect-only Tools page
  6 files changed, 23 insertions(+), 41 deletions(-)
 
 diff --git a/apps/desktop/e2e/hermes-local-portable.spec.ts b/apps/desktop/e2e/hermes-local-portable.spec.ts
-index 1d9349672..e7ca56eff 100644
+index 1d93496728c509e51635ff5716736f2111bc89ed..e7ca56eff2a87911b26e9518da64311ccc64b7c5 100644
 --- a/apps/desktop/e2e/hermes-local-portable.spec.ts
 +++ b/apps/desktop/e2e/hermes-local-portable.spec.ts
 @@ -135,6 +135,8 @@ test.describe('Hermes Local portable workstation', () => {
@@ -26,7 +26,7 @@ index 1d9349672..e7ca56eff 100644
        await expect(page.getByRole('heading', { name: 'Local AI workstation' })).toBeVisible({ timeout: 60_000 })
        await expect(page.getByText('Ready for local inference')).toBeVisible()
 diff --git a/apps/desktop/src/app/chat/sidebar/index.tsx b/apps/desktop/src/app/chat/sidebar/index.tsx
-index b8ef206ce..aad405012 100644
+index b8ef206ce0982389e336686746a4aa003e547c9a..aad405012a89a839b79fdd064730886e387a7675 100644
 --- a/apps/desktop/src/app/chat/sidebar/index.tsx
 +++ b/apps/desktop/src/app/chat/sidebar/index.tsx
 @@ -117,7 +117,6 @@ import {
@@ -51,7 +51,7 @@ index b8ef206ce..aad405012 100644
      id: 'memory',
      label: '',
 diff --git a/apps/desktop/src/app/contrib/surfaces.tsx b/apps/desktop/src/app/contrib/surfaces.tsx
-index 125324704..5857c9cfb 100644
+index 1253247040fdf61ac8e14fea173c0cab95311081..5857c9cfb90e8f44ebd5b1042155c2a51cc44abc 100644
 --- a/apps/desktop/src/app/contrib/surfaces.tsx
 +++ b/apps/desktop/src/app/contrib/surfaces.tsx
 @@ -19,7 +19,7 @@ import { $freshDraftReady, $gatewayState } from '@/store/session'
@@ -73,7 +73,7 @@ index 125324704..5857c9cfb 100644
        <Route element={page(<LocalWorkstationView />)} path="sessions" />
        <Route element={page(<LocalWorkstationView />)} path="projects" />
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index 5da675f0d..b47a7a72d 100644
+index 5da675f0d6977d4bcf766bc71f914fd2cddcda57..b47a7a72d462530dcc2ad7dd2868492a43b4ed12 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -22,7 +22,6 @@ import IconServer2 from '@tabler/icons-react/dist/esm/icons/IconServer2.mjs'
@@ -130,7 +130,7 @@ index 5da675f0d..b47a7a72d 100644
      <div className="grid gap-4">
        <Surface>
 diff --git a/apps/desktop/src/app/routes.test.ts b/apps/desktop/src/app/routes.test.ts
-index 3c8933d93..3c3c00772 100644
+index 3c8933d9356352859a120818200451f5de1829bf..3c3c0077247613e9d2a3319a5f07f231a093b61c 100644
 --- a/apps/desktop/src/app/routes.test.ts
 +++ b/apps/desktop/src/app/routes.test.ts
 @@ -1,6 +1,15 @@
@@ -162,7 +162,7 @@ index 3c8933d93..3c3c00772 100644
 +  })
 +})
 diff --git a/apps/desktop/src/app/routes.ts b/apps/desktop/src/app/routes.ts
-index 2c1f45af7..46875a01b 100644
+index 2c1f45af709cdbbdb09cb85e65f034d2f76f65e4..46875a01b6d8d8542d44819bc9f930e95d90b302 100644
 --- a/apps/desktop/src/app/routes.ts
 +++ b/apps/desktop/src/app/routes.ts
 @@ -33,6 +33,7 @@ export const BENCHMARKS_ROUTE = '/benchmarks'

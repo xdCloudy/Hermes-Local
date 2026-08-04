@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: xdCloudy <connerabery@gmail.com>
 Date: Wed, 29 Jul 2026 18:30:48 +0100
-Subject: [PATCH 09/30] fix(desktop): harden local workstation workflows
+Subject: [PATCH 09/36] fix(desktop): harden local workstation workflows
 
 ---
  .../electron/desktop-installation.test.ts     |   5 +-
@@ -23,13 +23,13 @@ Subject: [PATCH 09/30] fix(desktop): harden local workstation workflows
  .../app/settings/billing/billing-amounts.ts   |   2 +-
  apps/desktop/src/app/skills/index.test.tsx    |   3 +-
  apps/desktop/src/global.d.ts                  |   2 +-
- apps/desktop/src/styles.css                   |   5 +-
+ apps/desktop/src/styles.css                   |   4 +-
  apps/desktop/vitest.setup.ts                  |   7 +
- 21 files changed, 449 insertions(+), 191 deletions(-)
+ 21 files changed, 448 insertions(+), 191 deletions(-)
  create mode 100644 apps/desktop/src/app/settings/billing/billing-amounts.test.ts
 
 diff --git a/apps/desktop/electron/desktop-installation.test.ts b/apps/desktop/electron/desktop-installation.test.ts
-index c8e8c78a2..47d20265e 100644
+index c8e8c78a2884b79ee9bd46dd511db5257c1f823f..47d20265e92850a6c00f2717ad7c68a3ed907f9d 100644
 --- a/apps/desktop/electron/desktop-installation.test.ts
 +++ b/apps/desktop/electron/desktop-installation.test.ts
 @@ -38,7 +38,10 @@ test('loadOrCreateInstallationId persists and reuses one installation ID', () =>
@@ -45,7 +45,7 @@ index c8e8c78a2..47d20265e 100644
  
  test('loadOrCreateInstallationId tightens an existing identity file', () =>
 diff --git a/apps/desktop/electron/hermes-local-control.test.ts b/apps/desktop/electron/hermes-local-control.test.ts
-index afbba9648..f4ec0e9de 100644
+index afbba9648d69d4a1c2232c35164bea7b50ad2ff4..f4ec0e9de131a2ed179dcd5d128e4785bb8fa268 100644
 --- a/apps/desktop/electron/hermes-local-control.test.ts
 +++ b/apps/desktop/electron/hermes-local-control.test.ts
 @@ -137,4 +137,48 @@ describe('Hermes Local Electron boundary', () => {
@@ -98,7 +98,7 @@ index afbba9648..f4ec0e9de 100644
 +  })
  })
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index 1f96b1284..e5436719e 100644
+index 1f96b1284b53b9ad6bf1d3dce9643aad89319f63..e5436719e31b091eff6e0019c6fe08e6b66cdcce 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
 @@ -22,6 +22,7 @@ import {
@@ -288,7 +288,7 @@ index 1f96b1284..e5436719e 100644
    waitForActionTask
  }
 diff --git a/apps/desktop/electron/hermes-local-settings.test.ts b/apps/desktop/electron/hermes-local-settings.test.ts
-index eed8315c7..74ae5fa1c 100644
+index eed8315c784e2ebd6c323c9bdad424cb1024b4f7..74ae5fa1cdd119ed3a55cf1c986d88232e29813d 100644
 --- a/apps/desktop/electron/hermes-local-settings.test.ts
 +++ b/apps/desktop/electron/hermes-local-settings.test.ts
 @@ -126,6 +126,30 @@ describe('Hermes Local portable settings', () => {
@@ -323,7 +323,7 @@ index eed8315c7..74ae5fa1c 100644
      saveWorkstationSettings(
        root,
 diff --git a/apps/desktop/electron/hermes-local-settings.ts b/apps/desktop/electron/hermes-local-settings.ts
-index 03f128922..4bfe0d5a2 100644
+index 03f12892266d96aa50e6c993489a072c84716fbf..4bfe0d5a2c9b84a988b78ef561024e6a140a66b6 100644
 --- a/apps/desktop/electron/hermes-local-settings.ts
 +++ b/apps/desktop/electron/hermes-local-settings.ts
 @@ -3,7 +3,7 @@ import path from 'node:path'
@@ -384,7 +384,7 @@ index 03f128922..4bfe0d5a2 100644
  
    return profile
 diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
-index fb8b169a3..46d16d0ec 100644
+index a637ef36640d7e3bb09df6728c8a54ae05141afe..13a15d8d167c984954a369a0268946e5b8595d0e 100644
 --- a/apps/desktop/electron/main.ts
 +++ b/apps/desktop/electron/main.ts
 @@ -625,9 +625,6 @@ const DESKTOP_WINDOW_STATE_PATH = path.join(app.getPath('userData'), 'window-sta
@@ -398,7 +398,7 @@ index fb8b169a3..46d16d0ec 100644
  // tracks main. User can also override at runtime via
  // hermesDesktop.updates.setBranch().
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
-index 48e1b65ca..149c29dc5 100644
+index 48e1b65ca690ab417b6f71e30c0804669f3eb660..149c29dc565a7f49f1b90fe61b80a21072652a6d 100644
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
 @@ -113,7 +113,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
@@ -411,7 +411,7 @@ index 48e1b65ca..149c29dc5 100644
      selectProfile: name => ipcRenderer.invoke('hermes:local:profile:select', name),
      registerModel: model => ipcRenderer.invoke('hermes:local:model:register', model),
 diff --git a/apps/desktop/electron/ssh-config.test.ts b/apps/desktop/electron/ssh-config.test.ts
-index 01eb89910..a9ffbf71d 100644
+index 01eb89910558cff3ad2b4e42aa8c70bca29952d2..a9ffbf71d78420df3f508bbd0552e2a37a80a5c9 100644
 --- a/apps/desktop/electron/ssh-config.test.ts
 +++ b/apps/desktop/electron/ssh-config.test.ts
 @@ -1,4 +1,5 @@
@@ -496,7 +496,7 @@ index 01eb89910..a9ffbf71d 100644
  
    assert.deepEqual(hosts.sort(), ['home', 'root', 'work'].sort())
 diff --git a/apps/desktop/electron/ssh-connection.test.ts b/apps/desktop/electron/ssh-connection.test.ts
-index a3d6d731b..27a927ae6 100644
+index a3d6d731bd56e8332f9028fed107d5d746b7961e..27a927ae6479378afde454208c8b431a82f40ac7 100644
 --- a/apps/desktop/electron/ssh-connection.test.ts
 +++ b/apps/desktop/electron/ssh-connection.test.ts
 @@ -63,7 +63,7 @@ test('controlSocketPath is stable, short, and host-distinct', () => {
@@ -651,7 +651,7 @@ index a3d6d731b..27a927ae6 100644
    await conn.close()
    assert.equal(conn._opened, false)
 diff --git a/apps/desktop/electron/update-relaunch.test.ts b/apps/desktop/electron/update-relaunch.test.ts
-index 54e42eabf..d3da2f92b 100644
+index 54e42eabf9b2ac2269f41ce58ac645700a6693e6..d3da2f92b1ffdc07ea5cbfa0a02875245a74cc7f 100644
 --- a/apps/desktop/electron/update-relaunch.test.ts
 +++ b/apps/desktop/electron/update-relaunch.test.ts
 @@ -38,7 +38,7 @@ import {
@@ -706,7 +706,7 @@ index 54e42eabf..d3da2f92b 100644
      fs.rmSync(tmp, { force: true })
    }
 diff --git a/apps/desktop/electron/update-relaunch.ts b/apps/desktop/electron/update-relaunch.ts
-index 46ea789bb..7ef190cfe 100644
+index 46ea789bbf6962b8ca55da458b20be116c41fdc1..7ef190cfedb98fb3eb33dd9c32f09a017748ede4 100644
 --- a/apps/desktop/electron/update-relaunch.ts
 +++ b/apps/desktop/electron/update-relaunch.ts
 @@ -64,11 +64,12 @@ function resolveUnpackedRelease(execPath, updateRoot, platform) {
@@ -727,7 +727,7 @@ index 46ea789bb..7ef190cfe 100644
    if (normalizedExec === unpacked || normalizedExec.startsWith(withSep)) {
      return unpacked
 diff --git a/apps/desktop/electron/windows-hermes-path.ts b/apps/desktop/electron/windows-hermes-path.ts
-index 6f3542853..a883d1b62 100644
+index 6f3542853e74c8c9440912f0fa78587bef2720de..a883d1b621cd29ad2d752e3e2aade302837d143c 100644
 --- a/apps/desktop/electron/windows-hermes-path.ts
 +++ b/apps/desktop/electron/windows-hermes-path.ts
 @@ -110,6 +110,7 @@ export function getVenvSitePackagesEntries(
@@ -766,7 +766,7 @@ index 6f3542853..a883d1b62 100644
      if (directoryExists(sitePackages)) {
        entries.push(sitePackages)
 diff --git a/apps/desktop/scripts/stage-native-deps.mjs b/apps/desktop/scripts/stage-native-deps.mjs
-index e4a6958fe..bca4c9922 100644
+index e4a6958fee89917bdb8e1e8343da026a3a684b29..bca4c99222cfd9d6df6ac9ef5ff5e92b4f2e1528 100644
 --- a/apps/desktop/scripts/stage-native-deps.mjs
 +++ b/apps/desktop/scripts/stage-native-deps.mjs
 @@ -1,4 +1,3 @@
@@ -846,7 +846,7 @@ index e4a6958fe..bca4c9922 100644
        cwd: projectRoot,
        stdio: 'inherit'
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index d60f54fff..d4b888469 100644
+index d60f54fff5d376267011ef4c894f32391fd34122..d4b888469ea3091e2e9ea727035bbe60cf597f09 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -1,32 +1,30 @@
@@ -1240,7 +1240,7 @@ index d60f54fff..d4b888469 100644
                <span className="sr-only">Refresh workstation</span>
              </Button>
 diff --git a/apps/desktop/src/app/local-workstation/tui-panel.tsx b/apps/desktop/src/app/local-workstation/tui-panel.tsx
-index cc689816f..67a2ed251 100644
+index cc689816f16398f75c759da67a04aa69bf2ab50a..67a2ed251eb6d7ea2548c3db04d2fcb9079e6831 100644
 --- a/apps/desktop/src/app/local-workstation/tui-panel.tsx
 +++ b/apps/desktop/src/app/local-workstation/tui-panel.tsx
 @@ -1,6 +1,8 @@
@@ -1268,7 +1268,7 @@ index cc689816f..67a2ed251 100644
          <div className="ml-auto">
 diff --git a/apps/desktop/src/app/settings/billing/billing-amounts.test.ts b/apps/desktop/src/app/settings/billing/billing-amounts.test.ts
 new file mode 100644
-index 000000000..f6236d827
+index 0000000000000000000000000000000000000000..f6236d8277abd3fe0202a593f72b5af4203753a6
 --- /dev/null
 +++ b/apps/desktop/src/app/settings/billing/billing-amounts.test.ts
 @@ -0,0 +1,16 @@
@@ -1289,7 +1289,7 @@ index 000000000..f6236d827
 +  })
 +})
 diff --git a/apps/desktop/src/app/settings/billing/billing-amounts.ts b/apps/desktop/src/app/settings/billing/billing-amounts.ts
-index 0b0e5517b..3bc90e754 100644
+index 0b0e5517b92e1ff17906f05b47361d981cfc1cb2..3bc90e754959c33356225521951c8cada10356d2 100644
 --- a/apps/desktop/src/app/settings/billing/billing-amounts.ts
 +++ b/apps/desktop/src/app/settings/billing/billing-amounts.ts
 @@ -114,7 +114,7 @@ export function formatMoney(value?: null | number | string): string {
@@ -1302,7 +1302,7 @@ index 0b0e5517b..3bc90e754 100644
      maximumFractionDigits: amount % 1 === 0 ? 0 : 2,
      minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
 diff --git a/apps/desktop/src/app/skills/index.test.tsx b/apps/desktop/src/app/skills/index.test.tsx
-index a22d9aa52..601c855aa 100644
+index a22d9aa5212996c3778f276d7e03f00d0723565c..601c855aac700a6ec2a6a11677e7ada025b68f01 100644
 --- a/apps/desktop/src/app/skills/index.test.tsx
 +++ b/apps/desktop/src/app/skills/index.test.tsx
 @@ -8,6 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -1323,7 +1323,7 @@ index a22d9aa52..601c855aa 100644
    await act(async () => {
      result = render(
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index e0497494f..a1cc14131 100644
+index e0497494f898925070a514a35c5daddc4e14eda6..a1cc14131b95314716abf7fbc121ed6a0aeb9fe2 100644
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
 @@ -138,7 +138,7 @@ declare global {
@@ -1336,23 +1336,22 @@ index e0497494f..a1cc14131 100644
          selectModel: (id: string) => Promise<{ id: string }>
          selectProfile: (name: string) => Promise<{ name: string }>
 diff --git a/apps/desktop/src/styles.css b/apps/desktop/src/styles.css
-index 9b77346fa..5bf2176bf 100644
+index 2ee38e0b6584ab3fa6fc83c8df21ae0aa3fd29fb..5bf2176bf632aec2567d8bad5dfcd27b0e6371be 100644
 --- a/apps/desktop/src/styles.css
 +++ b/apps/desktop/src/styles.css
-@@ -1076,8 +1076,9 @@ code {
+@@ -1076,8 +1076,8 @@ code {
  }
  
  /* Arc-style multicolor action surface (static, not animated). Reusable on any
--   Button via className. Unlayered so it beats Tailwind's bg-*/
--text-* variant utilities. */ .btn-arc {
+-   Button via className. Unlayered so it beats Tailwind's bg- and text- variant
+-   utilities. */
 +   Button via className. Unlayered so it beats Tailwind background and text
 +   colour variant utilities. */
-+.btn-arc {
+ .btn-arc {
    background-image: linear-gradient(110deg, #5b6cff 0%, #8b5cf6 28%, #d946ef 58%, #fb7185 82%, #fb923c 100%);
    color: #fff;
-   border-color: transparent;
 diff --git a/apps/desktop/vitest.setup.ts b/apps/desktop/vitest.setup.ts
-index 5e83926d5..aba9d89cd 100644
+index 5e83926d587734112abf4e52a7247db87eab16e5..aba9d89cdd81bf963d656ba02ed6798d1f7adee6 100644
 --- a/apps/desktop/vitest.setup.ts
 +++ b/apps/desktop/vitest.setup.ts
 @@ -38,3 +38,10 @@ if (typeof (globalThis as any).localStorage === 'undefined') {
