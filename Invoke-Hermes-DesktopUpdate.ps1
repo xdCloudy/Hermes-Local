@@ -53,6 +53,182 @@ function Invoke-HermesDesktopGit {
     [pscustomobject]@{ ExitCode = $exitCode; Text = $text }
 }
 
+function Get-HermesDesktopWorkingTreeChanges {
+    [CmdletBinding()]
+    param()
+
+    (Invoke-HermesDesktopGit -Arguments @(
+        'status', '--porcelain=v1', '--untracked-files=all'
+    ) -AllowFailure).Text
+}
+
+function Write-HermesDesktopWorkingTreeStashState {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object] $Plan,
+        [Parameter(Mandatory)][object] $Value
+    )
+
+    $path = Join-Path ([string]$Plan.stagingRoot) 'working-tree-stash.json'
+    try {
+        Write-HermesDesktopUpdateJson -Path $path -Value $Value
+    } catch {
+        # The Git stash remains the source of truth if diagnostic persistence fails.
+    }
+}
+
+function Save-HermesDesktopWorkingTree {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][object] $Plan)
+
+    $changes = Get-HermesDesktopWorkingTreeChanges
+    if (-not $changes) {
+        return $null
+    }
+
+    $message = "hermes-desktop-update:$($Plan.operationId)"
+    $before = Invoke-HermesDesktopGit -Arguments @(
+        'rev-parse', '--verify', 'refs/stash'
+    ) -AllowFailure
+    $stash = Invoke-HermesDesktopGit -Arguments @(
+        'stash', 'push', '--include-untracked', '--message', $message
+    ) -AllowFailure
+    if ($stash.ExitCode -ne 0) {
+        throw "Could not preserve local working-tree changes before updating. $($stash.Text)"
+    }
+
+    $after = Invoke-HermesDesktopGit -Arguments @(
+        'rev-parse', '--verify', 'refs/stash'
+    ) -AllowFailure
+    if ($after.ExitCode -ne 0 -or $after.Text -notmatch '^[0-9a-fA-F]{40}$') {
+        throw 'Git reported a successful stash, but the updater could not identify the preserved changes.'
+    }
+    if ($before.ExitCode -eq 0 -and $before.Text -eq $after.Text) {
+        throw 'Git did not create a new stash for the local working-tree changes.'
+    }
+
+    $remaining = Get-HermesDesktopWorkingTreeChanges
+    if ($remaining) {
+        throw "Automatic stashing left source changes in the working tree.`n$remaining"
+    }
+
+    $record = [ordered]@{
+        schemaVersion = 1
+        operationId = [string]$Plan.operationId
+        commit = $after.Text.ToLowerInvariant()
+        message = $message
+        createdAt = (Get-Date).ToUniversalTime().ToString('o')
+        includesTracked = $true
+        includesStaged = $true
+        includesUntracked = $true
+        ignoredFilesUntouched = $true
+        restored = $false
+        retained = $true
+    }
+    Write-HermesDesktopWorkingTreeStashState -Plan $Plan -Value $record
+    [pscustomobject]$record
+}
+
+function Restore-HermesDesktopWorkingTree {
+    [CmdletBinding()]
+    param(
+        [AllowNull()][object] $Stash,
+        [Parameter(Mandatory)][string] $Revision,
+        [Parameter(Mandatory)][object] $Plan
+    )
+
+    if (-not $Stash) {
+        return [pscustomobject]@{
+            Restored = $true
+            Retained = $false
+            Commit = $null
+            Message = $null
+        }
+    }
+
+    $apply = Invoke-HermesDesktopGit -Arguments @(
+        'stash', 'apply', '--index', [string]$Stash.commit
+    ) -AllowFailure
+    if ($apply.ExitCode -eq 0) {
+        $record = [ordered]@{
+            schemaVersion = 1
+            operationId = [string]$Plan.operationId
+            commit = [string]$Stash.commit
+            message = [string]$Stash.message
+            createdAt = [string]$Stash.createdAt
+            includesTracked = $true
+            includesStaged = $true
+            includesUntracked = $true
+            ignoredFilesUntouched = $true
+            restored = $true
+            restoredAt = (Get-Date).ToUniversalTime().ToString('o')
+            retained = $true
+        }
+        Write-HermesDesktopWorkingTreeStashState -Plan $Plan -Value $record
+        return [pscustomobject]@{
+            Restored = $true
+            Retained = $true
+            Commit = [string]$Stash.commit
+            Message = $null
+        }
+    }
+
+    # Remove tracked conflict state while retaining the original stash and any
+    # untracked files that Git restored before discovering the conflict.
+    Invoke-HermesDesktopGit -Arguments @('reset', '--hard', $Revision) | Out-Null
+    $message = "Hermes Local was updated, but the preserved local changes conflicted with the new source. They remain safe in Git stash $($Stash.commit)."
+    $record = [ordered]@{
+        schemaVersion = 1
+        operationId = [string]$Plan.operationId
+        commit = [string]$Stash.commit
+        message = [string]$Stash.message
+        createdAt = [string]$Stash.createdAt
+        includesTracked = $true
+        includesStaged = $true
+        includesUntracked = $true
+        ignoredFilesUntouched = $true
+        restored = $false
+        retained = $true
+        restoreAttemptedAt = (Get-Date).ToUniversalTime().ToString('o')
+        restoreError = $apply.Text
+    }
+    Write-HermesDesktopWorkingTreeStashState -Plan $Plan -Value $record
+    [pscustomobject]@{
+        Restored = $false
+        Retained = $true
+        Commit = [string]$Stash.commit
+        Message = $message
+    }
+}
+
+function Remove-HermesDesktopWorkingTreeStash {
+    [CmdletBinding()]
+    param([AllowNull()][object] $Stash)
+
+    if (-not $Stash) {
+        return $true
+    }
+
+    $lines = (Invoke-HermesDesktopGit -Arguments @(
+        'stash', 'list', '--format=%H%x09%gd'
+    ) -AllowFailure).Text -split '\r?\n'
+    $reference = $null
+    foreach ($line in $lines) {
+        if ($line -match '^([0-9a-fA-F]{40})\t(.+)$' -and $Matches[1] -eq [string]$Stash.commit) {
+            $reference = $Matches[2]
+            break
+        }
+    }
+    if (-not $reference) {
+        return $false
+    }
+
+    $drop = Invoke-HermesDesktopGit -Arguments @(
+        'stash', 'drop', $reference
+    ) -AllowFailure
+    $drop.ExitCode -eq 0
+}
+
 function Get-HermesDesktopSemverTarget {
     [CmdletBinding()]
     param([Parameter(Mandatory)][ValidateSet('stable', 'beta')][string] $ReleaseChannel)
@@ -135,9 +311,7 @@ function Get-HermesDesktopUpdateStatus {
 
     $current = (Invoke-HermesDesktopGit -Arguments @('rev-parse', 'HEAD')).Text.ToLowerInvariant()
     $branch = (Invoke-HermesDesktopGit -Arguments @('branch', '--show-current') -AllowFailure).Text
-    $dirty = (Invoke-HermesDesktopGit -Arguments @(
-        'status', '--porcelain', '--untracked-files=no'
-    ) -AllowFailure).Text
+    $workingTreeChanges = Get-HermesDesktopWorkingTreeChanges
     $target = Get-HermesDesktopUpdateTarget -RequestedChannel $RequestedChannel -RequestedCommit $RequestedCommit
 
     $fetch = Invoke-HermesDesktopGit -Arguments @(
@@ -177,7 +351,8 @@ function Get-HermesDesktopUpdateStatus {
         targetSha = $target.Commit
         behind = $behind
         updateAvailable = $current -ne $target.Commit
-        dirty = [bool]$dirty
+        dirty = [bool]$workingTreeChanges
+        autoStash = $true
         restartRequired = $current -ne $target.Commit
         commits = @()
         releaseNotes = if ($target.Release) {
@@ -187,8 +362,8 @@ function Get-HermesDesktopUpdateStatus {
         }
         message = if ($current -eq $target.Commit) {
             'Hermes Local is up to date.'
-        } elseif ($dirty) {
-            'An update is available, but tracked or staged source changes must be committed or stashed first.'
+        } elseif ($workingTreeChanges) {
+            'An update is available. Local source changes will be stashed automatically and restored afterwards.'
         } else {
             'A Hermes Local application update is available.'
         }
@@ -283,6 +458,8 @@ function Invoke-HermesDesktopUpdateHelperMode {
     $null = Assert-HermesDesktopUpdatePath -Root $root -Path ([string]$plan.resultPath) -Description 'Result path'
     $lockPath = $null
     $failure = $null
+    $stash = $null
+    $sourceChanged = $false
     try {
         $lockPath = Enter-HermesDesktopUpdateLock -Root $root -OperationId ([string]$plan.operationId)
         Write-HermesDesktopUpdateProgress -Plan $plan -Stage waiting-for-restart -Status running -Message 'Waiting for Hermes Launcher to close.' -Percent 5 -Failure $null -Result $null | Out-Null
@@ -297,11 +474,10 @@ function Invoke-HermesDesktopUpdateHelperMode {
             }
         }
 
-        $trackedChanges = (Invoke-HermesDesktopGit -Arguments @(
-            'status', '--porcelain', '--untracked-files=no'
-        ) -AllowFailure).Text
-        if ($trackedChanges) {
-            throw 'Tracked or staged working-tree changes appeared after staging; the update was not applied.'
+        $changes = Get-HermesDesktopWorkingTreeChanges
+        if ($changes) {
+            Write-HermesDesktopUpdateProgress -Plan $plan -Stage preserving-local-changes -Status running -Message 'Preserving local source changes before updating.' -Percent 12 -Failure $null -Result $null | Out-Null
+            $stash = Save-HermesDesktopWorkingTree -Plan $plan
         }
 
         Write-HermesDesktopUpdateProgress -Plan $plan -Stage installing -Status running -Message 'Pinning the trusted Hermes Local source revision.' -Percent 20 -Failure $null -Result $null | Out-Null
@@ -315,6 +491,7 @@ function Invoke-HermesDesktopUpdateHelperMode {
             }
         }
         Invoke-HermesDesktopGit -Arguments @('reset', '--hard', [string]$plan.targetCommit) | Out-Null
+        $sourceChanged = $true
 
         Write-HermesDesktopUpdateProgress -Plan $plan -Stage preparing -Status running -Message 'Synchronising the pinned Hermes Agent integration.' -Percent 35 -Failure $null -Result $null | Out-Null
         Invoke-HermesDesktopProcess -FilePath 'pwsh.exe' -Arguments @(
@@ -340,46 +517,76 @@ function Invoke-HermesDesktopUpdateHelperMode {
             throw 'The updated launcher was not produced.'
         }
 
+        $restore = Restore-HermesDesktopWorkingTree -Stash $stash -Revision ([string]$plan.targetCommit) -Plan $plan
         $result = [ordered]@{
             status = 'succeeded'
             previousCommit = [string]$plan.previousCommit
             currentCommit = [string]$plan.targetCommit
             launcherPath = $launcher
+            localChangesPreserved = [bool]$stash
+            localChangesRestored = [bool]$restore.Restored
+            retainedStashCommit = if ($restore.Retained -and -not $restore.Restored) { [string]$restore.Commit } else { $null }
             relaunched = Start-HermesKnownGoodLauncher -Plan $plan
         }
+        $message = if ($restore.Restored) {
+            'Hermes Local updated, local changes restored, and the launcher relaunched successfully.'
+        } else {
+            [string]$restore.Message
+        }
         Write-HermesDesktopUpdateJson -Path ([string]$plan.resultPath) -Value $result
-        Write-HermesDesktopUpdateProgress -Plan $plan -Stage completed -Status succeeded -Message 'Hermes Local updated and relaunched successfully.' -Percent 100 -Failure $null -Result $result | Out-Null
+        Write-HermesDesktopUpdateProgress -Plan $plan -Stage completed -Status succeeded -Message $message -Percent 100 -Failure $null -Result $result | Out-Null
+        if ($stash -and $restore.Restored) {
+            $null = Remove-HermesDesktopWorkingTreeStash -Stash $stash
+        }
         return
     } catch {
         $failure = $_
         try {
             Write-HermesDesktopUpdateProgress -Plan $plan -Stage rolling-back -Status running -Message 'Restoring the previous known-good launcher and source revision.' -Percent 80 -Failure $null -Result $null | Out-Null
-            Invoke-HermesDesktopGit -Arguments @('reset', '--hard', [string]$plan.previousCommit) | Out-Null
-            Invoke-HermesDesktopProcess -FilePath 'pwsh.exe' -Arguments @(
-                '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-                '-File', (Join-Path $root 'Setup-Hermes-Local.ps1'),
-                '-SkipModel', '-SkipLlamaBuild', '-SkipLauncherBuild', '-NonInteractive'
-            ) -Description 'Hermes Local rollback source synchronisation'
-            Restore-PreviousLauncher -Plan $plan
+            if ($sourceChanged) {
+                Invoke-HermesDesktopGit -Arguments @('reset', '--hard', [string]$plan.previousCommit) | Out-Null
+                Invoke-HermesDesktopProcess -FilePath 'pwsh.exe' -Arguments @(
+                    '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+                    '-File', (Join-Path $root 'Setup-Hermes-Local.ps1'),
+                    '-SkipModel', '-SkipLlamaBuild', '-SkipLauncherBuild', '-NonInteractive'
+                ) -Description 'Hermes Local rollback source synchronisation'
+                Restore-PreviousLauncher -Plan $plan
+            }
+            $restore = Restore-HermesDesktopWorkingTree -Stash $stash -Revision ([string]$plan.previousCommit) -Plan $plan
             $relaunched = Start-HermesKnownGoodLauncher -Plan $plan
             $result = [ordered]@{
-                status = 'rolled-back'
+                status = if ($sourceChanged) { 'rolled-back' } else { 'failed' }
                 failedStage = 'desktop-self-update'
                 previousCommit = [string]$plan.previousCommit
-                restoredLauncher = $true
+                restoredLauncher = [bool]$sourceChanged
+                localChangesPreserved = [bool]$stash
+                localChangesRestored = [bool]$restore.Restored
+                retainedStashCommit = if ($restore.Retained -and -not $restore.Restored) { [string]$restore.Commit } else { $null }
                 relaunched = $relaunched
             }
             Write-HermesDesktopUpdateJson -Path ([string]$plan.resultPath) -Value $result
-            Write-HermesDesktopUpdateProgress -Plan $plan -Stage rolled-back -Status rolled-back -Message 'The update failed and the previous version was restored.' -Percent 100 -Failure ([ordered]@{
+            $rollbackMessage = if ($sourceChanged) {
+                'The update failed and the previous version was restored.'
+            } else {
+                'The update stopped before changing the installed source.'
+            }
+            if (-not $restore.Restored) {
+                $rollbackMessage += " Local changes remain safe in Git stash $($restore.Commit)."
+            }
+            Write-HermesDesktopUpdateProgress -Plan $plan -Stage rolled-back -Status rolled-back -Message $rollbackMessage -Percent 100 -Failure ([ordered]@{
                 code = 'desktop-update-rolled-back'
                 message = $failure.Exception.Message
             }) -Result $result | Out-Null
+            if ($stash -and $restore.Restored) {
+                $null = Remove-HermesDesktopWorkingTreeStash -Stash $stash
+            }
         } catch {
             $rollbackFailure = $_
             Write-HermesDesktopUpdateProgress -Plan $plan -Stage failed -Status failed -Message 'Update and automatic rollback failed.' -Percent 100 -Failure ([ordered]@{
                 code = 'desktop-update-and-rollback-failed'
                 message = $failure.Exception.Message
                 rollback = $rollbackFailure.Exception.Message
+                retainedStashCommit = if ($stash) { [string]$stash.commit } else { $null }
             }) -Result $null | Out-Null
         }
     } finally {
@@ -428,9 +635,6 @@ try {
         $plan['previousDist'] = [string]$prior.previousDist
     } else {
         $status = Get-HermesDesktopUpdateStatus -RequestedChannel $Channel -RequestedCommit $TargetCommit
-        if ([bool]$status.dirty) {
-            throw 'Tracked or staged working-tree changes are present. Commit or stash them before updating.'
-        }
         if (-not [bool]$status.updateAvailable) {
             $result = [ordered]@{ ok = $true; updated = $false; message = 'Hermes Local is already up to date.' }
             Write-Output (ConvertTo-HermesDesktopUpdateMarker -Name result -Value $result)
