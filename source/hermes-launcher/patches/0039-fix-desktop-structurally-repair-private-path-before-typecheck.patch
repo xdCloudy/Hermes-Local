@@ -5,8 +5,8 @@ Subject: [PATCH] fix(desktop): rewrite generated control statements before
  typecheck
 
 ---
- .../scripts/repair-hermes-local-control.mjs   | 154 ++++++++++++++++++
- 1 file changed, 154 insertions(+)
+ .../scripts/repair-hermes-local-control.mjs   | 153 ++++++++++++++++++
+ 1 file changed, 153 insertions(+)
  create mode 100644 apps/desktop/scripts/repair-hermes-local-control.mjs
 
 diff --git a/apps/desktop/scripts/repair-hermes-local-control.mjs b/apps/desktop/scripts/repair-hermes-local-control.mjs
@@ -14,7 +14,7 @@ new file mode 100644
 index 0000000..b5895db
 --- /dev/null
 +++ b/apps/desktop/scripts/repair-hermes-local-control.mjs
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,153 @@
 +import { readFile, writeFile } from 'node:fs/promises'
 +import { fileURLToPath } from 'node:url'
 +import ts from 'typescript'
