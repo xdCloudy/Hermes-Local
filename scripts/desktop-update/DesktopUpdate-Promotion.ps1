@@ -36,21 +36,23 @@ function Wait-HermesDesktopLauncherExit {
         -Default ''
     )
 
-    while ($true) {
-        while (
-            (Test-HermesDesktopProcessIdentity `
-                -ProcessId $processId `
-                -StartedAt $startedAt) -or
-            (Test-HermesDesktopLauncherRunning)
-        ) {
-            Start-Sleep -Milliseconds 250
-        }
-
-        Start-Sleep -Milliseconds 100
-        if (-not (Test-HermesDesktopLauncherRunning)) {
-            return
-        }
+    # The recorded parent PID is Electron's browser process. Waiting for every
+    # Hermes Launcher process is unsafe because short-lived renderer, GPU, and
+    # utility children use the same executable path and may outlive the browser
+    # briefly. The guarded promotion loop below already retries while those
+    # children release file handles.
+    while (
+        Test-HermesDesktopProcessIdentity `
+            -ProcessId $processId `
+            -StartedAt $startedAt
+    ) {
+        Start-Sleep -Milliseconds 250
     }
+
+    # Give normal Electron child shutdown a brief head start. Do not wait for a
+    # global process-name quiet period: a user reopening the old launcher would
+    # otherwise keep the helper blocked indefinitely.
+    Start-Sleep -Milliseconds 500
 }
 
 function Restore-HermesDesktopActivationBackup {
@@ -112,7 +114,7 @@ function Promote-HermesDesktopPendingLauncher {
             -Plan $Plan `
             -Stage waiting-for-restart `
             -Status waiting `
-            -Message 'Update ready. Waiting for the user to close Hermes Launcher.' `
+            -Message 'Update ready. Close Hermes Launcher; the updated launcher will reopen automatically.' `
             -Percent 95 `
             -Failure $null `
             -Result $null | Out-Null
@@ -187,6 +189,17 @@ function Promote-HermesDesktopPendingLauncher {
     } catch {
     }
 
+    $relaunched = $false
+    $relaunchWarning = $null
+    try {
+        Start-Process `
+            -FilePath $launcher `
+            -WorkingDirectory $root
+        $relaunched = $true
+    } catch {
+        $relaunchWarning = $_.Exception.Message
+    }
+
     $result = [ordered]@{
         status = 'activated'
         previousCommit = [string]$Plan.previousCommit
@@ -194,7 +207,8 @@ function Promote-HermesDesktopPendingLauncher {
         launcherPath = $launcher
         activationDeferred = $true
         activatedAt = (Get-Date).ToUniversalTime().ToString('o')
-        relaunched = $false
+        relaunched = $relaunched
+        relaunchWarning = $relaunchWarning
     }
 
     try {
@@ -203,7 +217,11 @@ function Promote-HermesDesktopPendingLauncher {
             -Plan $Plan `
             -Stage activated `
             -Status succeeded `
-            -Message 'Update activated. Start Hermes Launcher to use the new version.' `
+            -Message $(if ($relaunched) {
+                'Update activated and the new Hermes Launcher was started.'
+            } else {
+                'Update activated. Start Hermes Launcher to use the new version.'
+            }) `
             -Percent 100 `
             -Failure $null `
             -Result $result | Out-Null
