@@ -1,33 +1,25 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local Integration <hermes-local-ci@localhost>
-Date: Tue, 4 Aug 2026 19:50:00 +0100
-Subject: [PATCH 39/39] fix(desktop): structurally repair private-path redaction before typecheck
+Date: Tue, 4 Aug 2026 19:55:00 +0100
+Subject: [PATCH 39/39] fix(desktop): repair private-path redaction through the Windows tsc shim
 
 The composed launcher overlay can emit a malformed TypeScript string literal
-whose exact slash sequence is unsafe to match from PowerShell. Add a temporary
-npm pretypecheck hook that identifies the complete redaction statement by its
-stable structure and replaces it with a canonical escaped form.
+whose exact slash sequence is unsafe to match from PowerShell. On Windows, npm
+runs workspace scripts from apps/desktop and cmd.exe resolves a local tsc.cmd
+before the root node_modules binary.
 
-The launcher build already snapshots and restores this source file, so the
-repair remains build-local.
+Add a temporary workspace tsc.cmd shim that structurally rewrites the complete
+private-path redaction statement, verifies the canonical escaped form, and then
+forwards every argument to the real root TypeScript compiler. Both files are
+removed when the temporary launcher patch is reversed.
 
 ---
- apps/desktop/package.json                              |  1 +
- .../scripts/repair-hermes-local-control.mjs           | 43 ++++++++++++++++++
- 2 files changed, 44 insertions(+)
+ .../scripts/repair-hermes-local-control.mjs   | 43 +++++++++++++++++++
+ apps/desktop/tsc.cmd                          |  9 ++++
+ 2 files changed, 52 insertions(+)
  create mode 100644 apps/desktop/scripts/repair-hermes-local-control.mjs
+ create mode 100644 apps/desktop/tsc.cmd
 
-diff --git a/apps/desktop/package.json b/apps/desktop/package.json
---- a/apps/desktop/package.json
-+++ b/apps/desktop/package.json
-@@ -42,6 +42,7 @@
-     "test:desktop:nsis": "node scripts/test-desktop.mjs nsis",
-     "test:desktop:existing": "node scripts/test-desktop.mjs existing",
-     "test:desktop:fresh": "node scripts/test-desktop.mjs fresh",
-+    "pretypecheck": "node scripts/repair-hermes-local-control.mjs",
-     "typecheck": "tsc -p . --noEmit && tsc -p tsconfig.electron.json --noEmit && tsc -p tsconfig.e2e.json --noEmit",
-     "lint": "eslint src/ electron/",
-     "lint:fix": "eslint src/ electron/ --fix",
 diff --git a/apps/desktop/scripts/repair-hermes-local-control.mjs b/apps/desktop/scripts/repair-hermes-local-control.mjs
 new file mode 100644
 --- /dev/null
@@ -81,5 +73,19 @@ new file mode 100644
 +    `Canonical private-path redaction statement is missing from ${controlPath}.`,
 +  )
 +}
++diff --git a/apps/desktop/tsc.cmd b/apps/desktop/tsc.cmd
++new file mode 100644
++--- /dev/null
+++++ b/apps/desktop/tsc.cmd
++@@ -0,0 +1,9 @@
+++@echo off
+++setlocal
+++node "%~dp0scripts\repair-hermes-local-control.mjs"
+++if errorlevel 1 exit /b %errorlevel%
+++
+++call "%~dp0..\..\node_modules\.bin\tsc.cmd" %*
+++set "HERMES_TSC_EXIT=%errorlevel%"
+++endlocal & exit /b %HERMES_TSC_EXIT%
+++
 -- 
 2.50.1
