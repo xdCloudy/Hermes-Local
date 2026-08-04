@@ -1,92 +1,94 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local Integration <hermes-local-ci@localhost>
-Date: Tue, 4 Aug 2026 19:55:00 +0100
-Subject: [PATCH 39/39] fix(desktop): repair private-path redaction through the Windows tsc shim
+Date: Tue, 4 Aug 2026 20:02:00 +0100
+Subject: [PATCH 39/39] fix(desktop): rewrite private-path redaction with generated literals
 
-The composed launcher overlay can emit a malformed TypeScript string literal
-whose exact slash sequence is unsafe to match from PowerShell. On Windows, npm
-runs workspace scripts from apps/desktop and cmd.exe resolves a local tsc.cmd
-before the root node_modules binary.
+The composed launcher overlay can emit an odd backslash sequence that TypeScript
+parses as an unterminated string. Avoid manual escape counting entirely.
 
-Add a temporary workspace tsc.cmd shim that structurally rewrites the complete
-private-path redaction statement, verifies the canonical escaped form, and then
-forwards every argument to the real root TypeScript compiler. Both files are
-removed when the temporary launcher patch is reversed.
+Add a build-local repair script that locates the complete private-path redaction
+line, regenerates its string literals through JSON.stringify, writes the line
+back unconditionally, and asks the installed TypeScript parser to validate the
+entire file before the launcher build continues.
 
 ---
- .../scripts/repair-hermes-local-control.mjs   | 43 +++++++++++++++++++
- apps/desktop/tsc.cmd                          |  9 ++++
- 2 files changed, 52 insertions(+)
+ .../scripts/repair-hermes-local-control.mjs   | 63 +++++++++++++++++++
+ 1 file changed, 63 insertions(+)
  create mode 100644 apps/desktop/scripts/repair-hermes-local-control.mjs
- create mode 100644 apps/desktop/tsc.cmd
 
 diff --git a/apps/desktop/scripts/repair-hermes-local-control.mjs b/apps/desktop/scripts/repair-hermes-local-control.mjs
 new file mode 100644
 --- /dev/null
 +++ b/apps/desktop/scripts/repair-hermes-local-control.mjs
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,63 @@
 +import { readFile, writeFile } from 'node:fs/promises'
 +import { fileURLToPath } from 'node:url'
++import ts from 'typescript'
 +
 +const controlUrl = new URL('../electron/hermes-local-control.ts', import.meta.url)
 +const controlPath = fileURLToPath(controlUrl)
 +const source = await readFile(controlPath, 'utf8')
-+const statementPattern =
-+  /^([ \t]*)safe\s*=\s*safe\.replaceAll\(privatePath,\s*'\[PRIVATE-PATH\]'\)\.replaceAll\(privatePath\.replaceAll\([^\r\n]*$/gm
-+const matches = [...source.matchAll(statementPattern)]
++const newline = source.includes('\r\n') ? '\r\n' : '\n'
++const lines = source.split(/\r?\n/)
++const candidates = []
 +
-+if (matches.length !== 1) {
++for (let index = 0; index < lines.length; index += 1) {
++  const line = lines[index]
++  if (
++    line.includes('safe = safe.replaceAll(privatePath') &&
++    line.includes('privatePath.replaceAll(')
++  ) {
++    candidates.push(index)
++  }
++}
++
++if (candidates.length !== 1) {
 +  throw new Error(
-+    `Expected exactly one private-path redaction statement in ${controlPath}; found ${matches.length}.`,
++    `Expected exactly one private-path redaction line in ${controlPath}; found ${candidates.length}.`,
 +  )
 +}
 +
-+const match = matches[0]
++const lineIndex = candidates[0]
++const indentation = lines[lineIndex].match(/^\s*/)?.[0] ?? ''
++const privateMarker = JSON.stringify('[PRIVATE-PATH]')
++const backslashLiteral = JSON.stringify('\\')
++const slashLiteral = JSON.stringify('/')
 +const canonical =
-+  `${match[1]}safe = safe.replaceAll(privatePath, '[PRIVATE-PATH]').replaceAll(` +
-+  `privatePath.replaceAll('\\\\', '/'), '[PRIVATE-PATH]')`
-+const updated =
-+  source.slice(0, match.index) +
-+  canonical +
-+  source.slice(match.index + match[0].length)
++  `${indentation}safe = safe.replaceAll(privatePath, ${privateMarker}).replaceAll(` +
++  `privatePath.replaceAll(${backslashLiteral}, ${slashLiteral}), ${privateMarker})`
 +
-+const verificationMatches = [...updated.matchAll(statementPattern)]
-+if (
-+  verificationMatches.length !== 1 ||
-+  verificationMatches[0][0] !== canonical
-+) {
++lines[lineIndex] = canonical
++const updated = lines.join(newline)
++await writeFile(controlPath, updated, 'utf8')
++
++const parsed = ts.createSourceFile(
++  controlPath,
++  updated,
++  ts.ScriptTarget.Latest,
++  true,
++  ts.ScriptKind.TS,
++)
++
++if (parsed.parseDiagnostics.length > 0) {
++  const details = parsed.parseDiagnostics.slice(0, 5).map((diagnostic) => {
++    const start = diagnostic.start ?? 0
++    const position = parsed.getLineAndCharacterOfPosition(start)
++    const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, ' ')
++    const line = lines[position.line] ?? ''
++    return `${position.line + 1}:${position.character + 1} ${message}; line=${JSON.stringify(line)}`
++  })
 +  throw new Error(
-+    `Private-path redaction repair verification failed for ${controlPath}.`,
-+  )
-+}
-+
-+if (updated !== source) {
-+  await writeFile(controlPath, updated, 'utf8')
-+  process.stdout.write(
-+    `Repaired private-path redaction statement before Desktop typecheck: ${controlPath}\n`,
++    `Desktop control source still has TypeScript parse errors after repair:\n${details.join('\n')}`,
 +  )
 +}
 +
 +const verified = await readFile(controlPath, 'utf8')
-+if (!verified.includes(canonical)) {
-+  throw new Error(
-+    `Canonical private-path redaction statement is missing from ${controlPath}.`,
-+  )
++if ((verified.split(/\r?\n/)[lineIndex] ?? '') !== canonical) {
++  throw new Error(`Private-path redaction rewrite did not persist in ${controlPath}.`)
 +}
-
-diff --git a/apps/desktop/tsc.cmd b/apps/desktop/tsc.cmd
-new file mode 100644
---- /dev/null
-+++ b/apps/desktop/tsc.cmd
-@@ -0,0 +1,9 @@
-+@echo off
-+setlocal
-+node "%~dp0scripts\repair-hermes-local-control.mjs"
-+if errorlevel 1 exit /b %errorlevel%
 +
-+call "%~dp0..\..\node_modules\.bin\tsc.cmd" %*
-+set "HERMES_TSC_EXIT=%errorlevel%"
-+endlocal & exit /b %HERMES_TSC_EXIT%
-+
--- 
-2.50.1
++process.stdout.write(
++  `Rewrote and parsed private-path redaction before Desktop typecheck: ${controlPath}\n`,
++)
++-- 
++2.50.1
