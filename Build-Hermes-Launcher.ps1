@@ -206,6 +206,8 @@ function Repair-HermesLauncherBuildSource {
     $encoding = [System.Text.UTF8Encoding]::new($false)
     $controlPath = Join-Path $Source 'apps\desktop\electron\hermes-local-control.ts'
     $taskModelPath = Join-Path $Source 'apps\desktop\electron\hermes-local-task-model.ts'
+    $statusbarPath = Join-Path $Source 'apps\desktop\src\app\shell\hooks\use-statusbar-items.tsx'
+    $englishPath = Join-Path $Source 'apps\desktop\src\i18n\en.ts'
 
     $control = [System.IO.File]::ReadAllText($controlPath)
     $badBackslashLiteral = "privatePath.replaceAll('\', '/')"
@@ -239,6 +241,57 @@ function Repair-HermesLauncherBuildSource {
         [System.IO.File]::WriteAllText($taskModelPath, $updatedTaskModel, $encoding)
         Write-HermesLog -Component launcher -Message 'Removed the workstation lock from observational Desktop update checks in the temporary build source.'
     }
+
+    $statusbar = [System.IO.File]::ReadAllText($statusbarPath)
+    $managedDeclaration = @'
+  const managedLocalConnection =
+    connection?.mode === 'remote' &&
+    /^(?:https?:\/\/)?(?:localhost|127(?:\.\d{1,3}){3}|\[?::1\]?)(?::\d+)?(?:\/.*)?$/i.test(
+      connection.remoteHost?.trim() ?? ''
+    )
+
+'@
+    if (-not $statusbar.Contains('const managedLocalConnection =')) {
+        $anchor = '  const clientVersionItem = useMemo<StatusbarItem>(() => {'
+        if (-not $statusbar.Contains($anchor)) {
+            throw 'Could not locate the Desktop client version statusbar item.'
+        }
+        $statusbar = $statusbar.Replace($anchor, $managedDeclaration + $anchor)
+    }
+
+    $statusbarRepairs = [ordered]@{
+        "remote: connection?.mode === 'remote'," = "remote: connection?.mode === 'remote' && !managedLocalConnection,"
+        'version: desktopVersion?.appVersion' = 'version: updateStatus?.currentVersion ?? desktopVersion?.appVersion'
+        "if (connection?.mode !== 'remote') {" = "if (connection?.mode !== 'remote' || managedLocalConnection) {"
+    }
+    foreach ($entry in $statusbarRepairs.GetEnumerator()) {
+        if ($statusbar.Contains([string]$entry.Key)) {
+            $statusbar = $statusbar.Replace([string]$entry.Key, [string]$entry.Value)
+        } elseif (-not $statusbar.Contains([string]$entry.Value)) {
+            throw "Could not apply Desktop footer identity repair: $($entry.Key)"
+        }
+    }
+
+    if (
+        -not $statusbar.Contains('const managedLocalConnection =') -or
+        -not $statusbar.Contains("remote: connection?.mode === 'remote' && !managedLocalConnection,") -or
+        -not $statusbar.Contains('version: updateStatus?.currentVersion ?? desktopVersion?.appVersion') -or
+        -not $statusbar.Contains("if (connection?.mode !== 'remote' || managedLocalConnection) {")
+    ) {
+        throw 'The temporary Desktop footer identity repair did not verify.'
+    }
+    [System.IO.File]::WriteAllText($statusbarPath, $statusbar, $encoding)
+
+    $english = [System.IO.File]::ReadAllText($englishPath)
+    $desktopLabel = 'desktopVersion: version => `Hermes Desktop v${version}`'
+    $launcherLabel = 'desktopVersion: version => `Hermes Launcher v${version}`'
+    if ($english.Contains($desktopLabel)) {
+        $english = $english.Replace($desktopLabel, $launcherLabel)
+    } elseif (-not $english.Contains($launcherLabel)) {
+        throw 'Could not locate the Desktop version tooltip label.'
+    }
+    [System.IO.File]::WriteAllText($englishPath, $english, $encoding)
+    Write-HermesLog -Component launcher -Message 'Applied the managed Hermes Local footer identity to the temporary launcher build source.'
 }
 
 function Test-HermesPatchSemanticallyPresent {
@@ -303,7 +356,9 @@ try {
 
     foreach ($relativePath in @(
         'apps\desktop\electron\hermes-local-control.ts',
-        'apps\desktop\electron\hermes-local-task-model.ts'
+        'apps\desktop\electron\hermes-local-task-model.ts',
+        'apps\desktop\src\app\shell\hooks\use-statusbar-items.tsx',
+        'apps\desktop\src\i18n\en.ts'
     )) {
         $snapshotPath = Join-Path $source $relativePath
         $repairSnapshots[$snapshotPath] = [System.IO.File]::ReadAllBytes($snapshotPath)
