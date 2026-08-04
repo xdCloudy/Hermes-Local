@@ -14,7 +14,7 @@ function marker(name: string, value: object): string {
 }
 
 describe('Hermes Local native application update bridge', () => {
-  it('routes application checks through the trusted updater', () => {
+  it('routes explicit application checks through the trusted updater', () => {
     expect(planDesktopUpdateAction({ component: 'HermesLocal', mode: 'Check' }, 4242)).toEqual({
       arguments: ['-Mode', 'Check', '-Channel', 'development', '-ParentPid', '4242'],
       component: 'HermesLocal',
@@ -22,7 +22,7 @@ describe('Hermes Local native application update bridge', () => {
     })
   })
 
-  it('defaults unqualified desktop checks to the Hermes Local application', () => {
+  it('defaults unqualified application checks to Hermes Local', () => {
     expect(planDesktopUpdateAction({ mode: 'Check' }, 4242)).toEqual({
       arguments: ['-Mode', 'Check', '-Channel', 'development', '-ParentPid', '4242'],
       component: 'HermesLocal',
@@ -34,7 +34,21 @@ describe('Hermes Local native application update bridge', () => {
     })
   })
 
-  it('preserves the existing Hermes Agent transactional route', () => {
+  it('keeps unqualified local-workstation update actions on Hermes Agent', () => {
+    const input = { mode: 'Check', profile: 'Maximum Context' }
+
+    expect(planDesktopUpdateAction(input, 4242)).toEqual({
+      arguments: ['-Mode', 'Check', '-Component', 'HermesAgent', '-Caller', 'Desktop'],
+      component: 'HermesAgent',
+      scriptRelative: 'Update-Hermes-Local.ps1'
+    })
+    expect(desktopUpdateTaskContext(input)).toMatchObject({
+      component: 'HermesAgent',
+      mode: 'Check'
+    })
+  })
+
+  it('preserves the explicit Hermes Agent transactional route', () => {
     expect(planDesktopUpdateAction({ component: 'HermesAgent', mode: 'Apply', targetBranch: 'main' }, 1)).toEqual({
       arguments: ['-Mode', 'Apply', '-Component', 'HermesAgent', '-Caller', 'Desktop', '-TargetBranch', 'main'],
       component: 'HermesAgent',
@@ -42,8 +56,9 @@ describe('Hermes Local native application update bridge', () => {
     })
   })
 
-  it('rejects unsafe pinned identities and branch input', () => {
+  it('rejects unsafe identities and branch input', () => {
     expect(() => planDesktopUpdateAction({ component: 'HermesLocal', channel: 'pinned' }, 1)).toThrow(/target commit/i)
+    expect(() => planDesktopUpdateAction({ component: 'Other', mode: 'Check' }, 1)).toThrow(/unsupported component/i)
     expect(() =>
       planDesktopUpdateAction({ component: 'HermesAgent', targetBranch: 'main\n--upload-pack=bad' }, 1)
     ).toThrow(/unsupported characters/i)
