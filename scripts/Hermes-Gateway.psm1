@@ -67,7 +67,20 @@ function Get-HermesGatewaySnapshot {
             -LogComponent supervisor `
             -PassThruOutput
     )
-    $jsonLine = @($output | Where-Object { $_ -and $_.TrimStart().StartsWith('{') }) | Select-Object -Last 1
+
+    # Invoke-HermesProcess returns its combined stdout/stderr as one value.
+    # Optional Hermes plugins can emit a diagnostic after the JSON payload, so
+    # inspect individual lines rather than passing the whole combined value to
+    # ConvertFrom-Json.
+    $outputLines = @(
+        foreach ($entry in $output) {
+            @([string]$entry -split '\r?\n')
+        }
+    )
+    $jsonLine = @(
+        $outputLines |
+            Where-Object { $_ -and $_.TrimStart().StartsWith('{') }
+    ) | Select-Object -Last 1
     if (-not $jsonLine) {
         throw 'Hermes gateway inspection returned no JSON snapshot.'
     }
