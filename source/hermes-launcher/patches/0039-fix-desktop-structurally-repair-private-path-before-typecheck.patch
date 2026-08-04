@@ -1,27 +1,20 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Hermes Local Integration <hermes-local-ci@localhost>
-Date: Tue, 4 Aug 2026 20:02:00 +0100
-Subject: [PATCH 39/39] fix(desktop): rewrite private-path redaction with generated literals
-
-The composed launcher overlay can emit an odd backslash sequence that TypeScript
-parses as an unterminated string. Avoid manual escape counting entirely.
-
-Add a build-local repair script that locates the complete private-path redaction
-line, regenerates its string literals through JSON.stringify, writes the line
-back unconditionally, and asks the installed TypeScript parser to validate the
-entire file before the launcher build continues.
+Date: Tue, 4 Aug 2026 19:05:42 +0000
+Subject: [PATCH] fix(desktop): rewrite generated control statements before
+ typecheck
 
 ---
- .../scripts/repair-hermes-local-control.mjs   | 69 +++++++++++++++++++
- 1 file changed, 69 insertions(+)
+ .../scripts/repair-hermes-local-control.mjs   | 92 +++++++++++++++++++
+ 1 file changed, 92 insertions(+)
  create mode 100644 apps/desktop/scripts/repair-hermes-local-control.mjs
 
 diff --git a/apps/desktop/scripts/repair-hermes-local-control.mjs b/apps/desktop/scripts/repair-hermes-local-control.mjs
 new file mode 100644
-index 0000000..e76a93d
+index 0000000..b5895db
 --- /dev/null
 +++ b/apps/desktop/scripts/repair-hermes-local-control.mjs
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,92 @@
 +import { readFile, writeFile } from 'node:fs/promises'
 +import { fileURLToPath } from 'node:url'
 +import ts from 'typescript'
@@ -31,34 +24,53 @@ index 0000000..e76a93d
 +const source = await readFile(controlPath, 'utf8')
 +const newline = source.includes('\r\n') ? '\r\n' : '\n'
 +const lines = source.split(/\r?\n/)
-+const candidates = []
 +
-+for (let index = 0; index < lines.length; index += 1) {
-+  const line = lines[index]
-+  if (
-+    line.includes('safe = safe.replaceAll(privatePath') &&
-+    line.includes('privatePath.replaceAll(')
-+  ) {
-+    candidates.push(index)
++function findSingleLine(description, predicate) {
++  const matches = []
++
++  for (let index = 0; index < lines.length; index += 1) {
++    if (predicate(lines[index])) {
++      matches.push(index)
++    }
 +  }
++
++  if (matches.length !== 1) {
++    throw new Error(
++      `Expected exactly one ${description} line in ${controlPath}; found ${matches.length}.`,
++    )
++  }
++
++  return matches[0]
 +}
 +
-+if (candidates.length !== 1) {
-+  throw new Error(
-+    `Expected exactly one private-path redaction line in ${controlPath}; found ${candidates.length}.`,
-+  )
-+}
-+
-+const lineIndex = candidates[0]
-+const indentation = lines[lineIndex].match(/^\s*/)?.[0] ?? ''
++const privatePathLine = findSingleLine(
++  'private-path redaction',
++  (line) =>
++    line.includes('safe = safe.replaceAll(privatePath') &&
++    line.includes('privatePath.replaceAll('),
++)
++const privatePathIndent = lines[privatePathLine].match(/^\s*/)?.[0] ?? ''
 +const privateMarker = JSON.stringify('[PRIVATE-PATH]')
 +const backslashLiteral = JSON.stringify('\\')
 +const slashLiteral = JSON.stringify('/')
-+const canonical =
-+  `${indentation}safe = safe.replaceAll(privatePath, ${privateMarker}).replaceAll(` +
++lines[privatePathLine] =
++  `${privatePathIndent}safe = safe.replaceAll(privatePath, ${privateMarker}).replaceAll(` +
 +  `privatePath.replaceAll(${backslashLiteral}, ${slashLiteral}), ${privateMarker})`
 +
-+lines[lineIndex] = canonical
++const markerBufferLine = findSingleLine(
++  'Desktop update marker buffer',
++  (line) =>
++    line.includes('task.desktopUpdateMarkerBuffer =') &&
++    line.includes('rawText') &&
++    line.includes('.slice(-64 * 1024)'),
++)
++const markerBufferIndent = lines[markerBufferLine].match(/^\s*/)?.[0] ?? ''
++const emptyStringLiteral = JSON.stringify('')
++lines[markerBufferLine] =
++  `${markerBufferIndent}task.desktopUpdateMarkerBuffer = (` +
++  `(task.desktopUpdateMarkerBuffer || ${emptyStringLiteral}) + rawText` +
++  `).slice(-64 * 1024)`
++
 +const updated = lines.join(newline)
 +await writeFile(controlPath, updated, 'utf8')
 +
@@ -84,12 +96,14 @@ index 0000000..e76a93d
 +}
 +
 +const verified = await readFile(controlPath, 'utf8')
-+if ((verified.split(/\r?\n/)[lineIndex] ?? '') !== canonical) {
-+  throw new Error(`Private-path redaction rewrite did not persist in ${controlPath}.`)
++const verifiedLines = verified.split(/\r?\n/)
++if (
++  verifiedLines[privatePathLine] !== lines[privatePathLine] ||
++  verifiedLines[markerBufferLine] !== lines[markerBufferLine]
++) {
++  throw new Error(`Desktop control source repairs did not persist in ${controlPath}.`)
 +}
 +
 +process.stdout.write(
-+  `Rewrote and parsed private-path redaction before Desktop typecheck: ${controlPath}\n`,
++  `Rewrote and parsed generated Desktop control statements before typecheck: ${controlPath}\n`,
 +)
--- 
-2.47.3
