@@ -247,8 +247,17 @@ try {
         -Result $null | Out-Null
 
     $stageResult = Invoke-HermesDesktopUpdateStage -Plan $plan
+    $result = [ordered]@{
+        ok = $true
+        updated = $true
+        pendingActivation = [bool]$stageResult.activationDeferred
+        message = 'Update ready. Close and reopen Hermes Launcher when convenient to activate it.'
+    }
+    foreach ($property in $stageResult.PSObject.Properties) {
+        $result[$property.Name] = $property.Value
+    }
     Write-Output (
-        ConvertTo-HermesDesktopUpdateMarker -Name result -Value $stageResult
+        ConvertTo-HermesDesktopUpdateMarker -Name result -Value $result
     )
     exit 0
 } catch {
