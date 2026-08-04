@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Hermes Local Integration <hermes-local-ci@localhost>
+Date: Tue, 4 Aug 2026 19:40:00 +0100
+Subject: [PATCH 39/39] fix(desktop): repair malformed private-path literal
+
+The composed Windows launcher overlay can contain both a valid escaped
+backslash literal and a separate malformed single-backslash occurrence. The
+broad semantic check for patch 0038 sees the valid occurrence and can therefore
+miss the malformed line that still breaks TypeScript parsing.
+
+Apply the exact malformed hunk as a normal pending patch so git verifies and
+repairs the actual compiler input.
+
+---
+ apps/desktop/electron/hermes-local-control.ts | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
+--- a/apps/desktop/electron/hermes-local-control.ts
++++ b/apps/desktop/electron/hermes-local-control.ts
+@@ -244,7 +244,7 @@ function redacted(text: string): string {
+   }
+ 
+   for (const privatePath of privatePaths.filter((value): value is string => Boolean(value))) {
+-    safe = safe.replaceAll(privatePath, '[PRIVATE-PATH]').replaceAll(privatePath.replaceAll('\', '/'), '[PRIVATE-PATH]')
++    safe = safe.replaceAll(privatePath, '[PRIVATE-PATH]').replaceAll(privatePath.replaceAll('\\', '/'), '[PRIVATE-PATH]')
+   }
+ 
+   return safe
+-- 
+2.50.1
