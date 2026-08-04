@@ -73,19 +73,20 @@ new file mode 100644
 +    `Canonical private-path redaction statement is missing from ${controlPath}.`,
 +  )
 +}
-+diff --git a/apps/desktop/tsc.cmd b/apps/desktop/tsc.cmd
-+new file mode 100644
-+--- /dev/null
-++++ b/apps/desktop/tsc.cmd
-+@@ -0,0 +1,9 @@
-++@echo off
-++setlocal
-++node "%~dp0scripts\repair-hermes-local-control.mjs"
-++if errorlevel 1 exit /b %errorlevel%
-++
-++call "%~dp0..\..\node_modules\.bin\tsc.cmd" %*
-++set "HERMES_TSC_EXIT=%errorlevel%"
-++endlocal & exit /b %HERMES_TSC_EXIT%
-++
+
+diff --git a/apps/desktop/tsc.cmd b/apps/desktop/tsc.cmd
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/tsc.cmd
+@@ -0,0 +1,9 @@
++@echo off
++setlocal
++node "%~dp0scripts\repair-hermes-local-control.mjs"
++if errorlevel 1 exit /b %errorlevel%
++
++call "%~dp0..\..\node_modules\.bin\tsc.cmd" %*
++set "HERMES_TSC_EXIT=%errorlevel%"
++endlocal & exit /b %HERMES_TSC_EXIT%
++
 -- 
 2.50.1
