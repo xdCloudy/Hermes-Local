@@ -101,6 +101,12 @@ try {
             "Waiting for existing supervisor PID $existingPid to finish starting profile '$Profile'."
         )
     } else {
+        $entrypointRepair = Resolve-HermesPath 'scripts\Repair-Hermes-ConsoleEntrypoint.ps1'
+        & $entrypointRepair -RepositoryRoot (Get-HermesRoot)
+        if ($LASTEXITCODE -ne 0) {
+            throw "Hermes console entrypoint repair failed with exit code $LASTEXITCODE."
+        }
+
         [System.IO.Directory]::CreateDirectory($runtimeDirectory) | Out-Null
         $supervisor = Resolve-HermesPath 'scripts\supervisor\Hermes-Supervisor.ps1'
         $pwsh = (Get-Command pwsh.exe -ErrorAction Stop).Source
