@@ -113,7 +113,9 @@ function Write-HermesLog {
     $line = '{0} [{1}] {2}' -f (Get-Date).ToUniversalTime().ToString('o'), $Level, $safeMessage
     [System.IO.File]::AppendAllText($logPath, $line + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
     if ($Level -eq 'ERROR') {
-        Write-Error $safeMessage
+        # Logging is diagnostic output, not control flow. Callers already own
+        # the failure and must remain able to print context and return an exit code.
+        Write-Error $safeMessage -ErrorAction Continue
     } elseif ($Level -eq 'WARN') {
         Write-Warning $safeMessage
     } else {
