@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.hermes.invalid/schemas/trust/trusted-origin.schema.json",
+  "title": "Hermes Local trusted origin",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "schemaVersion", "id", "originClass", "origin", "allowedActions", "credentialMode", "allowSubdomains", "allowWildcardPort", "enabled", "revision"],
+  "properties": {
+    "kind": { "const": "trustedOrigin" },
+    "schemaVersion": { "const": 1 },
+    "id": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/recordId" },
+    "originClass": { "type": "string", "enum": ["loopback", "remote-gateway"] },
+    "origin": { "type": "string", "format": "uri", "maxLength": 2048 },
+    "allowedActions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": { "type": "string", "enum": ["render", "same-origin-navigation", "external-open", "websocket", "api-proxy"] }
+    },
+    "credentialMode": { "type": "string", "enum": ["none", "electron-request-header", "secure-cookie", "proof-of-possession"] },
+    "allowSubdomains": { "const": false },
+    "allowWildcardPort": { "const": false },
+    "enabled": { "type": "boolean" },
+    "revision": { "type": "integer", "minimum": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "originClass": { "const": "loopback" } }, "required": ["originClass"] },
+      "then": {
+        "properties": {
+          "origin": { "pattern": "^https?://(127\\.0\\.0\\.1|localhost|\\[::1\\])(:[0-9]{1,5})?$" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "originClass": { "const": "remote-gateway" } }, "required": ["originClass"] },
+      "then": {
+        "properties": {
+          "origin": { "pattern": "^https://" },
+          "credentialMode": { "enum": ["secure-cookie", "proof-of-possession"] }
+        }
+      }
+    }
+  ]
+}
