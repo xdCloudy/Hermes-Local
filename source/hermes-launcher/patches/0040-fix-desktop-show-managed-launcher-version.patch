@@ -4,8 +4,8 @@ Date: Tue, 4 Aug 2026 22:22:00 +0100
 Subject: [PATCH] fix(desktop): show managed launcher version in footer
 
 ---
- .../shell/hooks/managed-local-version.test.ts | 49 +++++++++++++++++++
- .../shell/hooks/managed-local-version.ts      | 35 +++++++++++++
+ .../shell/hooks/managed-local-version.test.ts | 52 ++++++++++++++++++++
+ .../shell/hooks/managed-local-version.ts      | 32 ++++++++++++
  .../shell/hooks/use-statusbar-items.tsx       | 18 +++++--
  apps/desktop/src/i18n/en.ts                   |  2 +-
  4 files changed, 99 insertions(+), 5 deletions(-)
@@ -17,7 +17,7 @@ new file mode 100644
 index 0000000..468d022
 --- /dev/null
 +++ b/apps/desktop/src/app/shell/hooks/managed-local-version.test.ts
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,52 @@
 +import { describe, expect, it } from 'vitest'
 +
 +import {
@@ -75,7 +75,7 @@ new file mode 100644
 index 0000000..cb861c6
 --- /dev/null
 +++ b/apps/desktop/src/app/shell/hooks/managed-local-version.ts
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,32 @@
 +interface DesktopConnectionIdentity {
 +  mode?: string
 +  remoteHost?: null | string
@@ -108,7 +108,6 @@ index 0000000..cb861c6
 +
 +  return Boolean(remoteHost && LOOPBACK_WORKSTATION.test(remoteHost))
 +}
-
 diff --git a/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx b/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
 index b15cf639f6d8d8144a008ab53b17e3c7b2b605f2..d8ef4ab38132acaf00fdb6920e081da6f5dd3781 100644
 --- a/apps/desktop/src/app/shell/hooks/use-statusbar-items.tsx
@@ -179,7 +178,6 @@ index b15cf639f6d8d8144a008ab53b17e3c7b2b605f2..d8ef4ab38132acaf00fdb6920e081da6
    ])
  
    const connectionItem = useMemo<StatusbarItem | null>(() => {
-
 diff --git a/apps/desktop/src/i18n/en.ts b/apps/desktop/src/i18n/en.ts
 index fe764eb310a4a0ebf33d47e952405457ffd9a409..2707683 100644
 --- a/apps/desktop/src/i18n/en.ts
