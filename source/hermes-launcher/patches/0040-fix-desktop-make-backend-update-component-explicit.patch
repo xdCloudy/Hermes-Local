@@ -1,0 +1,49 @@
+From 36e2bdfc2b5000e7a2ab0f8a136a43c90a256551 Mon Sep 17 00:00:00 2001
+From: Hermes Local Integration <hermes-local-ci@localhost>
+Date: Tue, 4 Aug 2026 21:38:10 +0100
+Subject: [PATCH 40/40] fix(desktop): make backend update component explicit
+
+---
+ apps/desktop/src/app/local-workstation/index.tsx | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index dd93658..253bf20 100644
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -1,7 +1,7 @@
+                 <ActionButton
+                   action="update"
+                   available={snapshot.actions.update}
+-                  input={{ mode: 'Check' satisfies LocalUpdateMode }}
++                  input={{ component: 'HermesAgent', mode: 'Check' satisfies LocalUpdateMode }}
+                   onRun={onRun}
+                   tasks={snapshot.tasks}
+                 >
+@@ -11,6 +11,7 @@
+                   action="update"
+                   available={snapshot.actions.update && latestUpdate?.target?.updateAvailable === true}
+                   input={{
++                    component: 'HermesAgent',
+                     mode: 'Compatibility' satisfies LocalUpdateMode,
+                     targetCommit: latestUpdate?.target?.candidate || undefined
+                   }}
+@@ -23,6 +24,7 @@
+                   action="update"
+                   available={snapshot.actions.update && compatibilityReady}
+                   input={{
++                    component: 'HermesAgent',
+                     mode: 'Apply' satisfies LocalUpdateMode,
+                     targetCommit: latestUpdate?.target?.candidate || undefined
+                   }}
+@@ -35,7 +37,7 @@
+                 <ActionButton
+                   action="update"
+                   available={snapshot.actions.update && !updateBusy}
+-                  input={{ mode: 'Rollback' satisfies LocalUpdateMode }}
++                  input={{ component: 'HermesAgent', mode: 'Rollback' satisfies LocalUpdateMode }}
+                   onRun={onRun}
+                   tasks={snapshot.tasks}
+                   variant="destructive"
+-- 
+2.47.3
