@@ -178,7 +178,15 @@ try {
         -RequestedDestination $DestinationDirectory `
         -Root $hermesRoot
 
-    foreach ($patch in @(Get-PendingHermesLauncherPatches -Git $git -Source $source)) {
+    $pendingPatches = @(Get-PendingHermesLauncherPatches -Git $git -Source $source)
+
+    $overlayState = Resolve-HermesPath "temp\launcher-overlay-$([guid]::NewGuid().ToString('N')).json"
+    & (Resolve-HermesPath 'Apply-Hermes-LauncherOverlay.ps1') `
+        -Mode Apply `
+        -StatePath $overlayState `
+        -RepositoryRoot $hermesRoot
+
+    foreach ($patch in $pendingPatches) {
         $null = Invoke-HermesProcess `
             -FilePath $git `
             -ArgumentList @('-C', $source, 'apply', '--whitespace=nowarn', '--', $patch.FullName) `
@@ -186,12 +194,6 @@ try {
             -LogComponent launcher
         $temporaryPatches.Add($patch.FullName)
     }
-
-    $overlayState = Resolve-HermesPath "temp\launcher-overlay-$([guid]::NewGuid().ToString('N')).json"
-    & (Resolve-HermesPath 'Apply-Hermes-LauncherOverlay.ps1') `
-        -Mode Apply `
-        -StatePath $overlayState `
-        -RepositoryRoot $hermesRoot
     $temporaryTypeDeclaration = New-TemporaryTablerTypeDeclaration -DesktopSource $desktop
 
     $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @(
@@ -239,18 +241,6 @@ try {
         Remove-Item -LiteralPath $temporaryTypeDeclaration -Force
         Write-HermesLog -Component launcher -Message "Removed temporary Tabler direct-import declaration at $temporaryTypeDeclaration."
     }
-    if ($overlayState -and (Test-Path -LiteralPath $overlayState -PathType Leaf)) {
-        try {
-            & (Resolve-HermesPath 'Apply-Hermes-LauncherOverlay.ps1') `
-                -Mode Restore `
-                -StatePath $overlayState `
-                -RepositoryRoot (Get-HermesRoot)
-        } catch {
-            $exitCode = 1
-            Write-HermesLog -Component launcher -Level ERROR -Message $_.Exception.ToString()
-            Write-Host "Hermes Launcher source restoration failed: $($_.Exception.Message)" -ForegroundColor Red
-        }
-    }
     if ($git -and $source -and $temporaryPatches.Count -gt 0) {
         for ($index = $temporaryPatches.Count - 1; $index -ge 0; $index -= 1) {
             try {
@@ -266,6 +256,18 @@ try {
                 Write-HermesLog -Component launcher -Level ERROR -Message $_.Exception.ToString()
                 Write-Host "Hermes Launcher patch restoration failed: $($_.Exception.Message)" -ForegroundColor Red
             }
+        }
+    }
+    if ($overlayState -and (Test-Path -LiteralPath $overlayState -PathType Leaf)) {
+        try {
+            & (Resolve-HermesPath 'Apply-Hermes-LauncherOverlay.ps1') `
+                -Mode Restore `
+                -StatePath $overlayState `
+                -RepositoryRoot (Get-HermesRoot)
+        } catch {
+            $exitCode = 1
+            Write-HermesLog -Component launcher -Level ERROR -Message $_.Exception.ToString()
+            Write-Host "Hermes Launcher source restoration failed: $($_.Exception.Message)" -ForegroundColor Red
         }
     }
 }
