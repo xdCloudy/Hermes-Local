@@ -12,14 +12,14 @@ Add a regression test covering the startup/check overlap reported by the
 Windows launcher.
 
 ---
- .../electron/hermes-local-task-model.test.ts  | 7 +++++++
+ .../electron/hermes-local-task-model.test.ts  | 6 ++++++
  apps/desktop/electron/hermes-local-task-model.ts | 4 +++-
- 2 files changed, 10 insertions(+), 1 deletion(-)
+ 2 files changed, 9 insertions(+), 1 deletion(-)
 
 diff --git a/apps/desktop/electron/hermes-local-task-model.test.ts b/apps/desktop/electron/hermes-local-task-model.test.ts
 --- a/apps/desktop/electron/hermes-local-task-model.test.ts
 +++ b/apps/desktop/electron/hermes-local-task-model.test.ts
-@@ -75,6 +75,13 @@ describe('Hermes Local task model', () => {
+@@ -75,5 +75,11 @@ describe('Hermes Local task model', () => {
      expect(admitTask('security', [update])).toMatchObject({ kind: 'start' })
    })
  
@@ -31,7 +31,6 @@ diff --git a/apps/desktop/electron/hermes-local-task-model.test.ts b/apps/deskto
 +
    it('queues automatic readiness but rejects disruptive conflicts', () => {
      const repair = running('repair')
- 
 diff --git a/apps/desktop/electron/hermes-local-task-model.ts b/apps/desktop/electron/hermes-local-task-model.ts
 --- a/apps/desktop/electron/hermes-local-task-model.ts
 +++ b/apps/desktop/electron/hermes-local-task-model.ts
