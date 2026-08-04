@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch] $NonInteractive
+    [switch] $NonInteractive,
+    [string] $DestinationDirectory
 )
 
 Set-StrictMode -Version Latest
@@ -41,6 +42,47 @@ declare module '@tabler/icons-react/dist/esm/icons/*.mjs' {
     return $path
 }
 
+function Resolve-HermesLauncherDestination {
+    param(
+        [string] $RequestedDestination,
+        [Parameter(Mandatory)][string] $Root
+    )
+
+    $rootFull = [IO.Path]::GetFullPath($Root).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    $destination = if ([string]::IsNullOrWhiteSpace($RequestedDestination)) {
+        Join-Path $Root 'dist'
+    } elseif ([IO.Path]::IsPathFullyQualified($RequestedDestination)) {
+        $RequestedDestination
+    } else {
+        Join-Path $Root $RequestedDestination
+    }
+    $destinationFull = [IO.Path]::GetFullPath($destination)
+    $rootWithoutSeparator = $rootFull.TrimEnd('\', '/')
+
+    if ($destinationFull.Equals($rootWithoutSeparator, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Launcher build destination cannot be the Hermes Local root.'
+    }
+    if (-not $destinationFull.StartsWith($rootFull, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Launcher build destination is outside the Hermes Local root: $destinationFull"
+    }
+
+    foreach ($protected in @(
+        (Join-Path $Root 'source'),
+        (Join-Path $Root 'models'),
+        (Join-Path $Root 'runtimes'),
+        (Join-Path $Root 'config'),
+        (Join-Path $Root 'data')
+    )) {
+        $protectedFull = [IO.Path]::GetFullPath($protected).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+        $candidate = $destinationFull.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+        if ($candidate.StartsWith($protectedFull, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Launcher build destination overlaps protected Hermes Local state: $destinationFull"
+        }
+    }
+
+    $destinationFull
+}
+
 $temporaryTypeDeclaration = $null
 $overlayState = $null
 $exitCode = 0
@@ -49,41 +91,57 @@ try {
     Assert-HermesRoot
     Initialize-HermesLayout
     Set-HermesProcessEnvironment
+
+    $hermesRoot = Get-HermesRoot
     $source = Resolve-HermesPath 'source\hermes-agent'
     $desktop = Join-Path $source 'apps\desktop'
     $release = Join-Path $desktop 'release'
     $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
+    $destination = Resolve-HermesLauncherDestination `
+        -RequestedDestination $DestinationDirectory `
+        -Root $hermesRoot
 
     $overlayState = Resolve-HermesPath "temp\launcher-overlay-$([guid]::NewGuid().ToString('N')).json"
     & (Resolve-HermesPath 'Apply-Hermes-LauncherOverlay.ps1') `
         -Mode Apply `
         -StatePath $overlayState `
-        -RepositoryRoot (Get-HermesRoot)
+        -RepositoryRoot $hermesRoot
     $temporaryTypeDeclaration = New-TemporaryTablerTypeDeclaration -DesktopSource $desktop
 
-    $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @('run', 'build', '--workspace', 'web') -WorkingDirectory $source -LogComponent launcher
-    $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @('run', 'typecheck', '--workspace', 'apps/desktop') -WorkingDirectory $source -LogComponent launcher
-    $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @('run', 'build', '--workspace', 'apps/desktop') -WorkingDirectory $source -LogComponent launcher
-    $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @('run', 'builder', '--workspace', 'apps/desktop', '--', '--dir', '--win') -WorkingDirectory $source -LogComponent launcher
+    $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @(
+        'run', 'build', '--workspace', 'web'
+    ) -WorkingDirectory $source -LogComponent launcher
+    $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @(
+        'run', 'typecheck', '--workspace', 'apps/desktop'
+    ) -WorkingDirectory $source -LogComponent launcher
+    $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @(
+        'run', 'build', '--workspace', 'apps/desktop'
+    ) -WorkingDirectory $source -LogComponent launcher
+    $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @(
+        'run', 'builder', '--workspace', 'apps/desktop', '--', '--dir', '--win'
+    ) -WorkingDirectory $source -LogComponent launcher
 
     $unpacked = Join-Path $release 'win-unpacked'
     $executable = Join-Path $unpacked 'Hermes Launcher.exe'
-    if (-not (Test-Path -LiteralPath $executable)) {
+    if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
         throw "Packaged launcher executable was not produced: $executable"
     }
-    $destination = Resolve-HermesPath 'dist'
-    $expectedDestination = [System.IO.Path]::GetFullPath((Join-Path (Get-HermesRoot) 'dist'))
-    if ([System.IO.Path]::GetFullPath($destination) -ne $expectedDestination) {
-        throw "Refusing to replace unexpected launcher destination: $destination"
+
+    if (Test-Path -LiteralPath $destination) {
+        Get-ChildItem -LiteralPath $destination -Force |
+            Remove-Item -Recurse -Force
+    } else {
+        [IO.Directory]::CreateDirectory($destination) | Out-Null
     }
-    Get-ChildItem -LiteralPath $destination -Force |
-        Remove-Item -Recurse -Force
+
     Get-ChildItem -LiteralPath $unpacked -Force |
         Copy-Item -Destination $destination -Recurse -Force
-    $target = Resolve-HermesPath 'dist\Hermes Launcher.exe'
-    if (-not (Test-Path -LiteralPath $target)) {
+
+    $target = Join-Path $destination 'Hermes Launcher.exe'
+    if (-not (Test-Path -LiteralPath $target -PathType Leaf)) {
         throw "Launcher copy failed: $target"
     }
+
     Write-HermesLog -Component launcher -Message "Built production launcher at $target."
     Write-Host "Hermes Launcher built: $target"
 } catch {

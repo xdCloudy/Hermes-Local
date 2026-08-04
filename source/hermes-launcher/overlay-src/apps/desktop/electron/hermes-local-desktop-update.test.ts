@@ -4,6 +4,7 @@ import {
   desktopUpdateTaskContext,
   expectedUpdateOperationComponent,
   parseDesktopUpdateHandoffMarker,
+  parseDesktopUpdateResultMarker,
   parseDesktopUpdateStatusMarker,
   planDesktopUpdateAction
 } from './hermes-local-desktop-update'
@@ -13,7 +14,7 @@ function marker(name: string, value: object): string {
 }
 
 describe('Hermes Local native application update bridge', () => {
-  it('routes application checks through the trusted detached updater', () => {
+  it('routes application checks through the trusted updater', () => {
     expect(planDesktopUpdateAction({ component: 'HermesLocal', mode: 'Check' }, 4242)).toEqual({
       arguments: ['-Mode', 'Check', '-Channel', 'development', '-ParentPid', '4242'],
       component: 'HermesLocal',
@@ -36,10 +37,25 @@ describe('Hermes Local native application update bridge', () => {
     ).toThrow(/unsupported characters/i)
   })
 
-  it('parses status and detached-helper handoff markers', () => {
+  it('parses status, ready-to-restart results, and legacy helper handoffs', () => {
     expect(parseDesktopUpdateStatusMarker(marker('status', { supported: true, behind: 2 }))).toMatchObject({
       supported: true,
       behind: 2
+    })
+    expect(
+      parseDesktopUpdateResultMarker(
+        marker('result', {
+          status: 'ready-to-restart',
+          launcherStayedOpen: true,
+          pendingActivation: true,
+          restartRequired: true
+        })
+      )
+    ).toMatchObject({
+      status: 'ready-to-restart',
+      launcherStayedOpen: true,
+      pendingActivation: true,
+      restartRequired: true
     })
     expect(
       parseDesktopUpdateHandoffMarker(
