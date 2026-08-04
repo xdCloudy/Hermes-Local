@@ -65,14 +65,22 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
     def test_staged_success_marker_reports_deferred_activation(self) -> None:
         text = self.read("Invoke-Hermes-DesktopUpdate.ps1")
         for required in (
-            "$stageResult = Invoke-HermesDesktopUpdateStage -Plan $plan",
-            "ok = $true",
-            "updated = $true",
-            "pendingActivation = [bool]$stageResult.activationDeferred",
+            "$stageOutput = @(Invoke-HermesDesktopUpdateStage -Plan $plan)",
+            "$stageResult = @(",
+            "Desktop update staging did not return a structured result.",
+            "Get-HermesDesktopObjectValue",
+            "-Name activationDeferred",
+            "-Default $false",
+            "pendingActivation = $activationDeferred",
             "Update ready. Close and reopen Hermes Launcher when convenient to activate it.",
             "foreach ($property in $stageResult.PSObject.Properties)",
         ):
             self.assertIn(required, text)
+
+        self.assertNotIn(
+            "pendingActivation = [bool]$stageResult.activationDeferred",
+            text,
+        )
 
     def test_staging_is_data_preserving_and_rolls_back_source_only(self) -> None:
         text = self.read_updater()
