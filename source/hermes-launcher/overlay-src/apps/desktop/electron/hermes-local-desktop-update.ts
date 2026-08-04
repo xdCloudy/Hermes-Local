@@ -17,6 +17,23 @@ function inputText(input: Record<string, unknown>, key: string): string {
   return String(input[key] || '').trim()
 }
 
+function updateComponent(input: Record<string, unknown>): 'HermesAgent' | typeof HERMES_LOCAL_APPLICATION_COMPONENT {
+  const explicit = inputText(input, 'component')
+
+  if (explicit === 'HermesAgent' || explicit === HERMES_LOCAL_APPLICATION_COMPONENT) {
+    return explicit
+  }
+  if (explicit) {
+    throw new Error('Unsupported Hermes Local update component')
+  }
+
+  // Local-workstation actions always carry the selected inference profile.
+  // Application update checks do not. Use that existing boundary to keep the
+  // backend updater on NousResearch while unqualified app checks target this
+  // Hermes Local repository.
+  return inputText(input, 'profile') ? 'HermesAgent' : HERMES_LOCAL_APPLICATION_COMPONENT
+}
+
 function decodeMarker<T>(text: string, name: 'helper' | 'result' | 'status'): T | null {
   const pattern = new RegExp(`::hermes-desktop-update-${name}::([A-Za-z0-9+/=]+)`, 'g')
   const matches = [...text.matchAll(pattern)]
@@ -62,7 +79,7 @@ export function planDesktopUpdateAction(
   input: Record<string, unknown>,
   parentPid: number
 ): DesktopUpdateActionPlan {
-  const component = inputText(input, 'component') || HERMES_LOCAL_APPLICATION_COMPONENT
+  const component = updateComponent(input)
   const mode = inputText(input, 'mode') || 'Check'
   const targetCommit = inputText(input, 'targetCommit')
 
@@ -95,10 +112,6 @@ export function planDesktopUpdateAction(
     }
   }
 
-  if (component !== 'HermesAgent') {
-    throw new Error('Unsupported Hermes Local update component')
-  }
-
   const targetBranch = inputText(input, 'targetBranch')
 
   if (!['Apply', 'Check', 'Compatibility', 'Rollback'].includes(mode)) {
@@ -124,7 +137,7 @@ export function planDesktopUpdateAction(
 }
 
 export function desktopUpdateTaskContext(input: Record<string, unknown>): Record<string, string> {
-  const component = inputText(input, 'component') || HERMES_LOCAL_APPLICATION_COMPONENT
+  const component = updateComponent(input)
   const keys =
     component === HERMES_LOCAL_APPLICATION_COMPONENT
       ? ['channel', 'component', 'mode', 'targetCommit']
