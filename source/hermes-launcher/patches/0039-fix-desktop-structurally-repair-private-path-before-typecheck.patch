@@ -12,15 +12,16 @@ back unconditionally, and asks the installed TypeScript parser to validate the
 entire file before the launcher build continues.
 
 ---
- .../scripts/repair-hermes-local-control.mjs   | 63 +++++++++++++++++++
- 1 file changed, 63 insertions(+)
+ .../scripts/repair-hermes-local-control.mjs   | 69 +++++++++++++++++++
+ 1 file changed, 69 insertions(+)
  create mode 100644 apps/desktop/scripts/repair-hermes-local-control.mjs
 
 diff --git a/apps/desktop/scripts/repair-hermes-local-control.mjs b/apps/desktop/scripts/repair-hermes-local-control.mjs
 new file mode 100644
+index 0000000..e76a93d
 --- /dev/null
 +++ b/apps/desktop/scripts/repair-hermes-local-control.mjs
-@@ -0,0 +1,63 @@
+@@ -0,0 +1,69 @@
 +import { readFile, writeFile } from 'node:fs/promises'
 +import { fileURLToPath } from 'node:url'
 +import ts from 'typescript'
@@ -90,5 +91,5 @@ new file mode 100644
 +process.stdout.write(
 +  `Rewrote and parsed private-path redaction before Desktop typecheck: ${controlPath}\n`,
 +)
-+-- 
-+2.50.1
+-- 
+2.47.3
