@@ -5,8 +5,8 @@ Subject: [PATCH] fix(desktop): rewrite generated control statements before
  typecheck
 
 ---
- .../scripts/repair-hermes-local-control.mjs   | 92 +++++++++++++++++++
- 1 file changed, 92 insertions(+)
+ .../scripts/repair-hermes-local-control.mjs   | 154 ++++++++++++++++++
+ 1 file changed, 154 insertions(+)
  create mode 100644 apps/desktop/scripts/repair-hermes-local-control.mjs
 
 diff --git a/apps/desktop/scripts/repair-hermes-local-control.mjs b/apps/desktop/scripts/repair-hermes-local-control.mjs
@@ -14,7 +14,7 @@ new file mode 100644
 index 0000000..b5895db
 --- /dev/null
 +++ b/apps/desktop/scripts/repair-hermes-local-control.mjs
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,154 @@
 +import { readFile, writeFile } from 'node:fs/promises'
 +import { fileURLToPath } from 'node:url'
 +import ts from 'typescript'
@@ -104,6 +104,67 @@ index 0000000..b5895db
 +  throw new Error(`Desktop control source repairs did not persist in ${controlPath}.`)
 +}
 +
++const statusbarUrl = new URL('../src/app/shell/hooks/use-statusbar-items.tsx', import.meta.url)
++const statusbarPath = fileURLToPath(statusbarUrl)
++let statusbar = await readFile(statusbarPath, 'utf8')
++const statusbarNewline = statusbar.includes('\r\n') ? '\r\n' : '\n'
++const managedStart = statusbar.indexOf('  const managedLocalConnection =')
++const clientStart = statusbar.indexOf(
++  '  const clientVersionItem = useMemo<StatusbarItem>(() => {',
++  managedStart,
++)
++
++if (managedStart < 0 || clientStart <= managedStart) {
++  throw new Error(
++    `Could not locate the generated managed-workstation footer declaration in ${statusbarPath}.`,
++  )
++}
++
++const managedDeclaration = [
++  "  const managedLocalHost = connection?.remoteHost?.trim().toLowerCase() ?? ''",
++  '  const managedLocalConnection =',
++  "    connection?.mode === 'remote' &&",
++  "    (managedLocalHost === 'localhost' ||",
++  "      managedLocalHost.startsWith('localhost:') ||",
++  "      managedLocalHost.startsWith('127.') ||",
++  "      managedLocalHost.startsWith('http://localhost') ||",
++  "      managedLocalHost.startsWith('https://localhost') ||",
++  "      managedLocalHost.startsWith('http://127.') ||",
++  "      managedLocalHost.startsWith('https://127.') ||",
++  "      managedLocalHost === '::1' ||",
++  "      managedLocalHost.startsWith('[::1]') ||",
++  "      managedLocalHost.startsWith('http://[::1]') ||",
++  "      managedLocalHost.startsWith('https://[::1]'))",
++  '',
++  '',
++].join(statusbarNewline)
++
++statusbar =
++  statusbar.slice(0, managedStart) +
++  managedDeclaration +
++  statusbar.slice(clientStart)
++await writeFile(statusbarPath, statusbar, 'utf8')
++
++const parsedStatusbar = ts.createSourceFile(
++  statusbarPath,
++  statusbar,
++  ts.ScriptTarget.Latest,
++  true,
++  ts.ScriptKind.TSX,
++)
++
++if (parsedStatusbar.parseDiagnostics.length > 0) {
++  const details = parsedStatusbar.parseDiagnostics.slice(0, 5).map((diagnostic) => {
++    const start = diagnostic.start ?? 0
++    const position = parsedStatusbar.getLineAndCharacterOfPosition(start)
++    const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, ' ')
++    return `${position.line + 1}:${position.character + 1} ${message}`
++  })
++  throw new Error(
++    `Desktop statusbar source has TypeScript parse errors after repair:\n${details.join('\n')}`,
++  )
++}
++
 +process.stdout.write(
-+  `Rewrote and parsed generated Desktop control statements before typecheck: ${controlPath}\n`,
++  `Rewrote and parsed generated Desktop control and footer statements before typecheck: ${controlPath}; ${statusbarPath}\n`,
 +)
