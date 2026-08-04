@@ -33,19 +33,23 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
             )
         )
 
-    def test_updater_prepares_without_closing_or_relaunching_launcher(self) -> None:
+    def test_updater_stages_then_relaunches_after_recorded_parent_exits(self) -> None:
         text = self.read_updater()
+        promotion = self.read("scripts/desktop-update/DesktopUpdate-Promotion.ps1")
+
         for required in (
             "'Promote'",
             "pending-desktop-update.json",
             "ready-to-restart",
             "Start-HermesDesktopPromotionHelper",
             "Wait-HermesDesktopLauncherExit",
-            "Test-HermesDesktopLauncherRunning",
+            "Test-HermesDesktopProcessIdentity",
             "'-DestinationDirectory'",
             "launcherStayedOpen",
-            "relaunchOnActivation = $false",
             "Preparing the update in the background. Hermes Launcher will remain open.",
+            "the updated launcher will reopen automatically",
+            "Start-Process",
+            "relaunched = $relaunched",
             "ConvertTo-HermesDesktopUpdateMarker -Name result",
             "scripts\\desktop-update",
         ):
@@ -54,7 +58,9 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
         self.assertNotIn("ConvertTo-HermesDesktopUpdateMarker -Name helper", text)
         self.assertNotIn("Start-HermesKnownGoodLauncher", text)
         self.assertNotIn("Wait-HermesDesktopUpdateParent", text)
-        self.assertNotIn("Restarting Hermes Launcher to install", text)
+        self.assertNotIn("while ($true) {\n        while (", promotion)
+        self.assertIn("-ProcessId $processId", promotion)
+        self.assertIn("-StartedAt $startedAt", promotion)
 
     def test_staged_success_marker_reports_deferred_activation(self) -> None:
         text = self.read("Invoke-Hermes-DesktopUpdate.ps1")
