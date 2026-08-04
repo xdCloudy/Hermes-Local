@@ -34,16 +34,16 @@ describe('Hermes Local native application update bridge', () => {
     })
   })
 
-  it('keeps unqualified local-workstation update actions on Hermes Agent', () => {
+  it('does not infer a backend update from shared task profile metadata', () => {
     const input = { mode: 'Check', profile: 'Maximum Context' }
 
     expect(planDesktopUpdateAction(input, 4242)).toEqual({
-      arguments: ['-Mode', 'Check', '-Component', 'HermesAgent', '-Caller', 'Desktop'],
-      component: 'HermesAgent',
-      scriptRelative: 'Update-Hermes-Local.ps1'
+      arguments: ['-Mode', 'Check', '-Channel', 'development', '-ParentPid', '4242'],
+      component: 'HermesLocal',
+      scriptRelative: 'Invoke-Hermes-DesktopUpdate.ps1'
     })
     expect(desktopUpdateTaskContext(input)).toMatchObject({
-      component: 'HermesAgent',
+      component: 'HermesLocal',
       mode: 'Check'
     })
   })
