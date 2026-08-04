@@ -3,7 +3,8 @@
 /runtimes/
 /models/*
 !/models/manifests/
-!/models/manifests/**
+/models/manifests/*
+!/models/manifests/Qwen3.6-35B-A3B-APEX-MTP-I-Quality.json
 /data/
 /logs/
 /cache/
