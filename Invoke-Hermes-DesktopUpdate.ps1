@@ -246,11 +246,31 @@ try {
         -Failure $null `
         -Result $null | Out-Null
 
-    $stageResult = Invoke-HermesDesktopUpdateStage -Plan $plan
+    $stageOutput = @(Invoke-HermesDesktopUpdateStage -Plan $plan)
+    $stageResult = @(
+        $stageOutput |
+            Where-Object {
+                $null -ne $_ -and
+                $null -ne (Get-HermesDesktopObjectValue `
+                    -InputObject $_ `
+                    -Name status `
+                    -Default $null)
+            }
+    ) | Select-Object -Last 1
+
+    if (-not $stageResult) {
+        throw 'Desktop update staging did not return a structured result.'
+    }
+
+    $activationDeferred = [bool](Get-HermesDesktopObjectValue `
+        -InputObject $stageResult `
+        -Name activationDeferred `
+        -Default $false)
+
     $result = [ordered]@{
         ok = $true
         updated = $true
-        pendingActivation = [bool]$stageResult.activationDeferred
+        pendingActivation = $activationDeferred
         message = 'Update ready. Close and reopen Hermes Launcher when convenient to activate it.'
     }
     foreach ($property in $stageResult.PSObject.Properties) {
