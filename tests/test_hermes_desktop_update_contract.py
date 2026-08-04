@@ -21,23 +21,55 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
         payload = "".join(re.findall(r"'([A-Za-z0-9+/=]+)'", block))
         return gzip.decompress(base64.b64decode(payload)).decode("utf-8")
 
-    def test_detached_helper_is_fail_closed_and_data_preserving(self) -> None:
-        text = self.read("Invoke-Hermes-DesktopUpdate.ps1")
+    def read_updater(self) -> str:
+        return "\n".join(
+            self.read(relative)
+            for relative in (
+                "Invoke-Hermes-DesktopUpdate.ps1",
+                "scripts/desktop-update/DesktopUpdate-Git.ps1",
+                "scripts/desktop-update/DesktopUpdate-State.ps1",
+                "scripts/desktop-update/DesktopUpdate-Promotion.ps1",
+                "scripts/desktop-update/DesktopUpdate-Stage.ps1",
+            )
+        )
+
+    def test_updater_prepares_without_closing_or_relaunching_launcher(self) -> None:
+        text = self.read_updater()
         for required in (
-            "Wait-HermesDesktopUpdateParent",
+            "'Promote'",
+            "pending-desktop-update.json",
+            "ready-to-restart",
+            "Start-HermesDesktopPromotionHelper",
+            "Wait-HermesDesktopLauncherExit",
+            "Test-HermesDesktopLauncherRunning",
+            "'-DestinationDirectory'",
+            "launcherStayedOpen",
+            "relaunchOnActivation = $false",
+            "Preparing the update in the background. Hermes Launcher will remain open.",
+            "ConvertTo-HermesDesktopUpdateMarker -Name result",
+            "scripts\\desktop-update",
+        ):
+            self.assertIn(required, text)
+
+        self.assertNotIn("ConvertTo-HermesDesktopUpdateMarker -Name helper", text)
+        self.assertNotIn("Start-HermesKnownGoodLauncher", text)
+        self.assertNotIn("Wait-HermesDesktopUpdateParent", text)
+        self.assertNotIn("Restarting Hermes Launcher to install", text)
+
+    def test_staging_is_data_preserving_and_rolls_back_source_only(self) -> None:
+        text = self.read_updater()
+        for required in (
             "Test-HermesDesktopUpdateOrigin",
             "Assert-HermesDesktopUpdateDiskSpace",
             "Enter-HermesDesktopUpdateLock",
             "Setup-Hermes-Local.ps1",
-            "Update-Hermes-Local.ps1",
-            "'-Component', 'Launcher'",
-            "Restore-PreviousLauncher",
             "Save-HermesDesktopWorkingTree",
             "Restore-HermesDesktopWorkingTree",
             "'stash', 'push', '--include-untracked'",
             "'stash', 'apply', '--index'",
             "autoStash = $true",
             "SkipModel",
+            "activeLauncherUntouched = $true",
         ):
             self.assertIn(required, text)
         self.assertNotIn("Commit or stash them before updating", text)
@@ -49,6 +81,18 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
                 re.I,
             ),
         )
+
+    def test_launcher_builder_supports_an_isolated_destination(self) -> None:
+        text = self.read("Build-Hermes-Launcher.ps1")
+        for required in (
+            "[string] $DestinationDirectory",
+            "Resolve-HermesLauncherDestination",
+            "Launcher build destination cannot be the Hermes Local root",
+            "Launcher build destination is outside the Hermes Local root",
+            "Launcher build destination overlaps protected Hermes Local state",
+            "Copy-Item -Destination $destination",
+        ):
+            self.assertIn(required, text)
 
     def test_overlay_replaces_dead_end_and_restores_source(self) -> None:
         wrapper = self.read("Apply-Hermes-LauncherOverlay.ps1")
@@ -127,7 +171,7 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
             text,
         )
         self.assertIn(
-            "parses status and detached-helper handoff markers",
+            "parses status, ready-to-restart results, and legacy helper handoffs",
             text,
         )
         self.assertIn("rejects unsafe pinned identities", text)
