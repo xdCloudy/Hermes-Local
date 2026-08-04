@@ -69,6 +69,13 @@ function Get-RunningHermesSupervisor {
 try {
     Assert-HermesRoot
     Initialize-HermesLayout
+
+    $updateStateRepair = Resolve-HermesPath 'scripts\Repair-Hermes-DesktopUpdateState.ps1'
+    & $updateStateRepair -RepositoryRoot (Get-HermesRoot)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Desktop update-state repair failed with exit code $LASTEXITCODE."
+    }
+
     $expectedConfiguration = Get-HermesConfiguration
     if (-not $Profile) {
         $Profile = [string]$expectedConfiguration.selectedProfile
