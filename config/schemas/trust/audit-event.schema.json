@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.hermes.invalid/schemas/trust/audit-event.schema.json",
+  "title": "Hermes Local audit event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "schemaVersion", "id", "eventType", "timestamp", "actor", "scope", "outcome", "correlationId", "details", "redaction"],
+  "properties": {
+    "kind": { "const": "auditEvent" },
+    "schemaVersion": { "const": 1 },
+    "id": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/recordId" },
+    "eventType": {
+      "type": "string",
+      "enum": ["integration.installed", "integration.updated", "integration.removed", "grant.created", "grant.changed", "grant.revoked", "authorization.allowed", "authorization.denied", "credential.accessed", "credential.denied", "session.created", "session.revoked", "origin.denied", "authentication.failed", "redaction.applied", "migration.completed"]
+    },
+    "timestamp": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/timestamp" },
+    "actor": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/principal" },
+    "subject": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/principal" },
+    "scope": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/scope" },
+    "outcome": { "type": "string", "enum": ["allowed", "denied", "success", "failure"] },
+    "correlationId": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/recordId" },
+    "details": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {
+        "not": { "pattern": "(authorization|cookie|credential|password|prompt|secret|session[_-]?token|token|body|content)" }
+      },
+      "additionalProperties": {
+        "anyOf": [
+          { "type": "string", "maxLength": 512 },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "array", "maxItems": 32, "items": { "type": "string", "maxLength": 256 } }
+        ]
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["applied", "fields"],
+      "properties": {
+        "applied": { "type": "boolean" },
+        "fields": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+        }
+      }
+    }
+  }
+}

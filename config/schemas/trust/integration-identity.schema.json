@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.hermes.invalid/schemas/trust/integration-identity.schema.json",
+  "title": "Hermes Local integration identity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "schemaVersion", "id", "displayName", "integrationType", "provenance", "declaredCapabilities", "trustState", "healthState", "manifestRevision"],
+  "properties": {
+    "kind": { "const": "integrationIdentity" },
+    "schemaVersion": { "const": 1 },
+    "id": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/recordId" },
+    "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "integrationType": {
+      "type": "string",
+      "enum": ["built-in-tool", "skill", "mcp-local", "mcp-remote", "browser-bridge", "project-integration", "executable", "remote-client"]
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceType", "provenanceId", "revision"],
+      "properties": {
+        "sourceType": { "type": "string", "enum": ["built-in", "github", "package", "local-path", "remote-endpoint"] },
+        "provenanceId": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/recordId" },
+        "uri": { "type": "string", "format": "uri", "maxLength": 2048 },
+        "revision": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "sha256": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/sha256" },
+        "signer": { "type": "string", "minLength": 1, "maxLength": 256 }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "sourceType": { "enum": ["github", "package", "remote-endpoint"] } },
+            "required": ["sourceType"]
+          },
+          "then": { "required": ["uri"] }
+        }
+      ]
+    },
+    "declaredCapabilities": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/capabilityId" }
+    },
+    "trustState": {
+      "type": "string",
+      "enum": ["built-in-verified", "reviewed-managed", "user-trusted", "restricted", "quarantined", "disabled", "unknown"]
+    },
+    "healthState": { "type": "string", "enum": ["unknown", "healthy", "degraded", "unhealthy", "stopped"] },
+    "manifestRevision": { "type": "integer", "minimum": 1 },
+    "approvedManifestSha256": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/sha256" },
+    "lastHealthCheckAt": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/timestamp" }
+  }
+}

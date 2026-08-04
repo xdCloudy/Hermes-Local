@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.hermes.invalid/schemas/trust/session-authorization.schema.json",
+  "title": "Hermes Local session authorization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "schemaVersion", "id", "sessionType", "principal", "scope", "capabilitySnapshot", "grantRevision", "policyRevision", "issuedAt", "expiresAt"],
+  "properties": {
+    "kind": { "const": "sessionAuthorization" },
+    "schemaVersion": { "const": 1 },
+    "id": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/recordId" },
+    "sessionType": { "type": "string", "enum": ["desktop", "embedded-dashboard", "remote-device", "agent-run", "scheduled-task"] },
+    "principal": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/principal" },
+    "scope": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/scope" },
+    "capabilitySnapshot": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/capabilityId" }
+    },
+    "credentialIds": {
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/recordId" }
+    },
+    "boundOriginId": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/recordId" },
+    "grantRevision": { "type": "integer", "minimum": 1 },
+    "policyRevision": { "type": "integer", "minimum": 1 },
+    "issuedAt": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/timestamp" },
+    "lastUsedAt": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/timestamp" },
+    "idleExpiresAt": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/timestamp" },
+    "expiresAt": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/timestamp" },
+    "revokedAt": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/timestamp" }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.hermes.invalid/schemas/trust-contracts.schema.json",
+  "title": "Hermes Local trust contracts",
+  "description": "Canonical version 1 trust record union.",
+  "oneOf": [
+    {
+      "$ref": "https://local.hermes.invalid/schemas/trust/integration-identity.schema.json"
+    },
+    {
+      "$ref": "https://local.hermes.invalid/schemas/trust/capability-grant.schema.json"
+    },
+    {
+      "$ref": "https://local.hermes.invalid/schemas/trust/credential-reference.schema.json"
+    },
+    {
+      "$ref": "https://local.hermes.invalid/schemas/trust/audit-event.schema.json"
+    },
+    {
+      "$ref": "https://local.hermes.invalid/schemas/trust/trusted-origin.schema.json"
+    },
+    {
+      "$ref": "https://local.hermes.invalid/schemas/trust/session-authorization.schema.json"
+    },
+    {
+      "$ref": "https://local.hermes.invalid/schemas/trust/redaction-policy.schema.json"
+    }
+  ]
+}

@@ -17,6 +17,7 @@ the operational detail, design contracts and validation evidence.
 | Operate or maintain a workstation | [Operations](OPERATIONS.md) | [Update and rollback](UPDATE_AND_ROLLBACK.md) |
 | Diagnose a problem | [Troubleshooting](TROUBLESHOOTING.md) | [Security and safe diagnostics](SECURITY.md) |
 | Understand the system | [Architecture](ARCHITECTURE.md) | [Launcher design](design/DESIGN_SPEC.md) |
+| Understand trust and permissions | [Trust contracts](design/TRUST_CONTRACTS.md) | [Threat-test requirements](design/TRUST_CONTRACT_TEST_REQUIREMENTS.md) |
 | Contribute code or docs | [Contributor guide](../CONTRIBUTING.md) | [Development](DEVELOPMENT.md) |
 | Validate Windows or Stable candidates | [Windows lifecycle validation](WINDOWS_LIFECYCLE_VALIDATION.md) | [Stable promotion](STABLE_PROMOTION.md) |
 | Evaluate maturity | [Acceptance results](ACCEPTANCE_RESULTS.md) | [QA reports](../reports/qa/FULL_FUNCTIONAL_QA_REPORT.md) |
@@ -44,6 +45,10 @@ the operational detail, design contracts and validation evidence.
   trust boundaries.
 - [Task lifecycle and resource locks](decisions/0001-task-lifecycle-and-resource-locks.md)
   — authoritative task schema, state machine and admission policy.
+- [Trust, capability, credential and audit contracts](design/TRUST_CONTRACTS.md)
+  — shared identity, default-deny permission, secret and audit boundaries.
+- [Trust contract threat-test requirements](design/TRUST_CONTRACT_TEST_REQUIREMENTS.md)
+  — mandatory gates for Skills/MCP, indexing, remote access and remote origins.
 - [Development](DEVELOPMENT.md) — source reconstruction, testing and packaging.
 - [Security](SECURITY.md) — local threat model, controls and reporting.
 - [Upstream compatibility](UPSTREAM_COMPATIBILITY.md) — scheduled candidate
