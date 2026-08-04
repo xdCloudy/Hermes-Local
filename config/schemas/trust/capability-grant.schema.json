@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.hermes.invalid/schemas/trust/capability-grant.schema.json",
+  "title": "Hermes Local capability grant",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "schemaVersion", "id", "principal", "scope", "capability", "effect", "confirmation", "constraints", "issuedAt", "revision", "source"],
+  "properties": {
+    "kind": { "const": "capabilityGrant" },
+    "schemaVersion": { "const": 1 },
+    "id": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/recordId" },
+    "principal": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/principal" },
+    "scope": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/scope" },
+    "capability": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/capabilityId" },
+    "effect": { "type": "string", "enum": ["allow", "deny"] },
+    "confirmation": { "type": "string", "enum": ["never", "always", "writes-or-side-effects", "local-only"] },
+    "constraints": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/constraints" },
+    "issuedAt": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/timestamp" },
+    "expiresAt": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/timestamp" },
+    "revokedAt": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/timestamp" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["user-approval", "managed-policy", "migration", "emergency-deny"] },
+        "id": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/recordId" }
+      }
+    }
+  }
+}
