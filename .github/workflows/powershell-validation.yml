@@ -86,7 +86,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: issue-44-update-failure-evidence
+          name: issue-44-update-failure-path-evidence
           path: artifacts/test-evidence/issue-44-update-failure-paths.json
           if-no-files-found: warn
           retention-days: 14
