@@ -56,7 +56,7 @@ function Test-HermesConsoleEntrypoint {
 }
 
 try {
-    Assert-HermesRoot -Root $RepositoryRoot
+    Assert-HermesRoot
     Set-HermesProcessEnvironment
 
     $source = Join-Path $RepositoryRoot 'source\hermes-agent'
