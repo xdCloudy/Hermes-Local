@@ -1,0 +1,306 @@
+From 0089fca75951ed34295e82bf490fbd8d31caf3a7 Mon Sep 17 00:00:00 2001
+From: Hermes Local Integration <hermes-local-ci@localhost>
+Date: Mon, 3 Aug 2026 23:26:48 +0000
+Subject: [PATCH] refactor(desktop): consolidate stack controls on Home
+
+---
+ .../desktop/e2e/hermes-local-portable.spec.ts |   6 +
+ apps/desktop/src/app/chat/sidebar/index.tsx   |   7 -
+ apps/desktop/src/app/contrib/surfaces.tsx     |  11 +-
+ .../src/app/local-workstation/index.tsx       | 156 ++++++++++++++++++
+ apps/desktop/src/app/routes.test.ts           |  10 ++
+ apps/desktop/src/app/routes.ts                |   1 +
+ 6 files changed, 182 insertions(+), 9 deletions(-)
+
+diff --git a/apps/desktop/e2e/hermes-local-portable.spec.ts b/apps/desktop/e2e/hermes-local-portable.spec.ts
+index e7ca56eff..42ff3079b 100644
+--- a/apps/desktop/e2e/hermes-local-portable.spec.ts
++++ b/apps/desktop/e2e/hermes-local-portable.spec.ts
+@@ -136,10 +136,16 @@ test.describe('Hermes Local portable workstation', () => {
+       const workstationNav = page.locator('[data-sidebar="menu"]').first()
+ 
+       await expect(workstationNav.getByRole('button', { exact: true, name: 'Tools' })).toHaveCount(0)
++      await expect(workstationNav.getByRole('button', { exact: true, name: 'Services' })).toHaveCount(0)
+ 
+       await workstationNav.getByRole('button', { name: 'Home', exact: true }).click()
+       await expect(page.getByRole('heading', { name: 'Local AI workstation' })).toBeVisible({ timeout: 60_000 })
+       await expect(page.getByText('Ready for local inference')).toBeVisible()
++      await expect(page.getByRole('button', { name: 'Repair', exact: true })).toBeVisible()
++      await expect(page.getByRole('button', { name: 'Run tests', exact: true })).toBeVisible()
++      await expect(page.getByRole('button', { name: 'Export diagnostics', exact: true })).toBeVisible()
++      await expect(page.getByRole('button', { name: 'Back up', exact: true })).toBeVisible()
++      await expect(page.getByRole('button', { name: 'Check for updates', exact: true })).toBeVisible()
+       await expect(page.getByRole('main').getByText('Web Dashboard')).toBeVisible()
+       await page.screenshot({ fullPage: true, path: path.join(evidence, 'launcher-portable-home.png') })
+ 
+diff --git a/apps/desktop/src/app/chat/sidebar/index.tsx b/apps/desktop/src/app/chat/sidebar/index.tsx
+index d1c5f70d2..a7a1463c6 100644
+--- a/apps/desktop/src/app/chat/sidebar/index.tsx
++++ b/apps/desktop/src/app/chat/sidebar/index.tsx
+@@ -111,7 +111,6 @@ import {
+   MODELS_ROUTE,
+   PROJECTS_ROUTE,
+   SECURITY_ROUTE,
+-  SERVICES_ROUTE,
+   SESSIONS_ROUTE,
+   SIDEBAR_NAV_AREA,
+   type SidebarNavContribution,
+@@ -185,12 +184,6 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
+     icon: props => <Codicon name="checklist" {...props} />,
+     route: TASKS_ROUTE
+   },
+-  {
+-    id: 'services',
+-    label: '',
+-    icon: props => <Codicon name="server-process" {...props} />,
+-    route: SERVICES_ROUTE
+-  },
+   {
+     id: 'models',
+     label: '',
+diff --git a/apps/desktop/src/app/contrib/surfaces.tsx b/apps/desktop/src/app/contrib/surfaces.tsx
+index 5857c9cfb..aebc08ab1 100644
+--- a/apps/desktop/src/app/contrib/surfaces.tsx
++++ b/apps/desktop/src/app/contrib/surfaces.tsx
+@@ -19,7 +19,14 @@ import { $freshDraftReady, $gatewayState } from '@/store/session'
+ import { ChatView } from '../chat'
+ import { ChatSidebar } from '../chat/sidebar'
+ import { TerminalPaneChrome } from '../right-sidebar/terminal/chrome'
+-import { contributedRoutes, LEGACY_TOOLS_REDIRECT_ROUTE, NEW_CHAT_ROUTE, ROUTES_AREA, sessionRoute } from '../routes'
++import {
++  contributedRoutes,
++  LEGACY_SERVICES_REDIRECT_ROUTE,
++  LEGACY_TOOLS_REDIRECT_ROUTE,
++  NEW_CHAT_ROUTE,
++  ROUTES_AREA,
++  sessionRoute
++} from '../routes'
+ import { useStatusSnapshot } from '../shell/hooks/use-status-snapshot'
+ import { useStatusbarItems } from '../shell/hooks/use-statusbar-items'
+ import { ModelMenuPanel } from '../shell/model-menu-panel'
+@@ -173,7 +180,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
+       <Route element={page(<HermesTuiPanel />)} path="tui" />
+       <Route element={page(<LocalWorkstationView />)} path="dashboard" />
+       <Route element={page(<LocalWorkstationView />)} path="tasks" />
+-      <Route element={page(<LocalWorkstationView />)} path="services" />
++      <Route element={<Navigate replace to={LEGACY_SERVICES_REDIRECT_ROUTE} />} path="services" />
+       <Route element={page(<LocalWorkstationView />)} path="models" />
+       <Route element={page(<LocalWorkstationView />)} path="local-profiles" />
+       <Route element={<Navigate replace to={LEGACY_TOOLS_REDIRECT_ROUTE} />} path="tools" />
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index 3f6f19150..c3f94880e 100644
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -877,6 +877,160 @@ function LogViewer() {
+   )
+ }
+ 
++function HomeOperations({
++  onRun,
++  snapshot
++}: {
++  onRun: (action: LocalAction, input?: Record<string, unknown>) => void
++  snapshot: LocalWorkstationSnapshot
++}) {
++  const latestUpdate = snapshot.updates.latest
++  const updateBusy = snapshot.tasks.some(
++    task =>
++      task.action === 'update' &&
++      (task.status === 'queued' || task.status === 'running' || task.status === 'cancelling')
++  )
++  const compatibilityReady =
++    latestUpdate?.mode === 'Compatibility' &&
++    latestUpdate.status === 'succeeded' &&
++    latestUpdate.target?.updateAvailable === true
++  const latestTask =
++    snapshot.tasks.findLast(
++      candidate => candidate.status === 'queued' || candidate.status === 'running' || candidate.status === 'cancelling'
++    ) || snapshot.tasks.at(-1)
++
++  return (
++    <div className="space-y-4">
++      <Surface title="Stack operations">
++        <div className="flex flex-wrap gap-2 p-4">
++          <ActionButton action="repair" available={snapshot.actions.repair} onRun={onRun} tasks={snapshot.tasks}>
++            <IconRestore className="size-3.5" /> Repair
++          </ActionButton>
++          <ActionButton action="test" available={snapshot.actions.test} onRun={onRun} tasks={snapshot.tasks}>
++            <IconActivityHeartbeat className="size-3.5" /> Run tests
++          </ActionButton>
++          <ActionButton action="diagnostics" available={snapshot.actions.diagnostics} onRun={onRun} tasks={snapshot.tasks}>
++            <IconFileAnalytics className="size-3.5" /> Export diagnostics
++          </ActionButton>
++          <ActionButton action="backup" available={snapshot.actions.backup} onRun={onRun} tasks={snapshot.tasks}>
++            <IconDatabase className="size-3.5" /> Back up
++          </ActionButton>
++        </div>
++        {latestTask && (
++          <div className="border-t border-(--ui-stroke-secondary) px-4 py-3">
++            <p className="text-xs font-semibold">
++              {latestTask.action} · {latestTask.status}
++            </p>
++            {latestTask.output && (
++              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-[#111315] p-3 font-mono text-[0.6875rem] text-[#d9dde3]">
++                {latestTask.output}
++              </pre>
++            )}
++          </div>
++        )}
++      </Surface>
++      <Surface title="Hermes Agent update centre">
++        <div className="grid gap-4 p-4 xl:grid-cols-[1.1fr_0.9fr]">
++          <div>
++            <div className="grid gap-3 sm:grid-cols-2">
++              {[
++                ['Installed upstream base', shortCommit(snapshot.updates.installed.baseCommit)],
++                ['Integrated commit', shortCommit(snapshot.updates.installed.integrationCommit)],
++                ['Integrated tree', shortCommit(snapshot.updates.installed.integrationTree)],
++                ['Patch series', `${snapshot.updates.installed.patchCount} patches`],
++                ['Target', shortCommit(latestUpdate?.target?.candidate)],
++                [
++                  'Compatibility',
++                  latestUpdate?.mode === 'Compatibility' && latestUpdate.status === 'succeeded'
++                    ? 'Passed'
++                    : latestUpdate?.failure?.stage || 'Not checked'
++                ]
++              ].map(([label, value]) => (
++                <div className="rounded-lg border border-(--ui-stroke-secondary) px-3 py-2.5" key={label}>
++                  <p className="text-[0.6875rem] font-medium text-(--ui-text-tertiary)">{label}</p>
++                  <p className="mt-1 truncate font-mono text-xs font-semibold">{value}</p>
++                </div>
++              ))}
++            </div>
++            {latestUpdate?.recovery.staleLockRecovered && (
++              <p className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-500">
++                A stale update lock was recovered from operation {latestUpdate.recovery.previousOperationId || 'unknown'}.
++              </p>
++            )}
++            {latestUpdate?.failure && (
++              <p className="mt-3 rounded-lg border border-red-500/25 bg-red-500/8 px-3 py-2 text-xs text-red-500">
++                {latestUpdate.failure.stage || latestUpdate.currentStage || 'update'}: {latestUpdate.failure.message}
++                {latestUpdate.failure.rollback?.status && ` · rollback ${latestUpdate.failure.rollback.status}`}
++              </p>
++            )}
++          </div>
++          <div className="flex flex-col justify-between gap-4 rounded-lg bg-(--ui-control-background) p-4">
++            <div>
++              <p className="text-xs font-semibold">Transactional workflow</p>
++              <p className="mt-1 text-xs leading-5 text-(--ui-text-tertiary)">
++                Check resolves the upstream target. Compatibility reconstructs the patch series and runs dependency,
++                schema, test and build gates without touching the active backend. Apply promotes only a verified candidate
++                and restores the previous installation if promotion or health checks fail.
++              </p>
++              {latestUpdate && (
++                <p className="mt-3 font-mono text-[0.6875rem] text-(--ui-text-tertiary)">
++                  {latestUpdate.mode} · {latestUpdate.currentStage || latestUpdate.status} · {latestUpdate.progress.percent}%
++                </p>
++              )}
++            </div>
++            <div className="flex flex-wrap gap-2">
++              <ActionButton
++                action="update"
++                available={snapshot.actions.update}
++                input={{ mode: 'Check' satisfies LocalUpdateMode }}
++                onRun={onRun}
++                tasks={snapshot.tasks}
++              >
++                <IconRefresh className="size-3.5" /> Check for updates
++              </ActionButton>
++              <ActionButton
++                action="update"
++                available={snapshot.actions.update && latestUpdate?.target?.updateAvailable === true}
++                input={{
++                  mode: 'Compatibility' satisfies LocalUpdateMode,
++                  targetCommit: latestUpdate?.target?.candidate || undefined
++                }}
++                onRun={onRun}
++                tasks={snapshot.tasks}
++              >
++                <IconShieldCheck className="size-3.5" /> Check compatibility
++              </ActionButton>
++              <ActionButton
++                action="update"
++                available={snapshot.actions.update && compatibilityReady}
++                input={{
++                  mode: 'Apply' satisfies LocalUpdateMode,
++                  targetCommit: latestUpdate?.target?.candidate || undefined
++                }}
++                onRun={onRun}
++                tasks={snapshot.tasks}
++                variant="default"
++              >
++                <IconRocket className="size-3.5" /> Apply verified update
++              </ActionButton>
++              <ActionButton
++                action="update"
++                available={snapshot.actions.update && !updateBusy}
++                input={{ mode: 'Rollback' satisfies LocalUpdateMode }}
++                onRun={onRun}
++                tasks={snapshot.tasks}
++                variant="destructive"
++              >
++                <IconRestore className="size-3.5" /> Recover previous backend
++              </ActionButton>
++            </div>
++          </div>
++        </div>
++      </Surface>
++    </div>
++  )
++}
++
+ function HomeContent({
+   onNavigate,
+   onRun,
+@@ -1029,6 +1183,8 @@ function HomeContent({
+         ))}
+       </div>
+ 
++      <HomeOperations onRun={onRun} snapshot={snapshot} />
++
+       <Surface title="Integrity and provenance">
+         <div className="grid divide-y divide-(--ui-stroke-secondary) sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
+           {[
+diff --git a/apps/desktop/src/app/routes.test.ts b/apps/desktop/src/app/routes.test.ts
+index 3c3c00772..8c16a574c 100644
+--- a/apps/desktop/src/app/routes.test.ts
++++ b/apps/desktop/src/app/routes.test.ts
+@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest'
+ 
+ import {
+   appViewForPath,
++  HOME_ROUTE,
++  LEGACY_SERVICES_REDIRECT_ROUTE,
+   LEGACY_TOOLS_REDIRECT_ROUTE,
+   NEW_CHAT_ROUTE,
+   primaryRouteSelectedSessionId,
++  SERVICES_ROUTE,
+   sessionRoute,
+   SETTINGS_ROUTE,
+   SKILLS_ROUTE,
+@@ -44,3 +47,10 @@ describe('legacy Tools route', () => {
+     expect(LEGACY_TOOLS_REDIRECT_ROUTE).toBe(SKILLS_ROUTE)
+   })
+ })
++
++describe('legacy Services route', () => {
++  it('remains reserved and redirects to the canonical Home surface', () => {
++    expect(appViewForPath(SERVICES_ROUTE)).toBe('workstation')
++    expect(LEGACY_SERVICES_REDIRECT_ROUTE).toBe(HOME_ROUTE)
++  })
++})
+diff --git a/apps/desktop/src/app/routes.ts b/apps/desktop/src/app/routes.ts
+index 46875a01b..1b7ef86e5 100644
+--- a/apps/desktop/src/app/routes.ts
++++ b/apps/desktop/src/app/routes.ts
+@@ -33,6 +33,7 @@ export const BENCHMARKS_ROUTE = '/benchmarks'
+ export const SECURITY_ROUTE = '/security'
+ export const LOGS_ROUTE = '/logs'
+ export const ABOUT_ROUTE = '/about'
++export const LEGACY_SERVICES_REDIRECT_ROUTE = HOME_ROUTE
+ export const LEGACY_TOOLS_REDIRECT_ROUTE = SKILLS_ROUTE
+ 
+ export type AppView =
+-- 
+2.54.0
+
