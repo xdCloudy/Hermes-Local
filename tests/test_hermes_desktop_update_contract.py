@@ -65,6 +65,26 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
             self.assertIn(required, text)
         self.assertIn("Hermes Local update poller bypass", text)
 
+    def test_overlay_recovers_a_stale_selected_model_registration(self) -> None:
+        text = self.read_embedded("Apply-Hermes-LauncherOverlay.ps1")
+        for required in (
+            "apps\\desktop\\electron\\hermes-local-settings.ts",
+            "Selected model recovery plan",
+            "const requestedModelId",
+            "models.find(model => model.installed)",
+            "No registered Hermes Local model is available",
+        ):
+            self.assertIn(required, text)
+
+    def test_custom_model_manifests_are_machine_owned(self) -> None:
+        text = self.read(".gitignore")
+        self.assertIn("/models/manifests/*", text)
+        self.assertIn(
+            "!/models/manifests/Qwen3.6-35B-A3B-APEX-MTP-I-Quality.json",
+            text,
+        )
+        self.assertNotIn("!/models/manifests/**", text)
+
     def test_bridge_validates_component_channel_and_native_arguments(self) -> None:
         text = self.read(
             "source/hermes-launcher/overlay-src/apps/desktop/electron/"
