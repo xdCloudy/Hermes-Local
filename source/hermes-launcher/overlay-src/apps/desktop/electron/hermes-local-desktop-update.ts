@@ -27,11 +27,10 @@ function updateComponent(input: Record<string, unknown>): 'HermesAgent' | typeof
     throw new Error('Unsupported Hermes Local update component')
   }
 
-  // Local-workstation actions always carry the selected inference profile.
-  // Application update checks do not. Use that existing boundary to keep the
-  // backend updater on NousResearch while unqualified app checks target this
-  // Hermes Local repository.
-  return inputText(input, 'profile') ? 'HermesAgent' : HERMES_LOCAL_APPLICATION_COMPONENT
+  // The task runner attaches the selected inference profile to every local
+  // workstation action, including application update checks. Component
+  // routing therefore must never be inferred from profile metadata.
+  return HERMES_LOCAL_APPLICATION_COMPONENT
 }
 
 function decodeMarker<T>(text: string, name: 'helper' | 'result' | 'status'): T | null {
