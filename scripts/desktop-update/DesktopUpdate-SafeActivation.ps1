@@ -143,153 +143,274 @@ function Move-HermesDesktopActiveLauncherToActivationBackup {
         -Description 'active launcher backup reservation'
 }
 
+function Enter-HermesDesktopActivationMutex {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][object] $Plan)
+
+    $operationId = [string](Get-HermesDesktopObjectValue `
+        -InputObject $Plan `
+        -Name operationId `
+        -Default '')
+    if (-not $operationId) {
+        throw 'Deferred activation requires an operation identity.'
+    }
+
+    $safeOperationId = $operationId -replace '[^A-Za-z0-9_.-]', '_'
+    $mutexName = "Local\HermesLocalDesktopActivation-$safeOperationId"
+    $mutex = [Threading.Mutex]::new($false, $mutexName)
+    $ownsMutex = $false
+
+    try {
+        try {
+            $ownsMutex = $mutex.WaitOne([TimeSpan]::FromMinutes(30))
+        } catch [Threading.AbandonedMutexException] {
+            # The prior helper exited while holding the operation mutex. The
+            # retained pending payload and activation backup are the source of
+            # truth, so this helper may safely resume the same operation.
+            $ownsMutex = $true
+        }
+
+        if (-not $ownsMutex) {
+            throw "Timed out waiting for deferred activation operation $operationId."
+        }
+
+        [pscustomobject]@{
+            Mutex = $mutex
+            OwnsMutex = $true
+        }
+    } catch {
+        $mutex.Dispose()
+        throw
+    }
+}
+
+function Exit-HermesDesktopActivationMutex {
+    [CmdletBinding()]
+    param([AllowNull()][object] $Lease)
+
+    if (-not $Lease) {
+        return
+    }
+
+    try {
+        if ([bool](Get-HermesDesktopObjectValue `
+            -InputObject $Lease `
+            -Name OwnsMutex `
+            -Default $false)) {
+            $Lease.Mutex.ReleaseMutex()
+        }
+    } catch {
+    } finally {
+        try {
+            $Lease.Mutex.Dispose()
+        } catch {
+        }
+    }
+}
+
+function Get-HermesDesktopCompletedActivationResult {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][object] $Plan)
+
+    $resultPath = [string](Get-HermesDesktopObjectValue `
+        -InputObject $Plan `
+        -Name resultPath `
+        -Default '')
+    if (-not $resultPath -or -not (Test-Path -LiteralPath $resultPath -PathType Leaf)) {
+        return $null
+    }
+
+    $result = try {
+        Get-Content -Raw -LiteralPath $resultPath | ConvertFrom-Json -Depth 64
+    } catch {
+        $null
+    }
+    if (-not $result) {
+        return $null
+    }
+
+    $status = [string](Get-HermesDesktopObjectValue `
+        -InputObject $result `
+        -Name status `
+        -Default '')
+    $currentCommit = [string](Get-HermesDesktopObjectValue `
+        -InputObject $result `
+        -Name currentCommit `
+        -Default '')
+    $targetCommit = [string](Get-HermesDesktopObjectValue `
+        -InputObject $Plan `
+        -Name targetCommit `
+        -Default '')
+    $launcher = Join-Path $root 'dist\Hermes Launcher.exe'
+
+    if (
+        $status -eq 'activated' -and
+        $currentCommit -eq $targetCommit -and
+        (Test-Path -LiteralPath $launcher -PathType Leaf)
+    ) {
+        return $result
+    }
+
+    $null
+}
+
 function Promote-HermesDesktopPendingLauncher {
     [CmdletBinding()]
     param([Parameter(Mandatory)][object] $Plan)
 
-    $null = Assert-HermesDesktopUpdatePath `
-        -Root $root `
-        -Path ([string]$Plan.stagingRoot) `
-        -Description 'Staging root'
-    $pendingDist = Assert-HermesDesktopUpdatePath `
-        -Root $root `
-        -Path ([string]$Plan.pendingDist) `
-        -Description 'Pending launcher'
-    $dist = Join-Path $root 'dist'
-    $activationBackup = Join-Path ([string]$Plan.stagingRoot) 'active-dist-at-activation'
-
-    if (
-        -not (Test-Path -LiteralPath (Join-Path $pendingDist 'Hermes Launcher.exe') -PathType Leaf)
-    ) {
-        throw 'The deferred launcher payload is missing or incomplete.'
-    }
-
+    $lease = Enter-HermesDesktopActivationMutex -Plan $Plan
     try {
-        Write-HermesDesktopUpdateProgress `
-            -Plan $Plan `
-            -Stage waiting-for-restart `
-            -Status waiting `
-            -Message 'Update ready. Waiting for the user to close Hermes Launcher.' `
-            -Percent 95 `
-            -Failure $null `
-            -Result $null | Out-Null
-    } catch {
-    }
+        $completed = Get-HermesDesktopCompletedActivationResult -Plan $Plan
+        if ($completed) {
+            return $completed
+        }
 
-    Start-Sleep -Milliseconds 250
-    Wait-HermesDesktopLauncherExit -Plan $Plan
+        $null = Assert-HermesDesktopUpdatePath `
+            -Root $root `
+            -Path ([string]$Plan.stagingRoot) `
+            -Description 'Staging root'
+        $pendingDist = Assert-HermesDesktopUpdatePath `
+            -Root $root `
+            -Path ([string]$Plan.pendingDist) `
+            -Description 'Pending launcher'
+        $dist = Join-Path $root 'dist'
+        $activationBackup = Join-Path ([string]$Plan.stagingRoot) 'active-dist-at-activation'
 
-    try {
-        # Reserve the active dist path before dependency work begins. This
-        # prevents the old Launcher from being reopened while the Python
-        # environment is stopped, rebuilt and atomically activated.
-        Move-HermesDesktopActiveLauncherToActivationBackup `
-            -Dist $dist `
-            -ActivationBackup $activationBackup
+        if (
+            -not (Test-Path -LiteralPath (Join-Path $pendingDist 'Hermes Launcher.exe') -PathType Leaf)
+        ) {
+            throw 'The deferred launcher payload is missing or incomplete.'
+        }
 
         try {
             Write-HermesDesktopUpdateProgress `
                 -Plan $Plan `
-                -Stage activating-runtime `
-                -Status running `
-                -Message 'Launcher closed. Stopping services and activating the prepared runtime.' `
-                -Percent 97 `
+                -Stage waiting-for-restart `
+                -Status waiting `
+                -Message 'Update ready. Waiting for the user to close Hermes Launcher.' `
+                -Percent 95 `
                 -Failure $null `
                 -Result $null | Out-Null
         } catch {
         }
 
-        Invoke-HermesDesktopProcess -FilePath 'pwsh.exe' -Arguments @(
-            '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-            '-File', (Join-Path $root 'Stop-Hermes-Local.ps1'),
-            '-NonInteractive'
-        ) -Description 'Hermes Local service shutdown before update activation'
-
-        Invoke-HermesDesktopRuntimeSync
-
-        if (Test-HermesDesktopLauncherRunning) {
-            throw 'Hermes Launcher restarted before update activation completed.'
-        }
-
-        # Runtime/setup recovery may recreate dist from the known-good backup.
-        # That copy is disposable because activationBackup remains intact. Clear
-        # it with retries, then move the prepared launcher into the active path.
-        if (Test-Path -LiteralPath $dist) {
-            Remove-HermesDesktopActivationDirectory `
-                -Path $dist `
-                -Description 'recreated active launcher path'
-        }
-
-        Move-HermesDesktopActivationDirectory `
-            -Source $pendingDist `
-            -Destination $dist `
-            -Description 'prepared launcher promotion'
-
-        $launcher = Join-Path $dist 'Hermes Launcher.exe'
-        if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
-            throw 'Deferred launcher promotion did not produce the launcher executable.'
-        }
-
-        if (Test-Path -LiteralPath $activationBackup) {
-            Remove-HermesDesktopActivationDirectory `
-                -Path $activationBackup `
-                -Description 'completed activation backup'
-        }
-
-        $pendingState = Get-HermesDesktopPendingUpdatePath
-        if (Test-Path -LiteralPath $pendingState -PathType Leaf) {
-            Remove-Item -LiteralPath $pendingState -Force
-        }
-
-        $relaunched = $false
-        $relaunchWarning = $null
-        try {
-            Start-Process `
-                -FilePath $launcher `
-                -WorkingDirectory $root
-            $relaunched = $true
-        } catch {
-            $relaunchWarning = $_.Exception.Message
-        }
-
-        $result = [ordered]@{
-            status = 'activated'
-            previousCommit = [string]$Plan.previousCommit
-            currentCommit = [string]$Plan.targetCommit
-            launcherPath = $launcher
-            activationDeferred = $true
-            runtimeSynchronizedAfterExit = $true
-            activatedAt = (Get-Date).ToUniversalTime().ToString('o')
-            relaunched = $relaunched
-            relaunchWarning = $relaunchWarning
-        }
+        Start-Sleep -Milliseconds 250
+        Wait-HermesDesktopLauncherExit -Plan $Plan
 
         try {
-            Write-HermesDesktopUpdateJson -Path ([string]$Plan.resultPath) -Value $result
-            Write-HermesDesktopUpdateProgress `
-                -Plan $Plan `
-                -Stage activated `
-                -Status succeeded `
-                -Message $(if ($relaunched) {
-                    'Update activated and the new Hermes Launcher was started.'
-                } else {
-                    'Update activated. Start Hermes Launcher to use the new version.'
-                }) `
-                -Percent 100 `
-                -Failure $null `
-                -Result $result | Out-Null
-        } catch {
-        }
-
-        [pscustomobject]$result
-    } catch {
-        try {
-            Restore-HermesDesktopActivationBackup `
+            # Reserve the active dist path before dependency work begins. This
+            # prevents the old Launcher from being reopened while the Python
+            # environment is stopped, rebuilt and atomically activated.
+            Move-HermesDesktopActiveLauncherToActivationBackup `
                 -Dist $dist `
-                -PendingDist $pendingDist `
                 -ActivationBackup $activationBackup
+
+            try {
+                Write-HermesDesktopUpdateProgress `
+                    -Plan $Plan `
+                    -Stage activating-runtime `
+                    -Status running `
+                    -Message 'Launcher closed. Stopping services and activating the prepared runtime.' `
+                    -Percent 97 `
+                    -Failure $null `
+                    -Result $null | Out-Null
+            } catch {
+            }
+
+            Invoke-HermesDesktopProcess -FilePath 'pwsh.exe' -Arguments @(
+                '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+                '-File', (Join-Path $root 'Stop-Hermes-Local.ps1'),
+                '-NonInteractive'
+            ) -Description 'Hermes Local service shutdown before update activation'
+
+            Invoke-HermesDesktopRuntimeSync
+
+            if (Test-HermesDesktopLauncherRunning) {
+                throw 'Hermes Launcher restarted before update activation completed.'
+            }
+
+            # Runtime/setup recovery may recreate dist from the known-good backup.
+            # That copy is disposable because activationBackup remains intact. Clear
+            # it with retries, then move the prepared launcher into the active path.
+            if (Test-Path -LiteralPath $dist) {
+                Remove-HermesDesktopActivationDirectory `
+                    -Path $dist `
+                    -Description 'recreated active launcher path'
+            }
+
+            Move-HermesDesktopActivationDirectory `
+                -Source $pendingDist `
+                -Destination $dist `
+                -Description 'prepared launcher promotion'
+
+            $launcher = Join-Path $dist 'Hermes Launcher.exe'
+            if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
+                throw 'Deferred launcher promotion did not produce the launcher executable.'
+            }
+
+            if (Test-Path -LiteralPath $activationBackup) {
+                Remove-HermesDesktopActivationDirectory `
+                    -Path $activationBackup `
+                    -Description 'completed activation backup'
+            }
+
+            $pendingState = Get-HermesDesktopPendingUpdatePath
+            if (Test-Path -LiteralPath $pendingState -PathType Leaf) {
+                Remove-Item -LiteralPath $pendingState -Force
+            }
+
+            $relaunched = $false
+            $relaunchWarning = $null
+            try {
+                Start-Process `
+                    -FilePath $launcher `
+                    -WorkingDirectory $root
+                $relaunched = $true
+            } catch {
+                $relaunchWarning = $_.Exception.Message
+            }
+
+            $result = [ordered]@{
+                status = 'activated'
+                previousCommit = [string]$Plan.previousCommit
+                currentCommit = [string]$Plan.targetCommit
+                launcherPath = $launcher
+                activationDeferred = $true
+                runtimeSynchronizedAfterExit = $true
+                activatedAt = (Get-Date).ToUniversalTime().ToString('o')
+                relaunched = $relaunched
+                relaunchWarning = $relaunchWarning
+            }
+
+            try {
+                Write-HermesDesktopUpdateJson -Path ([string]$Plan.resultPath) -Value $result
+                Write-HermesDesktopUpdateProgress `
+                    -Plan $Plan `
+                    -Stage activated `
+                    -Status succeeded `
+                    -Message $(if ($relaunched) {
+                        'Update activated and the new Hermes Launcher was started.'
+                    } else {
+                        'Update activated. Start Hermes Launcher to use the new version.'
+                    }) `
+                    -Percent 100 `
+                    -Failure $null `
+                    -Result $result | Out-Null
+            } catch {
+            }
+
+            [pscustomobject]$result
         } catch {
+            try {
+                Restore-HermesDesktopActivationBackup `
+                    -Dist $dist `
+                    -PendingDist $pendingDist `
+                    -ActivationBackup $activationBackup
+            } catch {
+            }
+            throw
         }
-        throw
+    } finally {
+        Exit-HermesDesktopActivationMutex -Lease $lease
     }
 }
