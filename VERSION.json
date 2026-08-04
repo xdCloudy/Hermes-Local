@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "product": {
     "name": "Hermes Launcher",
-    "version": "0.18.45",
+    "version": "0.18.46",
     "status": "accepted-with-documented-limitations"
   },
   "sources": {
@@ -50,5 +50,5 @@
     "modelAliasDefault": "qwen3.6-35b-a3b-apex-mtp-i-quality",
     "portableSettings": true
   },
-  "recordedAt": "2026-08-05T00:25:00+01:00"
+  "recordedAt": "2026-08-05T00:38:00+01:00"
 }
