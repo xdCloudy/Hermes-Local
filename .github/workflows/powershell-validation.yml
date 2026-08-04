@@ -71,6 +71,7 @@ jobs:
             '.\tests\test_hermes_desktop_update_contract.py'
           & '.\tests\Test-HermesGatewayModule.ps1'
           & '.\tests\Test-HermesDesktopUpdate.ps1'
+          & '.\tests\Test-DeferredRuntimeActivation.ps1'
           & '.\tests\Test-BenchmarkLifecycleContract.ps1'
           & '.\tests\Test-BenchmarkProgressContract.ps1'
           & '.\tests\Test-HermesSecurityScanProgress.ps1'

@@ -77,6 +77,72 @@ function New-HermesPythonRollbackPath {
     return $candidate
 }
 
+function Get-HermesPythonRuntimeProcesses {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string] $Runtime
+    )
+
+    if (-not (Get-Command Get-CimInstance -ErrorAction SilentlyContinue)) {
+        return @()
+    }
+
+    $runtimeFull = [System.IO.Path]::GetFullPath($Runtime).TrimEnd('\', '/')
+    $runtimePrefix = $runtimeFull + [System.IO.Path]::DirectorySeparatorChar
+
+    @(
+        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object {
+                if ($_.Name -notin @('python.exe', 'pythonw.exe')) {
+                    return $false
+                }
+
+                $executableMatches = $false
+                if (-not [string]::IsNullOrWhiteSpace([string]$_.ExecutablePath)) {
+                    try {
+                        $executable = [System.IO.Path]::GetFullPath([string]$_.ExecutablePath)
+                        $executableMatches = $executable.StartsWith(
+                            $runtimePrefix,
+                            [System.StringComparison]::OrdinalIgnoreCase
+                        )
+                    } catch {
+                    }
+                }
+
+                $commandMatches = -not [string]::IsNullOrWhiteSpace([string]$_.CommandLine) -and
+                    ([string]$_.CommandLine).IndexOf(
+                        $runtimeFull,
+                        [System.StringComparison]::OrdinalIgnoreCase
+                    ) -ge 0
+
+                $executableMatches -or $commandMatches
+            }
+    )
+}
+
+function Assert-HermesPythonRuntimeInactive {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string] $Runtime
+    )
+
+    $blocking = @(Get-HermesPythonRuntimeProcesses -Runtime $Runtime)
+    if ($blocking.Count -eq 0) {
+        return
+    }
+
+    $summary = @($blocking | ForEach-Object {
+        "$($_.Name) PID $($_.ProcessId)"
+    }) -join ', '
+    throw (
+        "Cannot migrate the Hermes Python runtime while it is in use. " +
+        "Stop Hermes Local first with '.\Stop-Hermes-Local.ps1 -NonInteractive'. " +
+        "Running: $summary"
+    )
+}
+
 function Move-HermesPythonRuntimeToRollback {
     [CmdletBinding()]
     param(
@@ -94,6 +160,8 @@ function Move-HermesPythonRuntimeToRollback {
         return $null
     }
 
+    Assert-HermesPythonRuntimeInactive -Runtime $Runtime
+
     $rollbackPath = New-HermesPythonRollbackPath `
         -Runtime $Runtime `
         -RuntimeVersion $RuntimeVersion `
@@ -106,7 +174,13 @@ function Move-HermesPythonRuntimeToRollback {
     }
 
     try {
-        Move-Item -LiteralPath $Runtime -Destination $rollbackPath -ErrorAction Stop
+        # Runtime and rollback are siblings on the same volume. Directory.Move
+        # performs one rename operation, so a lock failure cannot partially
+        # dismantle the active virtual environment.
+        [System.IO.Directory]::Move(
+            [System.IO.Path]::GetFullPath($Runtime),
+            [System.IO.Path]::GetFullPath($rollbackPath)
+        )
     } catch {
         throw (
             "Unable to preserve the existing Hermes Python runtime at '$Runtime'. " +
