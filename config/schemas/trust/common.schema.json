@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.hermes.invalid/schemas/trust/common.schema.json",
+  "title": "Hermes Local trust contract common types",
+  "$defs": {
+    "recordId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "capabilityId": {
+      "type": "string",
+      "enum": [
+        "filesystem.read",
+        "filesystem.write",
+        "filesystem.delete",
+        "process.execute",
+        "network.outbound",
+        "network.listen",
+        "browser.control",
+        "clipboard.read",
+        "clipboard.write",
+        "media.microphone",
+        "media.camera",
+        "credentials.use",
+        "credentials.manage",
+        "communications.read",
+        "communications.send",
+        "calendar.read",
+        "calendar.write",
+        "external.side-effect",
+        "runtime.read",
+        "runtime.manage",
+        "project.read",
+        "project.write",
+        "index.read",
+        "index.write",
+        "audit.read",
+        "remote.connect",
+        "remote.admin",
+        "embedded.render",
+        "embedded.navigate"
+      ]
+    },
+    "principal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["user", "profile", "agent", "integration", "remote-client", "session", "system"]
+        },
+        "id": { "$ref": "#/$defs/recordId" }
+      }
+    },
+    "scope": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "global" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "id"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["user", "profile", "agent", "project", "session"] },
+            "id": { "$ref": "#/$defs/recordId" }
+          }
+        }
+      ]
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "paths": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
+        },
+        "hosts": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 253 }
+        },
+        "accounts": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/recordId" }
+        },
+        "commands": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+        },
+        "collectionIds": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/recordId" }
+        },
+        "integrationIds": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/recordId" }
+        }
+      }
+    }
+  }
+}
