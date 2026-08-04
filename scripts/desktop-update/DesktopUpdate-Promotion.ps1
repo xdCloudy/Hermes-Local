@@ -78,7 +78,11 @@ function Restore-HermesDesktopActivationBackup {
     }
 
     if (-not (Test-Path -LiteralPath $Dist -PathType Container)) {
-        Move-Item -LiteralPath $ActivationBackup -Destination $Dist
+        # Keep the activation backup intact across retries. A failed restore must
+        # never consume the only known-good launcher distribution.
+        Copy-HermesDesktopDirectory `
+            -Source $ActivationBackup `
+            -Destination $Dist
     }
 }
 
@@ -124,12 +128,22 @@ function Promote-HermesDesktopPendingLauncher {
     $promoted = $false
     for ($attempt = 0; $attempt -lt 120; $attempt += 1) {
         try {
-            if (Test-Path -LiteralPath $activationBackup) {
-                Remove-Item -LiteralPath $activationBackup -Recurse -Force
+            if (-not (Test-Path -LiteralPath $activationBackup -PathType Container)) {
+                if (Test-Path -LiteralPath $dist -PathType Container) {
+                    Move-Item -LiteralPath $dist -Destination $activationBackup
+                }
+            } elseif (Test-Path -LiteralPath $dist -PathType Container) {
+                # A prior attempt restored the active launcher from the backup.
+                # Remove only that disposable copy; retain the backup itself.
+                Remove-Item -LiteralPath $dist -Recurse -Force
             }
 
-            if (Test-Path -LiteralPath $dist -PathType Container) {
-                Move-Item -LiteralPath $dist -Destination $activationBackup
+            if (
+                -not (Test-Path `
+                    -LiteralPath (Join-Path $pendingDist 'Hermes Launcher.exe') `
+                    -PathType Leaf)
+            ) {
+                throw 'The deferred launcher payload was lost during promotion.'
             }
 
             Move-Item -LiteralPath $pendingDist -Destination $dist
