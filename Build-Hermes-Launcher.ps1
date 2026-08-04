@@ -149,11 +149,117 @@ function Get-PendingHermesLauncherPatches {
 
     $pending = @($patches | Select-Object -Skip $appliedCount)
     Write-HermesLog -Component launcher -Message (
-        "Temporarily applying {0} launcher patch(es) missing from the prepared source: {1}" -f
+        "Reconciling {0} launcher patch(es) missing from the prepared source: {1}" -f
         $pending.Count,
         (($pending | ForEach-Object Name) -join ', ')
     )
     return $pending
+}
+
+function Test-HermesGitApply {
+    param(
+        [Parameter(Mandatory)][string] $Git,
+        [Parameter(Mandatory)][string] $Source,
+        [Parameter(Mandatory)][string] $PatchPath,
+        [switch] $Reverse
+    )
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $Git
+    $startInfo.WorkingDirectory = $Source
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    foreach ($argument in @('-C', $Source, 'apply')) {
+        $startInfo.ArgumentList.Add($argument)
+    }
+    if ($Reverse) {
+        $startInfo.ArgumentList.Add('--reverse')
+    }
+    foreach ($argument in @('--check', '--whitespace=nowarn', '--', $PatchPath)) {
+        $startInfo.ArgumentList.Add($argument)
+    }
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    try {
+        if (-not $process.Start()) {
+            throw "Could not start git apply check for $PatchPath"
+        }
+        $stdout = $process.StandardOutput.ReadToEnd()
+        $stderr = $process.StandardError.ReadToEnd()
+        $process.WaitForExit()
+        return [pscustomobject]@{
+            Success = $process.ExitCode -eq 0
+            ExitCode = $process.ExitCode
+            Output = (@($stdout.Trim(), $stderr.Trim()) | Where-Object { $_ }) -join [Environment]::NewLine
+        }
+    } finally {
+        $process.Dispose()
+    }
+}
+
+function Repair-HermesLauncherBuildSource {
+    param([Parameter(Mandatory)][string] $Source)
+
+    $encoding = [System.Text.UTF8Encoding]::new($false)
+    $controlPath = Join-Path $Source 'apps\desktop\electron\hermes-local-control.ts'
+    $taskModelPath = Join-Path $Source 'apps\desktop\electron\hermes-local-task-model.ts'
+
+    $control = [System.IO.File]::ReadAllText($controlPath)
+    $badBackslashLiteral = "privatePath.replaceAll('\', '/')"
+    $goodBackslashLiteral = "privatePath.replaceAll('\\', '/')"
+    if ($control.Contains($badBackslashLiteral) -and -not $control.Contains($goodBackslashLiteral)) {
+        $control = $control.Replace($badBackslashLiteral, $goodBackslashLiteral)
+        [System.IO.File]::WriteAllText($controlPath, $control, $encoding)
+        Write-HermesLog -Component launcher -Message 'Repaired the private-path backslash literal in the temporary launcher build source.'
+    }
+
+    $taskModel = [System.IO.File]::ReadAllText($taskModelPath)
+    $updatePolicyPattern = "update:\s*\{\s*cancellable:\s*false,\s*conflictPolicy:\s*'reject',\s*resources:\s*\[[^\]]*\]\s*\}"
+    $updatePolicyFixed = [regex]::IsMatch(
+        $taskModel,
+        "update:\s*\{\s*cancellable:\s*false,\s*conflictPolicy:\s*'reject',\s*resources:\s*\[\s*\]\s*\}"
+    )
+    if (-not $updatePolicyFixed) {
+        $updatedTaskModel = [regex]::Replace(
+            $taskModel,
+            $updatePolicyPattern,
+            "update: { cancellable: false, conflictPolicy: 'reject', resources: [] }"
+        )
+        if ($updatedTaskModel -eq $taskModel) {
+            throw 'Could not locate the Desktop update task policy in the temporary launcher build source.'
+        }
+        [System.IO.File]::WriteAllText($taskModelPath, $updatedTaskModel, $encoding)
+        Write-HermesLog -Component launcher -Message 'Removed the workstation lock from observational Desktop update checks in the temporary build source.'
+    }
+}
+
+function Test-HermesPatchSemanticallyPresent {
+    param(
+        [Parameter(Mandatory)][System.IO.FileInfo] $Patch,
+        [Parameter(Mandatory)][string] $Source
+    )
+
+    if ($Patch.Name.StartsWith('0037-', [StringComparison]::OrdinalIgnoreCase)) {
+        $taskModel = [System.IO.File]::ReadAllText(
+            (Join-Path $Source 'apps\desktop\electron\hermes-local-task-model.ts')
+        )
+        return [regex]::IsMatch(
+            $taskModel,
+            "update:\s*\{\s*cancellable:\s*false,\s*conflictPolicy:\s*'reject',\s*resources:\s*\[\s*\]\s*\}"
+        )
+    }
+
+    if ($Patch.Name.StartsWith('0038-', [StringComparison]::OrdinalIgnoreCase)) {
+        $control = [System.IO.File]::ReadAllText(
+            (Join-Path $Source 'apps\desktop\electron\hermes-local-control.ts')
+        )
+        return $control.Contains("privatePath.replaceAll('\\', '/')")
+    }
+
+    return $false
 }
 
 $temporaryTypeDeclaration = $null
@@ -186,13 +292,36 @@ try {
         -StatePath $overlayState `
         -RepositoryRoot $hermesRoot
 
+    Repair-HermesLauncherBuildSource -Source $source
+
     foreach ($patch in $pendingPatches) {
-        $null = Invoke-HermesProcess `
-            -FilePath $git `
-            -ArgumentList @('-C', $source, 'apply', '--whitespace=nowarn', '--', $patch.FullName) `
-            -WorkingDirectory $source `
-            -LogComponent launcher
-        $temporaryPatches.Add($patch.FullName)
+        if (Test-HermesPatchSemanticallyPresent -Patch $patch -Source $source) {
+            Write-HermesLog -Component launcher -Message "Launcher patch is already represented in the build source: $($patch.Name)"
+            continue
+        }
+
+        $forward = Test-HermesGitApply -Git $git -Source $source -PatchPath $patch.FullName
+        if ($forward.Success) {
+            $null = Invoke-HermesProcess `
+                -FilePath $git `
+                -ArgumentList @('-C', $source, 'apply', '--whitespace=nowarn', '--', $patch.FullName) `
+                -WorkingDirectory $source `
+                -LogComponent launcher
+            $temporaryPatches.Add($patch.FullName)
+            continue
+        }
+
+        $reverse = Test-HermesGitApply -Git $git -Source $source -PatchPath $patch.FullName -Reverse
+        if ($reverse.Success) {
+            Write-HermesLog -Component launcher -Message "Launcher patch is already applied after overlay composition: $($patch.Name)"
+            continue
+        }
+
+        throw (
+            "Launcher patch '$($patch.Name)' neither applies nor is already represented after overlay composition." +
+            "`nForward check:`n$($forward.Output)" +
+            "`nReverse check:`n$($reverse.Output)"
+        )
     }
     $temporaryTypeDeclaration = New-TemporaryTablerTypeDeclaration -DesktopSource $desktop
 
