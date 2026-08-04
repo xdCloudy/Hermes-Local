@@ -1,6 +1,6 @@
 From 36e2bdfc2b5000e7a2ab0f8a136a43c90a256551 Mon Sep 17 00:00:00 2001
 From: Hermes Local Integration <hermes-local-ci@localhost>
-Date: Tue, 4 Aug 2026 21:38:10 +0100
+Date: Tue, 4 Aug 2026 21:45:00 +0100
 Subject: [PATCH 40/40] fix(desktop): make backend update component explicit
 
 ---
@@ -8,10 +8,10 @@ Subject: [PATCH 40/40] fix(desktop): make backend update component explicit
  1 file changed, 4 insertions(+), 2 deletions(-)
 
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index dd93658..253bf20 100644
+index 3f6f191..253bf20 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
-@@ -1,7 +1,7 @@
+@@ -1423,7 +1423,7 @@ function SectionContent({
                  <ActionButton
                    action="update"
                    available={snapshot.actions.update}
@@ -20,7 +20,7 @@ index dd93658..253bf20 100644
                    onRun={onRun}
                    tasks={snapshot.tasks}
                  >
-@@ -11,6 +11,7 @@
+@@ -1434,6 +1434,7 @@ function SectionContent({
                    action="update"
                    available={snapshot.actions.update && latestUpdate?.target?.updateAvailable === true}
                    input={{
@@ -28,7 +28,7 @@ index dd93658..253bf20 100644
                      mode: 'Compatibility' satisfies LocalUpdateMode,
                      targetCommit: latestUpdate?.target?.candidate || undefined
                    }}
-@@ -23,6 +24,7 @@
+@@ -1447,6 +1448,7 @@ function SectionContent({
                    action="update"
                    available={snapshot.actions.update && compatibilityReady}
                    input={{
@@ -36,7 +36,7 @@ index dd93658..253bf20 100644
                      mode: 'Apply' satisfies LocalUpdateMode,
                      targetCommit: latestUpdate?.target?.candidate || undefined
                    }}
-@@ -35,7 +37,7 @@
+@@ -1461,7 +1463,7 @@ function SectionContent({
                  <ActionButton
                    action="update"
                    available={snapshot.actions.update && !updateBusy}
