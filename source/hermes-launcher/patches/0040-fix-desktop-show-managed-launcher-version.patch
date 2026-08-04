@@ -7,7 +7,8 @@ Subject: [PATCH] fix(desktop): show managed launcher version in footer
  .../shell/hooks/managed-local-version.test.ts | 49 +++++++++++++++++++
  .../shell/hooks/managed-local-version.ts      | 35 +++++++++++++
  .../shell/hooks/use-statusbar-items.tsx       | 18 +++++--
- 3 files changed, 98 insertions(+), 4 deletions(-)
+ apps/desktop/src/i18n/en.ts                   |  2 +-
+ 4 files changed, 99 insertions(+), 5 deletions(-)
  create mode 100644 apps/desktop/src/app/shell/hooks/managed-local-version.test.ts
  create mode 100644 apps/desktop/src/app/shell/hooks/managed-local-version.ts
 
@@ -178,3 +179,17 @@ index b15cf639f6d8d8144a008ab53b17e3c7b2b605f2..d8ef4ab38132acaf00fdb6920e081da6
    ])
  
    const connectionItem = useMemo<StatusbarItem | null>(() => {
+
+diff --git a/apps/desktop/src/i18n/en.ts b/apps/desktop/src/i18n/en.ts
+index fe764eb310a4a0ebf33d47e952405457ffd9a409..2707683 100644
+--- a/apps/desktop/src/i18n/en.ts
++++ b/apps/desktop/src/i18n/en.ts
+@@ -2390,7 +2390,7 @@ export const en: Translations = {
+       update: 'update',
+       updateInProgress: 'Update in progress',
+       commitsBehind: (count, branch) => `${count} commit${count === 1 ? '' : 's'} behind ${branch}`,
+-      desktopVersion: version => `Hermes Desktop v${version}`,
++      desktopVersion: version => `Hermes Launcher v${version}`,
+       backendVersion: version => `Backend v${version}`,
+       clientLabel: version => `client v${version}`,
+       connectionSsh: host => `SSH: ${host}`,
