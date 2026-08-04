@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Hermes Local Integration <hermes-local-ci@localhost>
+Date: Tue, 4 Aug 2026 21:06:00 +0100
+Subject: [PATCH] fix: explicitly route backend update centre to Hermes Agent
+
+The native application update bridge now treats an unqualified update request
+as a Hermes Local application update. Keep the dedicated backend update centre
+explicitly pinned to the Hermes Agent transactional updater so the two update
+surfaces cannot silently select each other's repository.
+
+---
+ apps/desktop/src/app/local-workstation/index.tsx | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -1450,6 +1450,7 @@ function SectionContent({
+                   action="update"
+                   available={snapshot.actions.update}
+                   input={{
++                    component: 'HermesAgent',
+                     mode: 'Check' satisfies LocalUpdateMode
+                   }}
+                   onRun={onRun}
+@@ -1461,6 +1462,7 @@ function SectionContent({
+                   action="update"
+                   available={snapshot.actions.update && latestUpdate?.target?.updateAvailable === true}
+                   input={{
++                    component: 'HermesAgent',
+                     mode: 'Compatibility' satisfies LocalUpdateMode,
+                     targetCommit: latestUpdate?.target?.candidate || undefined
+                   }}
+@@ -1475,6 +1477,7 @@ function SectionContent({
+                   action="update"
+                   available={snapshot.actions.update && compatibilityReady}
+                   input={{
++                    component: 'HermesAgent',
+                     mode: 'Apply' satisfies LocalUpdateMode,
+                     targetCommit: latestUpdate?.target?.candidate || undefined
+                   }}
+@@ -1490,6 +1493,7 @@ function SectionContent({
+                   action="update"
+                   available={snapshot.actions.update && !updateBusy}
+                   input={{
++                    component: 'HermesAgent',
+                     mode: 'Rollback' satisfies LocalUpdateMode
+                   }}
+                   onRun={onRun}
+-- 
+2.50.1.windows.1
