@@ -15,11 +15,11 @@ $content = [IO.File]::ReadAllText($promotionPath)
 
 foreach ($required in @(
     'Get-HermesDesktopLauncherBrowserProcesses',
-    "Get-CimInstance Win32_Process",
-    "[string]$_.Name -ne 'Hermes Launcher.exe'",
-    "StartsWith(",
-    "[StringComparison]::OrdinalIgnoreCase",
-    "[string]$_.CommandLine -notmatch '(?i)(?:^|\\s)--type='",
+    'Get-CimInstance Win32_Process',
+    '[string]$_.Name -ne ''Hermes Launcher.exe''',
+    'StartsWith(',
+    '[StringComparison]::OrdinalIgnoreCase',
+    '[string]$_.CommandLine -notmatch ''(?i)(?:^|\s)--type=''',
     'Stop-Process',
     'Hermes Launcher browser processes remained active after shutdown'
 )) {
@@ -30,7 +30,7 @@ foreach ($required in @(
 
 if (
     $content.Contains(
-        "[IO.Path]::GetFullPath((Join-Path $root 'dist\\Hermes Launcher.exe'))",
+        '[IO.Path]::GetFullPath((Join-Path $root ''dist\Hermes Launcher.exe''))',
         [StringComparison]::Ordinal
     )
 ) {
