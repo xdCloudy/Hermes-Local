@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.hermes.invalid/schemas/runtime/common.schema.json",
+  "title": "Hermes Local runtime contract common types",
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "revision": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/@-]{0,159}$"
+    },
+    "safeRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "not": {
+        "pattern": "(^[A-Za-z]:|^[/\\\\]|(^|[/\\\\])\\.\\.([/\\\\]|$))"
+      }
+    },
+    "ownership": {
+      "type": "string",
+      "enum": [
+        "owned",
+        "external"
+      ]
+    },
+    "lifecycleOperation": {
+      "type": "string",
+      "enum": [
+        "detect",
+        "install",
+        "validate",
+        "launch",
+        "stop",
+        "health",
+        "metrics",
+        "benchmark",
+        "diagnostics",
+        "update",
+        "rollback"
+      ]
+    },
+    "modelFormat": {
+      "type": "string",
+      "enum": [
+        "gguf",
+        "safetensors",
+        "onnx",
+        "remote-provider"
+      ]
+    },
+    "hardwareBackend": {
+      "type": "string",
+      "enum": [
+        "cpu",
+        "cuda",
+        "vulkan",
+        "hip",
+        "sycl",
+        "metal",
+        "remote"
+      ]
+    },
+    "optimisationId": {
+      "type": "string",
+      "enum": [
+        "flash-attention",
+        "kv-cache-quantization",
+        "prompt-cache",
+        "tensor-offload",
+        "batch-tuning",
+        "speculative-draft-model",
+        "speculative-mtp"
+      ]
+    },
+    "runtimeRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adapterId",
+        "runtimeId",
+        "ownership",
+        "distribution"
+      ],
+      "properties": {
+        "adapterId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "runtimeId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "ownership": {
+          "$ref": "#/$defs/ownership"
+        },
+        "distribution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "version",
+            "revision"
+          ],
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "revision": {
+              "$ref": "#/$defs/revision"
+            },
+            "artifactSha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          }
+        }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/identifier"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
