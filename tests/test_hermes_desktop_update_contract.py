@@ -32,9 +32,15 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
             "Update-Hermes-Local.ps1",
             "'-Component', 'Launcher'",
             "Restore-PreviousLauncher",
+            "Save-HermesDesktopWorkingTree",
+            "Restore-HermesDesktopWorkingTree",
+            "'stash', 'push', '--include-untracked'",
+            "'stash', 'apply', '--index'",
+            "autoStash = $true",
             "SkipModel",
         ):
             self.assertIn(required, text)
+        self.assertNotIn("Commit or stash them before updating", text)
         self.assertNotRegex(text, re.compile(r"\bgit\s+clean\b", re.I))
         self.assertNotRegex(
             text,
