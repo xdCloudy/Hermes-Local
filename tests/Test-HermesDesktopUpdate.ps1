@@ -7,6 +7,8 @@ $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $modulePath = Join-Path $root 'scripts\Hermes-DesktopUpdate.psm1'
 $scriptPath = Join-Path $root 'Invoke-Hermes-DesktopUpdate.ps1'
+$buildPath = Join-Path $root 'Build-Hermes-Launcher.ps1'
+$partsRoot = Join-Path $root 'scripts\desktop-update'
 $overlayPath = Join-Path $root 'Apply-Hermes-LauncherOverlay.ps1'
 
 function Assert-Contract {
@@ -35,11 +37,15 @@ function Get-EmbeddedPowerShellSource {
     try { [Text.UTF8Encoding]::new($false).GetString($output.ToArray()) } finally { $output.Dispose() }
 }
 
-foreach ($path in @($modulePath, $scriptPath, $overlayPath)) {
+foreach ($path in @($modulePath, $scriptPath, $buildPath, $overlayPath)) {
     Assert-Contract (Test-Path -LiteralPath $path -PathType Leaf) "Missing Desktop update file: $path"
 }
+Assert-Contract (Test-Path -LiteralPath $partsRoot -PathType Container) "Missing Desktop update directory: $partsRoot"
 
 Import-Module $modulePath -Force
+Get-ChildItem -LiteralPath $partsRoot -Filter '*.ps1' -File |
+    Sort-Object Name |
+    ForEach-Object { . $_.FullName }
 
 $markerValue = [ordered]@{ supported = $true; behind = 3; targetSha = ('a' * 40) }
 $decoded = ConvertFrom-HermesDesktopUpdateMarker `
@@ -115,34 +121,63 @@ try {
     }
 }
 
-$scriptText = Get-Content -Raw -LiteralPath $scriptPath
+$scriptText = @(
+    Get-Content -Raw -LiteralPath $scriptPath
+    Get-ChildItem -LiteralPath $partsRoot -Filter '*.ps1' -File |
+        Sort-Object Name |
+        ForEach-Object { Get-Content -Raw -LiteralPath $_.FullName }
+) -join [Environment]::NewLine
 foreach ($required in @(
-    'Wait-HermesDesktopUpdateParent',
-    'Update-Hermes-Local\.ps1',
-    'Setup-Hermes-Local\.ps1',
-    "'reset', '--hard'",
+    "'Promote'",
+    'pending-desktop-update\.json',
+    'ready-to-restart',
+    'Start-HermesDesktopPromotionHelper',
+    'Wait-HermesDesktopLauncherExit',
+    'Test-HermesDesktopLauncherRunning',
+    "'-DestinationDirectory'",
+    'launcherStayedOpen',
+    'relaunchOnActivation = \$false',
     'Save-HermesDesktopWorkingTree',
     'Restore-HermesDesktopWorkingTree',
     "'stash', 'push', '--include-untracked'",
     "'stash', 'apply', '--index'",
     'autoStash = \$true',
-    'SkipModel',
-    'Restore-PreviousLauncher'
+    'SkipModel'
 )) {
-    Assert-Contract ($scriptText -match $required) "Detached updater is missing contract: $required"
+    Assert-Contract ($scriptText -match $required) "Updater is missing contract: $required"
 }
+Assert-Contract (
+    $scriptText -notmatch 'ConvertTo-HermesDesktopUpdateMarker -Name helper'
+) 'Updater still tells Electron to close for a detached helper handoff.'
+Assert-Contract (
+    $scriptText -notmatch 'Start-HermesKnownGoodLauncher|Wait-HermesDesktopUpdateParent'
+) 'Updater still closes or automatically relaunches Hermes Launcher.'
+Assert-Contract (
+    $scriptText -notmatch 'Restarting Hermes Launcher to install'
+) 'Updater still presents the old forced-restart message.'
 Assert-Contract (
     $scriptText -notmatch 'Commit or stash them before updating'
 ) 'Desktop updater still blocks updates when local source changes exist.'
 Assert-Contract (
     $scriptText -notmatch "(?im)\bgit\s+clean\b|'clean'\s*,\s*'-"
-) 'Detached updater may delete untracked user files.'
+) 'Desktop updater may delete untracked user files.'
 Assert-Contract (
     $scriptText -notmatch '(?im)Remove-Item[^\r\n]+(?:models|data\\hermes|config\\launcher)'
-) 'Detached updater may delete user-owned state.'
+) 'Desktop updater may delete user-owned state.'
 Assert-Contract (
     (Get-Content -Raw -LiteralPath $modulePath) -match 'desktop-self-update\.json'
 ) 'Desktop updater has no stale-recoverable lock.'
+
+$buildText = Get-Content -Raw -LiteralPath $buildPath
+foreach ($required in @(
+    '\[string\] \$DestinationDirectory',
+    'Resolve-HermesLauncherDestination',
+    'Launcher build destination cannot be the Hermes Local root',
+    'Launcher build destination is outside the Hermes Local root',
+    'Launcher build destination overlaps protected Hermes Local state'
+)) {
+    Assert-Contract ($buildText -match $required) "Launcher builder is missing contract: $required"
+}
 
 $overlayWrapper = Get-Content -Raw -LiteralPath $overlayPath
 Assert-Contract ($overlayWrapper -match 'GzipStream') 'Overlay wrapper is not validated/compressed.'
