@@ -210,10 +210,15 @@ function Repair-HermesLauncherBuildSource {
     $control = [System.IO.File]::ReadAllText($controlPath)
     $badBackslashLiteral = "privatePath.replaceAll('\', '/')"
     $goodBackslashLiteral = "privatePath.replaceAll('\\', '/')"
-    if ($control.Contains($badBackslashLiteral) -and -not $control.Contains($goodBackslashLiteral)) {
+    if ($control.Contains($badBackslashLiteral)) {
         $control = $control.Replace($badBackslashLiteral, $goodBackslashLiteral)
         [System.IO.File]::WriteAllText($controlPath, $control, $encoding)
-        Write-HermesLog -Component launcher -Message 'Repaired the private-path backslash literal in the temporary launcher build source.'
+        Write-HermesLog -Component launcher -Message 'Repaired all malformed private-path backslash literals in the temporary launcher build source.'
+    }
+
+    $control = [System.IO.File]::ReadAllText($controlPath)
+    if ($control.Contains($badBackslashLiteral) -or -not $control.Contains($goodBackslashLiteral)) {
+        throw 'The temporary launcher build source still contains an invalid private-path backslash literal.'
     }
 
     $taskModel = [System.IO.File]::ReadAllText($taskModelPath)
@@ -256,7 +261,9 @@ function Test-HermesPatchSemanticallyPresent {
         $control = [System.IO.File]::ReadAllText(
             (Join-Path $Source 'apps\desktop\electron\hermes-local-control.ts')
         )
-        return $control.Contains("privatePath.replaceAll('\\', '/')")
+        $badBackslashLiteral = "privatePath.replaceAll('\', '/')"
+        $goodBackslashLiteral = "privatePath.replaceAll('\\', '/')"
+        return $control.Contains($goodBackslashLiteral) -and -not $control.Contains($badBackslashLiteral)
     }
 
     return $false
@@ -264,6 +271,7 @@ function Test-HermesPatchSemanticallyPresent {
 
 $temporaryTypeDeclaration = $null
 $temporaryPatches = [System.Collections.Generic.List[string]]::new()
+$repairSnapshots = [ordered]@{}
 $overlayState = $null
 $exitCode = 0
 $git = $null
@@ -291,6 +299,14 @@ try {
         -Mode Apply `
         -StatePath $overlayState `
         -RepositoryRoot $hermesRoot
+
+    foreach ($relativePath in @(
+        'apps\desktop\electron\hermes-local-control.ts',
+        'apps\desktop\electron\hermes-local-task-model.ts'
+    )) {
+        $snapshotPath = Join-Path $source $relativePath
+        $repairSnapshots[$snapshotPath] = [System.IO.File]::ReadAllBytes($snapshotPath)
+    }
 
     Repair-HermesLauncherBuildSource -Source $source
 
@@ -384,6 +400,17 @@ try {
                 $exitCode = 1
                 Write-HermesLog -Component launcher -Level ERROR -Message $_.Exception.ToString()
                 Write-Host "Hermes Launcher patch restoration failed: $($_.Exception.Message)" -ForegroundColor Red
+            }
+        }
+    }
+    if ($repairSnapshots.Count -gt 0) {
+        foreach ($entry in $repairSnapshots.GetEnumerator()) {
+            try {
+                [System.IO.File]::WriteAllBytes([string]$entry.Key, [byte[]]$entry.Value)
+            } catch {
+                $exitCode = 1
+                Write-HermesLog -Component launcher -Level ERROR -Message $_.Exception.ToString()
+                Write-Host "Hermes Launcher semantic repair restoration failed: $($_.Exception.Message)" -ForegroundColor Red
             }
         }
     }
