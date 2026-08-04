@@ -121,11 +121,19 @@ foreach ($required in @(
     'Update-Hermes-Local\.ps1',
     'Setup-Hermes-Local\.ps1',
     "'reset', '--hard'",
+    'Save-HermesDesktopWorkingTree',
+    'Restore-HermesDesktopWorkingTree',
+    "'stash', 'push', '--include-untracked'",
+    "'stash', 'apply', '--index'",
+    'autoStash = \$true',
     'SkipModel',
     'Restore-PreviousLauncher'
 )) {
     Assert-Contract ($scriptText -match $required) "Detached updater is missing contract: $required"
 }
+Assert-Contract (
+    $scriptText -notmatch 'Commit or stash them before updating'
+) 'Desktop updater still blocks updates when local source changes exist.'
 Assert-Contract (
     $scriptText -notmatch "(?im)\bgit\s+clean\b|'clean'\s*,\s*'-"
 ) 'Detached updater may delete untracked user files.'
