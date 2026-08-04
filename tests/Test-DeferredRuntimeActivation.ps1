@@ -32,12 +32,26 @@ foreach ($required in @(
     'Sync-HermesPythonRuntime.ps1',
     "'Stop-Hermes-Local.ps1'",
     'Move-HermesDesktopActiveLauncherToActivationBackup',
+    'Remove-HermesDesktopActivationDirectory',
+    'Move-HermesDesktopActivationDirectory',
+    "-Description 'restored active launcher copy'",
+    "-Description 'recreated active launcher path'",
+    "-Description 'prepared launcher promotion'",
     'runtimeSynchronizedAfterExit = $true',
-    'relaunched = $false'
+    '$relaunched = $false'
 )) {
     if (-not $safeActivation.Contains($required, [StringComparison]::Ordinal)) {
         throw "Safe activation contract is missing: $required"
     }
+}
+
+if (
+    $safeActivation.Contains(
+        'The active launcher path was recreated during deferred activation.',
+        [StringComparison]::Ordinal
+    )
+) {
+    throw 'A recreated dist path must be replaced safely, not treated as a fatal activation error.'
 }
 
 $reserveCall = $safeActivation.IndexOf(
@@ -53,17 +67,24 @@ $runtimeCall = $safeActivation.LastIndexOf(
     '        Invoke-HermesDesktopRuntimeSync',
     [StringComparison]::Ordinal
 )
+$clearRecreatedDist = $safeActivation.IndexOf(
+    "                -Description 'recreated active launcher path'",
+    $runtimeCall,
+    [StringComparison]::Ordinal
+)
 $promoteCall = $safeActivation.IndexOf(
-    '        Move-Item -LiteralPath $pendingDist -Destination $dist',
+    "            -Description 'prepared launcher promotion'",
+    $clearRecreatedDist,
     [StringComparison]::Ordinal
 )
 if (
     $reserveCall -lt 0 -or
     $stopCall -le $reserveCall -or
     $runtimeCall -le $stopCall -or
-    $promoteCall -le $runtimeCall
+    $clearRecreatedDist -le $runtimeCall -or
+    $promoteCall -le $clearRecreatedDist
 ) {
-    throw 'Activation must reserve dist, stop services, synchronize Python, then promote the staged Launcher.'
+    throw 'Activation must reserve dist, stop services, synchronize Python, clear a restored copy, then promote the staged Launcher.'
 }
 
 foreach ($required in @(
