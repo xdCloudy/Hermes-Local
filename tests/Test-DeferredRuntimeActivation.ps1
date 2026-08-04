@@ -29,7 +29,7 @@ if ($stageIndex -lt 0 -or $safeIndex -le $stageIndex) {
 
 foreach ($required in @(
     "'-SkipHermesDependencies'",
-    "'Sync-HermesPythonRuntime.ps1'",
+    'Sync-HermesPythonRuntime.ps1',
     "'Stop-Hermes-Local.ps1'",
     'Move-HermesDesktopActiveLauncherToActivationBackup',
     'runtimeSynchronizedAfterExit = $true',
