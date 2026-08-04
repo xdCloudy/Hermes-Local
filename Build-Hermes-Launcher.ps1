@@ -287,6 +287,7 @@ try {
     $desktop = Join-Path $source 'apps\desktop'
     $release = Join-Path $desktop 'release'
     $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
+    $node = (Get-Command node.exe -ErrorAction Stop).Source
     $git = (Get-Command git -ErrorAction Stop).Source
     $destination = Resolve-HermesLauncherDestination `
         -RequestedDestination $DestinationDirectory `
@@ -344,6 +345,17 @@ try {
     $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @(
         'run', 'build', '--workspace', 'web'
     ) -WorkingDirectory $source -LogComponent launcher
+
+    $privatePathRepair = Join-Path $desktop 'scripts\repair-hermes-local-control.mjs'
+    if (-not (Test-Path -LiteralPath $privatePathRepair -PathType Leaf)) {
+        throw "Desktop private-path repair script was not installed: $privatePathRepair"
+    }
+    $null = Invoke-HermesProcess `
+        -FilePath $node `
+        -ArgumentList @($privatePathRepair) `
+        -WorkingDirectory $desktop `
+        -LogComponent launcher
+
     $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @(
         'run', 'typecheck', '--workspace', 'apps/desktop'
     ) -WorkingDirectory $source -LogComponent launcher
