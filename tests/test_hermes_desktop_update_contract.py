@@ -188,6 +188,27 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
         )
         self.assertIn("rejects unsafe pinned identities", text)
 
+    def test_startup_archives_obsolete_pending_activation_state(self) -> None:
+        helper = self.read("scripts/Repair-Hermes-DesktopUpdateState.ps1")
+        startup = self.read("Start-Hermes-Local.ps1")
+
+        for required in (
+            "pending-desktop-update.json",
+            "git -C $root rev-parse HEAD",
+            "$currentCommit -eq $targetCommit",
+            "Hermes Launcher.exe",
+            "Test-HermesPendingPromotionProcess",
+            "-Mode\\s+Promote",
+            "Move-Item",
+            ".stale-$stamp",
+            "Archived stale Desktop update state",
+        ):
+            self.assertIn(required, helper)
+
+        self.assertIn("Repair-Hermes-DesktopUpdateState.ps1", startup)
+        self.assertIn("Desktop update-state repair failed", startup)
+        self.assertNotIn("Remove-Item -LiteralPath $pendingDist", helper)
+
 
 if __name__ == "__main__":
     unittest.main()
