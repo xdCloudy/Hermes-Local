@@ -22,6 +22,18 @@ describe('Hermes Local native application update bridge', () => {
     })
   })
 
+  it('defaults unqualified desktop checks to the Hermes Local application', () => {
+    expect(planDesktopUpdateAction({ mode: 'Check' }, 4242)).toEqual({
+      arguments: ['-Mode', 'Check', '-Channel', 'development', '-ParentPid', '4242'],
+      component: 'HermesLocal',
+      scriptRelative: 'Invoke-Hermes-DesktopUpdate.ps1'
+    })
+    expect(desktopUpdateTaskContext({ mode: 'Check' })).toMatchObject({
+      component: 'HermesLocal',
+      mode: 'Check'
+    })
+  })
+
   it('preserves the existing Hermes Agent transactional route', () => {
     expect(planDesktopUpdateAction({ component: 'HermesAgent', mode: 'Apply', targetBranch: 'main' }, 1)).toEqual({
       arguments: ['-Mode', 'Apply', '-Component', 'HermesAgent', '-Caller', 'Desktop', '-TargetBranch', 'main'],
