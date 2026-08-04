@@ -68,9 +68,13 @@ if (
 
 foreach ($required in @(
     "'hermes-next-' + [guid]::NewGuid().ToString('N')",
-    'VIRTUAL_ENV = $candidateRuntime',
+    'VIRTUAL_ENV = $Runtime',
+    'UV_PROJECT_ENVIRONMENT = $Runtime',
     'Assert-HermesPythonRuntimeInactive -Runtime $runtime',
     '[IO.Directory]::Move($candidateRuntime, $runtime)',
+    '-ForceReinstall',
+    '$runtimeHermes = Join-Path $runtime ''Scripts\hermes.exe''',
+    'Invoke-HermesProcess -FilePath $runtimeHermes',
     'from gateway.config import Platform, load_gateway_config'
 )) {
     if (-not $runtimeSync.Contains($required, [StringComparison]::Ordinal)) {
@@ -78,8 +82,31 @@ foreach ($required in @(
     }
 }
 
-if ($runtimeSync.Contains('UV_PROJECT_ENVIRONMENT = $runtime', [StringComparison]::Ordinal)) {
-    throw 'Dependency synchronization must not mutate the active runtime before activation.'
+$candidateSync = $runtimeSync.IndexOf(
+    '        -Runtime $candidateRuntime',
+    [StringComparison]::Ordinal
+)
+$activateMove = $runtimeSync.IndexOf(
+    '        [IO.Directory]::Move($candidateRuntime, $runtime)',
+    [StringComparison]::Ordinal
+)
+$activeSync = $runtimeSync.IndexOf(
+    '        -Runtime $runtime',
+    $activateMove,
+    [StringComparison]::Ordinal
+)
+$entryPointProbe = $runtimeSync.IndexOf(
+    'Invoke-HermesProcess -FilePath $runtimeHermes',
+    $activeSync,
+    [StringComparison]::Ordinal
+)
+if (
+    $candidateSync -lt 0 -or
+    $activateMove -le $candidateSync -or
+    $activeSync -le $activateMove -or
+    $entryPointProbe -le $activeSync
+) {
+    throw 'Runtime activation must sync the candidate, rename it, regenerate final-path entry points, then execute hermes.exe.'
 }
 
 foreach ($required in @(
