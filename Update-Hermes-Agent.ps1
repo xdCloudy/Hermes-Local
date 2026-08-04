@@ -38,7 +38,7 @@ function Write-HermesAgentUpdateStage {
     )
 
     $script:AgentUpdateStage = $Stage
-    Write-Output "::hermes-update-stage::$Stage::$Message"
+    Write-Host "::hermes-update-stage::$Stage::$Message"
 }
 
 function Get-HermesAgentUpdateFailureCode {
@@ -90,6 +90,74 @@ function Invoke-NativeText {
         throw "$FilePath $($ArgumentList -join ' ') failed with exit code $exitCode.`n$text"
     }
     return $text
+}
+
+function Invoke-NativeResult {
+    param(
+        [Parameter(Mandatory)]
+        [string] $FilePath,
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [string[]] $ArgumentList,
+        [string] $WorkingDirectory = (Get-HermesRoot),
+        [hashtable] $Environment = @{}
+    )
+
+    $previousEnvironment = @{}
+    foreach ($name in $Environment.Keys) {
+        $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable(
+            [string]$name,
+            [EnvironmentVariableTarget]::Process
+        )
+        [Environment]::SetEnvironmentVariable(
+            [string]$name,
+            [string]$Environment[$name],
+            [EnvironmentVariableTarget]::Process
+        )
+    }
+
+    $nativePreference = Get-Variable `
+        -Name PSNativeCommandUseErrorActionPreference `
+        -Scope Local `
+        -ErrorAction SilentlyContinue
+    $previousNativePreference = if ($nativePreference) {
+        [bool]$nativePreference.Value
+    } else {
+        $null
+    }
+
+    $output = @()
+    $exitCode = -1
+    Push-Location $WorkingDirectory
+    try {
+        $PSNativeCommandUseErrorActionPreference = $false
+        $output = @(& $FilePath @ArgumentList 2>&1)
+        $exitCode = [int]$LASTEXITCODE
+    } finally {
+        Pop-Location
+        if ($null -eq $previousNativePreference) {
+            Remove-Variable `
+                -Name PSNativeCommandUseErrorActionPreference `
+                -Scope Local `
+                -ErrorAction SilentlyContinue
+        } else {
+            $PSNativeCommandUseErrorActionPreference = $previousNativePreference
+        }
+        foreach ($name in $Environment.Keys) {
+            [Environment]::SetEnvironmentVariable(
+                [string]$name,
+                $previousEnvironment[$name],
+                [EnvironmentVariableTarget]::Process
+            )
+        }
+    }
+
+    $lines = @($output | ForEach-Object { [string]$_ })
+    return [pscustomobject]@{
+        ExitCode = $exitCode
+        Lines = $lines
+        Text = (($lines -join [Environment]::NewLine).Trim())
+    }
 }
 
 function Invoke-HermesPowerShellScript {
@@ -245,72 +313,228 @@ function Get-UnmergedAgentPaths {
     )
 }
 
-function Resolve-AgentNpmLockConflict {
+function Get-AgentPatchGeneratedLockPaths {
+    param(
+        [Parameter(Mandatory)]
+        [System.IO.FileInfo] $Patch
+    )
+
+    return @(
+        Get-Content -LiteralPath $Patch.FullName |
+            ForEach-Object {
+                if ($_ -match '^diff --git a/(package-lock\.json|uv\.lock) b/') {
+                    $Matches[1]
+                }
+            } |
+            Where-Object { $_ } |
+            Sort-Object -Unique
+    )
+}
+
+function Get-AgentPatchFailurePaths {
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [string[]] $Lines
+    )
+
+    return @(
+        $Lines |
+            ForEach-Object {
+                if ($_ -match '^error: patch failed: (.+):\d+$') {
+                    $Matches[1]
+                } elseif ($_ -match '^error: (.+): patch does not apply$') {
+                    $Matches[1]
+                }
+            } |
+            ForEach-Object { $_.Trim().Replace('\\', '/') } |
+            Where-Object { $_ } |
+            Sort-Object -Unique
+    )
+}
+
+function Test-AgentPathsAreGeneratedLocks {
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [string[]] $Paths
+    )
+
+    $normalized = @(
+        $Paths |
+            ForEach-Object { $_.Trim().Replace('\\', '/') } |
+            Where-Object { $_ } |
+            Sort-Object -Unique
+    )
+    if ($normalized.Count -eq 0) {
+        return $false
+    }
+
+    return @(
+        $normalized |
+            Where-Object { $_ -notin @('package-lock.json', 'uv.lock') }
+    ).Count -eq 0
+}
+
+function Invoke-AgentGitAmAttempt {
     param(
         [Parameter(Mandatory)]
         [string] $Source,
         [Parameter(Mandatory)]
-        [string[]] $Conflicts
+        [System.IO.FileInfo] $Patch,
+        [switch] $ThreeWay,
+        [AllowEmptyCollection()]
+        [string[]] $ExcludePaths = @()
     )
 
-    $normalized = @(
-        $Conflicts |
-            ForEach-Object { $_.Trim().Replace('\\', '/') } |
-            Where-Object { $_ }
-    )
-    if ($normalized.Count -ne 1 -or $normalized[0] -ne 'package-lock.json') {
-        return $false
+    $arguments = @('-C', $Source, 'am')
+    if ($ThreeWay) {
+        $arguments += '--3way'
     }
-    if (-not (Test-Path -LiteralPath (Join-Path $Source 'package.json') -PathType Leaf) -or
-        -not (Test-Path -LiteralPath (Join-Path $Source 'package-lock.json') -PathType Leaf)) {
+    $arguments += '--committer-date-is-author-date'
+    foreach ($path in $ExcludePaths) {
+        $arguments += "--exclude=$path"
+    }
+    $arguments += $Patch.FullName
+
+    return Invoke-NativeResult `
+        -FilePath 'git' `
+        -ArgumentList $arguments `
+        -Environment @{
+            GIT_COMMITTER_NAME = 'Hermes Local Updater'
+            GIT_COMMITTER_EMAIL = 'hermes-local@localhost'
+        }
+}
+
+function Stop-AgentPatchApplication {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Source
+    )
+
+    $result = Invoke-NativeResult `
+        -FilePath 'git' `
+        -ArgumentList @('-C', $Source, 'am', '--abort')
+    if ($result.ExitCode -ne 0) {
+        throw "Could not abort the failed git am session.`n$($result.Text)"
+    }
+}
+
+function Invoke-AgentGeneratedLockFallback {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Source,
+        [Parameter(Mandatory)]
+        [System.IO.FileInfo] $Patch
+    )
+
+    $lockPaths = @(Get-AgentPatchGeneratedLockPaths -Patch $Patch)
+    if ($lockPaths.Count -eq 0) {
         return $false
     }
 
+    Stop-AgentPatchApplication -Source $Source
     Write-HermesLog `
         -Component update `
         -Level WARN `
-        -Message 'Regenerating package-lock.json after an upstream-only lockfile conflict.'
+        -Message "Reapplying $($Patch.Name) without generated lockfiles, then regenerating: $($lockPaths -join ', ')."
 
-    Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
-        '-C', $Source, 'checkout', '--ours', '--', 'package-lock.json'
-    ) -LogComponent update
-    Invoke-HermesProcess -FilePath 'npx.cmd' -ArgumentList @(
-        '--yes', "npm@$HermesAgentNpmVersion",
-        '--prefix', $Source,
-        'install',
-        '--package-lock-only',
-        '--ignore-scripts',
-        '--no-audit',
-        '--fund=false'
-    ) -LogComponent update
+    $reducedAttempt = Invoke-AgentGitAmAttempt `
+        -Source $Source `
+        -Patch $Patch `
+        -ExcludePaths $lockPaths
+    if ($reducedAttempt.ExitCode -ne 0) {
+        throw "Patch source changes still failed after generated lockfiles were excluded.`n$($reducedAttempt.Text)"
+    }
 
-    $unstagedText = Invoke-NativeText `
+    if ($lockPaths -contains 'package-lock.json') {
+        foreach ($required in @('package.json', 'package-lock.json')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $Source $required) -PathType Leaf)) {
+                throw "Cannot regenerate package-lock.json because '$required' is missing."
+            }
+        }
+        Invoke-HermesProcess -FilePath 'npx.cmd' -ArgumentList @(
+            '--yes', "npm@$HermesAgentNpmVersion",
+            '--prefix', $Source,
+            'install',
+            '--package-lock-only',
+            '--ignore-scripts',
+            '--no-audit',
+            '--fund=false'
+        ) -LogComponent update
+    }
+
+    if ($lockPaths -contains 'uv.lock') {
+        foreach ($required in @('pyproject.toml', 'uv.lock')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $Source $required) -PathType Leaf)) {
+                throw "Cannot regenerate uv.lock because '$required' is missing."
+            }
+        }
+        $uvCommand = Get-Command 'uv.exe' -ErrorAction SilentlyContinue
+        if (-not $uvCommand) {
+            $uvCommand = Get-Command 'uv' -ErrorAction SilentlyContinue
+        }
+        if (-not $uvCommand) {
+            throw 'uv is required to regenerate uv.lock during patch replay.'
+        }
+        Invoke-HermesProcess `
+            -FilePath $uvCommand.Source `
+            -ArgumentList @('lock') `
+            -WorkingDirectory $Source `
+            -LogComponent update
+    }
+
+    $statusText = Invoke-NativeText `
         -FilePath 'git' `
         -WorkingDirectory $Source `
-        -ArgumentList @('diff', '--name-only')
+        -ArgumentList @('status', '--porcelain', '--untracked-files=all')
+    $changedPaths = @(
+        $statusText -split '\r?\n' |
+            Where-Object { $_ } |
+            ForEach-Object {
+                if ($_.Length -lt 4) {
+                    throw "Unexpected git status entry: $_"
+                }
+                $_.Substring(3).Trim('"').Replace('\\', '/')
+            } |
+            Sort-Object -Unique
+    )
     $unexpected = @(
-        $unstagedText -split '\r?\n' |
-            ForEach-Object { $_.Trim().Replace('\\', '/') } |
-            Where-Object { $_ -and $_ -ne 'package-lock.json' }
+        $changedPaths |
+            Where-Object { $_ -notin $lockPaths }
     )
     if ($unexpected.Count -gt 0) {
-        throw "npm lockfile regeneration modified unexpected files: $($unexpected -join ', ')"
+        throw "Generated lockfile regeneration modified unexpected files: $($unexpected -join ', ')"
     }
 
-    Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
-        '-C', $Source, 'add', '--', 'package-lock.json'
-    ) -LogComponent update
-    $remaining = @(Get-UnmergedAgentPaths -Source $Source)
-    if ($remaining.Count -gt 0) {
-        throw "Lockfile regeneration left unresolved paths: $($remaining -join ', ')"
+    if ($changedPaths.Count -gt 0) {
+        $addArguments = @('-C', $Source, 'add', '--') + $changedPaths
+        Invoke-HermesProcess `
+            -FilePath 'git' `
+            -ArgumentList $addArguments `
+            -LogComponent update
+
+        $authorDate = Invoke-NativeText `
+            -FilePath 'git' `
+            -WorkingDirectory $Source `
+            -ArgumentList @('show', '-s', '--format=%aI', 'HEAD')
+        Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
+            '-C', $Source,
+            'commit', '--amend', '--no-edit', '--no-verify'
+        ) -Environment @{
+            GIT_COMMITTER_NAME = 'Hermes Local Updater'
+            GIT_COMMITTER_EMAIL = 'hermes-local@localhost'
+            GIT_COMMITTER_DATE = $authorDate
+        } -LogComponent update
     }
 
-    Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
-        '-C', $Source, 'am', '--continue'
-    ) -Environment @{
-        GIT_COMMITTER_NAME = 'Hermes Local Updater'
-        GIT_COMMITTER_EMAIL = 'hermes-local@localhost'
-    } -LogComponent update
+    $remainingStatus = Invoke-NativeText `
+        -FilePath 'git' `
+        -WorkingDirectory $Source `
+        -ArgumentList @('status', '--porcelain', '--untracked-files=all')
+    if ($remainingStatus) {
+        throw "Generated lockfile fallback left the candidate dirty.`n$remainingStatus"
+    }
     return $true
 }
 
@@ -325,27 +549,63 @@ function Invoke-AgentPatchSeries {
     )
 
     foreach ($patch in $Patches) {
-        try {
-            Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
-                '-C', $Source,
-                'am', '--3way', '--committer-date-is-author-date',
-                $patch.FullName
-            ) -Environment @{
-                GIT_COMMITTER_NAME = 'Hermes Local Updater'
-                GIT_COMMITTER_EMAIL = 'hermes-local@localhost'
-            } -LogComponent update
-        } catch {
-            $patchError = $_
-            $conflicts = @(Get-UnmergedAgentPaths -Source $Source)
+        $threeWay = Invoke-AgentGitAmAttempt `
+            -Source $Source `
+            -Patch $patch `
+            -ThreeWay
+        if ($threeWay.ExitCode -eq 0) {
+            continue
+        }
+
+        $conflicts = @(Get-UnmergedAgentPaths -Source $Source)
+        if (Test-AgentPathsAreGeneratedLocks -Paths $conflicts) {
             try {
-                if (Resolve-AgentNpmLockConflict -Source $Source -Conflicts $conflicts) {
+                if (Invoke-AgentGeneratedLockFallback -Source $Source -Patch $patch) {
                     continue
                 }
             } catch {
-                throw "Patch $($patch.Name) hit a package-lock.json conflict and deterministic regeneration failed. The active installation was not changed. $($_.Exception.Message)"
+                throw "Patch $($patch.Name) hit a generated-lock conflict and deterministic regeneration failed. The active installation was not changed. $($_.Exception.Message)"
             }
-            throw "Patch $($patch.Name) did not apply cleanly to $Candidate. Conflicted files: $($conflicts -join ', '). The active installation was not changed. $($patchError.Exception.Message)"
         }
+
+        $fakeAncestorFailure = $threeWay.Text -match (
+            'could not build fake ancestor|' +
+            'sha1 information is lacking or useless'
+        )
+        if ($conflicts.Count -eq 0 -and $fakeAncestorFailure) {
+            Stop-AgentPatchApplication -Source $Source
+            Write-HermesLog `
+                -Component update `
+                -Level WARN `
+                -Message "Retrying $($patch.Name) without --3way because Git could not construct its fake ancestor."
+
+            $direct = Invoke-AgentGitAmAttempt `
+                -Source $Source `
+                -Patch $patch
+            if ($direct.ExitCode -eq 0) {
+                continue
+            }
+
+            $directConflicts = @(Get-UnmergedAgentPaths -Source $Source)
+            $failedPaths = @(Get-AgentPatchFailurePaths -Lines $direct.Lines)
+            $generatedLockFailure =
+                (Test-AgentPathsAreGeneratedLocks -Paths $directConflicts) -or
+                (Test-AgentPathsAreGeneratedLocks -Paths $failedPaths)
+            if ($generatedLockFailure) {
+                try {
+                    if (Invoke-AgentGeneratedLockFallback -Source $Source -Patch $patch) {
+                        continue
+                    }
+                } catch {
+                    throw "Patch $($patch.Name) required generated-lock regeneration after direct replay, but regeneration failed. The active installation was not changed. $($_.Exception.Message)"
+                }
+            }
+
+            $reportedPaths = @($directConflicts + $failedPaths | Sort-Object -Unique)
+            throw "Patch $($patch.Name) failed both three-way and direct replay against $Candidate. Conflicted or rejected files: $($reportedPaths -join ', '). The active installation was not changed.`n$($direct.Text)"
+        }
+
+        throw "Patch $($patch.Name) did not apply cleanly to $Candidate. Conflicted files: $($conflicts -join ', '). The active installation was not changed.`n$($threeWay.Text)"
     }
 }
 
@@ -378,6 +638,12 @@ function New-StagedAgentCandidate {
         # ancestor, so staging must retain the complete upstream object database.
         Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
             'clone', '--no-checkout', $repository, $source
+        ) -LogComponent update
+        # The staging path may exceed the legacy Windows MAX_PATH limit once
+        # upstream documentation paths are appended. Enable Git for Windows'
+        # long-path handling before the first checkout writes the worktree.
+        Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
+            '-C', $source, 'config', 'core.longpaths', 'true'
         ) -LogComponent update
         Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
             '-C', $source, 'fetch', 'origin', $currentBase
@@ -537,7 +803,10 @@ function Invoke-AgentCompatibility {
     $patchDirectory = Resolve-HermesPath ([string]$manifest.sources.hermesAgent.patchSeries)
     $patchCount = @(Get-ChildItem -LiteralPath $patchDirectory -Filter '*.patch' -File).Count
 
-    if ($candidate -eq $currentBase) {
+    # An explicit target is also a request to revalidate that exact revision.
+    # This provides a deterministic way to exercise patch replay after updater
+    # changes even when the manifest already points at the requested commit.
+    if ($candidate -eq $currentBase -and -not $TargetCommit) {
         return [ordered]@{
             component = 'HermesAgent'
             status = 'already-current'
