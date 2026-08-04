@@ -62,7 +62,7 @@ export function planDesktopUpdateAction(
   input: Record<string, unknown>,
   parentPid: number
 ): DesktopUpdateActionPlan {
-  const component = inputText(input, 'component') || 'HermesAgent'
+  const component = inputText(input, 'component') || HERMES_LOCAL_APPLICATION_COMPONENT
   const mode = inputText(input, 'mode') || 'Check'
   const targetCommit = inputText(input, 'targetCommit')
 
@@ -124,7 +124,7 @@ export function planDesktopUpdateAction(
 }
 
 export function desktopUpdateTaskContext(input: Record<string, unknown>): Record<string, string> {
-  const component = inputText(input, 'component') || 'HermesAgent'
+  const component = inputText(input, 'component') || HERMES_LOCAL_APPLICATION_COMPONENT
   const keys =
     component === HERMES_LOCAL_APPLICATION_COMPONENT
       ? ['channel', 'component', 'mode', 'targetCommit']
