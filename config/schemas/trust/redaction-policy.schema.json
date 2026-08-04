@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.hermes.invalid/schemas/trust/redaction-policy.schema.json",
+  "title": "Hermes Local redaction and retention policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "schemaVersion", "id", "revision", "recordPromptBodies", "recordCredentialValues", "recordAuthorizationHeaders", "prohibitedFieldPatterns", "maxTaskOutputBytes", "retention"],
+  "properties": {
+    "kind": { "const": "redactionPolicy" },
+    "schemaVersion": { "const": 1 },
+    "id": { "$ref": "https://local.hermes.invalid/schemas/trust/common.schema.json#/$defs/recordId" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "recordPromptBodies": { "const": false },
+    "recordCredentialValues": { "const": false },
+    "recordAuthorizationHeaders": { "const": false },
+    "prohibitedFieldPatterns": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+    },
+    "maxTaskOutputBytes": { "type": "integer", "minimum": 1024, "maximum": 1048576 },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["auditDays", "taskOutputDays", "diagnosticsDays"],
+      "properties": {
+        "auditDays": { "type": "integer", "minimum": 1, "maximum": 3650 },
+        "taskOutputDays": { "type": "integer", "minimum": 1, "maximum": 365 },
+        "diagnosticsDays": { "type": "integer", "minimum": 1, "maximum": 90 }
+      }
+    }
+  }
+}
