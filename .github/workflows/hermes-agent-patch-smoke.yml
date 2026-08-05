@@ -11,7 +11,7 @@ on:
       - 'source/hermes-launcher/patches/**'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: hermes-agent-patch-smoke-${{ github.event.pull_request.number }}
@@ -23,77 +23,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
-      - name: Check out repository
+      - name: Check out repository without persisted credentials
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
-
-      - name: Materialize canonical issue 107 patches
-        shell: pwsh
-        run: |
-          $payloadRoot = '.github\issue107-payload'
-          if (-not (Test-Path -LiteralPath $payloadRoot -PathType Container)) {
-            Write-Host 'Canonical issue 107 payload has already been materialized.'
-            exit 0
-          }
-
-          $parts = Get-ChildItem -LiteralPath $payloadRoot -Filter 'part-*.txt' -File |
-            Sort-Object Name
-          if ($parts.Count -ne 3) {
-            throw "Expected 3 canonical patch payload parts, found $($parts.Count)."
-          }
-
-          $encoded = ($parts | ForEach-Object {
-            (Get-Content -Raw -LiteralPath $_.FullName).Trim()
-          }) -join ''
-          $archivePath = Join-Path $env:RUNNER_TEMP 'issue107-canonical-patches.tgz'
-          [System.IO.File]::WriteAllBytes(
-            $archivePath,
-            [Convert]::FromBase64String($encoded)
-          )
-
-          $extractRoot = Join-Path $env:RUNNER_TEMP 'issue107-canonical-patches'
-          Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
-          [System.IO.Directory]::CreateDirectory($extractRoot) | Out-Null
-          & tar.exe -xzf $archivePath -C $extractRoot
-          if ($LASTEXITCODE -ne 0) {
-            throw "Could not extract canonical patch payload: $LASTEXITCODE"
-          }
-
-          $mapping = [ordered]@{
-            'canonical-0055.patch' = 'source\hermes-launcher\patches\0055-feat-desktop-define-durable-model-download-tasks.patch'
-            'canonical-0056.patch' = 'source\hermes-launcher\patches\0056-feat-desktop-run-downloads-through-task-centre.patch'
-            'canonical-0057.patch' = 'source\hermes-launcher\patches\0057-feat-desktop-expose-download-lifecycle-controls.patch'
-            'canonical-0058.patch' = 'source\hermes-launcher\patches\0058-feat-desktop-add-managed-model-download-surface.patch'
-          }
-          foreach ($entry in $mapping.GetEnumerator()) {
-            $sourcePath = Join-Path $extractRoot $entry.Key
-            if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
-              throw "Canonical patch is missing from payload: $($entry.Key)"
-            }
-            Copy-Item -LiteralPath $sourcePath -Destination $entry.Value -Force
-          }
-
-          Remove-Item -LiteralPath $payloadRoot -Recurse -Force
-          Remove-Item -LiteralPath 'scripts\ci\regenerate_issue107_patches.py' -Force -ErrorAction SilentlyContinue
-
-          & git config user.name 'Hermes Local CI'
-          & git config user.email 'hermes-local-ci@users.noreply.github.com'
-          & git add --all -- `
-            'source/hermes-launcher/patches/0055-feat-desktop-define-durable-model-download-tasks.patch' `
-            'source/hermes-launcher/patches/0056-feat-desktop-run-downloads-through-task-centre.patch' `
-            'source/hermes-launcher/patches/0057-feat-desktop-expose-download-lifecycle-controls.patch' `
-            'source/hermes-launcher/patches/0058-feat-desktop-add-managed-model-download-surface.patch' `
-            '.github/issue107-payload' `
-            'scripts/ci/regenerate_issue107_patches.py'
-          & git commit -m 'fix(patches): canonicalize issue 107 integration series'
-          if ($LASTEXITCODE -ne 0) {
-            throw "Could not commit canonical issue 107 patches: $LASTEXITCODE"
-          }
-          & git push origin "HEAD:$env:GITHUB_HEAD_REF"
-          if ($LASTEXITCODE -ne 0) {
-            throw "Could not push canonical issue 107 patches: $LASTEXITCODE"
-          }
+          persist-credentials: false
 
       - name: Reconstruct and validate pinned release integration
         shell: pwsh
