@@ -1,0 +1,79 @@
+From a9407d4190285f9d828264ac90179d7e6345ed2d Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Wed, 5 Aug 2026 04:38:12 +0000
+Subject: [PATCH 03/14] feat(desktop): add restore evidence and progress
+ helpers 2
+
+---
+ apps/desktop/electron/hermes-local-control.ts | 58 +++++++++++++++++++
+ 1 file changed, 58 insertions(+)
+
+diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
+index 1d4bbf9558865c1d565fcbce5a11f476eeece93c..8115c48615482bfc9239157b6e68bce6461adc54 100644
+--- a/apps/desktop/electron/hermes-local-control.ts
++++ b/apps/desktop/electron/hermes-local-control.ts
+@@ -527,6 +527,64 @@ function taskProgressFromRestoreDocument(progress: Record<string, any>): TaskPro
+ function restoreProgressSummary(progress: Record<string, any>): string {
+   const completed = Number.isFinite(Number(progress.completedUnits)) ? Number(progress.completedUnits) : null
+   const total = Number.isFinite(Number(progress.totalUnits)) ? Number(progress.totalUnits) : null
++  const units = completed !== null && total !== null ? ` ${completed}/${total}` : ''
++
++  return redacted(
++    `Restore progress: ${String(progress.stage || 'running')}${units} · ${String(progress.message || '')}`
++  )
++}
++
++function restoreCompletionEvidence(task: TaskRecord): null | TaskCompletionEvidence {
++  const progress = restoreProgress(task)
++  const status = String(progress?.status || '')
++
++  if (!progress || !['cancelled', 'failed', 'succeeded'].includes(status)) {
++    return null
++  }
++
++  const reportPath = String(progress.result?.report || 'logs/restore/LATEST.json').replaceAll('\\', '/')
++  const observedAt = String(progress.completedAt || progress.updatedAt || new Date().toISOString())
++
++  if (status === 'succeeded') {
++    return {
++      exitCode: 0,
++      failure: null,
++      observedAt,
++      result: { kind: 'report', path: reportPath },
++      status: 'succeeded'
++    }
++  }
++
++  if (status === 'cancelled') {
++    return {
++      exitCode: 130,
++      failure: null,
++      observedAt,
++      result: { kind: 'report', path: reportPath },
++      status: 'cancelled'
++    }
++  }
++
++  return {
++    exitCode: 1,
++    failure: {
++      code: String(progress.failure?.code || 'restore-failed'),
++      message: redacted(String(progress.failure?.message || 'Hermes Local restore failed'))
++    },
++    observedAt,
++    result: { kind: 'report', path: reportPath },
++    status: 'failed'
++  }
++}
++
++function restoreBackups() {
++  const directory = resolveUnderRoot('backups')
++
++  try {
++    return fs
++      .readdirSync(directory, { withFileTypes: true })
++      .filter(entry => entry.isFile() && entry.name.endsWith('.zip') && !entry.name.includes('/') && !entry.name.includes('\\'))
++      .map(entry => {
+ function readInstalledVersion(): null | Record<string, any> {
+   const version = safeReadJson<Record<string, any>>('VERSION.json')
+   const overrides = safeReadJson<Record<string, any>>('config\\launcher\\source-overrides.json')

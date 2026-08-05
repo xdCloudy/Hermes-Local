@@ -1,54 +1,73 @@
-From 0000000000000000000000000000000000000005 Mon Sep 17 00:00:00 2001
+From 814098bd5198a17ae4a5ce76877e61f7e665417b Mon Sep 17 00:00:00 2001
 From: OpenAI <openai@localhost>
-Date: Wed, 5 Aug 2026 04:00:00 +0100
-Subject: [PATCH] i18n(desktop): label restore navigation
+Date: Wed, 5 Aug 2026 04:38:12 +0000
+Subject: [PATCH 14/14] i18n(desktop): label restore navigation
 
 ---
+ apps/desktop/src/i18n/ar.ts      | 1 +
+ apps/desktop/src/i18n/en.ts      | 1 +
+ apps/desktop/src/i18n/ja.ts      | 1 +
+ apps/desktop/src/i18n/zh-hant.ts | 1 +
+ apps/desktop/src/i18n/zh.ts      | 1 +
+ 5 files changed, 5 insertions(+)
+
 diff --git a/apps/desktop/src/i18n/ar.ts b/apps/desktop/src/i18n/ar.ts
-index 17fdebbfe2c752fdcba9aa2029278f854d906df1..00044592b1247a145d8d3c7953e0a8087c2072d1 100644
-GIT binary patch
-delta 22
-ecmZoT$Fb-fN5dAzRL|)xj~NxVCwnr^y$b+v%n7dm
-
-delta 17
-XcmZ2<j-vsHwlJo8Zg2NwoP8GnMc@ar
-
+index 60f05e10f6d5974e6466287fac68e451cb7f7fc9..f85238dec1cffb3b7703375ef9ae8f263fd920dc 100644
+--- a/apps/desktop/src/i18n/ar.ts
++++ b/apps/desktop/src/i18n/ar.ts
+@@ -1540,6 +1540,7 @@ export const ar = defineLocale({
+       projects: 'المشاريع',
+       integrations: 'التكاملات',
+       benchmarks: 'اختبارات الأداء',
++      restore: 'استعادة',
+       security: 'الأمان',
+       logs: 'السجلات',
+       about: 'حول',
 diff --git a/apps/desktop/src/i18n/en.ts b/apps/desktop/src/i18n/en.ts
-index 5ba9f23e1b0690c4b58f08afe580d4144c029d3f..a1b8de6fa32bca7b42fcb02883a26dd17278cbab 100644
-GIT binary patch
-delta 22
-ecmccC#__R@qhSl<Is55*&oD}EKV#3>br=A8(F$+?
-
-delta 21
-dcmey^#&NBUqhSl<Is3^qFFCe<v}bHM3;=R@3Q+(6
-
+index 15b398f928a702e977074c1bbf08e83433787a6a..5994a84116219a2b69db66e06fdc1a3cb208bdd3 100644
+--- a/apps/desktop/src/i18n/en.ts
++++ b/apps/desktop/src/i18n/en.ts
+@@ -1839,6 +1839,7 @@ export const en: Translations = {
+       integrations: 'Integrations',
+       artifacts: 'Artifacts',
+       benchmarks: 'Benchmarks',
++      restore: 'Restore',
+       security: 'Security',
+       logs: 'Logs',
+       settings: 'Settings',
 diff --git a/apps/desktop/src/i18n/ja.ts b/apps/desktop/src/i18n/ja.ts
-index 2455fbf3cd53418c0a0efe0557bae7303f9f132e..f5593dade6e275ccd85ae0fa1c253d8bc4d5f36c 100644
-GIT binary patch
-delta 22
-ecmZ3th4aJ~&W0_Fzmlfwh%iZP|B=LK_8kCpFbT2%
-
-delta 17
-ZcmX@Hg>&5&&W0_Fzmm3#Br}?P2LMXn2iyPv
-
+index 4bf502e1eecc8617628e81af5af161cbaee13b99..fe5adc8527cb9f9152adfcda2a7e7cb1574d0fff 100644
+--- a/apps/desktop/src/i18n/ja.ts
++++ b/apps/desktop/src/i18n/ja.ts
+@@ -1677,6 +1677,7 @@ export const ja = defineLocale({
+       projects: 'プロジェクト',
+       integrations: '連携',
+       benchmarks: 'ベンチマーク',
++      restore: '復元',
+       security: 'セキュリティ',
+       logs: 'ログ',
+       settings: '設定',
 diff --git a/apps/desktop/src/i18n/zh-hant.ts b/apps/desktop/src/i18n/zh-hant.ts
-index d94ee6ab25550df7cfdc01e6475afd2e36d57ab8..85cac1396e0d12bf524c917cbc0de8dcd6b2505c 100644
-GIT binary patch
-delta 26
-icmeydoPE*?_J%Et^&-<h&t;UD%<0avy;FoSe?I`2F$!V;
-
-delta 21
-dcmbQVg8j#G_J%Et^&*qG-MO|e7Gcca4*+232s{7)
-
+index 1d1d5582ab338ba9b944c52bad5a9c5205243061..611c9af1df18cc3e7c2bab396154cbd37d3bf6a3 100644
+--- a/apps/desktop/src/i18n/zh-hant.ts
++++ b/apps/desktop/src/i18n/zh-hant.ts
+@@ -1622,6 +1622,7 @@ export const zhHant = defineLocale({
+       projects: '專案',
+       integrations: '整合',
+       benchmarks: '效能測試',
++      restore: '還原',
+       security: '安全性',
+       logs: '日誌',
+       settings: '設定',
 diff --git a/apps/desktop/src/i18n/zh.ts b/apps/desktop/src/i18n/zh.ts
-index f231ccf466278c1a214d9e5e4a85d681dbf19ea6..765d992fced54d677f12f3282f2fd448108006c3 100644
-GIT binary patch
-delta 34
-qcmZ2<hGWkej)pCajVS^}sl_GvMX6Q_>dzV%Jzdhfy*!0+^+5m&h!4~N
-
-delta 17
-ZcmdmUhGWqgj)pCajVaq_r!X!&2mni&2s!`&
-
--- 
-2.47.3
-
+index 0c2b7b5e73366d77f7b88cbb308edff39fda3f2a..8d4850e78ef7d759c29ca950e86fb1dcfb46657f 100644
+--- a/apps/desktop/src/i18n/zh.ts
++++ b/apps/desktop/src/i18n/zh.ts
+@@ -2030,6 +2030,7 @@ export const zh: Translations = {
+       projects: '项目',
+       integrations: '集成',
+       benchmarks: '基准测试',
++      restore: '恢复',
+       security: '安全',
+       logs: '日志',
+       settings: '设置',

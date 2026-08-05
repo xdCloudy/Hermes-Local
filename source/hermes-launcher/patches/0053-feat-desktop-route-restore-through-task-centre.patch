@@ -1,52 +1,142 @@
-From 0000000000000000000000000000000000000004 Mon Sep 17 00:00:00 2001
+From ff90bc80f39d02a08a5d40dc2c2bc6b10d9d646e Mon Sep 17 00:00:00 2001
 From: OpenAI <openai@localhost>
-Date: Wed, 5 Aug 2026 04:00:00 +0100
-Subject: [PATCH] feat(desktop): route restore through Task Centre
+Date: Wed, 5 Aug 2026 04:38:12 +0000
+Subject: [PATCH 13/14] feat(desktop): route restore through Task Centre
 
 ---
+ apps/desktop/src/app/chat/sidebar/index.tsx       |  7 +++++++
+ .../src/app/local-workstation/task-centre.tsx     |  5 ++++-
+ apps/desktop/src/app/local-workstation/types.ts   | 15 ++++++++++++++-
+ apps/desktop/src/app/routes.ts                    |  3 +++
+ 4 files changed, 28 insertions(+), 2 deletions(-)
+
 diff --git a/apps/desktop/src/app/chat/sidebar/index.tsx b/apps/desktop/src/app/chat/sidebar/index.tsx
-index 1513c682d6c10ffa67ec3395f413103ccabe652d..a6ac8463825bd46d04d9fa34f281556be53c1f42 100644
-GIT binary patch
-delta 50
-zcmey{!7{mvWy3aJ_8`~b5dR?8&8vA6`Phn5i%as0CVvpNm|Q2R443;L-TMLn;(!xD
-
-delta 19
-bcmbQ-#qzg<Wy3b!%_n%n_%<(+DSQC{SUd>S
-
+index d1c5f70d2039dfc04181c90c5d893b5ef61127f6..d8c42ef104862030025b6b69619378d92693e35f 100644
+--- a/apps/desktop/src/app/chat/sidebar/index.tsx
++++ b/apps/desktop/src/app/chat/sidebar/index.tsx
+@@ -110,6 +110,7 @@ import {
+   MESSAGING_ROUTE,
+   MODELS_ROUTE,
+   PROJECTS_ROUTE,
++  RESTORE_ROUTE,
+   SECURITY_ROUTE,
+   SERVICES_ROUTE,
+   SESSIONS_ROUTE,
+@@ -247,6 +248,12 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
+     icon: props => <Codicon name="shield" {...props} />,
+     route: SECURITY_ROUTE
+   },
++  {
++    id: 'restore',
++    label: '',
++    icon: props => <Codicon name="history" {...props} />,
++    route: RESTORE_ROUTE
++  },
+   {
+     id: 'logs',
+     label: '',
 diff --git a/apps/desktop/src/app/local-workstation/task-centre.tsx b/apps/desktop/src/app/local-workstation/task-centre.tsx
-index 8c52c13bf6fbb99a8099be778da3ba9f5c496c06..01a06b9c4dda45a567ec855e499c8250ec1681bd 100644
-GIT binary patch
-delta 192
-zcmZ3wlkwy(#tq9^9g9+nOY)0StrV&i(oz#kN<mEZAc&y4jzUgiQfdy0NKt-i2}q4T
-zROjaTtW{jGyj%)EP?QQZAWxwru{c{VF}Wl&KTpBd)>c6ss#IOUUO_!PF|#ByFI^!m
-zzepibp*S%u6{rpD28HCryyVoJoJ6q3r2Nvnl*FP+bp@-*@&b}9AR8vX=a<<WA`s{U
-E09E}#9RL6T
-
-delta 30
-mcmX@Pi*e~r#tq9^H-BI);$kaGEh#O^o4j8@a`PR5Tps|@BMjXD
-
+index 67499e28d62850b1d8bcd67f51ef3b93e0eaad6c..ccb96f71229725bb483abd50422b68f54f205757 100644
+--- a/apps/desktop/src/app/local-workstation/task-centre.tsx
++++ b/apps/desktop/src/app/local-workstation/task-centre.tsx
+@@ -40,6 +40,7 @@ const ACTION_COPY: Record<LocalActionTask['action'], { feature: string; label: s
+   diagnostics: { feature: 'Services', label: 'Diagnostics', route: '/services' },
+   repair: { feature: 'Services', label: 'Repair', route: '/services' },
+   restart: { feature: 'Services', label: 'Restart', route: '/services' },
++  restore: { feature: 'Restore', label: 'Restore', route: '/restore' },
+   security: { feature: 'Security', label: 'Security scan', route: '/security' },
+   start: { feature: 'Services', label: 'Start', route: '/services' },
+   stop: { feature: 'Services', label: 'Stop', route: '/services' },
+@@ -114,7 +115,9 @@ function relativeTime(value: string, now = Date.now()): string {
+ function taskStage(task: LocalActionTask): string {
+   if (task.status === 'queued') {return 'Waiting for resources'}
+ 
+-  if (task.status === 'cancelling') {return 'Stopping owned process'}
++  if (task.status === 'cancelling') {
++    return task.action === 'restore' ? 'Waiting for a safe restore cancellation boundary' : 'Stopping owned process'
++  }
+ 
+   if (task.status === 'running') {return task.stage || `${ACTION_COPY[task.action].label} in progress`}
+ 
 diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
-index f338c80fa2fe3fd09409a870b8de60c95d28b9d1..308e55cbd0843a1e6bd1184eebe5dbfda06b140d 100644
-GIT binary patch
-delta 195
-zcmexk@z-jDBolj4YH>+^QR-$vrW0%;iFwJXIXQ_*IjQzm3Q76-IjM<xn=f&wGxBHV
-z6_+FerAjjM^VAh;Hh<^rVe@fHOwKMXP^jkRQc%cDu~H~5Day=C2k~<AQ!>*sQ&SvE
-zkVW$nb5oJ|1&JjYF#aR~Exz2O)FP1XveY7=?#<Bxy-Z?BU^|Mf6nyfN6LTOoM#pY`
-IA~b^&05BaxR{#J2
-
-delta 36
-scmexs^~Yj^B-3UMrUPu7nK>00H=A&Eu}$t3=Gj~(7|FExrSKF^0Pyz=TL1t6
-
+index 1d6ae8ace1c96443cff4e106293c4c455fe3c64b..a35958a05e0434928175b81c87a1bf4acdf7b795 100644
+--- a/apps/desktop/src/app/local-workstation/types.ts
++++ b/apps/desktop/src/app/local-workstation/types.ts
+@@ -27,6 +27,7 @@ export type LocalAction =
+   | 'diagnostics'
+   | 'repair'
+   | 'restart'
++  | 'restore'
+   | 'security'
+   | 'start'
+   | 'stop'
+@@ -99,6 +100,7 @@ export interface LocalActionTask {
+     pid: null | number
+   }
+   progress?: null | {
++    cancellable?: boolean
+     completedUnits: null | number
+     counters: Record<string, number>
+     message: null | string
+@@ -109,7 +111,7 @@ export interface LocalActionTask {
+   queuedAt: string
+   resources: {
+     mode: 'exclusive' | 'shared'
+-    resource: 'model-runtime' | 'user-data' | 'workstation'
++    resource: 'installation' | 'model-runtime' | 'user-data' | 'workstation'
+   }[]
+   result: null | {
+     kind: 'archive' | 'report' | 'runtime-state'
+@@ -185,6 +187,16 @@ export interface LocalModel {
+   userManaged: boolean
+ }
+ 
++export interface LocalBackup {
++  id: string
++  modifiedAt: string
++  name: string
++  path: string
++  sha256: null | string
++  sizeBytes: number
++  verified: boolean
++}
++
+ export interface LocalWorkstationSettings {
+   autoTuning: {
+     batchThreads: number
+@@ -211,6 +223,7 @@ export interface LocalWorkstationSettings {
+ 
+ export interface LocalWorkstationSnapshot {
+   actions: Record<LocalAction, boolean>
++  backups: LocalBackup[]
+   lifecycle: {
+     identityMatches: boolean
+     switchingModel: null | {
 diff --git a/apps/desktop/src/app/routes.ts b/apps/desktop/src/app/routes.ts
-index 84a3b4c8b5368fe82e6438c95c86ad515e8b8336..fe60277579ca5d89d677617dff4b1328970ded5e 100644
-GIT binary patch
-delta 84
-zcmaD9c`IszE30IXYjB8vkZXL9e`tuSf~|tOeo<<1Nq$l4W>Z!z7IqjXoU?;X9LiDG
-XQ7A|($*@v@>YZ%Br@8q)KeH?Vz_A;r
-
-delta 22
-ecmcZ=^(b<KE9>SwRw<Uv(>WX1Hiru^%K`vvNe96I
-
--- 
-2.47.3
-
+index 46875a01b6d8d8542d44819bc9f930e95d90b302..ddfa625eeb85151ca00a8c39944b9514ede70194 100644
+--- a/apps/desktop/src/app/routes.ts
++++ b/apps/desktop/src/app/routes.ts
+@@ -31,6 +31,7 @@ export const SESSIONS_ROUTE = '/sessions'
+ export const PROJECTS_ROUTE = '/projects'
+ export const BENCHMARKS_ROUTE = '/benchmarks'
+ export const SECURITY_ROUTE = '/security'
++export const RESTORE_ROUTE = '/restore'
+ export const LOGS_ROUTE = '/logs'
+ export const ABOUT_ROUTE = '/about'
+ export const LEGACY_TOOLS_REDIRECT_ROUTE = SKILLS_ROUTE
+@@ -79,6 +80,7 @@ export type AppRouteId =
+   | 'projects'
+   | 'benchmarks'
+   | 'security'
++  | 'restore'
+   | 'logs'
+   | 'about'
+ 
+@@ -113,6 +115,7 @@ export const APP_ROUTES = [
+   { id: 'projects', path: PROJECTS_ROUTE, view: 'workstation' },
+   { id: 'benchmarks', path: BENCHMARKS_ROUTE, view: 'workstation' },
+   { id: 'security', path: SECURITY_ROUTE, view: 'workstation' },
++  { id: 'restore', path: RESTORE_ROUTE, view: 'workstation' },
+   { id: 'logs', path: LOGS_ROUTE, view: 'workstation' },
+   { id: 'about', path: ABOUT_ROUTE, view: 'workstation' }
+ ] as const satisfies readonly AppRoute[]

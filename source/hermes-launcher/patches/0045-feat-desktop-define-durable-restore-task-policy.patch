@@ -1,0 +1,151 @@
+From a742953209e1973bc722743fdb9d326a34553b1d Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Wed, 5 Aug 2026 04:38:12 +0000
+Subject: [PATCH 05/14] feat(desktop): define durable restore task policy
+
+---
+ .../electron/hermes-local-task-model.ts       | 46 ++++++++++++++-----
+ 1 file changed, 34 insertions(+), 12 deletions(-)
+
+diff --git a/apps/desktop/electron/hermes-local-task-model.ts b/apps/desktop/electron/hermes-local-task-model.ts
+index 9e89935954e146234a0f6e2906a2159ed975fd92..c1cd92d919f84362b80d1de5920c0ff42b399725 100644
+--- a/apps/desktop/electron/hermes-local-task-model.ts
++++ b/apps/desktop/electron/hermes-local-task-model.ts
+@@ -6,6 +6,7 @@ export type TaskAction =
+   | 'diagnostics'
+   | 'repair'
+   | 'restart'
++  | 'restore'
+   | 'security'
+   | 'start'
+   | 'stop'
+@@ -22,7 +23,7 @@ export type TaskState =
+   | 'running'
+   | 'succeeded'
+ 
+-export type TaskResource = 'model-runtime' | 'user-data' | 'workstation'
++export type TaskResource = 'installation' | 'model-runtime' | 'user-data' | 'workstation'
+ export type TaskResourceMode = 'exclusive' | 'shared'
+ export type TaskConflictPolicy = 'queue' | 'reject'
+ 
+@@ -47,6 +48,7 @@ export interface TaskResult {
+ }
+ 
+ export interface TaskProgress {
++  cancellable?: boolean
+   completedUnits: null | number
+   counters: Record<string, number>
+   message: null | string
+@@ -105,6 +107,8 @@ export interface TaskCompletionEvidence {
+ 
+ const sharedWorkstation = { mode: 'shared', resource: 'workstation' } as const
+ const exclusiveWorkstation = { mode: 'exclusive', resource: 'workstation' } as const
++const exclusiveInstallation = { mode: 'exclusive', resource: 'installation' } as const
++const exclusiveUserData = { mode: 'exclusive', resource: 'user-data' } as const
+ 
+ export const TASK_POLICIES = {
+   backup: {
+@@ -120,6 +124,11 @@ export const TASK_POLICIES = {
+   diagnostics: { cancellable: true, conflictPolicy: 'reject', resources: [] },
+   repair: { cancellable: false, conflictPolicy: 'reject', resources: [exclusiveWorkstation] },
+   restart: { cancellable: false, conflictPolicy: 'reject', resources: [exclusiveWorkstation] },
++  restore: {
++    cancellable: true,
++    conflictPolicy: 'reject',
++    resources: [exclusiveWorkstation, exclusiveInstallation, exclusiveUserData]
++  },
+   security: { cancellable: true, conflictPolicy: 'reject', resources: [] },
+   start: { cancellable: false, conflictPolicy: 'queue', resources: [sharedWorkstation] },
+   stop: { cancellable: false, conflictPolicy: 'reject', resources: [exclusiveWorkstation] },
+@@ -136,7 +145,7 @@ export const TASK_POLICIES = {
+ 
+ const TASK_TRANSITIONS: Readonly<Record<TaskState, readonly TaskState[]>> = {
+   cancelled: [],
+-  cancelling: ['cancelled', 'failed', 'interrupted'],
++  cancelling: ['cancelled', 'failed', 'interrupted', 'succeeded'],
+   failed: [],
+   interrupted: [],
+   queued: ['cancelled', 'failed', 'interrupted', 'running'],
+@@ -160,8 +169,10 @@ export function taskCapabilities(task: TaskRecord): TaskCapabilities {
+     task.status === 'queued' ||
+     (task.status === 'running' && task.owner.kind === 'desktop-child-process' && task.owner.pid !== null)
+ 
++  const progressAllowsCancellation = task.action !== 'restore' || task.progress?.cancellable !== false
++
+   return {
+-    cancel: TASK_POLICIES[task.action].cancellable && cancellableOwner,
++    cancel: TASK_POLICIES[task.action].cancellable && cancellableOwner && progressAllowsCancellation,
+     pause: false,
+     resume: false,
+     retry: isTaskTerminal(task.status)
+@@ -289,10 +300,6 @@ export function reconcileRecoveredTask(
+     }
+   }
+ 
+-  if (task.status === 'cancelling') {
+-    return transitionTask(task, 'cancelled', at)
+-  }
+-
+   const taskStart = Date.parse(task.startedAt || task.createdAt)
+   const evidenceTime = evidence ? Date.parse(evidence.observedAt) : Number.NaN
+ 
+@@ -309,6 +316,10 @@ export function reconcileRecoveredTask(
+     })
+   }
+ 
++  if (task.status === 'cancelling') {
++    return transitionTask(task, 'cancelled', at)
++  }
++
+   return transitionTask(task, 'interrupted', at, {
+     failure: {
+       code: 'owner-exited-without-result',
+@@ -428,6 +439,7 @@ export function restoreTaskRecord(value: unknown, maximumOutput: number): null |
+ 
+   if (progressValue !== null && progressValue !== undefined) {
+     const mode = progressValue.mode
++    const cancellable = progressValue.cancellable
+     const completedUnits = progressValue.completedUnits
+     const totalUnits = progressValue.totalUnits
+     const percent = progressValue.percent
+@@ -436,6 +448,7 @@ export function restoreTaskRecord(value: unknown, maximumOutput: number): null |
+ 
+     if (
+       (mode !== 'determinate' && mode !== 'indeterminate') ||
++      (cancellable !== undefined && typeof cancellable !== 'boolean') ||
+       (completedUnits !== null && (!Number.isFinite(Number(completedUnits)) || Number(completedUnits) < 0)) ||
+       (totalUnits !== null && (!Number.isFinite(Number(totalUnits)) || Number(totalUnits) <= 0)) ||
+       (percent !== null && (!Number.isFinite(Number(percent)) || Number(percent) < 0 || Number(percent) > 100)) ||
+@@ -456,6 +469,7 @@ export function restoreTaskRecord(value: unknown, maximumOutput: number): null |
+     }
+ 
+     progress = {
++      ...(typeof cancellable === 'boolean' ? { cancellable } : {}),
+       completedUnits: completedUnits === null ? null : Number(completedUnits),
+       counters,
+       message: message === null ? null : String(message),
+@@ -564,11 +578,19 @@ export function admitTask(action: TaskAction, tasks: Iterable<TaskRecord>): Task
+ 
+   const conflicts = records
+     .filter(task => taskOwnsResources(task.status))
+-    .map(task => ({
+-      action: task.action,
+-      resources: conflictingResources(policy.resources, task.resources),
+-      taskId: task.id
+-    }))
++    .map(task => {
++      const resources = conflictingResources(policy.resources, task.resources)
++      const restoreUpdateConflict =
++        (action === 'restore' && task.action === 'update') ||
++        (action === 'update' && task.action === 'restore')
++
++      if (restoreUpdateConflict && !resources.includes('installation')) {
++        resources.push('installation')
++        resources.sort()
++      }
++
++      return { action: task.action, resources, taskId: task.id }
++    })
+     .filter(conflict => conflict.resources.length > 0)
+     .sort((left, right) => left.taskId.localeCompare(right.taskId))
+ 
