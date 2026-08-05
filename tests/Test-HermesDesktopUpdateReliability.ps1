@@ -27,7 +27,8 @@ foreach ($part in @(
     'DesktopUpdate-Stage.ps1',
     'DesktopUpdate-NestedSource.ps1',
     'DesktopUpdate-SafeActivation.ps1',
-    'DesktopUpdate-Reliability.ps1'
+    'DesktopUpdate-Reliability.ps1',
+    'DesktopUpdate-Reliability-Platform.ps1'
 )) {
     . (Join-Path $partsRoot $part)
 }
@@ -157,6 +158,9 @@ exit 9
     $baseBranch = (& git -C $gitRepository branch --show-current).Trim()
 
     $gitDirectory = Get-HermesDesktopGitDirectory -Repository $gitRepository
+    Assert-ReliabilityContract `
+        (-not [string]::IsNullOrWhiteSpace([string]$gitDirectory)) `
+        'The updater could not resolve the Git metadata directory.'
     $indexLock = Join-Path $gitDirectory 'index.lock'
     Set-Content -LiteralPath $indexLock -Value 'stale lock' -Encoding ascii
     (Get-Item -LiteralPath $indexLock).LastWriteTimeUtc = (Get-Date).ToUniversalTime().AddMinutes(-10)
@@ -183,9 +187,12 @@ exit 9
     & git -C $gitRepository add -- fixture.txt
     & git -C $gitRepository commit -m 'base conflict' | Out-Null
 
-    & git -C $gitRepository merge reliability-feature 2>$null | Out-Null
+    $mergeAttempt = Invoke-HermesDesktopNestedSourceGit `
+        -Repository $gitRepository `
+        -Arguments @('merge', 'reliability-feature') `
+        -AllowFailure
     Assert-ReliabilityContract `
-        ($LASTEXITCODE -ne 0) `
+        ($mergeAttempt.ExitCode -ne 0) `
         'The reliability fixture did not produce the expected merge conflict.'
     Assert-ReliabilityContract `
         (Test-Path -LiteralPath (Join-Path $gitDirectory 'MERGE_HEAD')) `
@@ -215,6 +222,10 @@ exit 9
         ($entryText.IndexOf("'DesktopUpdate-Reliability.ps1'") -gt
             $entryText.IndexOf("'DesktopUpdate-SafeActivation.ps1'")) `
         'The reliability overrides are not loaded after the normal updater implementation.'
+    Assert-ReliabilityContract `
+        ($entryText.IndexOf("'DesktopUpdate-Reliability-Platform.ps1'") -gt
+            $entryText.IndexOf("'DesktopUpdate-Reliability.ps1'")) `
+        'The platform reliability overrides are not loaded last.'
 
     $reliabilityText = Get-Content -Raw -LiteralPath (
         Join-Path $partsRoot 'DesktopUpdate-Reliability.ps1'
