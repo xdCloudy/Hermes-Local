@@ -26,7 +26,8 @@ foreach ($package in @($catalog.packages)) {
         if ($digest -notmatch '^sha256:([0-9a-f]{64})$') {
             throw "$assetName does not publish a SHA-256 digest."
         }
-        if ($artifact.expectedSha256 -and $Matches[1] -ne [string]$artifact.expectedSha256) {
+        $expectedHashProperty = $artifact.PSObject.Properties['expectedSha256']
+        if ($expectedHashProperty -and $Matches[1] -ne [string]$expectedHashProperty.Value) {
             throw "$assetName digest differs from the pinned catalog value."
         }
         Write-Host "$($package.id): $assetName $digest"
