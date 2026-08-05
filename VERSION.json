@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "product": {
     "name": "Hermes Launcher",
-    "version": "0.18.49",
+    "version": "0.18.50",
     "status": "accepted-with-documented-limitations"
   },
   "sources": {
@@ -45,10 +45,12 @@
     "cudaToolkit": "13.3",
     "accelerationDefault": "auto",
     "cudaArchitectureDefault": "auto",
+    "llamaRuntimeModeDefault": "prebuilt",
+    "llamaRuntimeCatalog": "config\\runtime\\llama-runtime-catalog.json",
     "configuration": "config/defaults/workstation.json",
     "modelEndpointDefault": "http://127.0.0.1:8011/v1",
     "modelAliasDefault": "qwen3.6-35b-a3b-apex-mtp-i-quality",
     "portableSettings": true
   },
-  "recordedAt": "2026-08-05T01:08:00+01:00"
+  "recordedAt": "2026-08-05T02:24:00+01:00"
 }
