@@ -6,12 +6,18 @@ on:
       - agent/fix-gpuless-hardware-snapshot
     paths:
       - '.github/workflows/issue-116-apply.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/issue-116-apply.yml'
 
 permissions:
   contents: write
 
 jobs:
   apply:
+    if: github.head_ref == '' || github.head_ref == 'agent/fix-gpuless-hardware-snapshot'
     runs-on: ubuntu-latest
     steps:
       - name: Check out branch
