@@ -69,7 +69,8 @@ function Get-HermesRuntimeCatalog {
                 [string]$artifact.tag -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$') {
                 throw "Runtime package '$($package.id)' has an invalid release identity."
             }
-            if ($artifact.expectedSha256 -and [string]$artifact.expectedSha256 -notmatch '^[0-9a-f]{64}$') {
+            $expectedHashProperty = $artifact.PSObject.Properties['expectedSha256']
+            if ($expectedHashProperty -and [string]$expectedHashProperty.Value -notmatch '^[0-9a-f]{64}$') {
                 throw "Runtime package '$($package.id)' has an invalid expected SHA-256."
             }
         }
@@ -223,7 +224,8 @@ function Get-HermesReleaseAsset {
         throw "Release asset '$($Artifact.asset)' does not publish a SHA-256 digest."
     }
     $sha256 = $Matches[1]
-    if ($Artifact.expectedSha256 -and $sha256 -ne [string]$Artifact.expectedSha256) {
+    $expectedHashProperty = $Artifact.PSObject.Properties['expectedSha256']
+    if ($expectedHashProperty -and $sha256 -ne [string]$expectedHashProperty.Value) {
         throw "Published digest for '$($Artifact.asset)' does not match the pinned catalog digest."
     }
     if ([string]$asset.browser_download_url -notmatch '^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases/download/[A-Za-z0-9._-]+/[A-Za-z0-9._+-]+\.zip$') {
