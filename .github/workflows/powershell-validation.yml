@@ -60,7 +60,7 @@ jobs:
             throw ($failures -join [Environment]::NewLine)
           }
 
-      - name: Test gateway, restore, benchmark, security, model and update contracts
+      - name: Test gateway, restore, model download, benchmark, security, model and update contracts
         shell: pwsh
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -83,6 +83,11 @@ jobs:
             -File '.\tests\Test-HermesRestoreTask.ps1'
           if ($LASTEXITCODE -ne 0) {
             throw "Durable restore contract tests failed with exit code $LASTEXITCODE."
+          }
+          pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+            -File '.\tests\Test-HermesModelDownloadTask.ps1'
+          if ($LASTEXITCODE -ne 0) {
+            throw "Durable model download contract tests failed with exit code $LASTEXITCODE."
           }
           & '.\tests\Test-DeferredRuntimeActivation.ps1'
           & '.\tests\Test-BenchmarkLifecycleContract.ps1'
@@ -126,7 +131,7 @@ jobs:
             throw 'Hermes Agent base commit override was not applied.'
           }
           if ($manifest.sources.hermesAgent.integrationCommit -ne ('2' * 40)) {
-            throw 'Hermes Agent integration commit override was not applied.'
+            throw 'Hermes Agent base integration commit override was not applied.'
           }
           if ($manifest.sources.hermesAgent.integrationTree -ne ('3' * 40)) {
             throw 'Hermes Agent integration tree override was not applied.'
