@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "product": {
     "name": "Hermes Launcher",
-    "version": "0.18.48",
+    "version": "0.18.49",
     "status": "accepted-with-documented-limitations"
   },
   "sources": {
@@ -12,7 +12,7 @@
       "commit": "91937a6dc3ffbbe2f3be91a500f0ecf962c4cf53",
       "integrationBranch": "hermes-local-integration",
       "integrationCommit": "63f268ee60c7ffde0c6b23843dde3a0ed6698f5e",
-      "integrationTree": "d855eeb4becdea263d765c437c01882f76b14604",
+      "integrationTree": "cc05bf22316fc1310ada3e24a449b60c041f5b43",
       "patchSeries": "source/hermes-launcher/patches"
     },
     "llamaCpp": {
@@ -47,8 +47,8 @@
     "cudaArchitectureDefault": "auto",
     "configuration": "config/defaults/workstation.json",
     "modelEndpointDefault": "http://127.0.0.1:8011/v1",
-    "modelAliasDefault": "qwen3.6-35b-a3b-apex-mtp-i-quality",
+    "modelAliasDefault": "kwaipilot_kat-coder-v2.5-dev-mtp-apex-i-quality",
     "portableSettings": true
   },
-  "recordedAt": "2026-08-05T01:03:00+01:00"
+  "recordedAt": "2026-08-05T01:08:00+01:00"
 }
