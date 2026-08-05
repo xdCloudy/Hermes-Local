@@ -81,6 +81,21 @@ jobs:
           }
           & '.\tests\Test-HermesDesktopUpdaterBreakGlass.ps1'
           pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+            -File '.\tests\Test-HermesModuleImportScope.ps1'
+          if ($LASTEXITCODE -ne 0) {
+            throw "Module import-scope tests failed with exit code $LASTEXITCODE."
+          }
+          pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+            -File '.\Setup-Hermes-Local.ps1' `
+            -SkipModel `
+            -SkipLlamaBuild `
+            -SkipHermesDependencies `
+            -SkipLauncherBuild `
+            -NonInteractive
+          if ($LASTEXITCODE -ne 0) {
+            throw "Prebuilt source-synchronisation bootstrap failed with exit code $LASTEXITCODE."
+          }
+          pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
             -File '.\tests\Test-HermesRestoreTask.ps1'
           if ($LASTEXITCODE -ne 0) {
             throw "Durable restore contract tests failed with exit code $LASTEXITCODE."
