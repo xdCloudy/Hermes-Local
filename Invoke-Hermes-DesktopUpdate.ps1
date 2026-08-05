@@ -54,7 +54,8 @@ foreach ($part in @(
     'DesktopUpdate-Promotion.ps1',
     'DesktopUpdate-Stage.ps1',
     'DesktopUpdate-NestedSource.ps1',
-    'DesktopUpdate-SafeActivation.ps1'
+    'DesktopUpdate-SafeActivation.ps1',
+    'DesktopUpdate-Reliability.ps1'
 )) {
     $partPath = Join-Path $script:desktopUpdatePartsRoot $part
     if (-not (Test-Path -LiteralPath $partPath -PathType Leaf)) {
