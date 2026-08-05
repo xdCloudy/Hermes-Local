@@ -1,3 +1,55 @@
+function Invoke-HermesDesktopGitAttempt {
+    [CmdletBinding()]
+    param(
+        [AllowNull()][string] $Repository,
+        [Parameter(Mandatory)][string[]] $Arguments
+    )
+
+    $gitExecutable = Resolve-HermesDesktopUpdateExecutable -FilePath 'git.exe'
+    $workingDirectory = if ($Repository) {
+        [IO.Path]::GetFullPath($Repository)
+    } else {
+        [IO.Path]::GetFullPath($root)
+    }
+
+    $startInfo = [Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $gitExecutable
+    $startInfo.WorkingDirectory = $workingDirectory
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    if ($Repository) {
+        $startInfo.ArgumentList.Add('-C')
+        $startInfo.ArgumentList.Add($workingDirectory)
+    }
+    foreach ($argument in $Arguments) {
+        $startInfo.ArgumentList.Add([string]$argument)
+    }
+
+    $process = [Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    try {
+        if (-not $process.Start()) {
+            throw 'Could not start Git for the Desktop updater.'
+        }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        $stderr = $stderrTask.GetAwaiter().GetResult()
+        $exitCode = $process.ExitCode
+    } finally {
+        $process.Dispose()
+    }
+
+    [pscustomobject]@{
+        ExitCode = [int]$exitCode
+        Output = (@($stdout.TrimEnd(), $stderr.TrimEnd()) |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join [Environment]::NewLine
+    }
+}
+
 function Invoke-HermesDesktopGit {
     [CmdletBinding()]
     param(
@@ -12,29 +64,15 @@ function Invoke-HermesDesktopGit {
         $MaxAttempts = if ($networkCommand) { 3 } else { 1 }
     }
 
-    $lastExitCode = -1
-    $lastText = ''
+    $lastResult = $null
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt += 1) {
-        Push-Location $root
-        try {
-            $previousNativePreference = $PSNativeCommandUseErrorActionPreference
-            $PSNativeCommandUseErrorActionPreference = $false
-            try {
-                $output = @(& git @Arguments 2>&1 | ForEach-Object { [string]$_ })
-                $lastExitCode = $LASTEXITCODE
-            } finally {
-                $PSNativeCommandUseErrorActionPreference = $previousNativePreference
-            }
-        } finally {
-            Pop-Location
-        }
-        $lastText = ($output -join [Environment]::NewLine).Trim()
+        $lastResult = Invoke-HermesDesktopGitAttempt -Repository $null -Arguments $Arguments
         $null = Add-HermesDesktopUpdateLog -Plan $null -Message (
-            "git $($Arguments -join ' ') [attempt $attempt/$MaxAttempts, exit $lastExitCode]" +
-            $(if ($lastText) { "`n$lastText" } else { '' })
+            "git $($Arguments -join ' ') [attempt $attempt/$MaxAttempts, exit $($lastResult.ExitCode)]" +
+            $(if ($lastResult.Output) { "`n$($lastResult.Output)" } else { '' })
         )
 
-        if ($lastExitCode -eq 0) {
+        if ($lastResult.ExitCode -eq 0) {
             break
         }
         if ($attempt -lt $MaxAttempts) {
@@ -42,17 +80,17 @@ function Invoke-HermesDesktopGit {
         }
     }
 
-    if ($lastExitCode -ne 0 -and -not $AllowFailure) {
+    if ($lastResult.ExitCode -ne 0 -and -not $AllowFailure) {
         throw (
-            "git $($Arguments -join ' ') failed with exit code $lastExitCode after " +
-            "$MaxAttempts attempt(s).`n$lastText`nFull update log: " +
+            "git $($Arguments -join ' ') failed with exit code $($lastResult.ExitCode) after " +
+            "$MaxAttempts attempt(s).`n$($lastResult.Output)`nFull update log: " +
             (Get-HermesDesktopUpdateLogPath -Plan $null)
         )
     }
 
     [pscustomobject]@{
-        ExitCode = $lastExitCode
-        Text = $lastText
+        ExitCode = [int]$lastResult.ExitCode
+        Text = [string]$lastResult.Output
         Attempts = $MaxAttempts
     }
 }
@@ -66,33 +104,25 @@ function Invoke-HermesDesktopNestedSourceGit {
         [ValidateRange(0, 5)][int] $MaxAttempts = 0
     )
 
+    $repositoryPath = [IO.Path]::GetFullPath($Repository)
     $networkCommand = $Arguments.Count -gt 0 -and
         $Arguments[0] -in @('fetch', 'ls-remote')
     if ($MaxAttempts -le 0) {
         $MaxAttempts = if ($networkCommand) { 3 } else { 1 }
     }
 
-    $lastExitCode = -1
-    $lastText = ''
+    $lastResult = $null
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt += 1) {
-        $previousNativePreference = $PSNativeCommandUseErrorActionPreference
-        $PSNativeCommandUseErrorActionPreference = $false
-        try {
-            $output = @(
-                & git -C $Repository @Arguments 2>&1 |
-                    ForEach-Object { [string]$_ }
-            )
-            $lastExitCode = $LASTEXITCODE
-        } finally {
-            $PSNativeCommandUseErrorActionPreference = $previousNativePreference
-        }
-        $lastText = ($output -join [Environment]::NewLine).Trim()
+        $lastResult = Invoke-HermesDesktopGitAttempt `
+            -Repository $repositoryPath `
+            -Arguments $Arguments
         $null = Add-HermesDesktopUpdateLog -Plan $null -Message (
-            "git -C $Repository $($Arguments -join ' ') " +
-            "[attempt $attempt/$MaxAttempts, exit $lastExitCode]" +
-            $(if ($lastText) { "`n$lastText" } else { '' })
+            "git -C $repositoryPath $($Arguments -join ' ') " +
+            "[attempt $attempt/$MaxAttempts, exit $($lastResult.ExitCode)]" +
+            $(if ($lastResult.Output) { "`n$($lastResult.Output)" } else { '' })
         )
-        if ($lastExitCode -eq 0) {
+
+        if ($lastResult.ExitCode -eq 0) {
             break
         }
         if ($attempt -lt $MaxAttempts) {
@@ -100,17 +130,17 @@ function Invoke-HermesDesktopNestedSourceGit {
         }
     }
 
-    if ($lastExitCode -ne 0 -and -not $AllowFailure) {
+    if ($lastResult.ExitCode -ne 0 -and -not $AllowFailure) {
         throw (
-            "git -C $Repository $($Arguments -join ' ') failed with exit code " +
-            "$lastExitCode after $MaxAttempts attempt(s).`n$lastText`nFull update log: " +
-            (Get-HermesDesktopUpdateLogPath -Plan $null)
+            "git -C $repositoryPath $($Arguments -join ' ') failed with exit code " +
+            "$($lastResult.ExitCode) after $MaxAttempts attempt(s).`n$($lastResult.Output)" +
+            "`nFull update log: $(Get-HermesDesktopUpdateLogPath -Plan $null)"
         )
     }
 
     [pscustomobject]@{
-        ExitCode = $lastExitCode
-        Text = $lastText
+        ExitCode = [int]$lastResult.ExitCode
+        Text = [string]$lastResult.Output
         Attempts = $MaxAttempts
     }
 }
