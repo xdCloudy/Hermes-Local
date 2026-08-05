@@ -88,6 +88,11 @@ jobs:
             throw "Module import-scope tests failed with exit code $LASTEXITCODE."
           }
           pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+            -File '.\tests\Test-HermesHardwareSnapshot.ps1'
+          if ($LASTEXITCODE -ne 0) {
+            throw "Hardware snapshot tests failed with exit code $LASTEXITCODE."
+          }
+          pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
             -File '.\tests\Test-HermesSourceManifest.ps1'
           if ($LASTEXITCODE -ne 0) {
             throw "Hermes Agent source manifest tests failed with exit code $LASTEXITCODE."
