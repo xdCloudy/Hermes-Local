@@ -86,6 +86,11 @@ jobs:
             throw "Module import-scope tests failed with exit code $LASTEXITCODE."
           }
           pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+            -File '.\tests\Test-HermesLauncherOverlayImport.ps1'
+          if ($LASTEXITCODE -ne 0) {
+            throw "Launcher overlay import tests failed with exit code $LASTEXITCODE."
+          }
+          pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
             -File '.\tests\Test-HermesRestoreTask.ps1'
           if ($LASTEXITCODE -ne 0) {
             throw "Durable restore contract tests failed with exit code $LASTEXITCODE."

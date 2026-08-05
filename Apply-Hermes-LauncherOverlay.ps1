@@ -77,6 +77,75 @@ try {
     $input.Dispose()
 }
 $source = [System.Text.UTF8Encoding]::new($false).GetString($output.ToArray())
+$legacyBridgeTransformer = @'
+    $old = @(
+        'import {',
+        '  configureHermesLocalDesktopEnvironment,',
+        '  ensureHermesLocalWorkstationReady,',
+        '  hermesLocalTuiLaunch,',
+        '  isHermesLocalModelSwitchActive,',
+        '  registerHermesLocalControlIpc',
+        "} from './hermes-local-control'"
+    ) -join "`n"
+    $new = @(
+        'import {',
+        '  applyHermesLocalDesktopUpdate,',
+        '  checkHermesLocalDesktopUpdates,',
+        '  configureHermesLocalDesktopEnvironment,',
+        '  ensureHermesLocalWorkstationReady,',
+        '  hermesLocalTuiLaunch,',
+        '  isHermesLocalModelSwitchActive,',
+        '  registerHermesLocalControlIpc',
+        "} from './hermes-local-control'"
+    ) -join "`n"
+    $main = Replace-RequiredLiteral -Text $main -Description 'Desktop update bridge import' -Old $old -New $new
+'@
+$sourceAwareBridgeTransformer = @'
+    $controlImportPattern = "(?ms)^import\s*\{\s*(?<members>.*?)\}\s*from\s*'./hermes-local-control'\s*$"
+    $controlImportMatches = [regex]::Matches($main, $controlImportPattern)
+    if ($controlImportMatches.Count -ne 1) {
+        throw "Desktop update bridge expected one './hermes-local-control' import; found $($controlImportMatches.Count)."
+    }
+
+    $controlImportMatch = $controlImportMatches[0]
+    $existingMembers = [System.Collections.Generic.List[string]]::new()
+    foreach ($member in @($controlImportMatch.Groups['members'].Value -split ',')) {
+        $trimmedMember = $member.Trim()
+        if (-not [string]::IsNullOrWhiteSpace($trimmedMember) -and -not $existingMembers.Contains($trimmedMember)) {
+            $existingMembers.Add($trimmedMember)
+        }
+    }
+
+    $requiredUpdateMembers = @(
+        'applyHermesLocalDesktopUpdate',
+        'checkHermesLocalDesktopUpdates'
+    )
+    $orderedMembers = [System.Collections.Generic.List[string]]::new()
+    foreach ($member in $requiredUpdateMembers) {
+        $orderedMembers.Add($member)
+    }
+    foreach ($member in $existingMembers) {
+        if ($requiredUpdateMembers -notcontains $member) {
+            $orderedMembers.Add($member)
+        }
+    }
+
+    $renderedMembers = [System.Collections.Generic.List[string]]::new()
+    for ($index = 0; $index -lt $orderedMembers.Count; $index += 1) {
+        $suffix = if ($index -lt ($orderedMembers.Count - 1)) { ',' } else { '' }
+        $renderedMembers.Add("  $($orderedMembers[$index])$suffix")
+    }
+    $updatedControlImport = (@('import {') + @($renderedMembers) + @("} from './hermes-local-control'")) -join "`n"
+    $main = $main.Remove($controlImportMatch.Index, $controlImportMatch.Length).Insert(
+        $controlImportMatch.Index,
+        $updatedControlImport
+    )
+'@
+if ($source.Contains($legacyBridgeTransformer)) {
+    $source = $source.Replace($legacyBridgeTransformer, $sourceAwareBridgeTransformer)
+} elseif (-not $source.Contains("Desktop update bridge expected one './hermes-local-control' import")) {
+    throw 'The embedded launcher overlay transformer no longer contains the expected Desktop update bridge implementation.'
+}
 $output.Dispose()
 $transformer = [scriptblock]::Create($source)
 & $transformer -Mode $Mode -StatePath $StatePath -RepositoryRoot $RepositoryRoot
