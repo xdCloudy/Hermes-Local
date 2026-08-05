@@ -101,7 +101,7 @@ $legacyBridgeTransformer = @'
     $main = Replace-RequiredLiteral -Text $main -Description 'Desktop update bridge import' -Old $old -New $new
 '@
 $sourceAwareBridgeTransformer = @'
-    $controlImportPattern = "(?ms)^import\s*\{\s*(?<members>.*?)\}\s*from\s*'./hermes-local-control'\s*$"
+    $controlImportPattern = "(?m)^import\s*\{\s*(?<members>[^{}]*)\}\s*from\s*'./hermes-local-control'\s*$"
     $controlImportMatches = [regex]::Matches($main, $controlImportPattern)
     if ($controlImportMatches.Count -ne 1) {
         throw "Desktop update bridge expected one './hermes-local-control' import; found $($controlImportMatches.Count)."
