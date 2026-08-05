@@ -6,6 +6,7 @@ on:
       - '.github/workflows/hermes-agent-patch-smoke.yml'
       - '.github/workflows/upstream-compatibility.yml'
       - 'scripts/ci/compatibility.py'
+      - 'scripts/ci/regenerate_issue107_patches.py'
       - 'tests/test_compatibility.py'
       - 'VERSION.json'
       - 'source/hermes-launcher/patches/**'
@@ -27,6 +28,24 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+
+      - name: Regenerate issue 107 patch tail
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python '.\scripts\ci\regenerate_issue107_patches.py' `
+            --repository-root '.' `
+            --work-dir '.\temp\issue-107-patch-regeneration' `
+            --output-dir '.\artifacts\issue-107-patch-regeneration'
+
+      - name: Upload regenerated issue 107 patches
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: issue-107-regenerated-patches
+          path: artifacts/issue-107-patch-regeneration
+          if-no-files-found: warn
+          retention-days: 1
 
       - name: Reconstruct and validate pinned release integration
         shell: pwsh
