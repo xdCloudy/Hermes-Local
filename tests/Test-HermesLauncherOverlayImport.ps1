@@ -151,6 +151,11 @@ function Invoke-BridgeImportTransform {
 
 $currentImport = @'
 import {
+  execFile,
+  spawn
+} from 'node:child_process'
+
+import {
   configureHermesLocalDesktopEnvironment,
   ensureHermesLocalWorkstationReady,
   hermesLocalTuiLaunch,
@@ -177,6 +182,26 @@ if (-not $updatedImport.Contains('const sentinel = true')) {
     throw 'Bridge transform changed source outside the target import.'
 }
 
+$childProcessPattern = "(?m)^import\s*\{\s*(?<members>[^{}]*)\}\s*from\s*'node:child_process'\s*$"
+$childProcessMatches = [regex]::Matches($updatedImport, $childProcessPattern)
+if ($childProcessMatches.Count -ne 1) {
+    throw "Bridge transform must preserve exactly one node:child_process import; found $($childProcessMatches.Count)."
+}
+$childProcessMembers = $childProcessMatches[0].Groups['members'].Value
+foreach ($expectedChildProcessMember in @('execFile', 'spawn')) {
+    if ($childProcessMembers -notmatch "(?m)^\s*$([regex]::Escape($expectedChildProcessMember)),?\s*$") {
+        throw "Bridge transform removed '$expectedChildProcessMember' from node:child_process."
+    }
+}
+foreach ($forbiddenChildProcessMember in @(
+    'applyHermesLocalDesktopUpdate',
+    'checkHermesLocalDesktopUpdates'
+)) {
+    if ($childProcessMembers -match [regex]::Escape($forbiddenChildProcessMember)) {
+        throw "Bridge transform incorrectly inserted '$forbiddenChildProcessMember' into node:child_process."
+    }
+}
+
 $idempotentImport = Invoke-BridgeImportTransform -Text $updatedImport
 if ($idempotentImport -ne $updatedImport) {
     throw 'Bridge import transform is not idempotent.'
@@ -199,4 +224,4 @@ if (-not $duplicateRejected) {
     throw 'Bridge import transform accepted duplicate control-module imports.'
 }
 
-Write-Host 'Hermes Launcher overlay import and checkout EOL tests passed.'
+Write-Host 'Hermes Launcher overlay import-boundary and checkout EOL tests passed.'
