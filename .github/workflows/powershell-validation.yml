@@ -79,6 +79,7 @@ jobs:
             Write-Host $_.ScriptStackTrace
             throw
           }
+          & '.\tests\Test-HermesDesktopUpdaterBreakGlass.ps1'
           pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
             -File '.\tests\Test-HermesRestoreTask.ps1'
           if ($LASTEXITCODE -ne 0) {
