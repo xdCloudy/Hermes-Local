@@ -46,7 +46,7 @@ a paid inference API.
 <!-- BEGIN GENERATED STATUS -->
 | Release | Delivery | Repository |
 |---|---|---|
-| **Current build:** v0.18.51<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 32 open · 28 closed<br>**Overall completion:** 47%<br>**Recent commit:** [`11fbf40`](https://github.com/xdCloudy/Hermes-Local/commit/11fbf406cf2ed9c6d4a7163756c9b605d8545f0c) feat: integrate model downloads with durable Task Centre (#111) |
+| **Current build:** v0.18.51<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 33 open · 28 closed<br>**Overall completion:** 46%<br>**Recent commit:** [`11fbf40`](https://github.com/xdCloudy/Hermes-Local/commit/11fbf406cf2ed9c6d4a7163756c9b605d8545f0c) feat: integrate model downloads with durable Task Centre (#111) |
 
 > Status is generated from GitHub issues, milestones, releases and commits.
 <!-- END GENERATED STATUS -->
