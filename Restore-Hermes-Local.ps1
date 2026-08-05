@@ -13,6 +13,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Configuration.psm1') -Force
 . (Join-Path $PSScriptRoot 'scripts\restore\Restore-Common.ps1')
+. (Join-Path $PSScriptRoot 'scripts\restore\Restore-Reliability.ps1')
 
 $context = $null
 $stagingRoot = $null
@@ -201,6 +202,9 @@ try {
 
     if ($context) {
         Add-HermesRestoreLog -Context $context -Level ERROR -Message $failure.Exception.ToString()
+        if ($journal.Count -eq 0 -and $context.PromotionJournal.Count -gt 0) {
+            $journal = @($context.PromotionJournal)
+        }
 
         if ($journal.Count -gt 0) {
             $context.RollbackAttempted = $true
