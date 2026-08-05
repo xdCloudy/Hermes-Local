@@ -227,7 +227,7 @@ function Invoke-HermesRestoreProcess {
         -WorkingDirectory $Context.Root
 
     foreach ($line in @($result.Output -split '\r?\n') | Where-Object { $_ }) {
-        Add-HermesRestoreLog -Context $Context -Message "$Description: $line"
+        Add-HermesRestoreLog -Context $Context -Message "${Description}: $line"
     }
     if ($result.ExitCode -ne 0) {
         throw "$Description failed with exit code $($result.ExitCode). See $($Context.LogPath)"
