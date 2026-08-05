@@ -11,7 +11,8 @@ $wrapper = [System.IO.File]::ReadAllText($wrapperPath)
 function Get-EmbeddedHereString {
     param([Parameter(Mandatory)][string] $VariableName)
 
-    $pattern = "(?ms)^\$$([regex]::Escape($VariableName)) = @'\r?\n(?<body>.*?)\r?\n'@\s*$"
+    $escapedName = [regex]::Escape($VariableName)
+    $pattern = "(?ms)^\$$escapedName = @'\r?\n(?<body>.*?)\r?\n'@\r?$"
     $match = [regex]::Match($wrapper, $pattern)
     if (-not $match.Success) {
         throw "Could not locate embedded here-string '$VariableName'."
@@ -19,12 +20,26 @@ function Get-EmbeddedHereString {
     return $match.Groups['body'].Value
 }
 
-$payloadMatch = [regex]::Match($wrapper, "(?m)^\$payload = '(?<payload>[^']+)'\s*$")
-if (-not $payloadMatch.Success) {
-    throw 'Could not locate the compressed launcher overlay payload.'
+$payloadBlock = [regex]::Match(
+    $wrapper,
+    "(?ms)^\$payload = @\(\r?\n(?<body>.*?)\r?\n\) -join ''\r?$"
+)
+if (-not $payloadBlock.Success) {
+    throw 'Could not locate the compressed launcher overlay payload array.'
 }
 
-$compressed = [Convert]::FromBase64String($payloadMatch.Groups['payload'].Value)
+$payloadParts = @(
+    [regex]::Matches(
+        $payloadBlock.Groups['body'].Value,
+        "(?m)^\s*'(?<part>[^']+)'\s*$"
+    )
+)
+if ($payloadParts.Count -eq 0) {
+    throw 'The compressed launcher overlay payload array is empty.'
+}
+
+$payloadText = ($payloadParts | ForEach-Object { $_.Groups['part'].Value }) -join ''
+$compressed = [Convert]::FromBase64String($payloadText)
 $input = [System.IO.MemoryStream]::new($compressed, $false)
 $gzip = [System.IO.Compression.GzipStream]::new(
     $input,
@@ -49,7 +64,7 @@ if ($legacyCount -ne 1) {
 }
 
 $patchedTransformer = $embeddedTransformer.Replace($legacyTransformer, $sourceAwareTransformer)
-if ($patchedTransformer.Contains("Desktop update bridge import expected one match")) {
+if ($patchedTransformer.Contains('Desktop update bridge import expected one match')) {
     throw 'Patched transformer retained the brittle literal import assertion.'
 }
 if (-not $patchedTransformer.Contains("Desktop update bridge expected one './hermes-local-control' import")) {
