@@ -46,7 +46,7 @@ a paid inference API.
 <!-- BEGIN GENERATED STATUS -->
 | Release | Delivery | Repository |
 |---|---|---|
-| **Current build:** v0.18.54<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 34 open · 28 closed<br>**Overall completion:** 45%<br>**Recent commit:** [`8f6346c`](https://github.com/xdCloudy/Hermes-Local/commit/8f6346c131484a47b25965ec4697ef39df6eb468) fix: preserve setup module imports during updater recovery (#115) |
+| **Current build:** v0.18.55<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 33 open · 29 closed<br>**Overall completion:** 47%<br>**Recent commit:** [`476832f`](https://github.com/xdCloudy/Hermes-Local/commit/476832f5437291806a63b309e29c114dd314369a) fix: make launcher update bridge overlay source-aware (#117) |
 
 > Status is generated from GitHub issues, milestones, releases and commits.
 <!-- END GENERATED STATUS -->
