@@ -4,237 +4,255 @@ Date: Wed, 5 Aug 2026 04:00:00 +0100
 Subject: [PATCH] feat(desktop): integrate durable restore tasks
 
 ---
- apps/desktop/electron/hermes-local-control.ts | 222 +++++++++++++++++-
- .../electron/hermes-local-restore.test.ts     |  38 +++
- .../electron/hermes-local-task-model.test.ts  |  51 ++++
- .../electron/hermes-local-task-model.ts       |  46 +++-
- apps/desktop/src/app/chat/sidebar/index.tsx   |   7 +
- .../src/app/local-workstation/index.tsx       | 131 +++++++++++
- .../src/app/local-workstation/task-centre.tsx |   5 +-
- .../src/app/local-workstation/types.ts        |  15 +-
- apps/desktop/src/app/routes.ts                |   3 +
- apps/desktop/src/i18n/ar.ts                   |   1 +
- apps/desktop/src/i18n/en.ts                   |   1 +
- apps/desktop/src/i18n/ja.ts                   |   1 +
- apps/desktop/src/i18n/zh-hant.ts              |   1 +
- apps/desktop/src/i18n/zh.ts                   |   1 +
- 14 files changed, 508 insertions(+), 15 deletions(-)
+ apps/desktop/electron/hermes-local-control.ts | Bin 63055 -> 71532 bytes
+ .../electron/hermes-local-restore.test.ts     | Bin 0 -> 1135 bytes
+ .../electron/hermes-local-task-model.test.ts  | Bin 7489 -> 9381 bytes
+ .../electron/hermes-local-task-model.ts       | Bin 17838 -> 18896 bytes
+ apps/desktop/src/app/chat/sidebar/index.tsx   | Bin 66685 -> 66835 bytes
+ .../src/app/local-workstation/index.tsx       | Bin 88123 -> 94665 bytes
+ .../src/app/local-workstation/task-centre.tsx | Bin 23717 -> 23881 bytes
+ .../src/app/local-workstation/types.ts        | Bin 7292 -> 7549 bytes
+ apps/desktop/src/app/routes.ts                | Bin 11490 -> 11610 bytes
+ apps/desktop/src/i18n/ar.ts                   | Bin 141056 -> 141090 bytes
+ apps/desktop/src/i18n/en.ts                   | Bin 131926 -> 131953 bytes
+ apps/desktop/src/i18n/ja.ts                   | Bin 154158 -> 154184 bytes
+ apps/desktop/src/i18n/zh-hant.ts              | Bin 119800 -> 119826 bytes
+ apps/desktop/src/i18n/zh.ts                   | Bin 140834 -> 140860 bytes
+ 14 files changed, 0 insertions(+), 0 deletions(-)
  create mode 100644 apps/desktop/electron/hermes-local-restore.test.ts
 
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index c711326..a8f39b0 100644
---- a/apps/desktop/electron/hermes-local-control.ts
-+++ b/apps/desktop/electron/hermes-local-control.ts
-@@ -58,6 +58,7 @@ const ACTION_SCRIPTS = {
-   diagnostics: 'Export-Hermes-Diagnostics.ps1',
-   repair: 'Repair-Hermes-Local.ps1',
-   restart: 'Restart-Hermes-Local.ps1',
-+  restore: 'Restore-Hermes-Local.ps1',
-   security: 'Security-Scan-Hermes-Local.ps1',
-   start: 'Start-Hermes-Local.ps1',
-   stop: 'Stop-Hermes-Local.ps1',
-@@ -238,7 +239,9 @@ function appendTaskOutput(task: ActionTask, chunk: Buffer | string): void {
-   const benchmarkStageMatches = [...text.matchAll(/::hermes-benchmark-stage::([a-z0-9-]+)::([^\r\n]+)/gi)]
-   const updateStageMatches = [...text.matchAll(/::hermes-update-stage::([a-z0-9-]+)::([^\r\n]+)/gi)]
-   const securityStageMatches = [...text.matchAll(/::hermes-security-stage::([a-z0-9-]+)::([^\r\n]+)/gi)]
-+  const restoreStageMatches = [...text.matchAll(/::hermes-restore-stage::([a-z0-9-]+)::([^\r\n]+)/gi)]
-   const stage =
-+    restoreStageMatches.at(-1)?.[1] ||
-     securityStageMatches.at(-1)?.[1] ||
-     updateStageMatches.at(-1)?.[1] ||
-     benchmarkStageMatches.at(-1)?.[1] ||
-@@ -486,6 +489,124 @@ function securityCompletionEvidence(task: TaskRecord): null | TaskCompletionEvid
-   }
- }
- 
-+function restoreProgress(task: TaskRecord): null | Record<string, any> {
-+  const progress = safeReadJson<Record<string, any>>('data\\runtime\\restore-progress.json')
-+
-+  return progress && String(progress.taskId || '') === task.id ? progress : null
-+}
-+
-+function taskProgressFromRestoreDocument(progress: Record<string, any>): TaskProgress {
-+  const completed = Number.isFinite(Number(progress.completedUnits)) ? Math.max(0, Number(progress.completedUnits)) : null
-+  const total = Number.isFinite(Number(progress.totalUnits)) && Number(progress.totalUnits) > 0
-+    ? Number(progress.totalUnits)
-+    : null
-+  const percent = Number.isFinite(Number(progress.percent))
-+    ? Math.min(100, Math.max(0, Number(progress.percent)))
-+    : completed !== null && total !== null
-+      ? Math.min(100, Math.round((completed / total) * 1000) / 10)
-+      : null
-+  const counters = progress.counters && typeof progress.counters === 'object'
-+    ? Object.fromEntries(
-+        Object.entries(progress.counters)
-+          .filter(([key, value]) => key.length <= 64 && Number.isFinite(Number(value)) && Number(value) >= 0)
-+          .map(([key, value]) => [key, Number(value)])
-+      )
-+    : {}
-+
-+  return {
-+    cancellable: progress.cancellable !== false,
-+    completedUnits: completed,
-+    counters,
-+    message: progress.message ? redacted(String(progress.message)) : null,
-+    mode: progress.mode === 'determinate' ? 'determinate' : 'indeterminate',
-+    percent,
-+    totalUnits: total
-+  }
-+}
-+
-+function restoreProgressSummary(progress: Record<string, any>): string {
-+  const completed = Number.isFinite(Number(progress.completedUnits)) ? Number(progress.completedUnits) : null
-+  const total = Number.isFinite(Number(progress.totalUnits)) ? Number(progress.totalUnits) : null
-+  const units = completed !== null && total !== null ? ` ${completed}/${total}` : ''
-+
-+  return redacted(
-+    `Restore progress: ${String(progress.stage || 'running')}${units} · ${String(progress.message || '')}`
-+  )
-+}
-+
-+function restoreCompletionEvidence(task: TaskRecord): null | TaskCompletionEvidence {
-+  const progress = restoreProgress(task)
-+  const status = String(progress/.status || '')
-+
-+  if (!progress || !['cancelled', 'failed', 'succeeded'].includes(status)) {
-+    return null
-+  }
-+
-+  const reportPath = String(progress.result?.report || 'logs/restore/LATEST.json').replaceAll('\\', '/')
-+  const observedAt = String(progress.completedAt || progress.updatedAt || new Date().toISOString())
-+
-+  if (status === 'succeeded') {
-+    return {
-+      exitCode: 0,
-+      failure: null,
-+      observedAt,
-+      result: { kind: 'report', path: reportPath },
-+      status: 'succeeded'
-+    }
-+  }
-+
-+  if (status === 'cancelled') {
-+    return {
-+      exitCode: 130,
-+      failure: null,
-+      observedAt,
-+      result: { kind: 'report', path: reportPath },
-+      status: 'cancelled'
-+    }
-+  }
-+
-+  return {
-+    exitCode: 1,
-+    failure: {
-+      code: String(progress.failure?.code || 'restore-failed'),
-+      message: redacted(String(progress.failure?.message || 'Hermes Local restore failed'))
-+    },
-+    observedAt,
-+    result: { kind: 'report', path: reportPath },
-+    status: 'failed'
-+  }
-+}
-+
-+function restoreBackups() {
-+  const directory = resolveUnderRoot('backups')
-+
-+  try {
-+    return fs
-+      .readdirSync(directory, { withFileTypes: true })
-+      .filter(entry => entry.isFile() && entry.name.endsWith('.zip') && !entry.name.includes('/') && !entry.name.includes('\\'))
-+      .map(entry => {
-+        const archivePath = path.join(directory, entry.name)
-+        const sidecarPath = `${archivePath}.sha256`
-+        const stat = fs.statSync(archivePath)
-+        const sidecar = fs.existsSync(sidecarPath) ? fs.readFileSync(sidecarPath, 'utf8').trim().split(/\s+/)[0] : ''
-+        const sha256 = /^[0-9a-f]{64}$/i.test(sidecar) ? sidecar.toLowerCase() : null
-+
-+        return {
-+          id: sha256 ? sha256.slice(0, 16) : crypto.createHash('sha256').update(entry.name).digest('hex').slice(0, 16),
-+          modifiedAt: stat.mtime.toISOString(),
-+          name: entry.name,
-+          path: `backups/${entry.name}`,
-+          sha256,
-+          sizeBytes: stat.size,
-+          verified: Boolean(sha256)
-+        }
-+      })
-+      .sort((left, right) => Date.parse(right.modifiedAt) - Date.parse(left.modifiedAt))
-+  } catch {
-+    return []
-+  }
-+}
-+
- function readInstalledVersion(): null | Record<string, any> {
-   const version = safeReadJson<Record<string, any>>('VERSION.json')
-   const overrides = safeReadJson<Record<string, any>>('config\\launcher\\source-overrides.json')
-@@ -705,6 +826,10 @@ function taskCompletionEvidence(task: TaskRecord): null | TaskCompletionEvidence
-     })
-   }
- 
-+  if (task.action === 'restore') {
-+    return restoreCompletionEvidence(task)
-+  }
-+
-   return null
-}
- 
-@@ -760,6 +885,40 @@ function taskContext(action: ActionName, input: Record<string, unknown>): Record<str     return {}
-   }
- 
-+  if (action === 'restore') {
-+    return Object.fromEntries(
-+      ['backupId', 'backupPath', 'verifyIntegrity']
-+        .map(key => [key, Typed(input[key]) === 'string' ? String(input[key]) : ''])
-+        .filter(([, value]) => Boolean(value))
-+    )
-+  }
-+
-   return {}
- }
- 
-+function resolveRestoreInput(input: Record<string, any>) {
-+  const backupPath = String(input.backupPath || '').replaceAll('\\', '/')
-+  const backupId = String(input.backupId || '').toLowerCase()
-+  const verifyIntegrity = input.verifyIntegrity !== false
-+  const backup = restoreBackups().find(candidate => candidate.path === backupPath && candidate.id === backupId)
-+
-+  if (!backup || !backup.verified || !backup.sha256) {
-+    throw new Error('The selected restore backup is not a verified Hermes Local archive.')
-+  }
-+
-+  const expectedPath = `backups/${path.basename(backup.path)}`
-+
-   if (backup. path !== expectedPath || backup.sha256.slice(0, 16) !== backup.id) {
-+    throw new Error('The selected restore backup identity does not match its managed archive.')
-+  }
-+
-  return {
-+    arguments: ['-BackupPath', backup.path, '-VerifyIntegrity', String(verifyIntegrity), '-NonInteractive'],
-+    payload: { backupId: backup.id, backupPath: backup.path, verifyIntegrity }
-+  }
-+}
-+
- function startTask(action: ActionName, input: unknown): ActionTask {
-   if (!AMLNN_SCRIPTS[action]) {
-     throw new Error(`Unsupported Hermes Local action: ${action}`)
-@@ -799,13 +958,22 @@ function startTask(action: ActionName, input: unknown): ActionTask {
-     throw new Error('Hermes Local action must be an object.')
-   }
- 
-+  const restore = action === 'restore' ? resolveRestoreInput(payload) : null
-+  if (restore) {
-+    Object.assign(payload, restore.payload)
-+  }
-+
-   const plan =
-     action === 'update'
-      ? planHermesLocalDesktopAction(payload, { currentProcessPid: process.pid })
-      : {
--        arguments: buildArguments(payload),
-+        arguments: restore?.arguments || buildArguments(payload),
-         component: null,
-         scriptRelative: ACTION_SCRIPTS[action]
-        }
-  
-# testet ...
+index c711326a79bb0a62d1499057be9c573379e1ec11..a8f39b08f23cbee6dc46c490fe2d1a1ab5dee06d 100644
+GIT binary patch
+delta 2830
+zcmcImPiz!b7*DZKsZ?7^Z9!VzN?~T)-Pvw|wOv@T6|hZuC~S$CZcB%mx4X~I&MY&t
+zOP5lLmx3Ow`X!!-7*8G)C6kyKjf5C4nrOIiFfnQ%@gOE%gbN41*_qj$1?$bd?3?$#
+z|L^zxzW3wZ$L?Nj{;b^6VNlc34Vom}F?R*OZs@klE$!VK+#~q1H{vhv_Qp3`QjU^T
+zTPwkzCvl_iSsVIJ?pR+n1>@1>7SAl)j9T56WX?|-dJgx@BZgi$<~f><mz$4k%z|6-
+z@CIjL3h<}+GE5Hkxch~{osYZwZLRS3o-Ot#gGbkeB~7NPDxFd>=%Qy<l<T`BluD7T
+zq?$Bh-{1RKQ!SRJLJw?9MBx4S9{5(g2N$1j@9<)&8A?LaKqpLS8{v=GFzg-b@>36`
+zC*gykCu+v*q0{jFiGFx*<Y`Dwbwcy2JGZHN&Ww4P$0kOm4yUKY*GygG1pCf#XA>+<
+zcS7s_FRK5y_U{7jcn^#n7-{D`ooH5KDpfeRabP?AexSdP8>2>nnq)$kCDp4o#oVe=
+z0?egG(N+iCncD)tq&lChmVZ=|=SxMC7vRQo!ba|t`^mv?ySGAbxCmFn?ZagEZW5xJ
+zWmH5>Do~MWvRYE8$#XGISo<)Ofv>__cPzS>?*Ks7HPa%JA?I0{PD)muqzK#(ljVm+
+zOr}s-GCYyF{>6aKl4$0o!F`FjN0cndLW5aTG;8)#XfhvA6CM$FeK;D+rbri<X_-}}
+zfOCNybnF>aQjTC1A3lx{u4HA0I6<@wR^SEEEUL`nV;M6X6Q&1d2=)p0h~H}T=r%Sx
+zJrEt1qS=|`Vq))7e~gJ1Vx9N=JHEZ8Xz3IB8EU*FnUojMs#a3fwpPb7yqN7-CWI+T
+z;+DnHs(KJjmC2MJh>&=~(UFZx(b7d3ld<TSWafF!6~ypMMFltc`W*|R!g5Y9T%InV
+zK+smCo)IAhU16KEj4C4*Mu2q}3l=L-xOur7!y?21Op??MHz*eo0!cFGfiBj+SeILx
+zYmjs!ZQNpK>1YKj=J_@8yFnmYrUr9DOOjDtSE;1&u9*N7mi%0nU_L^I4`CI=qGVv1
+z4VKGeGMJv5oj{@_aIDg7@D#3Z>jDyOSvNfc9Y?$Dzf#Sl&+Aj{5w8afYLyJl=fP0A
+z2QpF!iYuGp=hYUwZT5D1TZ0Z<Sm~}&NF}epgZVd+Mz+93M&KJY;h)(}h1RB)V;)gH
+zSlMpJwC?uh23z(1bIa}ZRvMA3<#?tQOO_ZoId=}BD<JZVswC49Rpq%%hC{$(%X?^d
+zOXv2qt2wS9tZNoG)lH5oaBcaS!?9WKsxz_a+1N}tBc5f&8t&`f1%mGDp8>)VMGoG%
+z(7WvAilsbVVwfk9Jb7YLmC6=XNET-YvGSA@Bn^j<;t7~UK?ND7ScUU|;DLZ;317>@
+zp}cy7F2)n}{zRGe$eEZEMl$V3;%Z_eB8Hh&A%zlB-6@KJ#S>9EFBuX>WsvmPNEFEn
+zCkV|l>@2s47(uX_9&N$Rk9u|m$`HJam~$6+BSO^zgnsCX2g%MUU}!BS6q)I;8DFhr
+z+OL;~7N4F8Gl`}XRo8MDwp7L`;tbI>A`WmSLf}6M+XalLK$fe7{eQEsbG5<itkdmO
+zfN!y8jR5#p`gNv@VVSQmD_@gtBxu1Y?C9Es^&z4gglQJd84g}(*@2Esow_rvEU8R^
+zH(u}U9<5Gfr(5yH>tKLSS4I28`5hZ!U%t!d0a#esQCnYGIqp+}{a|IJ32tBP@E-+%
+zq2%xa!J*+^KRBcmx%8AheCgd5|1tB^TQR})Jgzvft4HB{Rav$&?k57#)q!0H4-$T!
+zR!9opRu2ns=!~<B615jrFL%PnC+p#BR}T5%+t;sry>8fVt}{$kak}V5qHAge+bWBX
+z&}wtzGX!nP7CtC2g(_JUumkODAAY`ls~ac|2oKw%{$t0UyM8|5rx!|hZmJFrPYS;K
+Nduq*BXve)5{sA=<y7K@4
+
+delta 97
+zcmV-n0G|Kst_08Q1F&`nvz`YK7YB26VP|C^J+nn0Wgn9?+7z?)PwpSHJ8=9Ev#*3!
+z50g7^60^LR9|@E6qQ<ipq>cxZJ8&73PSOgq&8#L9v$Vrg9J43jcQ%*T76Cw)I~M^l
+D3708U
+
+diff --git a/apps/desktop/electron/hermes-local-restore.test.ts b/apps/desktop/electron/hermes-local-restore.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..1dc142f8df7a677bb5e8c9c78163d565a4c4dd06
+GIT binary patch
+literal 1135
+zcmbVL$%@-R5WV{=>LwX%PcR7#hU79yNFaxh?OyIK+eLa&x=T(5<9|<Svy{vjh7m$Y
+zs_nhkuh>^H37o)EHi@^i0Qysrkp-~88FndpD2^<YrI^ilNIy{Wls`p-?k)yN(S6g5
+zOTp@<OIW%lV`;h+Z7_@}iw|uFXj_1-6K)+r(k3wxY!ll(6$>cm@cIp$W}tA&!ef;c
+zsc0z&6oM+nz1C#FU?Jm<z+f=s916#v9~ExdvE2XD3VM#Ewr#G*$*ctP&(HmU_o~B}
+z4&2*lYEMDR232<rLzTh?cIYxK##r=~Q^@vvV96VJISti8x#-W+z}$Wm@@*DK6m<RP
+zEu6<P6+Yu$Clwtc4tuCGC9o)1O!A^_k|ughf)ypBBsTEs#aPjf>~Y@q49@fRWxkU5
+z?pKZOLi;*tbB(fz&mjCXy8b%ZN2op|+S1gAl5L!pC|Eri*eYU6b~v8VaJlv#6H|uY
+zEQeT&hWOZcQuRi5&oNx@{=su!+Y$E{!2$jkc0C^5sL~H~tWHqSn9PBXx<(f>X6cO6
+rN0uCNv+TMnlccFQ>xV9A_8mEtz5B)`+zbOJZDD=0E*b}^w0i#q<X2-@
+
+literal 0
+HcmV?d00001
+
+diff --git a/apps/desktop/electron/hermes-local-task-model.test.ts b/apps/desktop/electron/hermes-local-task-model.test.ts
+index 77338f4d1d5164a7306d171ed70bb98e0b607ea3..d033881301033170df7f2517bf2c437e6ae17855 100644
+GIT binary patch
+delta 965
+zcmb7DOK;Oa5I&KIOGrb~M<`Sygm4n2CRI5_LIQ5(fGQ*|lp<~IO=@EAy6ZJPL{@(S
+zNOR_b#2u*|kr2OtGdF$;v$35TA%w8x^=cm9eBaFY+xX-Dr?iScudM7T9&4#MuqpFJ
+ztic>C2$=Sz046+0Vy<>PrWu5ZUYPM=YolA_Jph#m;fra{&P@2Fe(QSfwTEz+U-4aK
+zVC8qm_poVgwU3!QOQKTHQ6En?yRTd+CV}tjcnpVgV6NdZh8&+$JmJVhx!eTUOM>LE
+z&!n1>0Fz-K4MDSbw(pHif>B9@A;r7(JGgFjT8c-^SEcgAaSK<gx7$fXf=!`<eMaor
+z{}C&<@?T`|N4;4sTD7{;!>6?l4y>ys+x?5Q`nmBWQhdTy3@p(nQu#*f8(s(mSB6o*
+zv*ArNSHOT~$-!m9<;7SPKTW71_^7px?;B1ftBc>SZC3W2(P;Dnqt-4Sv};zLM&reo
+z?GN2RPUCwy%i_CZdW<(ZU$_72bza9(U~6OTqPaGxoddBntCj=7A1h=!znpfzVF5jP
+zuoEdcrF%?S^UOnVxwzwik72@sm=Bk(tRLKaE_}03A_>lek~b05B(l%br7<LQHYFtc
+zK*>;Q5?@sJ!0Z;$E8s)vnLuB7oNz*4{N{}~?WoX;s+UE(TGAhO$tTFb(uRd^Z*KQ;
+Wp?xP))pxXf%zFz}i&ms`n)eq-r9(mh
+
+delta 26
+fcmZ4LdC+P@E&JvZTw8cIJ4kbIaMWt@a)B@ah?WQh
+
+diff --git a/apps/desktop/electron/hermes-local-task-model.ts b/apps/desktop/electron/hermes-local-task-model.ts
+index 949c2f6d9ba6cc64768ab8dd0426dfac3d29518b..45b16b1f4aa64214f35abb8a081131552146df1c 100644
+GIT binary patch
+delta 959
+zcmaJ<O^ee|6eTTVC#9JxQ$a<XJ0ngKED>EOR726au;{|ghzni3CNE={M_woIWmMYI
+zA0UYE7Q$>?x)X+nAowSA;X+W*Kj3fhB~3b+`jK7kJ?EZ#&VBD*XrF}k>P;=ijMEq&
+zyk63pVZ=Bh1o4nYCXD62cB9flk%v`nKybGM14;=-k^Ef!xg;Lx&02p(5xcro%ju%8
+zZ!B*y9N$J9i9P+icvx@9xB9qJh>36dJz*Fvrw#a-M-mq9;e1f0T`CuI9vgL#XB!`?
+z;>Yn7`K5WW>U&ga!!V}X$^*Me2z|<W`L?M8aDgMX;~+2lTX$VBbGORec-AcFUB^2#
+z3Mn=~gkf>wR7<R^-Z}@HoBxrL_gC$P{JM6jBEFwKDPFGKmCG9+n-@wW-8uaMA_*?Z
+z$@iD<XxB^7R6U7&9E1_}Q(^vmh-m<e8=A#6eq9+?UB_{(zX09Tb`CV53!@`rCeVS=
+z#BR&M)q}>FkqSBcX3?s!XcBvvfh&5wYtuiv>BHF?`iSEmjRF#S9NYo~VCBJQ8_a`G
+z?Ub&PHIr<HX{)RJgPtO$9Gh7hi}Yf)ZPW{T7=V?R7Zz0d>vLmH7^&yyV`iC0-o9<a
+zJPUvvKE=!#ChW-~w$Pjd6^_xETWX(KoRh=FV$72`QdgLT(<z71E|f59XZ60H_d_2h
+N#<6VLMDF)mmER|)Jm3HT
+
+delta 173
+zcmcaGnQ>h=<AnJW*ZtkRhtY~@Ge656*3DD63Yj)9<lV@;IbKkQd9t}D|6~?X$IZ#2
+znmm(zWJD)lQ1;&3qo~icSz2W`|7K1TE5^;ern$_U?JZaG7-&@Uaw&j8Vsc4lex8*=
+wNn&xf9)zO<lPgLs&Mz%WPA#^Y%;aXS02c?T^-O{4$xMMLuhrbV$6bU80Mk-6v;Y7A
+
+diff --git a/apps/desktop/src/app/chat/sidebar/index.tsx b/apps/desktop/src/app/chat/sidebar/index.tsx
+index 1513c682d6c10ffa67ec3395f413103ccabe652d..a6ac8463825bd46d04d9fa34f281556be53c1f42 100644
+GIT binary patch
+delta 50
+zcmey{!7{mvWy3aJ_8`~b5dR?8&8vA6`Phn5i%as0CVvpNm|Q2R443;L-TMLn;(!xD
+
+delta 19
+bcmbQ-#qzg<Wy3b!%_n%n_%<(+DSQC{SUd>S
+
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index 8b11d9ff0b05f67912b175e3bfd23d37ccd61646..8e25bce81e94842b74ea393ac4a0580fdb07551c 100644
+GIT binary patch
+delta 3439
+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
+
+delta 33
+rcmV++0N($};|0601+XCmla$X9vqA*=1GAwBTdT8q%vc4pZPHwy26PXY
+
+diff --git a/apps/desktop/src/app/local-workstation/task-centre.tsx b/apps/desktop/src/app/local-workstation/task-centre.tsx
+index 8c52c13bf6fbb99a8099be778da3ba9f5c496c06..01a06b9c4dda45a567ec855e499c8250ec1681bd 100644
+GIT binary patch
+delta 192
+zcmZ3wlkwy(#tq9^9g9+nOY)0StrV&i(oz#kN<mEZAc&y4jzUgiQfdy0NKt-i2}q4T
+zROjaTtW{jGyj%)EP?QQZAWxwru{c{VF}Wl&KTpBd)>c6ss#IOUUO_!PF|#ByFI^!m
+zzepibp*S%u6{rpD28HCryyVoJoJ6q3r2Nvnl*FP+bp@-*@&b}9AR8vX=a<<WA`s{U
+E09E}#9RL6T
+
+delta 30
+mcmX@Pi*e~r#tq9^H-BI);$kaGEh#O^o4j8@a`PR5Tps|@BMjXD
+
+diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
+index f338c80fa2fe3fd09409a870b8de60c95d28b9d1..308e55cbd0843a1e6bd1184eebe5dbfda06b140d 100644
+GIT binary patch
+delta 195
+zcmexk@z-jDBolj4YH>+^QR-$vrW0%;iFwJXIXQ_*IjQzm3Q76-IjM<xn=f&wGxBHV
+z6_+FerAjjM^VAh;Hh<^rVe@fHOwKMXP^jkRQc%cDu~H~5Day=C2k~<AQ!>*sQ&SvE
+zkVW$nb5oJ|1&JjYF#aR~Exz2O)FP1XveY7=?#<Bxy-Z?BU^|Mf6nyfN6LTOoM#pY`
+IA~b^&05BaxR{#J2
+
+delta 36
+scmexs^~Yj^B-3UMrUPu7nK>00H=A&Eu}$t3=Gj~(7|FExrSKF^0Pyz=TL1t6
+
+diff --git a/apps/desktop/src/app/routes.ts b/apps/desktop/src/app/routes.ts
+index 84a3b4c8b5368fe82e6438c95c86ad515e8b8336..fe60277579ca5d89d677617dff4b1328970ded5e 100644
+GIT binary patch
+delta 84
+zcmaD9c`IszE30IXYjB8vkZXL9e`tuSf~|tOeo<<1Nq$l4W>Z!z7IqjXoU?;X9LiDG
+XQ7A|($*@v@>YZ%Br@8q)KeH?Vz_A;r
+
+delta 22
+ecmcZ=^(b<KE9>SwRw<Uv(>WX1Hiru^%K`vvNe96I
+
+diff --git a/apps/desktop/src/i18n/ar.ts b/apps/desktop/src/i18n/ar.ts
+index 17fdebbfe2c752fdcba9aa2029278f854d906df1..00044592b1247a145d8d3c7953e0a8087c2072d1 100644
+GIT binary patch
+delta 22
+ecmZoT$Fb-fN5dAzRL|)xj~NxVCwnr^y$b+v%n7dm
+
+delta 17
+XcmZ2<j-vsHwlJo8Zg2NwoP8GnMc@ar
+
+diff --git a/apps/desktop/src/i18n/en.ts b/apps/desktop/src/i18n/en.ts
+index 5ba9f23e1b0690c4b58f08afe580d4144c029d3f..a1b8de6fa32bca7b42fcb02883a26dd17278cbab 100644
+GIT binary patch
+delta 22
+ecmccC#__R@qhSl<Is55*&oD}EKV#3>br=A8(F$+?
+
+delta 21
+dcmey^#&NBUqhSl<Is3^qFFCe<v}bHM3;=R@3Q+(6
+
+diff --git a/apps/desktop/src/i18n/ja.ts b/apps/desktop/src/i18n/ja.ts
+index 2455fbf3cd53418c0a0efe0557bae7303f9f132e..f5593dade6e275ccd85ae0fa1c253d8bc4d5f36c 100644
+GIT binary patch
+delta 22
+ecmZ3th4aJ~&W0_Fzmlfwh%iZP|B=LK_8kCpFbT2%
+
+delta 17
+ZcmX@Hg>&5&&W0_Fzmm3#Br}?P2LMXn2iyPv
+
+diff --git a/apps/desktop/src/i18n/zh-hant.ts b/apps/desktop/src/i18n/zh-hant.ts
+index d94ee6ab25550df7cfdc01e6475afd2e36d57ab8..85cac1396e0d12bf524c917cbc0de8dcd6b2505c 100644
+GIT binary patch
+delta 26
+icmeydoPE*?_J%Et^&-<h&t;UD%<0avy;FoSe?I`2F$!V;
+
+delta 21
+dcmbQVg8j#G_J%Et^&*qG-MO|e7Gcca4*+232s{7)
+
+diff --git a/apps/desktop/src/i18n/zh.ts b/apps/desktop/src/i18n/zh.ts
+index f231ccf466278c1a214d9e5e4a85d681dbf19ea6..765d992fced54d677f12f3282f2fd448108006c3 100644
+GIT binary patch
+delta 34
+qcmZ2<hGWkej)pCajVS^}sl_GvMX6Q_>dzV%Jzdhfy*!0+^+5m&h!4~N
+
+delta 17
+ZcmdmUhGWqgj)pCajVaq_r!X!&2mni&2s!`&
+
+-- 
+2.47.3
+
