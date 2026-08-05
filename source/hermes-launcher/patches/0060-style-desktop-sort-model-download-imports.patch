@@ -11,7 +11,7 @@ Subject: [PATCH] style(desktop): sort model download imports
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
-@@ -18,8 +18,8 @@ import {
+@@ -18,7 +18,7 @@ import {
    isPausedModelDownload,
    modelDownloadCompletionEvidence,
    modelDownloadProgressPath,
