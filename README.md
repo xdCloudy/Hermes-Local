@@ -148,29 +148,54 @@ Progress is derived from issue counts on the linked milestones. The sequence is 
 
 ```mermaid
 flowchart TB
-    User([User]) --> Launcher["Hermes Launcher<br/>Desktop + TUI"]
-    Launcher --> Supervisor["Stack Supervisor<br/>lifecycle · ownership · health"]
-    Launcher --> Tasks["Task Centre<br/>durable operations · history"]
-    Supervisor --> Runtime["llama.cpp Runtime<br/>CPU or CUDA"]
-    Runtime --> Models[("Local GGUF Models<br/>manifests + profiles")]
-    Supervisor --> Agent["Hermes Agent<br/>chat · tools · sessions"]
-    Supervisor --> Gateway["Messaging Gateway<br/>managed when configured"]
-    Agent --> Tooling["Local Tooling<br/>terminal · browser · integrations"]
-    Agent --> Memory[("User Data and Memory<br/>local · backed up")]
-    Agent --> Projects["Projects and Sessions"]
-    Tasks --> Supervisor
-    Tasks --> Projects
-    Tooling --> Projects
-    Memory --> Projects
+    Operator([User or Operator])
 
-    classDef user fill:#6e56cf,stroke:#a99af0,color:#fff,stroke-width:2px;
-    classDef control fill:#0969da,stroke:#54aeff,color:#fff,stroke-width:2px;
-    classDef engine fill:#1f883d,stroke:#56d364,color:#fff,stroke-width:2px;
-    classDef data fill:#8250df,stroke:#d2a8ff,color:#fff,stroke-width:2px;
-    class User user;
-    class Launcher,Supervisor,Tasks control;
-    class Agent,Runtime,Gateway,Tooling engine;
-    class Models,Memory,Projects data;
+    Operator --> Launcher["Hermes Launcher<br/>desktop control surface"]
+    Operator --> Setup["Setup Pipeline<br/>PowerShell · Python sync · model verification"]
+    Operator --> Assurance["Updates and Assurance<br/>orchestration · safe activation · evidence"]
+
+    Launcher --> Lifecycle["Lifecycle API<br/>start · stop · shared module"]
+    Lifecycle --> Supervisor["Stack Supervisor<br/>ownership · health · recovery"]
+    Supervisor --> Job["Managed Job Runner<br/>process launch · shutdown"]
+
+    Job --> Runtime["llama.cpp Runtime<br/>managed inference backend"]
+    Job --> Agent["Hermes Agent<br/>managed agent process"]
+    Supervisor --> Gateway["Messaging Gateway<br/>authenticated local transport"]
+
+    Setup --> Config[("Runtime Configuration<br/>profiles · manifests · contracts")]
+    Config --> Runtime
+
+    Security[("Local Trust Boundary<br/>DPAPI token · trust contracts")]
+    Security --> Gateway
+
+    Assurance --> Delivery["Desktop Delivery<br/>overlay · updater · Windows package"]
+    Delivery -.->|"integrates"| Lifecycle
+    Assurance -.->|"tests"| Supervisor
+
+    classDef user fill:#6e56cf,stroke:#a99af0,color:#ffffff,stroke-width:2px;
+    classDef control fill:#0969da,stroke:#54aeff,color:#ffffff,stroke-width:2px;
+    classDef engine fill:#1f883d,stroke:#56d364,color:#ffffff,stroke-width:2px;
+    classDef data fill:#8250df,stroke:#d2a8ff,color:#ffffff,stroke-width:2px;
+    classDef assurance fill:#9a6700,stroke:#f2cc60,color:#ffffff,stroke-width:2px;
+
+    class Operator user;
+    class Launcher,Lifecycle,Supervisor,Job control;
+    class Runtime,Agent,Gateway engine;
+    class Config,Security data;
+    class Setup,Assurance,Delivery assurance;
+
+    linkStyle default stroke:#8c959f,stroke-width:1.6px;
+
+    click Setup "https://github.com/xdcloudy/hermes-local/blob/main/Setup-Hermes-Local.ps1"
+    click Launcher "https://github.com/xdcloudy/hermes-local/blob/main/Build-Hermes-Launcher.ps1"
+    click Lifecycle "https://github.com/xdcloudy/hermes-local/blob/main/scripts/Common-Hermes.psm1"
+    click Supervisor "https://github.com/xdcloudy/hermes-local/blob/main/scripts/supervisor/Hermes-Supervisor.ps1"
+    click Job "https://github.com/xdcloudy/hermes-local/blob/main/scripts/supervisor/Hermes-Job.ps1"
+    click Config "https://github.com/xdcloudy/hermes-local/blob/main/config/profiles/profiles.json"
+    click Gateway "https://github.com/xdcloudy/hermes-local/blob/main/scripts/Hermes-Gateway.psm1"
+    click Security "https://github.com/xdcloudy/hermes-local/blob/main/config/schemas/trust-contracts.schema.json"
+    click Assurance "https://github.com/xdcloudy/hermes-local/blob/main/scripts/Hermes-UpdateOrchestrator.psm1"
+    click Delivery "https://github.com/xdcloudy/hermes-local/blob/main/Apply-Hermes-LauncherOverlay.ps1"
 ```
 
 The launcher and supervisor are the Windows-native product layer. Hermes Agent
