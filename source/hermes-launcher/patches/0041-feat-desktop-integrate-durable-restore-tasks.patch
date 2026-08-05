@@ -1,4 +1,4 @@
-From 9d031a6c9499ddbeaa636488eefdb31a42de7c1e Mon Sep 17 00:00:00 2001
+From 8a33a556ab73ac883c7367bb0761d735963768b6 Mon Sep 17 00:00:00 2001
 From: OpenAI <openai@localhost>
 Date: Wed, 5 Aug 2026 04:00:00 +0100
 Subject: [PATCH] feat(desktop): integrate durable restore tasks
@@ -6,8 +6,8 @@ Subject: [PATCH] feat(desktop): integrate durable restore tasks
 ---
  apps/desktop/electron/hermes-local-control.ts | 222 +++++++++++++++++-
  .../electron/hermes-local-restore.test.ts     |  38 +++
- .../electron/hermes-local-task-model.test.ts  |  29 +++
- .../electron/hermes-local-task-model.ts       |  36 ++-
+ .../electron/hermes-local-task-model.test.ts  |  51 ++++
+ .../electron/hermes-local-task-model.ts       |  46 +++-
  apps/desktop/src/app/chat/sidebar/index.tsx   |   7 +
  .../src/app/local-workstation/index.tsx       | 131 +++++++++++
  .../src/app/local-workstation/task-centre.tsx |   5 +-
@@ -18,7 +18,7 @@ Subject: [PATCH] feat(desktop): integrate durable restore tasks
  apps/desktop/src/i18n/ja.ts                   |   1 +
  apps/desktop/src/i18n/zh-hant.ts              |   1 +
  apps/desktop/src/i18n/zh.ts                   |   1 +
- 14 files changed, 481 insertions(+), 10 deletions(-)
+ 14 files changed, 508 insertions(+), 15 deletions(-)
  create mode 100644 apps/desktop/electron/hermes-local-restore.test.ts
 
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
@@ -94,7 +94,7 @@ index c711326..a8f39b0 100644
 +
 +function restoreCompletionEvidence(task: TaskRecord): null | TaskCompletionEvidence {
 +  const progress = restoreProgress(task)
-+  const status = String(progress?.status || '')
++  const status = String(progress/.status || '')
 +
 +  if (!progress || !['cancelled', 'failed', 'succeeded'].includes(status)) {
 +    return null
@@ -175,3 +175,66 @@ index c711326..a8f39b0 100644
 +  if (task.action === 'restore') {
 +    return restoreCompletionEvidence(task)
 +  }
++
+   return null
+}
+ 
+@@ -760,6 +885,40 @@ function taskContext(action: ActionName, input: Record<string, unknown>): Record<str     return {}
+   }
+ 
++  if (action === 'restore') {
++    return Object.fromEntries(
++      ['backupId', 'backupPath', 'verifyIntegrity']
++        .map(key => [key, Typed(input[key]) === 'string' ? String(input[key]) : ''])
++        .filter(([, value]) => Boolean(value))
++    )
++  }
++
+   return {}
+ }
+ 
++function resolveRestoreInput(input: Record<string, any>) {
++  const backupPath = String(input.backupPath || '').replaceAll('\\', '/')
++  const backupId = String(input.backupId || '').toLowerCase()
++  const verifyIntegrity = input.verifyIntegrity !== false
++  const backup = restoreBackups().find(candidate => candidate.path === backupPath && candidate.id === backupId)
++
++  if (!backup || !backup.verified || !backup.sha256) {
++    throw new Error('The selected restore backup is not a verified Hermes Local archive.')
++  }
++
++  const expectedPath = `backups/${path.basename(backup.path)}`
++
+   if (backup. path !== expectedPath || backup.sha256.slice(0, 16) !== backup.id) {
++    throw new Error('The selected restore backup identity does not match its managed archive.')
++  }
++
+  return {
++    arguments: ['-BackupPath', backup.path, '-VerifyIntegrity', String(verifyIntegrity), '-NonInteractive'],
++    payload: { backupId: backup.id, backupPath: backup.path, verifyIntegrity }
++  }
++}
++
+ function startTask(action: ActionName, input: unknown): ActionTask {
+   if (!AMLNN_SCRIPTS[action]) {
+     throw new Error(`Unsupported Hermes Local action: ${action}`)
+@@ -799,13 +958,22 @@ function startTask(action: ActionName, input: unknown): ActionTask {
+     throw new Error('Hermes Local action must be an object.')
+   }
+ 
++  const restore = action === 'restore' ? resolveRestoreInput(payload) : null
++  if (restore) {
++    Object.assign(payload, restore.payload)
++  }
++
+   const plan =
+     action === 'update'
+      ? planHermesLocalDesktopAction(payload, { currentProcessPid: process.pid })
+      : {
+-        arguments: buildArguments(payload),
++        arguments: restore?.arguments || buildArguments(payload),
+         component: null,
+         scriptRelative: ACTION_SCRIPTS[action]
+        }
+  
+# testet ...
