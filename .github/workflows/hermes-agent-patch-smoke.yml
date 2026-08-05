@@ -30,8 +30,14 @@ jobs:
 
       - name: Reconstruct and validate pinned release integration
         shell: pwsh
+        env:
+          HERMES_LOCAL_ROOT: ${{ github.workspace }}
         run: |
-          $manifest = Get-Content -Raw -LiteralPath '.\VERSION.json' | ConvertFrom-Json
+          $manifestPath = Join-Path $env:HERMES_LOCAL_ROOT 'VERSION.json'
+          if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+            throw "Hermes Local version manifest is missing: $manifestPath"
+          }
+          $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
           $candidate = [string]$manifest.sources.hermesAgent.commit
           $reportPath = '.\artifacts\compatibility\hermes-agent-patch-smoke\hermes-agent-report.json'
           $workRoot = '.\temp\compatibility\hermes-agent-patch-smoke'
