@@ -60,7 +60,7 @@ jobs:
             throw ($failures -join [Environment]::NewLine)
           }
 
-      - name: Test gateway, benchmark, security, model and update contracts
+      - name: Test gateway, restore, benchmark, security, model and update contracts
         shell: pwsh
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -79,6 +79,7 @@ jobs:
             Write-Host $_.ScriptStackTrace
             throw
           }
+          & '.\tests\Test-HermesRestoreTask.ps1'
           & '.\tests\Test-DeferredRuntimeActivation.ps1'
           & '.\tests\Test-BenchmarkLifecycleContract.ps1'
           & '.\tests\Test-BenchmarkProgressContract.ps1'
