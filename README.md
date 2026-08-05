@@ -46,7 +46,7 @@ a paid inference API.
 <!-- BEGIN GENERATED STATUS -->
 | Release | Delivery | Repository |
 |---|---|---|
-| **Current build:** v0.18.53<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 33 open · 28 closed<br>**Overall completion:** 46%<br>**Recent commit:** [`dd4f834`](https://github.com/xdCloudy/Hermes-Local/commit/dd4f83449c2950eab76ad5487da558878a81fa42) fix: make Desktop updater recover from full-stack file locks (#114) |
+| **Current build:** v0.18.53<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 34 open · 28 closed<br>**Overall completion:** 45%<br>**Recent commit:** [`dd4f834`](https://github.com/xdCloudy/Hermes-Local/commit/dd4f83449c2950eab76ad5487da558878a81fa42) fix: make Desktop updater recover from full-stack file locks (#114) |
 
 > Status is generated from GitHub issues, milestones, releases and commits.
 <!-- END GENERATED STATUS -->
