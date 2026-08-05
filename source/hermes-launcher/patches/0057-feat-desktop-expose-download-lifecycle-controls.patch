@@ -1,0 +1,213 @@
+From 3333333333333333333333333333333333333333 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Wed, 5 Aug 2026 09:37:00 +0100
+Subject: [PATCH 57/58] feat(desktop): expose download lifecycle controls
+
+---
+diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
+--- a/apps/desktop/electron/preload.ts
++++ b/apps/desktop/electron/preload.ts
+@@ -1,2 +1,4 @@
+     cancelAction: taskId => ipcRenderer.invoke('hermes:local:action:cancel', taskId),
++    pauseAction: taskId => ipcRenderer.invoke('hermes:local:action:pause', taskId),
++    resumeAction: taskId => ipcRenderer.invoke('hermes:local:action:resume', taskId),
+     retryAction: taskId => ipcRenderer.invoke('hermes:local:action:retry', taskId),
+diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
+--- a/apps/desktop/src/app/local-workstation/types.ts
++++ b/apps/desktop/src/app/local-workstation/types.ts
+@@ -1,2 +1,3 @@
+   | 'diagnostics'
++  | 'model-download'
+   | 'repair'
+@@ -13 +14 @@
+-    resource: 'installation' | 'model-runtime' | 'user-data' | 'workstation'
++    resource: 'installation' | 'model-runtime' | 'model-storage' | 'user-data' | 'workstation'
+@@ -24 +25 @@
+-  status: 'cancelled' | 'cancelling' | 'failed' | 'interrupted' | 'queued' | 'running' | 'succeeded'
++  status: 'cancelled' | 'cancelling' | 'failed' | 'interrupted' | 'paused' | 'queued' | 'running' | 'succeeded'
+@@ -35,9 +36,15 @@
+   progress?: null | {
++    bytesCompleted?: null | number
++    bytesTotal?: null | number
+     cancellable?: boolean
+     completedUnits: null | number
+     counters: Record<string, number>
++    etaSeconds?: null | number
+     message: null | string
+     mode: 'determinate' | 'indeterminate'
++    pauseSupported?: boolean
+     percent: null | number
++    rateBytesPerSecond?: null | number
++    resumeSupported?: boolean
+     totalUnits: null | number
+   }
+diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
+--- a/apps/desktop/src/global.d.ts
++++ b/apps/desktop/src/global.d.ts
+@@ -1,2 +1,4 @@
+         cancelAction: (taskId: string) => Promise<LocalActionTask>
++        pauseAction: (taskId: string) => Promise<LocalActionTask>
++        resumeAction: (taskId: string) => Promise<LocalActionTask>
+         retryAction: (taskId: string) => Promise<LocalActionTask>
+diff --git a/apps/desktop/src/app/chat/sidebar/index.tsx b/apps/desktop/src/app/chat/sidebar/index.tsx
+--- a/apps/desktop/src/app/chat/sidebar/index.tsx
++++ b/apps/desktop/src/app/chat/sidebar/index.tsx
+@@ -1,2 +1,6 @@
+-            tasks.filter(task => task.status === 'queued' || task.status === 'running' || task.status === 'cancelling')
+-              .length
++            tasks.filter(task =>
++              task.status === 'queued' ||
++              task.status === 'running' ||
++              task.status === 'cancelling' ||
++              task.status === 'paused'
++            ).length
+diff --git a/apps/desktop/src/app/local-workstation/task-centre.tsx b/apps/desktop/src/app/local-workstation/task-centre.tsx
+--- a/apps/desktop/src/app/local-workstation/task-centre.tsx
++++ b/apps/desktop/src/app/local-workstation/task-centre.tsx
+@@ -1 +1 @@
+-const activeStates = new Set<LocalActionTask['status']>(['cancelling', 'queued', 'running'])
++const activeStates = new Set<LocalActionTask['status']>(['cancelling', 'paused', 'queued', 'running'])
+@@ -12,2 +12,3 @@
+   diagnostics: { feature: 'Services', label: 'Diagnostics', route: '/services' },
++  'model-download': { feature: 'Models', label: 'Model download', route: '/models' },
+   repair: { feature: 'Services', label: 'Repair', route: '/services' },
+@@ -24,2 +25,3 @@
+   interrupted: 'Interrupted',
++  paused: 'Paused',
+   queued: 'Queued',
+@@ -36,3 +38,7 @@
+   if (task.status === 'cancelling') {return 'Stopping owned process'}
+ 
++  if (task.status === 'paused') {return task.progress?.message || 'Paused with resumable partial data'}
++
++  if (task.stage) {return task.progress?.message || task.stage.replaceAll('-', ' ')}
++
+   if (task.status === 'running') {return `${ACTION_COPY[task.action].label} in progress`}
+@@ -49,3 +55,3 @@
+-  if (status === 'interrupted' || status === 'cancelled') {return 'text-amber-500'}
++  if (status === 'interrupted' || status === 'cancelled' || status === 'paused') {return 'text-amber-500'}
+ 
+   if (status === 'queued' || status === 'cancelling') {return 'text-amber-500'}
+@@ -62,3 +68,5 @@
+   if (status === 'cancelled') {return <IconBan className="size-4" />}
+ 
++  if (status === 'paused') {return <IconPlayerPause className="size-4" />}
++
+   return <IconClock className="size-4" />
+@@ -75,2 +83,4 @@
+   onOpenResult: (taskId: string) => Promise<void>
++  onPause: (taskId: string) => Promise<void>
++  onResume: (taskId: string) => Promise<void>
+   onRetry: (taskId: string) => Promise<void>
+@@ -87,2 +97,4 @@
+   onOpenResult,
++  onPause,
++  onResume,
+   onRetry,
+@@ -99,6 +111,20 @@
+-                  <Button className="h-8 gap-1.5 px-3 text-xs" disabled size="sm" title="Pause is not supported by this action" variant="outline">
+-                    <IconPlayerPause className="size-3.5" /> Pause
++                  <Button
++                    className="h-8 gap-1.5 px-3 text-xs"
++                    disabled={!selected.capabilities.pause || Boolean(pendingControl)}
++                    onClick={() => void invoke('pause', () => onPause(selected.id))}
++                    size="sm"
++                    title={selected.capabilities.pause ? 'Pause after the current safe write boundary' : 'Pause is unavailable in this stage'}
++                    variant="outline"
++                  >
++                    {pendingControl === 'pause' ? <IconLoader2 className="size-3.5 animate-spin" /> : <IconPlayerPause className="size-3.5" />} Pause
+                   </Button>
+-                  <Button className="h-8 gap-1.5 px-3 text-xs" disabled size="sm" title="Resume is not supported by this action" variant="outline">
+-                    <IconPlayerPlay className="size-3.5" /> Resume
++                  <Button
++                    className="h-8 gap-1.5 px-3 text-xs"
++                    disabled={!selected.capabilities.resume || Boolean(pendingControl)}
++                    onClick={() => void invoke('resume', () => onResume(selected.id))}
++                    size="sm"
++                    title={selected.capabilities.resume ? 'Resume this task from its retained partial data' : 'Resume is unavailable'}
++                    variant="outline"
++                  >
++                    {pendingControl === 'resume' ? <IconLoader2 className="size-3.5 animate-spin" /> : <IconPlayerPlay className="size-3.5" />} Resume
+                   </Button>
+@@ -115,11 +141,31 @@
+-              <div className="h-1 bg-(--ui-control-background)">
++              <div
++                aria-label={
++                  selected.progress?.mode === 'determinate' && selected.progress.percent !== null
++                    ? `Task progress ${selected.progress.percent}%`
++                    : 'Task progress is indeterminate'
++                }
++                aria-valuemax={100}
++                aria-valuemin={0}
++                aria-valuenow={
++                  selected.progress?.mode === 'determinate' && selected.progress.percent !== null
++                    ? selected.progress.percent
++                    : undefined
++                }
++                className="h-1 bg-(--ui-control-background)"
++                role="progressbar"
++              >
+                 <div
+                   className={cn(
+-                    'h-full bg-(--ui-accent)',
+-                    activeStates.has(selected.status) && 'w-1/3 animate-pulse motion-reduce:animate-none',
++                    'h-full bg-(--ui-accent) transition-[width]',
++                    activeStates.has(selected.status) && selected.progress?.mode !== 'determinate' && 'w-1/3 animate-pulse motion-reduce:animate-none',
+                     selected.status === 'succeeded' && 'w-full bg-emerald-500',
+                     (selected.status === 'failed' || selected.status === 'interrupted') && 'w-full bg-red-500',
+-                    selected.status === 'cancelled' && 'w-full bg-amber-500'
++                    (selected.status === 'cancelled' || selected.status === 'paused') && 'bg-amber-500'
+                   )}
++                  style={
++                    selected.progress?.mode === 'determinate' && selected.progress.percent !== null
++                      ? { width: `${Math.min(100, Math.max(0, selected.progress.percent))}%` }
++                      : undefined
++                  }
+                 />
+               </div>
+@@ -136,4 +182,16 @@
+               <DetailRow icon={IconClock} label="Elapsed">
+                 <span className="font-mono">{taskElapsed(selected)}</span>
+               </DetailRow>
++              {selected.action === 'model-download' && selected.progress && (
++                <DetailRow icon={IconFile} label="Transfer">
++                  <span className="font-mono">
++                    {selected.progress.bytesCompleted?.toLocaleString() || 0}
++                    {selected.progress.bytesTotal ? ` / ${selected.progress.bytesTotal.toLocaleString()} bytes` : ' bytes'}
++                    {selected.progress.rateBytesPerSecond
++                      ? ` · ${Math.round(selected.progress.rateBytesPerSecond).toLocaleString()} B/s`
++                      : ''}
++                    {selected.progress.etaSeconds ? ` · ETA ${Math.ceil(selected.progress.etaSeconds)}s` : ''}
++                  </span>
++                </DetailRow>
++              )}
+               <DetailRow icon={IconServer} label="Owner">
+@@ -150,2 +208,2 @@
+-  onPause: (taskId: string) => Promise<void>
+-  onResume: (taskId: string) => Promise<void>
++  onPause?: (taskId: string) => Promise<void>
++  onResume?: (taskId: string) => Promise<void>
+@@ -162 +220 @@
+-                    onClick={() => void invoke('pause', () => onPause(selected.id))}
++                    onClick={() => void invoke('pause', () => (onPause ? onPause(selected.id) : Promise.resolve()))}
+@@ -173 +231 @@
+-                    onClick={() => void invoke('resume', () => onResume(selected.id))}
++                    onClick={() => void invoke('resume', () => (onResume ? onResume(selected.id) : Promise.resolve()))}
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -1,4 +1,12 @@
+         onOpenResult={async taskId => {
+           await window.hermesDesktop.localWorkstation.openActionResult(taskId)
+         }}
++        onPause={async taskId => {
++          await window.hermesDesktop.localWorkstation.pauseAction(taskId)
++          onRefresh()
++        }}
++        onResume={async taskId => {
++          await window.hermesDesktop.localWorkstation.resumeAction(taskId)
++          onRefresh()
++        }}
+         onRetry={async taskId => {
+-- 
+2.47.3
