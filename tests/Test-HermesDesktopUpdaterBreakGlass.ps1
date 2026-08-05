@@ -54,10 +54,10 @@ foreach ($required in @(
     'recovery/desktop-updater-',
     "'stash', 'push', '--include-untracked'",
     'desktop-break-glass',
-    'Stop-HermesOwnedProcesses',
-    'Repair-GitState',
-    'Promote-RecoveredLauncher',
-    'Restoring the previous launcher distribution',
+    'Stop-HermesRecoveryProcesses',
+    'Repair-RecoveryGitState',
+    'Promote-RecoveryLauncher',
+    'Restoring previous launcher',
     'Recovery evidence:',
     'HERMES_DESKTOP_RECOVERY_RELOCATED',
     "'-SkipModel', '-SkipLlamaBuild', '-SkipLauncherBuild'"
@@ -135,8 +135,10 @@ try {
         Wait-Process -Id $child.Id -Timeout 10 -ErrorAction SilentlyContinue
     } catch {
     }
+    $child.Refresh()
     Assert-Contract $child.HasExited 'The full-stack drain did not terminate the root-owned PowerShell child.'
 } finally {
+    $child.Refresh()
     if (-not $child.HasExited) {
         Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue
     }
