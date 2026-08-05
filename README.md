@@ -46,7 +46,7 @@ a paid inference API.
 <!-- BEGIN GENERATED STATUS -->
 | Release | Delivery | Repository |
 |---|---|---|
-| **Current build:** v0.18.52<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 32 open · 29 closed<br>**Overall completion:** 48%<br>**Recent commit:** [`328a9a6`](https://github.com/xdCloudy/Hermes-Local/commit/328a9a6a8e3c15474267ac892c0dc07e182e6ac4) fix: make Desktop updater activation self-healing (#113) |
+| **Current build:** v0.18.52<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 33 open · 28 closed<br>**Overall completion:** 46%<br>**Recent commit:** [`328a9a6`](https://github.com/xdCloudy/Hermes-Local/commit/328a9a6a8e3c15474267ac892c0dc07e182e6ac4) fix: make Desktop updater activation self-healing (#113) |
 
 > Status is generated from GitHub issues, milestones, releases and commits.
 <!-- END GENERATED STATUS -->
