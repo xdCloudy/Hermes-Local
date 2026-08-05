@@ -7,6 +7,7 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = [IO.Path]::GetFullPath((Split-Path $PSScriptRoot -Parent))
 $partsRoot = Join-Path $repositoryRoot 'scripts\desktop-update'
 $stackDrainPath = Join-Path $partsRoot 'DesktopUpdate-StackDrain.ps1'
+$stackSafetyPath = Join-Path $partsRoot 'DesktopUpdate-ZStackDrainSafety.ps1'
 $activationLoaderPath = Join-Path $partsRoot 'DesktopUpdate-Activation.ps1'
 $activationCorePath = Join-Path $partsRoot 'DesktopUpdate-Activation-Core.ps1'
 $breakGlassPath = Join-Path $repositoryRoot 'Repair-Hermes-DesktopUpdater.ps1'
@@ -23,6 +24,7 @@ function Assert-Contract {
 
 foreach ($path in @(
     $stackDrainPath,
+    $stackSafetyPath,
     $activationLoaderPath,
     $activationCorePath,
     $breakGlassPath
@@ -33,6 +35,7 @@ foreach ($path in @(
 $loaderText = Get-Content -Raw -LiteralPath $activationLoaderPath
 Assert-Contract ($loaderText -match 'DesktopUpdate-Activation-Core\.ps1') 'Activation loader omits the core implementation.'
 Assert-Contract ($loaderText -match 'DesktopUpdate-StackDrain\.ps1') 'Activation loader omits the full stack drain.'
+Assert-Contract ($loaderText -match 'DesktopUpdate-ZStackDrainSafety\.ps1') 'Activation loader omits the final stack-drain safety override.'
 
 $stackText = Get-Content -Raw -LiteralPath $stackDrainPath
 foreach ($required in @(
@@ -48,6 +51,10 @@ foreach ($required in @(
 )) {
     Assert-Contract ($stackText -match [regex]::Escape($required)) "Stack-drain contract is missing: $required"
 }
+
+$safetyText = Get-Content -Raw -LiteralPath $stackSafetyPath
+Assert-Contract ($safetyText -match "Name -ne 'Hermes Launcher\.exe'") 'Launcher ancestors remain protected from activation drain.'
+Assert-Contract ($safetyText -match 'Write-Output -NoEnumerate') 'Stack-drain safety override does not preserve the protected set type.'
 
 $breakGlassText = Get-Content -Raw -LiteralPath $breakGlassPath
 foreach ($required in @(
@@ -95,6 +102,7 @@ $tempRoot = Join-Path ([IO.Path]::GetTempPath()) (
 [IO.Directory]::CreateDirectory($tempRoot) | Out-Null
 $script:root = $tempRoot
 . $stackDrainPath
+. $stackSafetyPath
 
 $childScript = Join-Path $tempRoot 'linger.ps1'
 @'
