@@ -30,12 +30,16 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
                 "scripts/desktop-update/DesktopUpdate-State.ps1",
                 "scripts/desktop-update/DesktopUpdate-Promotion.ps1",
                 "scripts/desktop-update/DesktopUpdate-Stage.ps1",
+                "scripts/desktop-update/DesktopUpdate-Reliability.ps1",
+                "scripts/desktop-update/DesktopUpdate-Reliability-Platform.ps1",
+                "scripts/desktop-update/DesktopUpdate-Activation.ps1",
             )
         )
 
-    def test_updater_stages_then_relaunches_after_recorded_parent_exits(self) -> None:
+    def test_updater_stages_then_relaunches_after_draining_launcher_tree(self) -> None:
         text = self.read_updater()
         promotion = self.read("scripts/desktop-update/DesktopUpdate-Promotion.ps1")
+        activation = self.read("scripts/desktop-update/DesktopUpdate-Activation.ps1")
 
         for required in (
             "'Promote'",
@@ -44,6 +48,11 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
             "Start-HermesDesktopPromotionHelper",
             "Wait-HermesDesktopLauncherExit",
             "Test-HermesDesktopProcessIdentity",
+            "Get-HermesDesktopLauncherProcesses",
+            "Request-HermesDesktopLauncherClose",
+            "CloseMainWindow",
+            "activation-failed",
+            "activationAttempts",
             "'-DestinationDirectory'",
             "launcherStayedOpen",
             "Preparing the update in the background. Hermes Launcher will remain open.",
@@ -55,12 +64,12 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
         ):
             self.assertIn(required, text)
 
+        self.assertIn("renderer, GPU, utility and crashpad children", activation)
+        self.assertIn("Stop-Process", activation)
+        self.assertIn("Get-CimInstance Win32_Process", activation)
         self.assertNotIn("ConvertTo-HermesDesktopUpdateMarker -Name helper", text)
         self.assertNotIn("Start-HermesKnownGoodLauncher", text)
-        self.assertNotIn("Wait-HermesDesktopUpdateParent", text)
         self.assertNotIn("while ($true) {\n        while (", promotion)
-        self.assertIn("-ProcessId $processId", promotion)
-        self.assertIn("-StartedAt $startedAt", promotion)
 
     def test_staged_success_marker_reports_deferred_activation(self) -> None:
         text = self.read("Invoke-Hermes-DesktopUpdate.ps1")
@@ -202,7 +211,7 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
         )
         self.assertIn("rejects unsafe identities and branch input", text)
 
-    def test_startup_archives_obsolete_pending_activation_state(self) -> None:
+    def test_startup_recovers_valid_pending_activation_with_current_code(self) -> None:
         helper = self.read("scripts/Repair-Hermes-DesktopUpdateState.ps1")
         startup = self.read("Start-Hermes-Local.ps1")
 
@@ -212,7 +221,11 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
             "$currentCommit -eq $targetCommit",
             "Hermes Launcher.exe",
             "Test-HermesPendingPromotionProcess",
-            "-Mode\\s+Promote",
+            "Invoke-HermesPendingActivationRecovery",
+            "desktop-activation-recovery.lock",
+            "-Mode Promote",
+            "currently installed updater code",
+            "Wait-HermesPendingActivationResolution",
             "Move-Item",
             ".stale-$stamp",
             "Archived stale Desktop update state",

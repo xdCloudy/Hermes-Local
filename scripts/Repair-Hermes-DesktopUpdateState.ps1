@@ -82,6 +82,122 @@ function Test-HermesPendingPromotionProcess {
     }
 }
 
+function Wait-HermesPendingActivationResolution {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string] $PendingPath,
+        [ValidateRange(1, 300)][int] $TimeoutSeconds = 150
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while (
+        (Test-Path -LiteralPath $PendingPath -PathType Leaf) -and
+        (Get-Date) -lt $deadline
+    ) {
+        Start-Sleep -Milliseconds 250
+    }
+
+    -not (Test-Path -LiteralPath $PendingPath -PathType Leaf)
+}
+
+function Invoke-HermesPendingActivationRecovery {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string] $Root,
+        [Parameter(Mandatory)][string] $PendingPath,
+        [Parameter(Mandatory)][object] $Pending
+    )
+
+    $planPath = [string](
+        Get-PendingValue -InputObject $Pending -Name planPath -Default ''
+    )
+    if (-not $planPath -or -not (Test-Path -LiteralPath $planPath -PathType Leaf)) {
+        throw 'Pending Desktop activation has no recoverable plan.'
+    }
+
+    $promotionPid = [int](
+        Get-PendingValue -InputObject $Pending -Name promotionPid -Default 0
+    )
+    $promotionStartedAt = [string](
+        Get-PendingValue -InputObject $Pending -Name promotionStartedAt -Default ''
+    )
+
+    if (
+        Test-HermesPendingPromotionProcess `
+            -ProcessId $promotionPid `
+            -StartedAt $promotionStartedAt `
+            -PlanPath $planPath
+    ) {
+        # The staged helper may have been copied from an older launcher build.
+        # Stop it and recover through the currently installed updater code so
+        # process-drain and failure-state fixes apply to old pending updates too.
+        Stop-Process -Id $promotionPid -Force -ErrorAction Stop
+        try {
+            Wait-Process -Id $promotionPid -Timeout 10 -ErrorAction SilentlyContinue
+        } catch {
+        }
+    }
+
+    $lockPath = Join-Path $Root 'data\runtime\locks\desktop-activation-recovery.lock'
+    [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($lockPath)) | Out-Null
+    $lockStream = $null
+    try {
+        try {
+            $lockStream = [IO.File]::Open(
+                $lockPath,
+                [IO.FileMode]::OpenOrCreate,
+                [IO.FileAccess]::ReadWrite,
+                [IO.FileShare]::None
+            )
+        } catch [IO.IOException] {
+            if (Wait-HermesPendingActivationResolution -PendingPath $PendingPath) {
+                return $true
+            }
+            throw 'Another Desktop activation recovery remained active for too long.'
+        }
+
+        $updater = Join-Path $Root 'Invoke-Hermes-DesktopUpdate.ps1'
+        if (-not (Test-Path -LiteralPath $updater -PathType Leaf)) {
+            throw "Desktop updater is missing: $updater"
+        }
+
+        $pwsh = (Get-Command pwsh.exe -ErrorAction Stop).Source
+        $output = @(
+            & $pwsh `
+                -NoLogo `
+                -NoProfile `
+                -NonInteractive `
+                -ExecutionPolicy Bypass `
+                -File $updater `
+                -Mode Promote `
+                -PlanPath $planPath `
+                -NonInteractive 2>&1 |
+                ForEach-Object { [string]$_ }
+        )
+        $exitCode = $LASTEXITCODE
+
+        if (
+            $exitCode -ne 0 -or
+            (Test-Path -LiteralPath $PendingPath -PathType Leaf)
+        ) {
+            $detail = ($output | Select-Object -Last 20) -join [Environment]::NewLine
+            throw (
+                "Automatic Desktop activation recovery failed with exit code $exitCode." +
+                $(if ($detail) { "`n$detail" } else { '' })
+            )
+        }
+
+        Write-HermesLog -Component launcher -Level INFO -Message (
+            "Recovered pending Desktop activation through current updater code. Plan: $planPath"
+        )
+        $true
+    } finally {
+        if ($lockStream) {
+            $lockStream.Dispose()
+        }
+    }
+}
+
 try {
     $root = [IO.Path]::GetFullPath($RepositoryRoot)
     Push-Location $root
@@ -136,6 +252,10 @@ try {
             -PathType Leaf)
 
     if ($validPending) {
+        $null = Invoke-HermesPendingActivationRecovery `
+            -Root $root `
+            -PendingPath $pendingPath `
+            -Pending $pending
         exit 0
     }
 

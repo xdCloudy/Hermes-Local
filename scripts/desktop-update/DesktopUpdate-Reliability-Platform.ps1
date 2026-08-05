@@ -305,3 +305,18 @@ function Repair-HermesDesktopGitOperationState {
         Actions = $actions.ToArray()
     }
 }
+
+$partsRootVariable = Get-Variable `
+    -Name desktopUpdatePartsRoot `
+    -Scope Script `
+    -ErrorAction SilentlyContinue
+$resolvedPartsRoot = if ($partsRootVariable -and $partsRootVariable.Value) {
+    [IO.Path]::GetFullPath([string]$partsRootVariable.Value)
+} else {
+    [IO.Path]::GetFullPath($PSScriptRoot)
+}
+$activationPart = Join-Path $resolvedPartsRoot 'DesktopUpdate-Activation.ps1'
+if (-not (Test-Path -LiteralPath $activationPart -PathType Leaf)) {
+    throw "Hermes Desktop activation recovery component is missing: $activationPart"
+}
+. $activationPart
