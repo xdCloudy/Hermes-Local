@@ -1,14 +1,20 @@
-From 2222222222222222222222222222222222222222 Mon Sep 17 00:00:00 2001
+From 24c8983ab28345aca0f8b6e9ca3b2581a5bf8a8b Mon Sep 17 00:00:00 2001
 From: OpenAI <openai@localhost>
 Date: Wed, 5 Aug 2026 09:36:00 +0100
-Subject: [PATCH 56/58] feat(desktop): run downloads through Task Centre
+Subject: [PATCH] feat(desktop): run downloads through Task Centre
 
 ---
+ apps/desktop/electron/hermes-local-control.ts | 275 +++++++++++++++++-
+ 1 file changed, 268 insertions(+), 7 deletions(-)
+
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
-index fc419a6..dead5601 100644
+index fc419a6..b9f0096 100644
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
-@@ -1,3 +1,10 @@
+@@ -14,6 +14,13 @@ import {
+   normalizeHermesLocalDashboardUrl
+ } from './hermes-local-dashboard-view'
+ import { readGatewayStatus } from './hermes-local-gateway-status'
 +import {
 +  isPausedModelDownload,
 +  modelDownloadCompletionEvidence,
@@ -19,11 +25,17 @@ index fc419a6..dead5601 100644
  import { activeModelSwitch, planModelSelection, runtimeModelIdentityMatches } from './hermes-local-model-switch'
  import {
    deleteProfile,
-@@ -14,2 +21,3 @@
+@@ -56,6 +63,7 @@ const ACTION_SCRIPTS = {
+   backup: 'Backup-Hermes-Local.ps1',
+   benchmark: 'Benchmark-Hermes-Local.ps1',
    diagnostics: 'Export-Hermes-Diagnostics.ps1',
 +  'model-download': 'Invoke-Hermes-ModelDownload.ps1',
    repair: 'Repair-Hermes-Local.ps1',
-@@ -26,3 +34,7 @@
+   restart: 'Restart-Hermes-Local.ps1',
+   restore: 'Restore-Hermes-Local.ps1',
+@@ -240,7 +248,11 @@ function appendTaskOutput(task: ActionTask, chunk: Buffer | string): void {
+   const updateStageMatches = [...text.matchAll(/::hermes-update-stage::([a-z0-9-]+)::([^\r\n]+)/gi)]
+   const securityStageMatches = [...text.matchAll(/::hermes-security-stage::([a-z0-9-]+)::([^\r\n]+)/gi)]
    const restoreStageMatches = [...text.matchAll(/::hermes-restore-stage::([a-z0-9-]+)::([^\r\n]+)/gi)]
 +  const modelDownloadStageMatches = [
 +    ...text.matchAll(/::hermes-model-download-stage::([a-z0-9-]+)::([^\r\n]+)/gi)
@@ -31,7 +43,71 @@ index fc419a6..dead5601 100644
    const stage =
 +    modelDownloadStageMatches.at(-1)?.[1] ||
      restoreStageMatches.at(-1)?.[1] ||
-@@ -39,2 +51,58 @@
+     securityStageMatches.at(-1)?.[1] ||
+     updateStageMatches.at(-1)?.[1] ||
+@@ -790,7 +802,27 @@ function updateCompletionEvidence(task: TaskRecord): null | TaskCompletionEviden
+   }
+ }
+ 
++function modelDownloadProgress(task: TaskRecord): null | ModelDownloadProgressDocument {
++  const progress = safeReadJson<ModelDownloadProgressDocument>(modelDownloadProgressPath(task.id))
++
++  return progress && progress.taskId === task.id ? progress : null
++}
++
++function modelDownloadProgressSummary(progress: ModelDownloadProgressDocument): string {
++  const taskProgress = taskProgressFromModelDownload(progress)
++  const bytes = taskProgress.bytesCompleted === null || taskProgress.bytesCompleted === undefined
++    ? ''
++    : taskProgress.bytesTotal
++      ? ` ${taskProgress.bytesCompleted}/${taskProgress.bytesTotal} bytes`
++      : ` ${taskProgress.bytesCompleted} bytes`
++  return `Model download: ${String(progress.stage || 'running')}${bytes} · ${String(progress.message || '')}`.trim()
++}
++
+ function taskCompletionEvidence(task: TaskRecord): null | TaskCompletionEvidence {
++  if (task.action === 'model-download') {
++    return modelDownloadCompletionEvidence(task, modelDownloadProgress(task))
++  }
++
+   if (task.action === 'benchmark') {
+     const progress = benchmarkProgress(task)
+     const status = String(progress?.status || '')
+@@ -1009,6 +1041,30 @@ function reconcileTaskRegistry(): void {
+       continue
+     }
+ 
++    if (task.action === 'model-download') {
++      const progress = modelDownloadProgress(task)
++      const observedAt = Date.parse(String(progress?.updatedAt || ''))
++
++      if (progress && Number.isFinite(observedAt) && observedAt >= Date.parse(task.updatedAt)) {
++        task.progress = taskProgressFromModelDownload(progress)
++        task.stage = String(progress.stage || task.stage || '') || null
++        const summary = modelDownloadProgressSummary(progress)
++        const output = boundedTaskOutput(task.output, `\n${summary}\n`, MAX_TASK_OUTPUT)
++        task.output = output.output
++        task.outputTruncated ||= output.truncated
++        task.updatedAt = new Date(observedAt).toISOString()
++        if (isPausedModelDownload(progress) && task.status !== 'paused') {
++          replaceTaskRecord(
++            task,
++            transitionTask(task, 'paused', task.updatedAt, {
++              owner: { kind: 'desktop-child-process', pid: null }
++            })
++          )
++        }
++        changed = true
++      }
++    }
++
+     const recovered = reconcileRecoveredTask(
+       task,
+       processAlive(task.owner.pid),
+@@ -1110,6 +1166,62 @@ function actionArguments(action: ActionName, input: Record<string, unknown>): st
+     args.push('-Profile', validProfileName(input.profile || configuredProfile))
+   }
+ 
 +  if (action === 'model-download') {
 +    const sourceUrl = String(input.sourceUrl || '').trim()
 +    const repository = String(input.repository || '').trim()
@@ -90,7 +166,52 @@ index fc419a6..dead5601 100644
 +
    if (action === 'switch-model') {
      const targetModelId = String(input.targetModelId || '')
-@@ -51,2 +119,32 @@
+     const previousModelId = String(input.previousModelId || '')
+@@ -1228,8 +1340,31 @@ function spawnActionTask(task: ActionTask): void {
+         }
+       }
+ 
++      if (task.action === 'model-download') {
++        const progress = modelDownloadProgress(task)
++
++        if (progress) {
++          task.progress = taskProgressFromModelDownload(progress)
++          task.stage = String(progress.stage || task.stage || '') || null
++        }
++        if (isPausedModelDownload(progress)) {
++          replaceTaskRecord(
++            task,
++            transitionTask(task, 'paused', String(progress?.updatedAt || new Date().toISOString()), {
++              exitCode: code,
++              owner: { kind: 'desktop-child-process', pid: null }
++            })
++          )
++          task.child = null
++          flushScheduledTaskPersistence()
++          return
++        }
++      }
++
+       const evidence =
+-        task.action === 'update'
++        task.action === 'model-download'
++          ? modelDownloadCompletionEvidence(task, modelDownloadProgress(task))
++          : task.action === 'update'
+           ? updateCompletionEvidence(task)
+           : task.action === 'security'
+             ? securityCompletionEvidence(task)
+@@ -1264,7 +1399,7 @@ function drainQueuedTasks(): void {
+     }
+ 
+     const otherTasks = [...tasks.values()].filter(candidate => candidate.id !== task.id)
+-    const admission = admitTask(task.action, otherTasks)
++    const admission = admitTask(task.action, otherTasks, task.context)
+ 
+     if (admission.kind === 'start') {
+       spawnActionTask(task)
+@@ -1292,6 +1427,36 @@ function pruneCompletedTasks(taskMap: Map<string, ActionTask> = tasks, maximum =
+ }
+ 
  function taskContext(action: ActionName, input: Record<string, unknown>): Record<string, string> {
 +  if (action === 'model-download') {
 +    const auxiliaryFilesJson = typeof input.auxiliaryFilesJson === 'string'
@@ -122,105 +243,41 @@ index fc419a6..dead5601 100644
 +    }
 +  }
 +
-   if (action === 'switch-model') {
-@@ -63,2 +161,4 @@
+   if (action === 'update') {
+     return Object.fromEntries(
+       ['mode', 'targetBranch', 'targetCommit']
+@@ -1337,7 +1502,9 @@ function startActionTask(actionValue: unknown, input: unknown) {
+   }
+ 
    const payload = input && typeof input === 'object' ? (input as Record<string, unknown>) : {}
 -  const admission = admitTask(action, tasks.values())
 +  actionArguments(action, payload)
 +  const context = taskContext(action, payload)
 +  const admission = admitTask(action, tasks.values(), context)
-@@ -75,2 +175 @@
+ 
+   if (admission.kind === 'join') {
+     const existing = tasks.get(admission.taskId)
+@@ -1353,7 +1520,6 @@ function startActionTask(actionValue: unknown, input: unknown) {
+     throw new Error(admission.message)
+   }
+ 
 -  actionArguments(action, payload)
    const id = crypto.randomUUID()
-@@ -87,3 +186,3 @@
+ 
+   const record = createTaskRecord(
+@@ -1361,7 +1527,7 @@ function startActionTask(actionValue: unknown, input: unknown) {
+     id,
+     { kind: 'desktop-child-process', pid: null },
      new Date().toISOString(),
 -    taskContext(action, payload)
 +    context
    )
-@@ -100,3 +199,3 @@
--    const admission = admitTask(task.action, otherTasks)
-+    const admission = admitTask(task.action, otherTasks, task.context)
  
-     if (admission.kind === 'start') {
-@@ -113,2 +212,22 @@
-+function modelDownloadProgress(task: TaskRecord): null | ModelDownloadProgressDocument {
-+  const progress = safeReadJson<ModelDownloadProgressDocument>(modelDownloadProgressPath(task.id))
-+
-+  return progress && progress.taskId === task.id ? progress : null
-+}
-+
-+function modelDownloadProgressSummary(progress: ModelDownloadProgressDocument): string {
-+  const taskProgress = taskProgressFromModelDownload(progress)
-+  const bytes = taskProgress.bytesCompleted === null || taskProgress.bytesCompleted === undefined
-+    ? ''
-+    : taskProgress.bytesTotal
-+      ? ` ${taskProgress.bytesCompleted}/${taskProgress.bytesTotal} bytes`
-+      : ` ${taskProgress.bytesCompleted} bytes`
-+  return `Model download: ${String(progress.stage || 'running')}${bytes} · ${String(progress.message || '')}`.trim()
-+}
-+
- function taskCompletionEvidence(task: TaskRecord): null | TaskCompletionEvidence {
-+  if (task.action === 'model-download') {
-+    return modelDownloadCompletionEvidence(task, modelDownloadProgress(task))
-+  }
-+
-   if (task.action === 'benchmark') {
-@@ -125,3 +244,27 @@
-+    if (task.action === 'model-download') {
-+      const progress = modelDownloadProgress(task)
-+      const observedAt = Date.parse(String(progress?.updatedAt || ''))
-+
-+      if (progress && Number.isFinite(observedAt) && observedAt >= Date.parse(task.updatedAt)) {
-+        task.progress = taskProgressFromModelDownload(progress)
-+        task.stage = String(progress.stage || task.stage || '') || null
-+        const summary = modelDownloadProgressSummary(progress)
-+        const output = boundedTaskOutput(task.output, `\n${summary}\n`, MAX_TASK_OUTPUT)
-+        task.output = output.output
-+        task.outputTruncated ||= output.truncated
-+        task.updatedAt = new Date(observedAt).toISOString()
-+        if (isPausedModelDownload(progress) && task.status !== 'paused') {
-+          replaceTaskRecord(
-+            task,
-+            transitionTask(task, 'paused', task.updatedAt, {
-+              owner: { kind: 'desktop-child-process', pid: null }
-+            })
-+          )
-+        }
-+        changed = true
-+      }
-+    }
-+
-     const recovered = reconcileRecoveredTask(
-       task,
-       processAlive(task.owner.pid),
-@@ -138,2 +281,25 @@
-+      if (task.action === 'model-download') {
-+        const progress = modelDownloadProgress(task)
-+
-+        if (progress) {
-+          task.progress = taskProgressFromModelDownload(progress)
-+          task.stage = String(progress.stage || task.stage || '') || null
-+        }
-+        if (isPausedModelDownload(progress)) {
-+          replaceTaskRecord(
-+            task,
-+            transitionTask(task, 'paused', String(progress?.updatedAt || new Date().toISOString()), {
-+              exitCode: code,
-+              owner: { kind: 'desktop-child-process', pid: null }
-+            })
-+          )
-+          task.child = null
-+          flushScheduledTaskPersistence()
-+          return
-+        }
-+      }
-+
-       const evidence =
--        task.action === 'update'
-+        task.action === 'model-download'
-+          ? modelDownloadCompletionEvidence(task, modelDownloadProgress(task))
-+          : task.action === 'update'
-@@ -150,2 +316,48 @@
+   const task: ActionTask = { ...record, child: null, events: new EventEmitter(), input: payload }
+@@ -1400,6 +1566,52 @@ function listActionTasks(): TaskView[] {
+   return [...tasks.values()].map(task => publicTask(task))
+ }
+ 
 +function writeModelDownloadControl(task: ActionTask, action: 'cancel' | 'pause'): void {
 +  const controlPath = resolveUnderRoot(`data\\runtime\\model-download-controls\\${task.id}.json`)
 +  const temporaryPath = `${controlPath}.${process.pid}.${Date.now()}.tmp`
@@ -269,7 +326,11 @@ index fc419a6..dead5601 100644
 +
  function cancelActionTask(taskId: unknown): TaskView {
    reconcileTaskRegistry()
-@@ -162,2 +374,28 @@
+ 
+@@ -1477,6 +1689,32 @@ function cancelActionTask(taskId: unknown): TaskView {
+     return publicTask(task)
+   }
+ 
 +  if (task.action === 'model-download') {
 +    if (task.status === 'paused') {
 +      if (task.context.partialRetention === 'discard') {
@@ -298,7 +359,11 @@ index fc419a6..dead5601 100644
 +
    if (task.action === 'restore') {
      const cancellationPath = resolveUnderRoot('data\\runtime\\restore-cancel.json')
-@@ -174,4 +412,14 @@
+     const temporaryPath = `${cancellationPath}.${process.pid}.${Date.now()}.tmp`
+@@ -2012,8 +2250,18 @@ function runtimeStackRunning(state: null | Record<string, any>): boolean {
+   )
+ }
+ 
 +function assertModelStorageAvailable(): void {
 +  const active = [...tasks.values()].find(
 +    task => task.action === 'model-download' && ['cancelling', 'paused', 'queued', 'running'].includes(task.status)
@@ -312,13 +377,21 @@ index fc419a6..dead5601 100644
    reconcileTaskRegistry()
 +  assertModelStorageAvailable()
  
-   const targetModelId
-@@ -188,2 +436,4 @@
+   const targetModelId = String(idValue || '').trim()
+   const configuration = readLocalConfiguration(localRoot(), os.cpus().length)
+@@ -2083,6 +2331,8 @@ export function registerHermesLocalControlIpc(
+   ipcMain.handle('hermes:local:action:status', (_event, taskId) => getActionTask(taskId))
+   ipcMain.handle('hermes:local:action:list', listActionTasks)
    ipcMain.handle('hermes:local:action:cancel', (_event, taskId) => cancelActionTask(taskId))
 +  ipcMain.handle('hermes:local:action:pause', (_event, taskId) => pauseActionTask(taskId))
 +  ipcMain.handle('hermes:local:action:resume', (_event, taskId) => resumeActionTask(taskId))
    ipcMain.handle('hermes:local:action:retry', (_event, taskId) => retryActionTask(taskId))
-@@ -200,2 +450,8 @@
+   ipcMain.handle('hermes:local:action:open-result', (_event, taskId) => openActionTaskResult(taskId))
+   ipcMain.handle('hermes:local:logs', (_event, name, lines) => readLog(name, lines))
+@@ -2093,8 +2343,14 @@ export function registerHermesLocalControlIpc(
+   )
+   ipcMain.handle('hermes:local:profile:delete', (_event, name) => deleteProfile(localRoot(), name, os.cpus().length))
+   ipcMain.handle('hermes:local:profile:select', (_event, name) => selectProfile(localRoot(), name, os.cpus().length))
 -  ipcMain.handle('hermes:local:model:register', (_event, model) => registerModel(localRoot(), model))
 -  ipcMain.handle('hermes:local:model:remove', (_event, id) => removeModel(localRoot(), id, os.cpus().length))
 +  ipcMain.handle('hermes:local:model:register', (_event, model) => {
@@ -329,7 +402,12 @@ index fc419a6..dead5601 100644
 +    assertModelStorageAvailable()
 +    return removeModel(localRoot(), id, os.cpus().length)
 +  })
-@@ -212,2 +468,7 @@
+   ipcMain.handle('hermes:local:model:select', (_event, id) => selectManagedModel(id))
+   ipcMain.handle('hermes:local:settings:save', (_event, settings) =>
+     saveWorkstationSettings(localRoot(), settings, os.cpus().length)
+@@ -2150,6 +2406,11 @@ export const hermesLocalControlTest = {
+   setLoginItem,
+   actionArguments,
    publicUpdateOperation,
 +  modelDownloadCompletionEvidence,
 +  modelDownloadProgress,
@@ -337,5 +415,8 @@ index fc419a6..dead5601 100644
 +  pauseActionTask,
 +  resumeActionTask,
    securityCompletionEvidence,
+   securityProgressSummary,
+   restoreCompletionEvidence,
 -- 
 2.47.3
+

@@ -1,62 +1,38 @@
-From 3333333333333333333333333333333333333333 Mon Sep 17 00:00:00 2001
+From 33e66c5af7d4cd9c232bbb82148fd4740265ae86 Mon Sep 17 00:00:00 2001
 From: OpenAI <openai@localhost>
 Date: Wed, 5 Aug 2026 09:37:00 +0100
-Subject: [PATCH 57/58] feat(desktop): expose download lifecycle controls
+Subject: [PATCH] feat(desktop): expose download lifecycle controls
 
 ---
+ apps/desktop/electron/preload.ts              |  2 +
+ apps/desktop/src/app/chat/sidebar/index.tsx   |  8 ++-
+ .../src/app/local-workstation/index.tsx       |  8 +++
+ .../src/app/local-workstation/task-centre.tsx | 57 ++++++++++++++++---
+ .../src/app/local-workstation/types.ts        | 11 +++-
+ apps/desktop/src/global.d.ts                  |  2 +
+ 6 files changed, 75 insertions(+), 13 deletions(-)
+
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
-index 41f2d67..dead5701 100644
+index 41f2d67..38e56aa 100644
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
-@@ -1,2 +1,4 @@
+@@ -114,6 +114,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
+     actionStatus: taskId => ipcRenderer.invoke('hermes:local:action:status', taskId),
+     listActions: () => ipcRenderer.invoke('hermes:local:action:list'),
      cancelAction: taskId => ipcRenderer.invoke('hermes:local:action:cancel', taskId),
 +    pauseAction: taskId => ipcRenderer.invoke('hermes:local:action:pause', taskId),
 +    resumeAction: taskId => ipcRenderer.invoke('hermes:local:action:resume', taskId),
      retryAction: taskId => ipcRenderer.invoke('hermes:local:action:retry', taskId),
-diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
-index a35958a..dead5702 100644
---- a/apps/desktop/src/app/local-workstation/types.ts
-+++ b/apps/desktop/src/app/local-workstation/types.ts
-@@ -1,2 +1,3 @@
-   | 'diagnostics'
-+  | 'model-download'
-   | 'repair'
-@@ -13 +14 @@
--    resource: 'installation' | 'model-runtime' | 'user-data' | 'workstation'
-+    resource: 'installation' | 'model-runtime' | 'model-storage' | 'user-data' | 'workstation'
-@@ -24 +25 @@
--  status: 'cancelled' | 'cancelling' | 'failed' | 'interrupted' | 'queued' | 'running' | 'succeeded'
-+  status: 'cancelled' | 'cancelling' | 'failed' | 'interrupted' | 'paused' | 'queued' | 'running' | 'succeeded'
-@@ -35,9 +36,15 @@
-   progress?: null | {
-+    bytesCompleted?: null | number
-+    bytesTotal?: null | number
-     cancellable?: boolean
-     completedUnits: null | number
-     counters: Record<string, number>
-+    etaSeconds?: null | number
-     message: null | string
-     mode: 'determinate' | 'indeterminate'
-+    pauseSupported?: boolean
-     percent: null | number
-+    rateBytesPerSecond?: null | number
-+    resumeSupported?: boolean
-     totalUnits: null | number
-   }
-diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
-index ee2ef92..dead5703 100644
---- a/apps/desktop/src/global.d.ts
-+++ b/apps/desktop/src/global.d.ts
-@@ -1,2 +1,4 @@
-         cancelAction: (taskId: string) => Promise<LocalActionTask>
-+        pauseAction: (taskId: string) => Promise<LocalActionTask>
-+        resumeAction: (taskId: string) => Promise<LocalActionTask>
-         retryAction: (taskId: string) => Promise<LocalActionTask>
+     openActionResult: taskId => ipcRenderer.invoke('hermes:local:action:open-result', taskId),
+     logs: (name, lines) => ipcRenderer.invoke('hermes:local:logs', name, lines),
 diff --git a/apps/desktop/src/app/chat/sidebar/index.tsx b/apps/desktop/src/app/chat/sidebar/index.tsx
-index d8c42ef..dead5704 100644
+index d8c42ef..e070821 100644
 --- a/apps/desktop/src/app/chat/sidebar/index.tsx
 +++ b/apps/desktop/src/app/chat/sidebar/index.tsx
-@@ -1,2 +1,6 @@
+@@ -398,8 +398,12 @@ export function ChatSidebar({
+ 
+         if (mounted) {
+           setActiveTaskCount(
 -            tasks.filter(task => task.status === 'queued' || task.status === 'running' || task.status === 'cancelling')
 -              .length
 +            tasks.filter(task =>
@@ -65,51 +41,117 @@ index d8c42ef..dead5704 100644
 +              task.status === 'cancelling' ||
 +              task.status === 'paused'
 +            ).length
+           )
+         }
+       } catch {
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index 0c9135b..70638fe 100644
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -1778,6 +1778,14 @@ function SectionContent({
+         onOpenResult={async taskId => {
+           await window.hermesDesktop.localWorkstation.openActionResult(taskId)
+         }}
++        onPause={async taskId => {
++          await window.hermesDesktop.localWorkstation.pauseAction(taskId)
++          onRefresh()
++        }}
++        onResume={async taskId => {
++          await window.hermesDesktop.localWorkstation.resumeAction(taskId)
++          onRefresh()
++        }}
+         onRetry={async taskId => {
+           await window.hermesDesktop.localWorkstation.retryAction(taskId)
+           onRefresh()
 diff --git a/apps/desktop/src/app/local-workstation/task-centre.tsx b/apps/desktop/src/app/local-workstation/task-centre.tsx
-index ccb96f7..dead5705 100644
+index ccb96f7..689a2e8 100644
 --- a/apps/desktop/src/app/local-workstation/task-centre.tsx
 +++ b/apps/desktop/src/app/local-workstation/task-centre.tsx
-@@ -1 +1 @@
+@@ -32,12 +32,13 @@ export const TASK_FILTERS: { id: TaskFilter; label: string }[] = [
+   { id: 'cancelled', label: 'Cancelled' }
+ ]
+ 
 -const activeStates = new Set<LocalActionTask['status']>(['cancelling', 'queued', 'running'])
 +const activeStates = new Set<LocalActionTask['status']>(['cancelling', 'paused', 'queued', 'running'])
-@@ -12,2 +12,3 @@
+ 
+ const ACTION_COPY: Record<LocalActionTask['action'], { feature: string; label: string; route: string }> = {
+   backup: { feature: 'Services', label: 'Backup', route: '/services' },
+   benchmark: { feature: 'Benchmarks', label: 'Benchmark', route: '/benchmarks' },
    diagnostics: { feature: 'Services', label: 'Diagnostics', route: '/services' },
 +  'model-download': { feature: 'Models', label: 'Model download', route: '/models' },
    repair: { feature: 'Services', label: 'Repair', route: '/services' },
-@@ -24,2 +25,3 @@
+   restart: { feature: 'Services', label: 'Restart', route: '/services' },
+   restore: { feature: 'Restore', label: 'Restore', route: '/restore' },
+@@ -54,6 +55,7 @@ const STATUS_COPY: Record<LocalActionTask['status'], string> = {
+   cancelling: 'Cancelling',
+   failed: 'Failed',
    interrupted: 'Interrupted',
 +  paused: 'Paused',
    queued: 'Queued',
-@@ -36,3 +38,7 @@
-   if (task.status === 'cancelling') {return 'Stopping owned process'}
+   running: 'Running',
+   succeeded: 'Completed'
+@@ -119,7 +121,11 @@ function taskStage(task: LocalActionTask): string {
+     return task.action === 'restore' ? 'Waiting for a safe restore cancellation boundary' : 'Stopping owned process'
+   }
  
+-  if (task.status === 'running') {return task.stage || `${ACTION_COPY[task.action].label} in progress`}
 +  if (task.status === 'paused') {return task.progress?.message || 'Paused with resumable partial data'}
 +
-+  if (task.stage) {return task.progress?.message || task.stage.replaceAll('-', ' ')}
-+
-   if (task.status === 'running') {return `${ACTION_COPY[task.action].label} in progress`}
-@@ -49,3 +55,3 @@
++  if (task.status === 'running') {
++    return task.progress?.message || task.stage || `${ACTION_COPY[task.action].label} in progress`
++  }
+ 
+   if (task.status === 'interrupted') {return 'Owner exited without a conclusive result'}
+ 
+@@ -149,7 +155,7 @@ function statusTone(status: LocalActionTask['status']): string {
+ 
+   if (status === 'failed') {return 'text-red-500'}
+ 
 -  if (status === 'interrupted' || status === 'cancelled') {return 'text-amber-500'}
 +  if (status === 'interrupted' || status === 'cancelled' || status === 'paused') {return 'text-amber-500'}
  
    if (status === 'queued' || status === 'cancelling') {return 'text-amber-500'}
-@@ -62,3 +68,5 @@
+ 
+@@ -167,6 +173,8 @@ function StatusIcon({ status }: { status: LocalActionTask['status'] }) {
+ 
    if (status === 'cancelled') {return <IconBan className="size-4" />}
  
 +  if (status === 'paused') {return <IconPlayerPause className="size-4" />}
 +
    return <IconClock className="size-4" />
-@@ -75,2 +83,4 @@
+ }
+ 
+@@ -188,6 +196,8 @@ interface TaskCentreProps {
+   onError: (message: string) => void
+   onNavigate: (path: string) => void
    onOpenResult: (taskId: string) => Promise<void>
 +  onPause: (taskId: string) => Promise<void>
 +  onResume: (taskId: string) => Promise<void>
    onRetry: (taskId: string) => Promise<void>
-@@ -87,2 +97,4 @@
+   profileName: string
+   tasks: LocalActionTask[]
+@@ -199,6 +209,8 @@ export function TaskCentre({
+   onError,
+   onNavigate,
    onOpenResult,
 +  onPause,
 +  onResume,
    onRetry,
-@@ -99,6 +111,20 @@
+   profileName,
+   tasks
+@@ -215,7 +227,7 @@ export function TaskCentre({
+ 
+   const selected =
+     visibleTasks.find(task => task.id === selectedTaskId) ||
+-    visibleTasks.find(task => task.status === 'running' || task.status === 'cancelling') ||
++    visibleTasks.find(task => task.status === 'running' || task.status === 'cancelling' || task.status === 'paused') ||
+     visibleTasks[0]
+ 
+   const selectedProgressPercent =
+@@ -382,11 +394,25 @@ export function TaskCentre({
+                     {pendingControl === 'cancel' ? <IconLoader2 className="size-3.5 animate-spin" /> : <IconX className="size-3.5" />}
+                     Cancel
+                   </Button>
 -                  <Button className="h-8 gap-1.5 px-3 text-xs" disabled size="sm" title="Pause is not supported by this action" variant="outline">
 -                    <IconPlayerPause className="size-3.5" /> Pause
 +                  <Button
@@ -134,43 +176,23 @@ index ccb96f7..dead5705 100644
 +                  >
 +                    {pendingControl === 'resume' ? <IconLoader2 className="size-3.5 animate-spin" /> : <IconPlayerPlay className="size-3.5" />} Resume
                    </Button>
-@@ -115,11 +141,31 @@
--              <div className="h-1 bg-(--ui-control-background)">
-+              <div
-+                aria-label={
-+                  selected.progress?.mode === 'determinate' && selected.progress.percent !== null
-+                    ? `Task progress ${selected.progress.percent}%`
-+                    : 'Task progress is indeterminate'
-+                }
-+                aria-valuemax={100}
-+                aria-valuemin={0}
-+                aria-valuenow={
-+                  selected.progress?.mode === 'determinate' && selected.progress.percent !== null
-+                    ? selected.progress.percent
-+                    : undefined
-+                }
-+                className="h-1 bg-(--ui-control-background)"
-+                role="progressbar"
-+              >
-                 <div
+                   {selected.capabilities.retry && (
+                     <Button
+@@ -418,11 +444,12 @@ export function TaskCentre({
                    className={cn(
--                    'h-full bg-(--ui-accent)',
--                    activeStates.has(selected.status) && 'w-1/3 animate-pulse motion-reduce:animate-none',
-+                    'h-full bg-(--ui-accent) transition-[width]',
-+                    activeStates.has(selected.status) && selected.progress?.mode !== 'determinate' && 'w-1/3 animate-pulse motion-reduce:animate-none',
+                     'h-full bg-(--ui-accent) transition-[width]',
+                     activeStates.has(selected.status) &&
++                      selected.status !== 'paused' &&
+                       selectedProgressPercent === null &&
+                       'w-1/3 animate-pulse motion-reduce:animate-none',
                      selected.status === 'succeeded' && 'w-full bg-emerald-500',
                      (selected.status === 'failed' || selected.status === 'interrupted') && 'w-full bg-red-500',
 -                    selected.status === 'cancelled' && 'w-full bg-amber-500'
 +                    (selected.status === 'cancelled' || selected.status === 'paused') && 'bg-amber-500'
                    )}
-+                  style={
-+                    selected.progress?.mode === 'determinate' && selected.progress.percent !== null
-+                      ? { width: `${Math.min(100, Math.max(0, selected.progress.percent))}%` }
-+                      : undefined
-+                  }
-                 />
-               </div>
-@@ -136,4 +182,16 @@
+                   style={
+                     activeStates.has(selected.status) && selectedProgressPercent !== null
+@@ -463,6 +490,18 @@ export function TaskCentre({
                <DetailRow icon={IconClock} label="Elapsed">
                  <span className="font-mono">{taskElapsed(selected)}</span>
                </DetailRow>
@@ -187,53 +209,68 @@ index ccb96f7..dead5705 100644
 +                </DetailRow>
 +              )}
                <DetailRow icon={IconServer} label="Owner">
-@@ -150,2 +208,2 @@
--  onPause: (taskId: string) => Promise<void>
--  onResume: (taskId: string) => Promise<void>
-+  onPause?: (taskId: string) => Promise<void>
-+  onResume?: (taskId: string) => Promise<void>
-@@ -162 +220 @@
--                    onClick={() => void invoke('pause', () => onPause(selected.id))}
-+                    onClick={() => void invoke('pause', () => (onPause ? onPause(selected.id) : Promise.resolve()))}
-@@ -173 +231 @@
--                    onClick={() => void invoke('resume', () => onResume(selected.id))}
-+                    onClick={() => void invoke('resume', () => (onResume ? onResume(selected.id) : Promise.resolve()))}
-diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index 0c9135b..dead5706 100644
---- a/apps/desktop/src/app/local-workstation/index.tsx
-+++ b/apps/desktop/src/app/local-workstation/index.tsx
-@@ -33,6 +33,7 @@ import { Button } from '@/components/ui/button'
- import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
- import { cn } from '@/lib/utils'
+                 <span className="font-mono">
+                   {selected.owner.kind === 'external-process' ? 'External process' : 'Desktop process'}
+diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
+index a35958a..7fc20d4 100644
+--- a/apps/desktop/src/app/local-workstation/types.ts
++++ b/apps/desktop/src/app/local-workstation/types.ts
+@@ -25,6 +25,7 @@ export type LocalAction =
+   | 'backup'
+   | 'benchmark'
+   | 'diagnostics'
++  | 'model-download'
+   | 'repair'
+   | 'restart'
+   | 'restore'
+@@ -100,18 +101,24 @@ export interface LocalActionTask {
+     pid: null | number
+   }
+   progress?: null | {
++    bytesCompleted?: null | number
++    bytesTotal?: null | number
+     cancellable?: boolean
+     completedUnits: null | number
+     counters: Record<string, number>
++    etaSeconds?: null | number
+     message: null | string
+     mode: 'determinate' | 'indeterminate'
++    pauseSupported?: boolean
+     percent: null | number
++    rateBytesPerSecond?: null | number
++    resumeSupported?: boolean
+     totalUnits: null | number
+   }
+   queuedAt: string
+   resources: {
+     mode: 'exclusive' | 'shared'
+-    resource: 'installation' | 'model-runtime' | 'user-data' | 'workstation'
++    resource: 'installation' | 'model-runtime' | 'model-storage' | 'user-data' | 'workstation'
+   }[]
+   result: null | {
+     kind: 'archive' | 'report' | 'runtime-state'
+@@ -120,7 +127,7 @@ export interface LocalActionTask {
+   schemaVersion: 1
+   stage?: null | string
+   startedAt: null | string
+-  status: 'cancelled' | 'cancelling' | 'failed' | 'interrupted' | 'queued' | 'running' | 'succeeded'
++  status: 'cancelled' | 'cancelling' | 'failed' | 'interrupted' | 'paused' | 'queued' | 'running' | 'succeeded'
+   updatedAt: string
+ }
  
-+import { ModelDownloadCard } from './model-download-card'
- import { latestSecurityTask, securityTaskState } from './security-task'
- import { TaskCentre } from './task-centre'
- import type {
-@@ -1442,5 +1443,11 @@ function SectionContent({
-           </Surface>
-         </div>
-+        <ModelDownloadCard
-+          onNavigate={onNavigate}
-+          onRefresh={onRefresh}
-+          onTaskError={onTaskError}
-+          tasks={snapshot.tasks}
-+        />
-         <ModelManager
-           onRegister={onRegisterModel}
-           onRemove={onRemoveModel}
-@@ -1500,4 +1507,12 @@
-         onOpenResult={async taskId => {
-           await window.hermesDesktop.localWorkstation.openActionResult(taskId)
-         }}
-+        onPause={async taskId => {
-+          await window.hermesDesktop.localWorkstation.pauseAction(taskId)
-+          onRefresh()
-+        }}
-+        onResume={async taskId => {
-+          await window.hermesDesktop.localWorkstation.resumeAction(taskId)
-+          onRefresh()
-+        }}
-         onRetry={async taskId => {
+diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
+index ee2ef92..3923ca8 100644
+--- a/apps/desktop/src/global.d.ts
++++ b/apps/desktop/src/global.d.ts
+@@ -132,6 +132,8 @@ declare global {
+       localWorkstation: {
+         actionStatus: (taskId: string) => Promise<LocalActionTask>
+         cancelAction: (taskId: string) => Promise<LocalActionTask>
++        pauseAction: (taskId: string) => Promise<LocalActionTask>
++        resumeAction: (taskId: string) => Promise<LocalActionTask>
+         listActions: () => Promise<LocalActionTask[]>
+         openActionResult: (taskId: string) => Promise<{ error: string; ok: boolean; path: string }>
+         loginItem: {
 -- 
 2.47.3
+

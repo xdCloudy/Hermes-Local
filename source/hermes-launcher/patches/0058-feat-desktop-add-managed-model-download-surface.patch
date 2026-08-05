@@ -1,12 +1,41 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From f1e5a2c599c5051a8242d822fea1fc9892035e96 Mon Sep 17 00:00:00 2001
 From: OpenAI <openai@localhost>
-Date: Wed, 5 Aug 2026 08:55:00 +0000
-Subject: [PATCH 58/58] feat(desktop): add managed model download surface
+Date: Wed, 5 Aug 2026 09:38:00 +0100
+Subject: [PATCH] feat(desktop): add managed model download surface
 
 ---
- apps/desktop/src/app/local-workstation/model-download-card.test.tsx | 66 +++++++++++++++++++++
- apps/desktop/src/app/local-workstation/model-download-card.tsx      | 253 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 319 insertions(+)
+ .../src/app/local-workstation/index.tsx       |   7 +
+ .../model-download-card.test.tsx              |  66 +++++
+ .../local-workstation/model-download-card.tsx | 253 ++++++++++++++++++
+ 3 files changed, 326 insertions(+)
+ create mode 100644 apps/desktop/src/app/local-workstation/model-download-card.test.tsx
+ create mode 100644 apps/desktop/src/app/local-workstation/model-download-card.tsx
+
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index 70638fe..bbb5858 100644
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -33,6 +33,7 @@ import { Button } from '@/components/ui/button'
+ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+ import { cn } from '@/lib/utils'
+ 
++import { ModelDownloadCard } from './model-download-card'
+ import { latestSecurityTask, securityTaskState } from './security-task'
+ import { TaskCentre } from './task-centre'
+ import type {
+@@ -1731,6 +1732,12 @@ function SectionContent({
+             </div>
+           </Surface>
+         </div>
++        <ModelDownloadCard
++          onNavigate={onNavigate}
++          onRefresh={onRefresh}
++          onTaskError={onTaskError}
++          tasks={snapshot.tasks}
++        />
+         <ModelManager
+           onRegister={onRegisterModel}
+           onRemove={onRemoveModel}
 diff --git a/apps/desktop/src/app/local-workstation/model-download-card.test.tsx b/apps/desktop/src/app/local-workstation/model-download-card.test.tsx
 new file mode 100644
 index 0000000..aa1b12f
@@ -81,7 +110,7 @@ index 0000000..aa1b12f
 +})
 diff --git a/apps/desktop/src/app/local-workstation/model-download-card.tsx b/apps/desktop/src/app/local-workstation/model-download-card.tsx
 new file mode 100644
-index 0000000..898fd0c
+index 0000000..b77477d
 --- /dev/null
 +++ b/apps/desktop/src/app/local-workstation/model-download-card.tsx
 @@ -0,0 +1,253 @@
@@ -147,7 +176,7 @@ index 0000000..898fd0c
 +  const targetRelativePath = filename ? `models\\downloads\\${modelId || 'model'}\\${filename}` : ''
 +  const progress = active?.progress
 +  const percent = progress?.mode === 'determinate' && progress.percent !== null ? progress.percent : null
-+  const isActive = active && ['cancelling', 'paused', 'queued', 'running'].includes(active.status)
++  const isActive = Boolean(active && ['cancelling', 'paused', 'queued', 'running'].includes(active.status))
 +
 +  const invoke = async (operation: () => Promise<unknown>) => {
 +    try {
@@ -214,7 +243,7 @@ index 0000000..898fd0c
 +            ) : (
 +              <IconLoader2 className={cn('size-4 text-(--ui-accent)', active.status !== 'paused' && 'animate-spin')} />
 +            )}
-+            <span className="text-xs font-semibold">{active.context.displayName || 'Model download'}</span>
++            <span className="text-xs font-semibold">{active.context?.displayName || 'Model download'}</span>
 +            <span className="font-mono text-[0.6875rem] text-(--ui-text-tertiary)">Task {active.id}</span>
 +            <span className="ml-auto text-[0.6875rem] font-medium capitalize text-(--ui-text-secondary)">{active.status}</span>
 +          </div>
@@ -340,3 +369,4 @@ index 0000000..898fd0c
 +}
 -- 
 2.47.3
+
