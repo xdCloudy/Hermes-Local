@@ -1,0 +1,20 @@
+From 7777777777777777777777777777777777777777 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Wed, 5 Aug 2026 11:51:00 +0100
+Subject: [PATCH] fix(desktop): preserve authoritative task stage label
+
+---
+ apps/desktop/src/app/local-workstation/task-centre.tsx | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/apps/desktop/src/app/local-workstation/task-centre.tsx b/apps/desktop/src/app/local-workstation/task-centre.tsx
+--- a/apps/desktop/src/app/local-workstation/task-centre.tsx
++++ b/apps/desktop/src/app/local-workstation/task-centre.tsx
+@@ -125,3 +125,3 @@ function taskStage(task: LocalActionTask): string {
+   if (task.status === 'running') {
+-    return task.progress?.message || task.stage || `${ACTION_COPY[task.action].label} in progress`
++    return task.stage || task.progress?.message || `${ACTION_COPY[task.action].label} in progress`
+   }
+-- 
+2.47.3
+
