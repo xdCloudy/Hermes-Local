@@ -63,6 +63,7 @@ jobs:
       - name: Test gateway, benchmark, security, model and update contracts
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           python -m unittest discover -s tests -p 'test_gateway_snapshot.py' -v
           python -m unittest discover -s tests -p 'test_hermes_desktop_update_contract.py' -v
           python -m py_compile `
@@ -71,7 +72,13 @@ jobs:
             '.\tests\test_hermes_desktop_update_contract.py'
           & '.\tests\Test-HermesGatewayModule.ps1'
           & '.\tests\Test-HermesDesktopUpdate.ps1'
-          & '.\tests\Test-HermesDesktopUpdateReliability.ps1'
+          try {
+            & '.\tests\Test-HermesDesktopUpdateReliability.ps1'
+          } catch {
+            Write-Host $_.Exception.ToString()
+            Write-Host $_.ScriptStackTrace
+            throw
+          }
           & '.\tests\Test-DeferredRuntimeActivation.ps1'
           & '.\tests\Test-BenchmarkLifecycleContract.ps1'
           & '.\tests\Test-BenchmarkProgressContract.ps1'
