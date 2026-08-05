@@ -191,16 +191,16 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
             "source/hermes-launcher/overlay-src/apps/desktop/electron/"
             "hermes-local-desktop-update.test.ts"
         )
-        self.assertIn("routes application checks", text)
+        self.assertIn("routes explicit application checks", text)
         self.assertIn(
-            "preserves the existing Hermes Agent transactional route",
+            "preserves the explicit Hermes Agent transactional route",
             text,
         )
         self.assertIn(
             "parses status, ready-to-restart results, and legacy helper handoffs",
             text,
         )
-        self.assertIn("rejects unsafe pinned identities", text)
+        self.assertIn("rejects unsafe identities and branch input", text)
 
     def test_startup_archives_obsolete_pending_activation_state(self) -> None:
         helper = self.read("scripts/Repair-Hermes-DesktopUpdateState.ps1")
