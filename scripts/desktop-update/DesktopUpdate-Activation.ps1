@@ -8,7 +8,8 @@ $partsRoot = if (
 
 foreach ($component in @(
     'DesktopUpdate-Activation-Core.ps1',
-    'DesktopUpdate-StackDrain.ps1'
+    'DesktopUpdate-StackDrain.ps1',
+    'DesktopUpdate-ZStackDrainSafety.ps1'
 )) {
     $path = Join-Path $partsRoot $component
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
