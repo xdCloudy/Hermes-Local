@@ -5,6 +5,7 @@ on:
     paths:
       - '**/*.ps1'
       - '**/*.psm1'
+      - 'VERSION.json'
       - 'models/manifests/*.json'
       - 'scripts/gateway_snapshot.py'
       - 'tests/test_gateway_snapshot.py'
@@ -17,6 +18,7 @@ on:
     paths:
       - '**/*.ps1'
       - '**/*.psm1'
+      - 'VERSION.json'
       - 'models/manifests/*.json'
       - 'scripts/gateway_snapshot.py'
       - 'tests/test_gateway_snapshot.py'
@@ -84,6 +86,11 @@ jobs:
             -File '.\tests\Test-HermesModuleImportScope.ps1'
           if ($LASTEXITCODE -ne 0) {
             throw "Module import-scope tests failed with exit code $LASTEXITCODE."
+          }
+          pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+            -File '.\tests\Test-HermesSourceManifest.ps1'
+          if ($LASTEXITCODE -ne 0) {
+            throw "Hermes Agent source manifest tests failed with exit code $LASTEXITCODE."
           }
           pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
             -File '.\tests\Test-HermesLauncherOverlayImport.ps1'

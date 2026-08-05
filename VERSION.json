@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "product": {
     "name": "Hermes Launcher",
-    "version": "0.18.56",
+    "version": "0.18.57",
     "status": "accepted-with-documented-limitations"
   },
   "sources": {
@@ -11,8 +11,8 @@
       "branch": "main",
       "commit": "91937a6dc3ffbbe2f3be91a500f0ecf962c4cf53",
       "integrationBranch": "hermes-local-integration",
-      "integrationCommit": "bcc6eed31eef95e5fad414cc98938d9c345867da",
-      "integrationTree": null,
+      "integrationCommit": "031ece24b88cdc6050a0a68f2cec0c590779c96e",
+      "integrationTree": "13df0ec98aed578b6260a7a3070130ab60957f7b",
       "patchSeries": "source/hermes-launcher/patches"
     },
     "llamaCpp": {
@@ -52,5 +52,5 @@
     "modelAliasDefault": "qwen3.6-35b-a3b-apex-mtp-i-quality",
     "portableSettings": true
   },
-  "recordedAt": "2026-08-05T19:58:00+01:00"
+  "recordedAt": "2026-08-05T20:48:00+01:00"
 }
