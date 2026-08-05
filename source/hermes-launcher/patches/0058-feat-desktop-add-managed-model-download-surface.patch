@@ -1,36 +1,12 @@
-From 4444444444444444444444444444444444444444 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: OpenAI <openai@localhost>
-Date: Wed, 5 Aug 2026 09:38:00 +0100
+Date: Wed, 5 Aug 2026 08:55:00 +0000
 Subject: [PATCH 58/58] feat(desktop): add managed model download surface
 
 ---
- apps/desktop/src/app/local-workstation/index.tsx                   | 7 +++++++
  apps/desktop/src/app/local-workstation/model-download-card.test.tsx | 66 +++++++++++++++++++++
  apps/desktop/src/app/local-workstation/model-download-card.tsx      | 253 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- 3 files changed, 326 insertions(+)
-diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
---- a/apps/desktop/src/app/local-workstation/index.tsx
-+++ b/apps/desktop/src/app/local-workstation/index.tsx
-@@ -33,6 +33,7 @@ import { Button } from '@/components/ui/button'
- import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
- import { cn } from '@/lib/utils'
- 
-+import { ModelDownloadCard } from './model-download-card'
- import { latestSecurityTask, securityTaskState } from './security-task'
- import { TaskCentre } from './task-centre'
- import type {
-@@ -1442,6 +1443,12 @@ function SectionContent({
-           </Surface>
-         </div>
-+        <ModelDownloadCard
-+          onNavigate={onNavigate}
-+          onRefresh={onRefresh}
-+          onTaskError={onTaskError}
-+          tasks={snapshot.tasks}
-+        />
-         <ModelManager
-           onRegister={onRegisterModel}
-           onRemove={onRemoveModel}
+ 2 files changed, 319 insertions(+)
 diff --git a/apps/desktop/src/app/local-workstation/model-download-card.test.tsx b/apps/desktop/src/app/local-workstation/model-download-card.test.tsx
 new file mode 100644
 index 0000000..aa1b12f
