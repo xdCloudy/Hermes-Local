@@ -198,7 +198,7 @@ exit 9
         ([bool]$mergeRepair.Repaired) `
         'The updater did not report interrupted merge recovery.'
     Assert-ReliabilityContract `
-        (-not (Test-Path -LiteralPath (Join-Path $gitDirectory 'MERGE_HEAD')) `
+        (-not (Test-Path -LiteralPath (Join-Path $gitDirectory 'MERGE_HEAD'))) `
         'The updater left the interrupted merge active.'
     Assert-ReliabilityContract `
         ([string]::IsNullOrWhiteSpace((
