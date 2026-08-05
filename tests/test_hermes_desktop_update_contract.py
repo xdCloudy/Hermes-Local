@@ -33,13 +33,20 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
                 "scripts/desktop-update/DesktopUpdate-Reliability.ps1",
                 "scripts/desktop-update/DesktopUpdate-Reliability-Platform.ps1",
                 "scripts/desktop-update/DesktopUpdate-Activation.ps1",
+                "scripts/desktop-update/DesktopUpdate-Activation-Core.ps1",
+                "scripts/desktop-update/DesktopUpdate-StackDrain.ps1",
             )
         )
 
     def test_updater_stages_then_relaunches_after_draining_launcher_tree(self) -> None:
         text = self.read_updater()
         promotion = self.read("scripts/desktop-update/DesktopUpdate-Promotion.ps1")
-        activation = self.read("scripts/desktop-update/DesktopUpdate-Activation.ps1")
+        activation = "\n".join(
+            (
+                self.read("scripts/desktop-update/DesktopUpdate-Activation-Core.ps1"),
+                self.read("scripts/desktop-update/DesktopUpdate-StackDrain.ps1"),
+            )
+        )
 
         for required in (
             "'Promote'",
@@ -53,6 +60,8 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
             "CloseMainWindow",
             "activation-failed",
             "activationAttempts",
+            "Get-HermesDesktopOwnedProcesses",
+            "Stop-HermesDesktopOwnedProcesses",
             "'-DestinationDirectory'",
             "launcherStayedOpen",
             "Preparing the update in the background. Hermes Launcher will remain open.",
