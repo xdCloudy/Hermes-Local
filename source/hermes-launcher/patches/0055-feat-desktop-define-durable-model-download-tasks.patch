@@ -5,6 +5,7 @@ Subject: [PATCH 55/58] feat(desktop): define durable model download tasks
 
 ---
 diff --git a/apps/desktop/electron/hermes-local-task-model.ts b/apps/desktop/electron/hermes-local-task-model.ts
+index c1cd92d..dead5501 100644
 --- a/apps/desktop/electron/hermes-local-task-model.ts
 +++ b/apps/desktop/electron/hermes-local-task-model.ts
 @@ -1,4 +1,5 @@
