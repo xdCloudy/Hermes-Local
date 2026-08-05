@@ -22,7 +22,7 @@ function Get-EmbeddedHereString {
 
 $payloadBlock = [regex]::Match(
     $wrapper,
-    "(?ms)^\$payload = @\(\r?\n(?<body>.*?)\r?\n\) -join ''\r?$"
+    '(?ms)^\$payload = @\(\r?\n(?<body>.*?)\r?\n\) -join ''''\r?$'
 )
 if (-not $payloadBlock.Success) {
     throw 'Could not locate the compressed launcher overlay payload array.'
