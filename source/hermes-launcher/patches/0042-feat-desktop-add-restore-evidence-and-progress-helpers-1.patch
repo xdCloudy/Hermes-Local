@@ -1,0 +1,59 @@
+From ff8f20e8e846b26c3ef609a2b778792f6d425ea1 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Wed, 5 Aug 2026 04:38:11 +0000
+Subject: [PATCH 02/14] feat(desktop): add restore evidence and progress
+ helpers 1
+
+---
+ apps/desktop/electron/hermes-local-control.ts | 38 +++++++++++++++++++
+ 1 file changed, 38 insertions(+)
+
+diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
+index 14f12f766fd7e7132bb625f6a6992f0db5d10823..1d4bbf9558865c1d565fcbce5a11f476eeece93c 100644
+--- a/apps/desktop/electron/hermes-local-control.ts
++++ b/apps/desktop/electron/hermes-local-control.ts
+@@ -489,6 +489,44 @@ function securityCompletionEvidence(task: TaskRecord): null | TaskCompletionEvid
+   }
+ }
+ 
++function restoreProgress(task: TaskRecord): null | Record<string, any> {
++  const progress = safeReadJson<Record<string, any>>('data\\runtime\\restore-progress.json')
++
++  return progress && String(progress.taskId || '') === task.id ? progress : null
++}
++
++function taskProgressFromRestoreDocument(progress: Record<string, any>): TaskProgress {
++  const completed = Number.isFinite(Number(progress.completedUnits)) ? Math.max(0, Number(progress.completedUnits)) : null
++  const total = Number.isFinite(Number(progress.totalUnits)) && Number(progress.totalUnits) > 0
++    ? Number(progress.totalUnits)
++    : null
++  const percent = Number.isFinite(Number(progress.percent))
++    ? Math.min(100, Math.max(0, Number(progress.percent)))
++    : completed !== null && total !== null
++      ? Math.min(100, Math.round((completed / total) * 1000) / 10)
++      : null
++  const counters = progress.counters && typeof progress.counters === 'object'
++    ? Object.fromEntries(
++        Object.entries(progress.counters)
++          .filter(([key, value]) => key.length <= 64 && Number.isFinite(Number(value)) && Number(value) >= 0)
++          .map(([key, value]) => [key, Number(value)])
++      )
++    : {}
++
++  return {
++    cancellable: progress.cancellable !== false,
++    completedUnits: completed,
++    counters,
++    message: progress.message ? redacted(String(progress.message)) : null,
++    mode: progress.mode === 'determinate' ? 'determinate' : 'indeterminate',
++    percent,
++    totalUnits: total
++  }
++}
++
++function restoreProgressSummary(progress: Record<string, any>): string {
++  const completed = Number.isFinite(Number(progress.completedUnits)) ? Number(progress.completedUnits) : null
++  const total = Number.isFinite(Number(progress.totalUnits)) ? Number(progress.totalUnits) : null
+ function readInstalledVersion(): null | Record<string, any> {
+   const version = safeReadJson<Record<string, any>>('VERSION.json')
+   const overrides = safeReadJson<Record<string, any>>('config\\launcher\\source-overrides.json')

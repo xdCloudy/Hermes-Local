@@ -60,7 +60,7 @@ jobs:
             throw ($failures -join [Environment]::NewLine)
           }
 
-      - name: Test gateway, benchmark, security, model and update contracts
+      - name: Test gateway, restore, benchmark, security, model and update contracts
         shell: pwsh
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -78,6 +78,11 @@ jobs:
             Write-Host $_.Exception.ToString()
             Write-Host $_.ScriptStackTrace
             throw
+          }
+          pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+            -File '.\tests\Test-HermesRestoreTask.ps1'
+          if ($LASTEXITCODE -ne 0) {
+            throw "Durable restore contract tests failed with exit code $LASTEXITCODE."
           }
           & '.\tests\Test-DeferredRuntimeActivation.ps1'
           & '.\tests\Test-BenchmarkLifecycleContract.ps1'

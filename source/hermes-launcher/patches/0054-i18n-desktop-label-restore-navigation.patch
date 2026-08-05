@@ -1,0 +1,76 @@
+From 2e1ae72361476a8fc3e20b2b37127cc17faf64e7 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Wed, 5 Aug 2026 04:38:12 +0000
+Subject: [PATCH 14/14] i18n(desktop): label restore navigation
+
+---
+ apps/desktop/src/i18n/ar.ts      | 1 +
+ apps/desktop/src/i18n/en.ts      | 1 +
+ apps/desktop/src/i18n/ja.ts      | 1 +
+ apps/desktop/src/i18n/zh-hant.ts | 1 +
+ apps/desktop/src/i18n/zh.ts      | 1 +
+ 5 files changed, 5 insertions(+)
+
+diff --git a/apps/desktop/src/i18n/ar.ts b/apps/desktop/src/i18n/ar.ts
+index 60f05e1..f85238d 100644
+--- a/apps/desktop/src/i18n/ar.ts
++++ b/apps/desktop/src/i18n/ar.ts
+@@ -1540,6 +1540,7 @@ export const ar = defineLocale({
+       projects: 'المشاريع',
+       integrations: 'التكاملات',
+       benchmarks: 'اختبارات الأداء',
++      restore: 'استعادة',
+       security: 'الأمان',
+       logs: 'السجلات',
+       about: 'حول',
+diff --git a/apps/desktop/src/i18n/en.ts b/apps/desktop/src/i18n/en.ts
+index 15b398f..5994a84 100644
+--- a/apps/desktop/src/i18n/en.ts
++++ b/apps/desktop/src/i18n/en.ts
+@@ -1839,6 +1839,7 @@ export const en: Translations = {
+       integrations: 'Integrations',
+       artifacts: 'Artifacts',
+       benchmarks: 'Benchmarks',
++      restore: 'Restore',
+       security: 'Security',
+       logs: 'Logs',
+       settings: 'Settings',
+diff --git a/apps/desktop/src/i18n/ja.ts b/apps/desktop/src/i18n/ja.ts
+index 4bf502e..fe5adc8 100644
+--- a/apps/desktop/src/i18n/ja.ts
++++ b/apps/desktop/src/i18n/ja.ts
+@@ -1677,6 +1677,7 @@ export const ja = defineLocale({
+       projects: 'プロジェクト',
+       integrations: '連携',
+       benchmarks: 'ベンチマーク',
++      restore: '復元',
+       security: 'セキュリティ',
+       logs: 'ログ',
+       settings: '設定',
+diff --git a/apps/desktop/src/i18n/zh-hant.ts b/apps/desktop/src/i18n/zh-hant.ts
+index 1d1d558..611c9af 100644
+--- a/apps/desktop/src/i18n/zh-hant.ts
++++ b/apps/desktop/src/i18n/zh-hant.ts
+@@ -1622,6 +1622,7 @@ export const zhHant = defineLocale({
+       projects: '專案',
+       integrations: '整合',
+       benchmarks: '效能測試',
++      restore: '還原',
+       security: '安全性',
+       logs: '日誌',
+       settings: '設定',
+diff --git a/apps/desktop/src/i18n/zh.ts b/apps/desktop/src/i18n/zh.ts
+index 0c2b7b5..8d4850e 100644
+--- a/apps/desktop/src/i18n/zh.ts
++++ b/apps/desktop/src/i18n/zh.ts
+@@ -2030,6 +2030,7 @@ export const zh: Translations = {
+       projects: '项目',
+       integrations: '集成',
+       benchmarks: '基准测试',
++      restore: '恢复',
+       security: '安全',
+       logs: '日志',
+       settings: '设置',
+-- 
+2.47.3
+

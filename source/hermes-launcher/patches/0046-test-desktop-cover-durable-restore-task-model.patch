@@ -1,0 +1,84 @@
+From a81f4bc54584bd9ef2641b40cbefe4a64f1181c0 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Wed, 5 Aug 2026 04:38:12 +0000
+Subject: [PATCH 06/14] test(desktop): cover durable restore task model
+
+---
+ .../electron/hermes-local-task-model.test.ts  | 51 +++++++++++++++++++
+ 1 file changed, 51 insertions(+)
+
+diff --git a/apps/desktop/electron/hermes-local-task-model.test.ts b/apps/desktop/electron/hermes-local-task-model.test.ts
+index 94e9bf21808d55321a86ccc9fbc661d7509744c8..5a98cafa07c861239c291b765a9684f9c6dbf448 100644
+--- a/apps/desktop/electron/hermes-local-task-model.test.ts
++++ b/apps/desktop/electron/hermes-local-task-model.test.ts
+@@ -55,6 +55,23 @@ describe('Hermes Local task model', () => {
+     expect(admitTask('benchmark', [switching])).toMatchObject({ kind: 'reject' })
+   })
+ 
++  it('serializes restore against installation and user-data mutations', () => {
++    const restore = running('restore')
++
++    expect(admitTask('restore', [restore])).toMatchObject({ kind: 'join', taskId: restore.id })
++    expect(admitTask('backup', [restore])).toMatchObject({
++      conflicts: [{ action: 'restore', resources: ['user-data', 'workstation'], taskId: restore.id }],
++      kind: 'reject'
++    })
++    expect(admitTask('repair', [restore])).toMatchObject({ kind: 'reject' })
++    expect(admitTask('update', [restore])).toMatchObject({
++      conflicts: [{ action: 'restore', resources: ['installation'], taskId: restore.id }],
++      kind: 'reject'
++    })
++    expect(admitTask('diagnostics', [restore])).toMatchObject({ kind: 'start' })
++    expect(admitTask('security', [restore])).toMatchObject({ kind: 'start' })
++  })
++
+   it('keeps gateway readiness available while a benchmark owns only the model', () => {
+     const benchmark = running('benchmark')
+ 
+@@ -156,6 +173,28 @@ describe('Hermes Local task model', () => {
+     })
+   })
+ 
++  it('prefers authoritative restore completion after a late cancellation request', () => {
++    const cancelling = requestTaskCancellation(running('restore'), '2026-08-01T10:00:03.000Z')
++    const recovered = reconcileRecoveredTask(
++      cancelling,
++      false,
++      {
++        exitCode: 0,
++        failure: null,
++        observedAt: '2026-08-01T10:01:00.000Z',
++        result: { kind: 'report', path: 'logs/restore/restore-task.json' },
++        status: 'succeeded'
++      },
++      '2026-08-01T10:01:01.000Z'
++    )
++
++    expect(recovered).toMatchObject({
++      exitCode: 0,
++      result: { kind: 'report', path: 'logs/restore/restore-task.json' },
++      status: 'succeeded'
++    })
++  })
++
+   it('interrupts recovered work when result evidence is stale', () => {
+     const task = running('security')
+ 
+@@ -203,5 +242,17 @@ describe('Hermes Local task model', () => {
+     expect(taskCapabilities(local)).toEqual({ cancel: true, pause: false, resume: false, retry: false })
+     expect(taskCapabilities(external).cancel).toBe(false)
+     expect(taskCapabilities(failed)).toEqual({ cancel: false, pause: false, resume: false, retry: true })
++    const restore = running('restore', 'restore')
++    restore.progress = {
++      cancellable: false,
++      completedUnits: null,
++      counters: {},
++      message: 'Promoting restored state',
++      mode: 'indeterminate',
++      percent: null,
++      totalUnits: null
++    }
++
++    expect(taskCapabilities(restore).cancel).toBe(false)
+   })
+ })

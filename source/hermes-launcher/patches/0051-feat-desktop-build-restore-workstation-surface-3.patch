@@ -1,0 +1,57 @@
+From 52dac38d582c6086062a399e057ccb3dbd12d554 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Wed, 5 Aug 2026 04:38:12 +0000
+Subject: [PATCH 11/14] feat(desktop): build restore workstation surface 3
+
+---
+ .../src/app/local-workstation/index.tsx       | 34 +++++++++++++++++++
+ 1 file changed, 34 insertions(+)
+
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index a33d3cc..4792529 100644
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -1316,6 +1316,40 @@ function RestoreContent({
+           <Button
+             className="gap-2"
+             disabled={!selectedBackup || !selectedBackup.verified || Boolean(activeTask) || !snapshot.actions.restore}
++            onClick={() => selectedBackup && onRun('restore', {
++              backupId: selectedBackup.id,
++              backupPath: selectedBackup.path,
++              verifyIntegrity: true
++            })}
++            variant="destructive"
++          >
++            <IconRestore className="size-4" />
++            Restore selected backup
++          </Button>
++        </div>
++      </Surface>
++      <Surface title="Durable restore task">
++        {latestTask ? (
++          <div className="space-y-4 p-4">
++            <div className="flex items-start justify-between gap-3">
++              <div>
++                <p className="text-sm font-semibold">{latestTask.stage || latestTask.status}</p>
++                <p className="mt-1 font-mono text-[0.6875rem] text-(--ui-text-tertiary)">{latestTask.id}</p>
++              </div>
++              <StatusPill label={latestTask.status} ok={latestTask.status === 'succeeded'} />
++            </div>
++            <div>
++              <div className="flex justify-between text-xs text-(--ui-text-secondary)">
++                <span>{progress?.message || latestTask.stage || 'Restore task state'}</span>
++                <span>{progressText}</span>
++              </div>
++              {progress?.mode === 'determinate' && progress.percent !== null && (
++                <div className="mt-2 h-2 overflow-hidden rounded-full bg-(--ui-stroke-secondary)">
++                  <div className="h-full bg-(--ui-accent)" style={{ width: `${Math.min(100, Math.max(0, progress.percent))}%` }} />
++                </div>
++              )}
++            </div>
++            <div className="rounded-lg border border-(--ui-stroke-secondary) p-3 text-xs">
+ function SectionContent({
+   onCancelTask,
+   onCreateProfile,
+-- 
+2.47.3
+

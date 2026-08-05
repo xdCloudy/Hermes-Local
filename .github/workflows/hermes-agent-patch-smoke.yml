@@ -109,6 +109,8 @@ jobs:
               & npm.cmd --prefix $source exec -- vitest run `
                 --project electron `
                 electron/hermes-local-control.test.ts `
+                electron/hermes-local-task-model.test.ts `
+                electron/hermes-local-restore.test.ts `
                 electron/hermes-local-update.test.ts `
                 electron/hermes-local-security-progress.test.ts `
                 electron/hermes-local-benchmark-progress.test.ts
