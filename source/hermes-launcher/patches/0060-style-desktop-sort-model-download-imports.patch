@@ -4,9 +4,9 @@ Date: Wed, 5 Aug 2026 11:34:00 +0100
 Subject: [PATCH] style(desktop): sort model download imports
 
 ---
- apps/desktop/electron/hermes-local-control.ts             | 2 +-
+ apps/desktop/electron/hermes-local-control.ts             | 4 ++--
  apps/desktop/electron/hermes-local-model-download.test.ts | 2 +-
- 2 files changed, 2 insertions(+), 2 deletions(-)
+ 2 files changed, 3 insertions(+), 3 deletions(-)
 
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
 --- a/apps/desktop/electron/hermes-local-control.ts
@@ -14,10 +14,11 @@ diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electr
 @@ -18,7 +18,7 @@ import {
    isPausedModelDownload,
    modelDownloadCompletionEvidence,
-   modelDownloadProgressPath,
+-  modelDownloadProgressPath,
 -  taskProgressFromModelDownload,
 -  type ModelDownloadProgressDocument
 +  type ModelDownloadProgressDocument,
++  modelDownloadProgressPath,
 +  taskProgressFromModelDownload
  } from './hermes-local-model-download'
  import { activeModelSwitch, planModelSelection, runtimeModelIdentityMatches } from './hermes-local-model-switch'
