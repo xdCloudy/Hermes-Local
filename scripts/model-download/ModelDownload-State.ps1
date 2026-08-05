@@ -105,7 +105,7 @@ function Write-HermesModelDownloadProgress {
     $Context.CurrentStage = $Stage
     $Context.Progress = $document
     Write-HermesModelDownloadJson -Path $Context.ProgressPath -Value $document
-    Add-HermesModelDownloadLog -Context $Context -Message "$Stage: $safeMessage"
+    Add-HermesModelDownloadLog -Context $Context -Message "${Stage}: $safeMessage"
     Write-Host "::hermes-model-download-stage::$Stage::$safeMessage"
     return $document
 }
