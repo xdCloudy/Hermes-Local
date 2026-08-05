@@ -226,42 +226,102 @@ function Set-HermesProcessEnvironment {
     }
 }
 
+function Get-HermesPropertyValue {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [object] $InputObject,
+
+        [Parameter(Mandatory)]
+        [string] $Name
+    )
+
+    if ($null -eq $InputObject) {
+        return $null
+    }
+
+    $property = $InputObject.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return $null
+    }
+
+    return $property.Value
+}
+
 function Get-HermesHardwareSnapshot {
     [CmdletBinding()]
-    param()
+    param(
+        [scriptblock] $CimInstanceProvider = {
+            param([string] $ClassName)
+            Get-CimInstance -ClassName $ClassName
+        },
 
-    $os = Get-CimInstance Win32_OperatingSystem
-    $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
-    $system = Get-CimInstance Win32_ComputerSystem
-    $gpu = Get-CimInstance Win32_VideoController |
-        Where-Object Name -Match 'NVIDIA' |
+        [scriptblock] $NvidiaSmiProvider = {
+            $nvidiaSmi = Get-Command nvidia-smi -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if (-not $nvidiaSmi) {
+                return
+            }
+
+            $raw = & $nvidiaSmi.Source `
+                --query-gpu=name,driver_version,memory.total,compute_cap `
+                --format=csv,noheader,nounits 2>$null
+            if ($LASTEXITCODE -eq 0 -and $raw) {
+                return $raw
+            }
+        }
+    )
+
+    $os = & $CimInstanceProvider 'Win32_OperatingSystem' |
+        Select-Object -First 1
+    $cpu = & $CimInstanceProvider 'Win32_Processor' |
+        Select-Object -First 1
+    $system = & $CimInstanceProvider 'Win32_ComputerSystem' |
+        Select-Object -First 1
+    $videoControllers = @(& $CimInstanceProvider 'Win32_VideoController')
+    $gpu = $videoControllers |
+        Where-Object {
+            [string](Get-HermesPropertyValue -InputObject $_ -Name 'Name') -match 'NVIDIA'
+        } |
         Select-Object -First 1
 
     $nvidia = $null
-    $nvidiaSmi = Get-Command nvidia-smi -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($nvidiaSmi) {
-        $raw = & $nvidiaSmi.Source --query-gpu=name,driver_version,memory.total,compute_cap --format=csv,noheader,nounits 2>$null
-        if ($LASTEXITCODE -eq 0 -and $raw) {
-            $parts = $raw -split ',' | ForEach-Object Trim
+    $raw = @(& $NvidiaSmiProvider) | Select-Object -First 1
+    if ($null -ne $raw) {
+        $parts = @(
+            ([string] $raw -split ',') |
+                ForEach-Object { $_.Trim() }
+        )
+        $memoryMiB = 0
+        if ($parts.Count -ge 4 -and
+            $parts[0] -and
+            [int]::TryParse($parts[2], [ref] $memoryMiB)) {
             $nvidia = [pscustomobject]@{
                 Name = $parts[0]
                 DriverVersion = $parts[1]
-                MemoryMiB = [int]$parts[2]
+                MemoryMiB = $memoryMiB
                 ComputeCapability = $parts[3]
             }
         }
     }
 
+    $memoryBytes = Get-HermesPropertyValue `
+        -InputObject $system `
+        -Name 'TotalPhysicalMemory'
+    if ($null -ne $memoryBytes) {
+        $memoryBytes = [int64] $memoryBytes
+    }
+
     return [pscustomobject]@{
-        OperatingSystem = $os.Caption
-        Version = $os.Version
-        Build = $os.BuildNumber
-        Architecture = $os.OSArchitecture
-        Cpu = $cpu.Name
-        PhysicalCores = $cpu.NumberOfCores
-        LogicalProcessors = $cpu.NumberOfLogicalProcessors
-        MemoryBytes = [int64]$system.TotalPhysicalMemory
-        DisplayGpu = $gpu.Name
+        OperatingSystem = Get-HermesPropertyValue -InputObject $os -Name 'Caption'
+        Version = Get-HermesPropertyValue -InputObject $os -Name 'Version'
+        Build = Get-HermesPropertyValue -InputObject $os -Name 'BuildNumber'
+        Architecture = Get-HermesPropertyValue -InputObject $os -Name 'OSArchitecture'
+        Cpu = Get-HermesPropertyValue -InputObject $cpu -Name 'Name'
+        PhysicalCores = Get-HermesPropertyValue -InputObject $cpu -Name 'NumberOfCores'
+        LogicalProcessors = Get-HermesPropertyValue -InputObject $cpu -Name 'NumberOfLogicalProcessors'
+        MemoryBytes = $memoryBytes
+        DisplayGpu = Get-HermesPropertyValue -InputObject $gpu -Name 'Name'
         Nvidia = $nvidia
     }
 }
@@ -271,17 +331,28 @@ function Assert-HermesMachine {
     param(
         [int64] $RequiredFreeBytes = 16GB,
         [ValidateSet('auto', 'cpu', 'cuda')]
-        [string] $Acceleration = 'auto'
+        [string] $Acceleration = 'auto',
+        [scriptblock] $HardwareSnapshotProvider = {
+            Get-HermesHardwareSnapshot
+        }
     )
 
-    $snapshot = Get-HermesHardwareSnapshot
-    if ($snapshot.OperatingSystem -notmatch 'Windows (10|11)') {
-        throw "Windows 10 or newer is required. Detected: $($snapshot.OperatingSystem)"
+    $snapshot = & $HardwareSnapshotProvider
+    $operatingSystem = [string](
+        Get-HermesPropertyValue -InputObject $snapshot -Name 'OperatingSystem'
+    )
+    $architecture = [string](
+        Get-HermesPropertyValue -InputObject $snapshot -Name 'Architecture'
+    )
+    $nvidia = Get-HermesPropertyValue -InputObject $snapshot -Name 'Nvidia'
+
+    if ($operatingSystem -notmatch 'Windows (10|11)') {
+        throw "Windows 10 or newer is required. Detected: $operatingSystem"
     }
-    if ($snapshot.Architecture -notmatch '64') {
-        throw "A 64-bit OS is required. Detected: $($snapshot.Architecture)"
+    if ($architecture -notmatch '64') {
+        throw "A 64-bit OS is required. Detected: $architecture"
     }
-    if ($Acceleration -eq 'cuda' -and -not $snapshot.Nvidia) {
+    if ($Acceleration -eq 'cuda' -and -not $nvidia) {
         throw 'CUDA acceleration was requested, but an NVIDIA GPU was not detected by nvidia-smi.'
     }
 
