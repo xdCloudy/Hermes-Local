@@ -110,6 +110,7 @@ jobs:
                 --project electron `
                 electron/hermes-local-control.test.ts `
                 electron/hermes-local-task-model.test.ts `
+                electron/hermes-local-model-download.test.ts `
                 electron/hermes-local-restore.test.ts `
                 electron/hermes-local-update.test.ts `
                 electron/hermes-local-security-progress.test.ts `
@@ -118,6 +119,7 @@ jobs:
               if ($focusedTestExit -eq 0) {
                 & npm.cmd --prefix $source exec -- vitest run `
                   src/app/local-workstation/task-centre.test.tsx `
+                  src/app/local-workstation/model-download-card.test.tsx `
                   src/app/local-workstation/security-task-view.test.tsx
                 $focusedTestExit = $LASTEXITCODE
               }
