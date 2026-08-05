@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000004 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Wed, 5 Aug 2026 04:00:00 +0100
+Subject: [PATCH] feat(desktop): route restore through Task Centre
+
+---
+diff --git a/apps/desktop/src/app/chat/sidebar/index.tsx b/apps/desktop/src/app/chat/sidebar/index.tsx
+index 1513c682d6c10ffa67ec3395f413103ccabe652d..a6ac8463825bd46d04d9fa34f281556be53c1f42 100644
+GIT binary patch
+delta 50
+zcmey{!7{mvWy3aJ_8`~b5dR?8&8vA6`Phn5i%as0CVvpNm|Q2R443;L-TMLn;(!xD
+
+delta 19
+bcmbQ-#qzg<Wy3b!%_n%n_%<(+DSQC{SUd>S
+
+diff --git a/apps/desktop/src/app/local-workstation/task-centre.tsx b/apps/desktop/src/app/local-workstation/task-centre.tsx
+index 8c52c13bf6fbb99a8099be778da3ba9f5c496c06..01a06b9c4dda45a567ec855e499c8250ec1681bd 100644
+GIT binary patch
+delta 192
+zcmZ3wlkwy(#tq9^9g9+nOY)0StrV&i(oz#kN<mEZAc&y4jzUgiQfdy0NKt-i2}q4T
+zROjaTtW{jGyj%)EP?QQZAWxwru{c{VF}Wl&KTpBd)>c6ss#IOUUO_!PF|#ByFI^!m
+zzepibp*S%u6{rpD28HCryyVoJoJ6q3r2Nvnl*FP+bp@-*@&b}9AR8vX=a<<WA`s{U
+E09E}#9RL6T
+
+delta 30
+mcmX@Pi*e~r#tq9^H-BI);$kaGEh#O^o4j8@a`PR5Tps|@BMjXD
+
+diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
+index f338c80fa2fe3fd09409a870b8de60c95d28b9d1..308e55cbd0843a1e6bd1184eebe5dbfda06b140d 100644
+GIT binary patch
+delta 195
+zcmexk@z-jDBolj4YH>+^QR-$vrW0%;iFwJXIXQ_*IjQzm3Q76-IjM<xn=f&wGxBHV
+z6_+FerAjjM^VAh;Hh<^rVe@fHOwKMXP^jkRQc%cDu~H~5Day=C2k~<AQ!>*sQ&SvE
+zkVW$nb5oJ|1&JjYF#aR~Exz2O)FP1XveY7=?#<Bxy-Z?BU^|Mf6nyfN6LTOoM#pY`
+IA~b^&05BaxR{#J2
+
+delta 36
+scmexs^~Yj^B-3UMrUPu7nK>00H=A&Eu}$t3=Gj~(7|FExrSKF^0Pyz=TL1t6
+
+diff --git a/apps/desktop/src/app/routes.ts b/apps/desktop/src/app/routes.ts
+index 84a3b4c8b5368fe82e6438c95c86ad515e8b8336..fe60277579ca5d89d677617dff4b1328970ded5e 100644
+GIT binary patch
+delta 84
+zcmaD9c`IszE30IXYjB8vkZXL9e`tuSf~|tOeo<<1Nq$l4W>Z!z7IqjXoU?;X9LiDG
+XQ7A|($*@v@>YZ%Br@8q)KeH?Vz_A;r
+
+delta 22
+ecmcZ=^(b<KE9>SwRw<Uv(>WX1Hiru^%K`vvNe96I
+
+-- 
+2.47.3
+

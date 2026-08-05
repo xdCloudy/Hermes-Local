@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Wed, 5 Aug 2026 04:27:03 +0000
+Subject: [PATCH 01/10] feat(desktop): declare restore workstation section
+
+
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index 8b11d9ff0b05f67912b175e3bfd23d37ccd61646..3bcb8a95b2a8ea2309c70d73e2f1854864561764 100644
+GIT binary patch
+delta 132
+zcmdnJfpx=1)(wg*TuzC}*`)<Kyj%*Cdu7Bo8?pRijx9<pF3B%SwNi*y4}vh&brjUY
+z5_2+B5=&AQ5*2b2^AgijQxuZGniUfBQWT(i6iSOzixhy$5*5lbOEMG^OH1-|6H79a
+V6^in6azN^vRXDb*a4?Do008i{Eyw@>
+
+delta 27
+jcmdn6k#+Y5)(wg*lf}0SZgyh%#oWA*WBWo5M*aW*nvV(q
+
+-- 
+2.47.3
+

@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Wed, 5 Aug 2026 04:27:03 +0000
+Subject: [PATCH 06/10] feat(desktop): build restore workstation surface 5
+
+
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index e189dcd47bd8269070af5b92c5e8d0dce4c984cf..50e0d80654eb99e961212c24d5094dc632900784 100644
+GIT binary patch
+delta 493
+zcmbPqhV{fH)(xQtC%<0HGrd}#ktZ%SCpEbwHN`10IlHt#p{7Pbu^2^2uPn7FGc7YU
+z1tjN`pP!SOn5U7LT#{Lq8j@I?tqIYRmsn7okzb+*lE}|1)+<UaF3B%St(|Uf%_y6L
+zYNCRgnnHeFP-&iqI#ijujzTprmjVh%0z1ev#YzEHw_aw74tBKxi6t3U3X>lm5H`h7
+z0ro_tXI@EadQoOcrIkWSQE4iwF}2etSTjma?r_tYT>nX8^8C}RlkczN6Ayy;1nvq2
+zh{GoD_t2kwzk_SKgAJpYzDsFQVp2}30@ObWCBTqTvO}0(os(DsGzS!53ib*blN-;-
+zO#XL~bMmyELX-8s2u)vL%E--HT#{H+GFjodD3h_$<n{Z-Ca>MeH~GN^)=6iDCZF3W
+hq>W^V9#Cz1Dk$g?27|;(N{ef4^b71Z2Or$O1OSTztsnpZ
+
+delta 14
+WcmX?ciFMK$)(xQtH+LV|y959_y$CD-
+
+-- 
+2.47.3
+

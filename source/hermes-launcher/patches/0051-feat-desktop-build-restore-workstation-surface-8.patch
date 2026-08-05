@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Wed, 5 Aug 2026 04:27:03 +0000
+Subject: [PATCH 09/10] feat(desktop): build restore workstation surface 8
+
+
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index b38c5c59b1fe93d3e105d5ed6e6f88769a5bc15a..ed9e0dfe3aa61139e2955928b80d961d003b1804 100644
+GIT binary patch
+delta 109
+zcmV-z0FwX0;03MX1+az7lQ4q{lWx`!1t}mpASjpdJOLk*K_D5E5WX5RPH!M`Wpi|I
+za%CWBVRIm2Wo2$4a&>MXW^!+BAarPHb0Bwba%*#RVRUJ4ZXkJObS{(7s~nT-O$wJ(
+P2>}q3YML9fj?1*9_#P^l
+
+delta 14
+WcmZ4ci1p9|)(x$vHy51Qy959}BM6KD
+
+-- 
+2.47.3
+

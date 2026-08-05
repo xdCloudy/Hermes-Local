@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000001 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Wed, 5 Aug 2026 04:00:00 +0100
+Subject: [PATCH] feat(desktop): integrate durable restore control
+
+---
+diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
+index c711326a79bb0a62d1499057be9c573379e1ec11..a8f39b08f23cbee6dc46c490fe2d1a1ab5dee06d 100644
+GIT binary patch
+delta 2830
+zcmcImPiz!b7*DZKsZ?7^Z9!VzN?~T)-Pvw|wOv@T6|hZuC~S$CZcB%mx4X~I&MY&t
+zOP5lLmx3Ow`X!!-7*8G)C6kyKjf5C4nrOIiFfnQ%@gOE%gbN41*_qj$1?$bd?3?$#
+z|L^zxzW3wZ$L?Nj{;b^6VNlc34Vom}F?R*OZs@klE$!VK+#~q1H{vhv_Qp3`QjU^T
+zTPwkzCvl_iSsVIJ?pR+n1>@1>7SAl)j9T56WX?|-dJgx@BZgi$<~f><mz$4k%z|6-
+z@CIjL3h<}+GE5Hkxch~{osYZwZLRS3o-Ot#gGbkeB~7NPDxFd>=%Qy<l<T`BluD7T
+zq?$Bh-{1RKQ!SRJLJw?9MBx4S9{5(g2N$1j@9<)&8A?LaKqpLS8{v=GFzg-b@>36`
+zC*gykCu+v*q0{jFiGFx*<Y`Dwbwcy2JGZHN&Ww4P$0kOm4yUKY*GygG1pCf#XA>+<
+zcS7s_FRK5y_U{7jcn^#n7-{D`ooH5KDpfeRabP?AexSdP8>2>nnq)$kCDp4o#oVe=
+z0?egG(N+iCncD)tq&lChmVZ=|=SxMC7vRQo!ba|t`^mv?ySGAbxCmFn?ZagEZW5xJ
+zWmH5>Do~MWvRYE8$#XGISo<)Ofv>__cPzS>?*Ks7HPa%JA?I0{PD)muqzK#(ljVm+
+zOr}s-GCYyF{>6aKl4$0o!F`FjN0cndLW5aTG;x)#XfhvA6CM$FeK;D+rbri<X_-}}
+zfOCNybnF>aQjTC1A3lx{u4HA0I6<@wR^SEEEUL`nV;M6X6Q&1d2=)p0h~H}T=r%Sx
+zJrEt1qS=|`Vq))7e~gJ1Vx9N=JHEZ8Xz3IB8EU*FnUojMs#a3fwpPb7yqN7-CWI+T
+z;+DnHs(KJjmC2MJh>&=~(UFZx(b7d3ld<TSWafF!6~ypMMFltc`W*|R!g5Y9T%InV
+zK+smCo)IAhU16KEj4C4*Mu2q}3l=L-xOur7!y?21Op??MHz*eo0!cFGfiBj+SeILx
+zYmjs!ZQNpK>1YKj=J_@8yFnmYrUr9DOOjDtSE;1&u9*N7mi%0nU_L^I4`CI=qGVv1
+z4VKGeGMJv5oj{@_aIDg7@D#3Z>jDyOSvNfc9Y?$Dzf#Sl&+Aj{5w8afYLyJl=fP0A
+z2QpF!iYuGp=hYUwZT5D1TZ0Z<Sm~}&NF}epgZVd+Mz+93M&KJY;h)(}h1RB)V;)gH
+zSlMpJwC?uh23z(1bIa}ZRvMA3<#?tQOO_ZoId=}BD<JZVswC49Rpq%%hC{$(%X?^d
+zOXv2qt2wS9tZNoG)lH5oaBcaS!?9WKsxz_a+1N}tBc5f&8t&`f1%mGDp8>)VMGoG%
+z(7WvAilsbVVwfk9Jb7YLmC6=XNET-YvGSA@Bn^j<;t7~UK?ND7ScUU|;DLZ;317>@
+zp}cy7F2)n}{zRGe$eEZEMl$V3;%Z_eB8Hh&A%zlB-6@KJ#S>9EFBuX>WsvmPNEFEn
+zCkV|l>@2s47(uX_9&N$Rk9u|m$`HJam~$6+BSO^zgnsCX2g%MUU}!BS6q)I;8DFhr
+z+OL;~7N4F8Gl`}XRo8MDwp7L`;tbI>A`WmSLf}6M+XalLK$fe7{eQEsbG5<itkdmO
+zfN!y8jR5#p`gNv@VVSQmD_@gtBxu1Y?C9Es^&z4gglQJd84g}(*@2Esow_rvEU8R^
+zH(u}U9<5Gfr(5yH>tKLSS4I28`5hZ!U%t!d0a#esQCnYGIqp+}{a|IJ32tBP@E-+%
+zq2%xa!J*+^KRBcmx%8AheCgd5|1tB^TQR})Jgzvft4HB{Rav$&?k57#)q!0H4-$T!
+zR!9opRu2ns=!~<B615jrFL%PnC+p#BR}T5%+t;sry>8fVt}{$kak}V5qHAge+bWBX
+z&}wtzGX!nP7CtC2g(_JUumkODAAY`ls~ac|2oKw%{$t0UyM8|5rx!|hZmJFrPYS;K
+Nduq*BXve)5{sA=<y7K@4
+
+delta 97
+zcmV-n0G|Kst_08Q1F&`nvz`YK7YB26VP|C^J+nn0Wgn9?+7z?)PwpSHJ8=9Ev#*3!
+z50g7^60^LR9|@E6qQ<ipq>cxZJ8&73PSOgq&8#L9v$Vrg9J43jcQ%*T76Cw)I~M^l
+D3708U
+
+-- 
+2.47.3
+
