@@ -1,0 +1,43 @@
+From 6666666666666666666666666666666666666666 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Wed, 5 Aug 2026 11:34:00 +0100
+Subject: [PATCH] style(desktop): sort model download imports
+
+---
+ apps/desktop/electron/hermes-local-control.ts             | 2 +-
+ apps/desktop/electron/hermes-local-model-download.test.ts | 3 ++-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
+--- a/apps/desktop/electron/hermes-local-control.ts
++++ b/apps/desktop/electron/hermes-local-control.ts
+@@ -18,8 +18,8 @@ import {
+   isPausedModelDownload,
+   modelDownloadCompletionEvidence,
+   modelDownloadProgressPath,
+-  taskProgressFromModelDownload,
+-  type ModelDownloadProgressDocument
++  type ModelDownloadProgressDocument,
++  taskProgressFromModelDownload
+ } from './hermes-local-model-download'
+ import { activeModelSwitch, planModelSelection, runtimeModelIdentityMatches } from './hermes-local-model-switch'
+diff --git a/apps/desktop/electron/hermes-local-model-download.test.ts b/apps/desktop/electron/hermes-local-model-download.test.ts
+--- a/apps/desktop/electron/hermes-local-model-download.test.ts
++++ b/apps/desktop/electron/hermes-local-model-download.test.ts
+@@ -1,7 +1,8 @@
+ import { describe, expect, it } from 'vitest'
+ 
+-import { createTaskRecord, transitionTask } from './hermes-local-task-model'
+ import {
+   activeModelDownloadForTarget,
+   isPausedModelDownload,
+@@ -9,6 +10,7 @@ import {
+   modelDownloadProgressPath,
+   taskProgressFromModelDownload
+ } from './hermes-local-model-download'
++import { createTaskRecord, transitionTask } from './hermes-local-task-model'
+ 
+ const createdAt = '2026-08-05T08:00:00.000Z'
+-- 
+2.47.3
+
