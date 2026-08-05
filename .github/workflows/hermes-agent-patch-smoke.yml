@@ -39,6 +39,12 @@ jobs:
           }
           $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
           $candidate = [string]$manifest.sources.hermesAgent.commit
+          $expectedIntegrationTree = [string]$manifest.sources.hermesAgent.integrationTree
+          if ($expectedIntegrationTree -notmatch '^[0-9a-fA-F]{40}$') {
+            throw 'VERSION.json must pin a 40-character Hermes Agent integration tree whenever the patch series is declared.'
+          }
+          $expectedIntegrationTree = $expectedIntegrationTree.ToLowerInvariant()
+
           $reportPath = '.\artifacts\compatibility\hermes-agent-patch-smoke\hermes-agent-report.json'
           $workRoot = '.\temp\compatibility\hermes-agent-patch-smoke'
           $stdoutPath = Join-Path $env:RUNNER_TEMP 'hermes-agent-patch-smoke.stdout.log'
@@ -89,6 +95,16 @@ jobs:
             throw 'Pinned patch reconstruction failed.'
           }
 
+          $preimageTree = ([string]$report.metadata.preimageSeedTree).ToLowerInvariant()
+          if ($preimageTree -ne $expectedIntegrationTree) {
+            throw "Pinned patch reconstruction produced tree $preimageTree; VERSION.json expects $expectedIntegrationTree."
+          }
+
+          $candidateIntegrationTree = ([string]$report.stages.patches.integrationTree).ToLowerInvariant()
+          if ($candidateIntegrationTree -ne $expectedIntegrationTree) {
+            throw "Candidate patch reconstruction produced tree $candidateIntegrationTree; VERSION.json expects $expectedIntegrationTree."
+          }
+
           $requiredStages = @('patches', 'dependencies', 'tests', 'build', 'package')
           $failedStages = @(
             foreach ($stage in $requiredStages) {
@@ -134,7 +150,9 @@ jobs:
             "**Pinned candidate:** ``$candidate``",
             "**Checker exit:** ``$checkerExit``",
             "**Candidate status:** ``$($report.status)``",
-            "**Pinned preimage tree:** ``$($report.metadata.preimageSeedTree)``",
+            "**Expected integration tree:** ``$expectedIntegrationTree``",
+            "**Pinned preimage tree:** ``$preimageTree``",
+            "**Candidate integration tree:** ``$candidateIntegrationTree``",
             "**Required stages:** ``$($requiredStages -join ', ')``",
             "**Focused regression exit:** ``$focusedTestExit``"
           ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
