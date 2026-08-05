@@ -46,7 +46,7 @@ a paid inference API.
 <!-- BEGIN GENERATED STATUS -->
 | Release | Delivery | Repository |
 |---|---|---|
-| **Current build:** v0.18.58<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 33 open · 29 closed<br>**Overall completion:** 47%<br>**Recent commit:** [`47cf2ac`](https://github.com/xdCloudy/Hermes-Local/commit/47cf2acf2a2de0d05791adfde88a2f72963c9077) fix: bound launcher overlay import matching (#120) |
+| **Current build:** v0.18.58<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 32 open · 30 closed<br>**Overall completion:** 48%<br>**Recent commit:** [`53c806b`](https://github.com/xdCloudy/Hermes-Local/commit/53c806b12cba93c3f94ec75733816ac6bb210b7c) fix: make hardware snapshot null-safe (#121) |
 
 > Status is generated from GitHub issues, milestones, releases and commits.
 <!-- END GENERATED STATUS -->
