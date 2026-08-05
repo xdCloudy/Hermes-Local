@@ -159,3 +159,116 @@ function Get-HermesDesktopGitDirectory {
 
     $null
 }
+
+function Repair-HermesDesktopGitOperationState {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string] $Repository,
+        [string] $Description = 'Git checkout'
+    )
+
+    $gitDirectory = Get-HermesDesktopGitDirectory -Repository $Repository
+    if (-not $gitDirectory) {
+        return [pscustomobject]@{ Repaired = $false; Actions = @() }
+    }
+
+    $actions = [System.Collections.Generic.List[string]]::new()
+    $operations = @(
+        [pscustomobject]@{
+            Marker = 'rebase-apply'
+            Commands = @(
+                [pscustomobject]@{ Arguments = [string[]]@('am', '--abort') },
+                [pscustomobject]@{ Arguments = [string[]]@('rebase', '--abort') }
+            )
+        },
+        [pscustomobject]@{
+            Marker = 'rebase-merge'
+            Commands = @(
+                [pscustomobject]@{ Arguments = [string[]]@('rebase', '--abort') }
+            )
+        },
+        [pscustomobject]@{
+            Marker = 'MERGE_HEAD'
+            Commands = @(
+                [pscustomobject]@{ Arguments = [string[]]@('merge', '--abort') }
+            )
+        },
+        [pscustomobject]@{
+            Marker = 'CHERRY_PICK_HEAD'
+            Commands = @(
+                [pscustomobject]@{ Arguments = [string[]]@('cherry-pick', '--abort') }
+            )
+        },
+        [pscustomobject]@{
+            Marker = 'REVERT_HEAD'
+            Commands = @(
+                [pscustomobject]@{ Arguments = [string[]]@('revert', '--abort') }
+            )
+        },
+        [pscustomobject]@{
+            Marker = 'BISECT_LOG'
+            Commands = @(
+                [pscustomobject]@{ Arguments = [string[]]@('bisect', 'reset') }
+            )
+        }
+    )
+
+    foreach ($operation in $operations) {
+        $markerPath = Join-Path $gitDirectory ([string]$operation.Marker)
+        if (-not (Test-Path -LiteralPath $markerPath)) {
+            continue
+        }
+
+        foreach ($command in @($operation.Commands)) {
+            $arguments = [string[]]$command.Arguments
+            $result = Invoke-HermesDesktopNestedSourceGit `
+                -Repository $Repository `
+                -Arguments $arguments `
+                -AllowFailure
+            if ($result.ExitCode -eq 0 -and -not (Test-Path -LiteralPath $markerPath)) {
+                $actions.Add("Recovered interrupted Git operation with: git $($arguments -join ' ')")
+                break
+            }
+        }
+
+        if (Test-Path -LiteralPath $markerPath) {
+            throw (
+                "$Description contains an interrupted Git operation that could not be " +
+                "recovered automatically: $markerPath"
+            )
+        }
+    }
+
+    foreach ($lockName in @(
+        'index.lock', 'HEAD.lock', 'packed-refs.lock', 'config.lock', 'shallow.lock'
+    )) {
+        $lockPath = Join-Path $gitDirectory $lockName
+        if (-not (Test-Path -LiteralPath $lockPath -PathType Leaf)) {
+            continue
+        }
+
+        $age = (Get-Date).ToUniversalTime() - (Get-Item -LiteralPath $lockPath).LastWriteTimeUtc
+        if ((Test-HermesDesktopGitProcessActive -Repository $Repository) -or $age.TotalSeconds -lt 45) {
+            throw (
+                "$Description is currently being modified by Git. Wait for it to finish and retry. " +
+                "Lock: $lockPath"
+            )
+        }
+
+        $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ')
+        $recoveredPath = "$lockPath.recovered-$stamp"
+        Move-Item -LiteralPath $lockPath -Destination $recoveredPath -Force
+        $actions.Add("Archived stale Git lock: $recoveredPath")
+    }
+
+    if ($actions.Count -gt 0) {
+        $null = Add-HermesDesktopUpdateLog -Plan $null -Message (
+            "$Description recovery:`n$($actions -join [Environment]::NewLine)"
+        )
+    }
+
+    [pscustomobject]@{
+        Repaired = $actions.Count -gt 0
+        Actions = $actions.ToArray()
+    }
+}
