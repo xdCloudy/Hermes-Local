@@ -6,6 +6,63 @@ $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $wrapperPath = Join-Path $repositoryRoot 'Apply-Hermes-LauncherOverlay.ps1'
+$attributesPath = Join-Path $repositoryRoot '.gitattributes'
+
+if (-not (Test-Path -LiteralPath $attributesPath -PathType Leaf)) {
+    throw 'Repository is missing .gitattributes for the launcher overlay checkout contract.'
+}
+
+$attributes = [System.IO.File]::ReadAllText($attributesPath).Replace("`r`n", "`n")
+if ($attributes -notmatch '(?m)^Apply-Hermes-LauncherOverlay\.ps1\s+text\s+eol=lf\s*$') {
+    throw 'Apply-Hermes-LauncherOverlay.ps1 must be pinned to LF in .gitattributes.'
+}
+
+$wrapperBytes = [System.IO.File]::ReadAllBytes($wrapperPath)
+for ($index = 0; $index -lt ($wrapperBytes.Length - 1); $index += 1) {
+    if ($wrapperBytes[$index] -eq 13 -and $wrapperBytes[$index + 1] -eq 10) {
+        throw 'Checked-out Apply-Hermes-LauncherOverlay.ps1 contains CRLF despite its LF-only attribute.'
+    }
+}
+
+$git = (Get-Command git -ErrorAction Stop).Source
+$attributeResult = @(& $git -C $repositoryRoot check-attr eol -- 'Apply-Hermes-LauncherOverlay.ps1')
+if ($LASTEXITCODE -ne 0) {
+    throw "git check-attr failed with exit code $LASTEXITCODE."
+}
+if (($attributeResult -join "`n") -notmatch ':\s*eol:\s*lf\s*$') {
+    throw "Git does not resolve the launcher overlay eol attribute to lf: $($attributeResult -join ' ')"
+}
+
+$tempCheckout = Join-Path ([System.IO.Path]::GetTempPath()) (
+    'hermes-overlay-eol-' + [guid]::NewGuid().ToString('N')
+)
+[System.IO.Directory]::CreateDirectory($tempCheckout) | Out-Null
+try {
+    $checkoutPrefix = $tempCheckout.Replace('\', '/') + '/'
+    & $git `
+        -C $repositoryRoot `
+        -c core.autocrlf=true `
+        checkout-index `
+        --force `
+        "--prefix=$checkoutPrefix" `
+        -- `
+        'Apply-Hermes-LauncherOverlay.ps1'
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "git checkout-index with core.autocrlf=true failed with exit code $LASTEXITCODE."
+    }
+
+    $autocrlfWrapper = Join-Path $tempCheckout 'Apply-Hermes-LauncherOverlay.ps1'
+    $autocrlfBytes = [System.IO.File]::ReadAllBytes($autocrlfWrapper)
+    for ($index = 0; $index -lt ($autocrlfBytes.Length - 1); $index += 1) {
+        if ($autocrlfBytes[$index] -eq 13 -and $autocrlfBytes[$index + 1] -eq 10) {
+            throw 'core.autocrlf=true converted the launcher overlay wrapper to CRLF.'
+        }
+    }
+} finally {
+    Remove-Item -LiteralPath $tempCheckout -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 $wrapper = [System.IO.File]::ReadAllText($wrapperPath)
 $normalizedWrapper = $wrapper.Replace("`r`n", "`n")
 
@@ -142,4 +199,4 @@ if (-not $duplicateRejected) {
     throw 'Bridge import transform accepted duplicate control-module imports.'
 }
 
-Write-Host 'Hermes Launcher overlay import tests passed.'
+Write-Host 'Hermes Launcher overlay import and checkout EOL tests passed.'
