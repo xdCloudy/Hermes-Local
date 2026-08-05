@@ -1,0 +1,60 @@
+name: Runtime package validation
+
+on:
+  pull_request:
+    paths:
+      - 'Setup-Hermes-Local.ps1'
+      - 'Setup-Hermes-Local.Prebuilt.ps1'
+      - 'scripts/Hermes-RuntimeManager.psm1'
+      - 'scripts/runtime/**'
+      - 'scripts/ci/Test-HermesRuntimeCatalog.ps1'
+      - 'config/runtime/**'
+      - 'config/schemas/llama-runtime-catalog.schema.json'
+      - 'tests/test_issue6_prebuilt_runtime.py'
+      - '.github/workflows/runtime-package-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-runtime-catalog:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install schema validator
+        run: python -m pip install jsonschema
+      - name: Run runtime package contract tests
+        run: python -m unittest tests.test_issue6_prebuilt_runtime
+      - name: Resolve release assets and published digests
+        shell: pwsh
+        run: ./scripts/ci/Test-HermesRuntimeCatalog.ps1
+      - name: Parse PowerShell entrypoints
+        shell: pwsh
+        run: |
+          $paths = @(
+            'Setup-Hermes-Local.ps1',
+            'Setup-Hermes-Local.Prebuilt.ps1',
+            'Update-Hermes-Runtime.ps1',
+            'Rollback-Hermes-Runtime.ps1',
+            'Test-Hermes-Runtime.ps1',
+            'scripts/Hermes-RuntimeManager.psm1',
+            'scripts/runtime/Hermes-RuntimeCatalog.ps1',
+            'scripts/runtime/Hermes-RuntimeInstall.ps1',
+            'scripts/runtime/Hermes-RuntimeRecovery.ps1',
+            'scripts/ci/Test-HermesRuntimeCatalog.ps1'
+          )
+          foreach ($path in $paths) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path), [ref]$tokens, [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$path`: $($_.Message)" }
+              throw "PowerShell parse validation failed for $path."
+            }
+          }
