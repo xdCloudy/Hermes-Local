@@ -7,30 +7,41 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $wrapperPath = Join-Path $repositoryRoot 'Apply-Hermes-LauncherOverlay.ps1'
 $wrapper = [System.IO.File]::ReadAllText($wrapperPath)
+$normalizedWrapper = $wrapper.Replace("`r`n", "`n")
 
 function Get-EmbeddedHereString {
     param([Parameter(Mandatory)][string] $VariableName)
 
-    $escapedName = [regex]::Escape($VariableName)
-    $pattern = "(?ms)^\$$escapedName = @'\r?\n(?<body>.*?)\r?\n'@\r?$"
-    $match = [regex]::Match($wrapper, $pattern)
-    if (-not $match.Success) {
+    $startMarker = '$' + $VariableName + " = @'`n"
+    $start = $normalizedWrapper.IndexOf($startMarker, [StringComparison]::Ordinal)
+    if ($start -lt 0) {
         throw "Could not locate embedded here-string '$VariableName'."
     }
-    return $match.Groups['body'].Value
+
+    $bodyStart = $start + $startMarker.Length
+    $end = $normalizedWrapper.IndexOf("`n'@", $bodyStart, [StringComparison]::Ordinal)
+    if ($end -lt 0) {
+        throw "Embedded here-string '$VariableName' has no closing marker."
+    }
+
+    return $normalizedWrapper.Substring($bodyStart, $end - $bodyStart)
 }
 
-$payloadBlock = [regex]::Match(
-    $wrapper,
-    '(?ms)^\$payload = @\(\r?\n(?<body>.*?)\r?\n\) -join ''''\r?$'
-)
-if (-not $payloadBlock.Success) {
+$payloadStartMarker = '$payload = @(' + "`n"
+$payloadStart = $normalizedWrapper.IndexOf($payloadStartMarker, [StringComparison]::Ordinal)
+if ($payloadStart -lt 0) {
     throw 'Could not locate the compressed launcher overlay payload array.'
 }
+$payloadBodyStart = $payloadStart + $payloadStartMarker.Length
+$payloadEnd = $normalizedWrapper.IndexOf("`n) -join ''", $payloadBodyStart, [StringComparison]::Ordinal)
+if ($payloadEnd -lt 0) {
+    throw 'The compressed launcher overlay payload array has no closing marker.'
+}
+$payloadBody = $normalizedWrapper.Substring($payloadBodyStart, $payloadEnd - $payloadBodyStart)
 
 $payloadParts = @(
     [regex]::Matches(
-        $payloadBlock.Groups['body'].Value,
+        $payloadBody,
         "(?m)^\s*'(?<part>[^']+)'\s*$"
     )
 )
