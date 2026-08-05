@@ -5,6 +5,8 @@ param(
     [switch] $SkipHermesDependencies,
     [switch] $SkipLauncherBuild,
     [switch] $ReinstallDependencies,
+    [ValidateSet('prebuilt', 'source')]
+    [string] $LlamaRuntimeMode = 'prebuilt',
     [switch] $NonInteractive
 )
 
@@ -24,15 +26,23 @@ try {
             -ManifestPath (Resolve-HermesPath 'VERSION.json')
     }
 
-    $implementation = Join-Path $PSScriptRoot 'Setup-Hermes-Local.Impl.ps1'
+    $implementationName = if ($LlamaRuntimeMode -eq 'source') {
+        'Setup-Hermes-Local.Impl.ps1'
+    } else {
+        'Setup-Hermes-Local.Prebuilt.ps1'
+    }
+    $implementation = Join-Path $PSScriptRoot $implementationName
     if (-not (Test-Path -LiteralPath $implementation -PathType Leaf)) {
         throw "Setup implementation is missing: $implementation"
     }
 
     $forwardedParameters = @{}
     foreach ($entry in $PSBoundParameters.GetEnumerator()) {
-        $forwardedParameters[$entry.Key] = $entry.Value
+        if ($entry.Key -ne 'LlamaRuntimeMode') {
+            $forwardedParameters[$entry.Key] = $entry.Value
+        }
     }
+    Write-HermesLog -Component setup -Message "Selected llama.cpp runtime mode: $LlamaRuntimeMode."
 
     $desktopSourceSynchronization = (
         $SkipModel -and
@@ -55,14 +65,9 @@ try {
 
     try {
         if (Test-Path -LiteralPath $diagnosticScript -PathType Leaf) {
-            Move-Item `
-                -LiteralPath $diagnosticScript `
-                -Destination $deferredDiagnosticScript `
-                -Force
+            Move-Item -LiteralPath $diagnosticScript -Destination $deferredDiagnosticScript -Force
             $diagnosticDeferred = $true
-            Write-HermesLog `
-                -Component setup `
-                -Message 'Deferred bootstrap diagnostics during Desktop updater source synchronisation.'
+            Write-HermesLog -Component setup -Message 'Deferred bootstrap diagnostics during Desktop updater source synchronisation.'
         }
 
         $hostExecutable = (Get-Process -Id $PID -ErrorAction Stop).Path
@@ -72,35 +77,23 @@ try {
 
         $implementationArguments = [System.Collections.Generic.List[string]]::new()
         foreach ($argument in @(
-            '-NoLogo',
-            '-NoProfile',
-            '-NonInteractive',
-            '-ExecutionPolicy',
-            'Bypass',
-            '-File',
-            $implementation
+            '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+            '-File', $implementation
         )) {
             $implementationArguments.Add([string]$argument)
         }
-
         foreach ($entry in $forwardedParameters.GetEnumerator()) {
             if ([bool]$entry.Value) {
                 $implementationArguments.Add("-$($entry.Key)")
             }
         }
 
-        $implementationArgumentArray = $implementationArguments.ToArray()
-        & $hostExecutable @implementationArgumentArray
+        & $hostExecutable @($implementationArguments.ToArray())
         $implementationExitCode = $LASTEXITCODE
     } finally {
         if ($diagnosticDeferred) {
-            Move-Item `
-                -LiteralPath $deferredDiagnosticScript `
-                -Destination $diagnosticScript `
-                -Force
-            Write-HermesLog `
-                -Component setup `
-                -Message 'Restored bootstrap diagnostics after Desktop updater source synchronisation.'
+            Move-Item -LiteralPath $deferredDiagnosticScript -Destination $diagnosticScript -Force
+            Write-HermesLog -Component setup -Message 'Restored bootstrap diagnostics after Desktop updater source synchronisation.'
         }
     }
 
