@@ -46,7 +46,7 @@ a paid inference API.
 <!-- BEGIN GENERATED STATUS -->
 | Release | Delivery | Repository |
 |---|---|---|
-| **Current build:** v0.18.50<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 33 open · 27 closed<br>**Overall completion:** 45%<br>**Recent commit:** [`25fa925`](https://github.com/xdCloudy/Hermes-Local/commit/25fa925036844b5fbdbbec19e4da139698003b48) feat(runtime): distribute verified prebuilt inference runtimes (#108) |
+| **Current build:** v0.18.50<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 33 open · 27 closed<br>**Overall completion:** 45%<br>**Recent commit:** [`86a1d5a`](https://github.com/xdCloudy/Hermes-Local/commit/86a1d5afbb54a5b46269812b9436d6bfed8cbda6) fix(updater): make Desktop self-updates self-healing and diagnosable (#109) |
 
 > Status is generated from GitHub issues, milestones, releases and commits.
 <!-- END GENERATED STATUS -->
