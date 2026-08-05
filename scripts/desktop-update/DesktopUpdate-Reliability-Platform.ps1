@@ -225,8 +225,11 @@ function Repair-HermesDesktopGitOperationState {
                 -Repository $Repository `
                 -Arguments $arguments `
                 -AllowFailure
-            if ($result.ExitCode -eq 0 -and -not (Test-Path -LiteralPath $markerPath)) {
-                $actions.Add("Recovered interrupted Git operation with: git $($arguments -join ' ')")
+            if (-not (Test-Path -LiteralPath $markerPath)) {
+                $actions.Add(
+                    "Recovered interrupted Git operation with: git $($arguments -join ' ') " +
+                    "(exit $($result.ExitCode))"
+                )
                 break
             }
         }
