@@ -79,7 +79,11 @@ jobs:
             Write-Host $_.ScriptStackTrace
             throw
           }
-          & '.\tests\Test-HermesRestoreTask.ps1'
+          pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+            -File '.\tests\Test-HermesRestoreTask.ps1'
+          if ($LASTEXITCODE -ne 0) {
+            throw "Durable restore contract tests failed with exit code $LASTEXITCODE."
+          }
           & '.\tests\Test-DeferredRuntimeActivation.ps1'
           & '.\tests\Test-BenchmarkLifecycleContract.ps1'
           & '.\tests\Test-BenchmarkProgressContract.ps1'
