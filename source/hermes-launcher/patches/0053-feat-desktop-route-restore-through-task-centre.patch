@@ -1,4 +1,4 @@
-From ff90bc80f39d02a08a5d40dc2c2bc6b10d9d646e Mon Sep 17 00:00:00 2001
+From 7acd4f20c6cccad15000ca9691ca4eeb78654760 Mon Sep 17 00:00:00 2001
 From: OpenAI <openai@localhost>
 Date: Wed, 5 Aug 2026 04:38:12 +0000
 Subject: [PATCH 13/14] feat(desktop): route restore through Task Centre
@@ -11,7 +11,7 @@ Subject: [PATCH 13/14] feat(desktop): route restore through Task Centre
  4 files changed, 28 insertions(+), 2 deletions(-)
 
 diff --git a/apps/desktop/src/app/chat/sidebar/index.tsx b/apps/desktop/src/app/chat/sidebar/index.tsx
-index d1c5f70d2039dfc04181c90c5d893b5ef61127f6..d8c42ef104862030025b6b69619378d92693e35f 100644
+index d1c5f70..d8c42ef 100644
 --- a/apps/desktop/src/app/chat/sidebar/index.tsx
 +++ b/apps/desktop/src/app/chat/sidebar/index.tsx
 @@ -110,6 +110,7 @@ import {
@@ -36,7 +36,7 @@ index d1c5f70d2039dfc04181c90c5d893b5ef61127f6..d8c42ef104862030025b6b69619378d9
      id: 'logs',
      label: '',
 diff --git a/apps/desktop/src/app/local-workstation/task-centre.tsx b/apps/desktop/src/app/local-workstation/task-centre.tsx
-index 67499e28d62850b1d8bcd67f51ef3b93e0eaad6c..ccb96f71229725bb483abd50422b68f54f205757 100644
+index 67499e2..ccb96f7 100644
 --- a/apps/desktop/src/app/local-workstation/task-centre.tsx
 +++ b/apps/desktop/src/app/local-workstation/task-centre.tsx
 @@ -40,6 +40,7 @@ const ACTION_COPY: Record<LocalActionTask['action'], { feature: string; label: s
@@ -59,7 +59,7 @@ index 67499e28d62850b1d8bcd67f51ef3b93e0eaad6c..ccb96f71229725bb483abd50422b68f5
    if (task.status === 'running') {return task.stage || `${ACTION_COPY[task.action].label} in progress`}
  
 diff --git a/apps/desktop/src/app/local-workstation/types.ts b/apps/desktop/src/app/local-workstation/types.ts
-index 1d6ae8ace1c96443cff4e106293c4c455fe3c64b..a35958a05e0434928175b81c87a1bf4acdf7b795 100644
+index 1d6ae8a..a35958a 100644
 --- a/apps/desktop/src/app/local-workstation/types.ts
 +++ b/apps/desktop/src/app/local-workstation/types.ts
 @@ -27,6 +27,7 @@ export type LocalAction =
@@ -113,7 +113,7 @@ index 1d6ae8ace1c96443cff4e106293c4c455fe3c64b..a35958a05e0434928175b81c87a1bf4a
      identityMatches: boolean
      switchingModel: null | {
 diff --git a/apps/desktop/src/app/routes.ts b/apps/desktop/src/app/routes.ts
-index 46875a01b6d8d8542d44819bc9f930e95d90b302..ddfa625eeb85151ca00a8c39944b9514ede70194 100644
+index 46875a0..ddfa625 100644
 --- a/apps/desktop/src/app/routes.ts
 +++ b/apps/desktop/src/app/routes.ts
 @@ -31,6 +31,7 @@ export const SESSIONS_ROUTE = '/sessions'
@@ -140,3 +140,6 @@ index 46875a01b6d8d8542d44819bc9f930e95d90b302..ddfa625eeb85151ca00a8c39944b9514
    { id: 'logs', path: LOGS_ROUTE, view: 'workstation' },
    { id: 'about', path: ABOUT_ROUTE, view: 'workstation' }
  ] as const satisfies readonly AppRoute[]
+-- 
+2.47.3
+

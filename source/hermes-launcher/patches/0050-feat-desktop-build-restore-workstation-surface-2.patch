@@ -1,4 +1,4 @@
-From a4bf58b25bf3a5f072b8ccf98658dc43fe468042 Mon Sep 17 00:00:00 2001
+From 395fcf27848de0ec34907c9b899f41adec6e98ff Mon Sep 17 00:00:00 2001
 From: OpenAI <openai@localhost>
 Date: Wed, 5 Aug 2026 04:38:12 +0000
 Subject: [PATCH 10/14] feat(desktop): build restore workstation surface 2
@@ -8,7 +8,7 @@ Subject: [PATCH 10/14] feat(desktop): build restore workstation surface 2
  1 file changed, 30 insertions(+)
 
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index 3b705f0c0ba5bb0adda7c014d8481591d9e51d85..b3937c77933cc48c83a9f8f58bd1093517fc2b24 100644
+index 3b705f0..a33d3cc 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -1286,6 +1286,36 @@ function RestoreContent({
@@ -18,7 +18,7 @@ index 3b705f0c0ba5bb0adda7c014d8481591d9e51d85..b3937c77933cc48c83a9f8f58bd10935
 +            </p>
 +          </div>
 +          {snapshot.backups.length ? (
-+            <Select value={selectedBackup?.id || ''} onValueChange={setSelectedBackupId}>
++            <Select onValueChange={setSelectedBackupId} value={selectedBackup?.id || ''}>
 +              <SelectTrigger>
 +                <SelectValue placeholder="Select a backup" />
 +              </SelectTrigger>
@@ -48,3 +48,6 @@ index 3b705f0c0ba5bb0adda7c014d8481591d9e51d85..b3937c77933cc48c83a9f8f58bd10935
  function SectionContent({
    onCancelTask,
    onCreateProfile,
+-- 
+2.47.3
+

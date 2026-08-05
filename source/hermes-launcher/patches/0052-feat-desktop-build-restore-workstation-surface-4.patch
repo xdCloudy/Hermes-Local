@@ -1,4 +1,4 @@
-From d610d3b2529a9f8fe091e040f2d109e333dc78a0 Mon Sep 17 00:00:00 2001
+From 6d9c4ed8b8e1822d22ebdcbfb42640f9affcb282 Mon Sep 17 00:00:00 2001
 From: OpenAI <openai@localhost>
 Date: Wed, 5 Aug 2026 04:38:12 +0000
 Subject: [PATCH 12/14] feat(desktop): build restore workstation surface 4
@@ -8,7 +8,7 @@ Subject: [PATCH 12/14] feat(desktop): build restore workstation surface 4
  1 file changed, 24 insertions(+)
 
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
-index 3e881fafe33500673d759a6aa47651c0831df144..d7b7102d458cb5b644c9fd421f37a4e52851e04c 100644
+index 4792529..0c9135b 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
 @@ -1350,6 +1350,30 @@ function RestoreContent({
@@ -42,3 +42,6 @@ index 3e881fafe33500673d759a6aa47651c0831df144..d7b7102d458cb5b644c9fd421f37a4e5
  function SectionContent({
    onCancelTask,
    onCreateProfile,
+-- 
+2.47.3
+
