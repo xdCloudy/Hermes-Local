@@ -12,14 +12,14 @@
     "alias": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
     "filename": { "type": "string", "minLength": 1 },
     "localPath": { "type": "string", "minLength": 1 },
-    "source": { "type": "string", "format": "uri" },
-    "repository": { "type": "string" },
-    "revision": { "type": "string" },
-    "license": { "type": "string" },
-    "sizeBytes": { "type": "integer", "minimum": 1 },
-    "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+    "source": { "type": ["string", "null"], "format": "uri" },
+    "repository": { "type": ["string", "null"] },
+    "revision": { "type": ["string", "null"] },
+    "license": { "type": ["string", "null"] },
+    "sizeBytes": { "type": ["integer", "null"], "minimum": 1 },
+    "sha256": { "type": ["string", "null"], "pattern": "^[a-fA-F0-9]{64}$" },
     "metadata": {
-      "type": "object",
+      "type": ["object", "null"],
       "additionalProperties": true,
       "properties": {
         "architecture": { "type": "string" },
@@ -30,11 +30,11 @@
       }
     },
     "server": {
-      "type": "object",
+      "type": ["object", "null"],
       "additionalProperties": false,
       "properties": {
         "jinja": { "type": "boolean" },
-        "chatTemplate": { "type": "string" },
+        "chatTemplate": { "type": ["string", "null"] },
         "extraArguments": {
           "type": "array",
           "maxItems": 32,
