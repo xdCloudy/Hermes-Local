@@ -6,6 +6,7 @@ $ErrorActionPreference = 'Stop'
 
 $root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $manifestPath = Join-Path $root 'models\manifests\Qwen3.6-35B-A3B-APEX-MTP-I-Quality.json'
+$modelSchemaPath = Join-Path $root 'config\schemas\model.schema.json'
 $setupPath = Join-Path $root 'Setup-Hermes-Local.Impl.ps1'
 
 function Assert-Contract {
@@ -19,6 +20,20 @@ function Assert-Contract {
     if (-not $Condition) {
         throw $Message
     }
+}
+
+function Assert-NullableSchemaProperty {
+    param(
+        [Parameter(Mandatory)]
+        [object] $Property,
+        [Parameter(Mandatory)]
+        [string] $Name
+    )
+
+    $types = @($Property.type | ForEach-Object { [string]$_ })
+    Assert-Contract `
+        -Condition ($types -contains 'null') `
+        -Message "Model schema property '$Name' must accept null when optional metadata is persisted explicitly."
 }
 
 $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
@@ -66,6 +81,14 @@ $resolvedManifestPath = [System.IO.Path]::GetFullPath(
 Assert-Contract `
     -Condition ($resolvedArgumentPath -eq $resolvedManifestPath) `
     -Message 'The portable --mmproj argument does not resolve to the provisioned projector path.'
+
+$modelSchema = Get-Content -Raw -LiteralPath $modelSchemaPath | ConvertFrom-Json -Depth 32
+foreach ($name in @('source', 'repository', 'revision', 'license', 'sizeBytes', 'sha256', 'metadata', 'server')) {
+    Assert-NullableSchemaProperty -Property $modelSchema.properties.$name -Name $name
+}
+Assert-NullableSchemaProperty `
+    -Property $modelSchema.properties.server.properties.chatTemplate `
+    -Name 'server.chatTemplate'
 
 $setupSource = Get-Content -Raw -LiteralPath $setupPath
 foreach ($marker in @(
