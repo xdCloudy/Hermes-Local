@@ -1,0 +1,43 @@
+From 5555555555555555555555555555555555555555 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Fri, 7 Aug 2026 19:27:00 +0100
+Subject: [PATCH] fix(desktop): handle missing profile metadata in About
+
+---
+ apps/desktop/src/app/local-workstation/about-hub.tsx | 14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/apps/desktop/src/app/local-workstation/about-hub.tsx b/apps/desktop/src/app/local-workstation/about-hub.tsx
+--- a/apps/desktop/src/app/local-workstation/about-hub.tsx
++++ b/apps/desktop/src/app/local-workstation/about-hub.tsx
+@@ -93,4 +93,6 @@ export function buildSupportSummary(snapshot: LocalWorkstationSnapshot, includeP
+   const version = snapshot.version as VersionInfo | null
+-  const profile = snapshot.profiles.profiles.find(item => item.name === snapshot.profiles.selected)
++  const selectedProfile = snapshot.profiles?.selected || snapshot.settings.selectedProfile || 'Unavailable'
++  const profile = snapshot.profiles?.profiles.find(item => item.name === selectedProfile)
+   const root = includePaths ? snapshot.root : '<INSTALLATION_ROOT>'
+   return [
+@@ -109,3 +111,3 @@ export function buildSupportSummary(snapshot: LocalWorkstationSnapshot, includeP
+     `Model revision: ${short(snapshot.model?.revision)}`,
+-    `Profile: ${snapshot.profiles.selected}`,
++    `Profile: ${selectedProfile}`,
+     `Context: ${profile ? `${profile.contextTokens.toLocaleString()} tokens` : 'Unavailable'}`,
+@@ -127,4 +129,6 @@ export function AboutHub({ onNavigate, onRun, snapshot }: Props) {
+   const version = snapshot.version as VersionInfo | null
+   const latest = snapshot.updates.latest
+-  const profile = snapshot.profiles.profiles.find(item => item.name === snapshot.profiles.selected)
++  const selectedProfile = snapshot.profiles?.selected || snapshot.settings.selectedProfile || 'Unavailable'
++  const profile = snapshot.profiles?.profiles.find(item => item.name === selectedProfile)
+   const [preview, setPreview] = useState(false)
+@@ -158,3 +162,3 @@ export function AboutHub({ onNavigate, onRun, snapshot }: Props) {
+     ['Selected model', Boolean(snapshot.model?.installed), snapshot.model?.installed ? 'Installed model manifest is valid.' : 'Selected model is not installed.'],
+-    ['Configuration', Boolean(snapshot.profiles.selected), `Active profile: ${snapshot.profiles.selected || 'Unavailable'}.`],
++    ['Configuration', Boolean(selectedProfile), `Active profile: ${selectedProfile}.`],
+     ['Data/state', snapshot.storage.stateDatabaseBytes >= 0, `${size(snapshot.storage.stateDatabaseBytes)} state database; ${snapshot.storage.memoryFiles} memory files.`],
+@@ -222,3 +226,3 @@ export function AboutHub({ onNavigate, onRun, snapshot }: Props) {
+             <Value label="Context" value={profile ? `${profile.contextTokens.toLocaleString()} tokens` : 'Unavailable'} />
+-            <Value label="Profile" value={snapshot.profiles.selected} />
++            <Value label="Profile" value={selectedProfile} />
+             <Value label="Network mode" value={snapshot.settings.network.host === '127.0.0.1' ? 'Loopback only' : `LAN: ${snapshot.settings.network.host}`} />
+-- 
+2.51.0
