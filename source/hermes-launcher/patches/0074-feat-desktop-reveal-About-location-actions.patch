@@ -1,0 +1,19 @@
+From cccccccccccccccccccccccccccccccccccccccc Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Fri, 7 Aug 2026 20:16:00 +0100
+Subject: [PATCH] feat(desktop): reveal About location actions
+
+---
+ apps/desktop/src/app/local-workstation/about-hub.tsx | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/apps/desktop/src/app/local-workstation/about-hub.tsx b/apps/desktop/src/app/local-workstation/about-hub.tsx
+--- a/apps/desktop/src/app/local-workstation/about-hub.tsx
++++ b/apps/desktop/src/app/local-workstation/about-hub.tsx
+@@ -257,3 +257,3 @@ export function AboutHub({ onNavigate, onRun, snapshot }: Props) {
+                 <Button aria-label={`Copy ${label} path`} onClick={() => copy(absolute)} size="sm" variant="outline">Copy path</Button>
+-                <Button aria-label={`Reveal ${label}`} onClick={openRoot} size="sm" variant="outline">Reveal in File Explorer</Button>
++                <Button aria-label={`Reveal ${label}`} onClick={() => openRelative(relative)} size="sm" variant="outline">Reveal in File Explorer</Button>
+               </div>
+-- 
+2.51.0
