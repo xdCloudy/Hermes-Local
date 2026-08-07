@@ -165,35 +165,6 @@ jobs:
             throw "Hermes Agent Desktop validation failed: $($failedStages -join ', '); checker exit $checkerExit; focused regression exit $focusedTestExit."
           }
 
-      - name: Stage issue 34 integration source snapshot
-        shell: pwsh
-        run: |
-          $source = '.\temp\compatibility\hermes-agent-patch-smoke\hermes-agent'
-          $dest = '.\artifacts\issue-34-source'
-          New-Item -ItemType Directory -Force -Path $dest | Out-Null
-          $files = @(
-            'apps\desktop\electron\hermes-local-control.ts',
-            'apps\desktop\electron\preload.ts',
-            'apps\desktop\src\app\local-workstation\index.tsx',
-            'apps\desktop\src\app\local-workstation\types.ts',
-            'apps\desktop\src\app\settings\index.tsx',
-            'apps\desktop\src\app\settings\types.ts',
-            'apps\desktop\src\app\settings\primitives.tsx',
-            'apps\desktop\src\global.d.ts'
-          )
-          foreach ($file in $files) {
-            $target = Join-Path $dest $file
-            New-Item -ItemType Directory -Force -Path (Split-Path $target -Parent) | Out-Null
-            Copy-Item -LiteralPath (Join-Path $source $file) -Destination $target
-          }
-
-      - name: Upload issue 34 integration source snapshot
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: issue-34-integration-source
-          path: artifacts/issue-34-source
-          retention-days: 1
-
       - name: Upload patch application evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
