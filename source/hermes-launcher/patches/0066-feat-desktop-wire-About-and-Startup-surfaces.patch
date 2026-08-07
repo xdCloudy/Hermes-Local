@@ -1,0 +1,86 @@
+From 4444444444444444444444444444444444444444 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Fri, 7 Aug 2026 19:18:00 +0100
+Subject: [PATCH] feat(desktop): wire About and Startup surfaces
+
+---
+ apps/desktop/src/app/local-workstation/index.tsx |  6 ++++++
+ apps/desktop/src/app/settings/index.tsx          | 18 +++++++++++++++++-
+ apps/desktop/src/app/settings/types.ts           |  1 +
+ 3 files changed, 24 insertions(+), 1 deletion(-)
+
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -33,5 +33,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/
+ import { cn } from '@/lib/utils'
+ 
++import { AboutHub } from './about-hub'
+ import { ModelDownloadCard } from './model-download-card'
+ import { latestSecurityTask, securityTaskState } from './security-task'
+ import { TaskCentre } from './task-centre'
+@@ -1817,5 +1818,9 @@ function SectionContent({
+     )
+   }
+ 
++  if (section === 'about') {
++    return <AboutHub onNavigate={onNavigate} onRun={onRun} snapshot={snapshot} />
++  }
++
+   return (
+     <div className="grid gap-4">
+diff --git a/apps/desktop/src/app/settings/index.tsx b/apps/desktop/src/app/settings/index.tsx
+--- a/apps/desktop/src/app/settings/index.tsx
++++ b/apps/desktop/src/app/settings/index.tsx
+@@ -35,5 +35,6 @@ import { PluginsSettings } from './plugins-settings'
+ import { PROVIDER_VIEWS, ProvidersSettings, type ProviderView } from './providers-settings'
+ import { SessionsSettings } from './sessions-settings'
++import { StartupSettings } from './startup-settings'
+ import type { SettingsPageProps, SettingsView as SettingsViewId } from './types'
+ 
+ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
+@@ -50,5 +51,6 @@ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
+   'billing',
+   'plugins',
+   'sessions',
++  'startup',
+   'about'
+ ]
+@@ -232,10 +234,17 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
+         label: t.settings.nav.archivedChats,
+         onSelect: () => setActiveView('sessions')
+       },
++      {
++        active: activeView === 'startup',
++        gapBefore: true,
++        icon: Zap,
++        id: 'startup',
++        label: 'Startup',
++        onSelect: () => setActiveView('startup')
++      },
+       {
+         active: activeView === 'about',
+-        gapBefore: true,
+         icon: Info,
+         id: 'about',
+         label: t.settings.nav.about,
+         onSelect: () => setActiveView('about')
+@@ -287,5 +296,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
+           ) : activeView === 'about' ? (
+             <AboutSettings />
++          ) : activeView === 'startup' ? (
++            <StartupSettings />
+           ) : activeView === 'gateway' ? (
+             <GatewaySettings />
+           ) : activeView === 'keybinds' ? (
+diff --git a/apps/desktop/src/app/settings/types.ts b/apps/desktop/src/app/settings/types.ts
+--- a/apps/desktop/src/app/settings/types.ts
++++ b/apps/desktop/src/app/settings/types.ts
+@@ -14,4 +14,5 @@ export type SettingsView =
+   | 'plugins'
+   | 'providers'
+   | 'sessions'
++  | 'startup'
+   | `config:${string}`
+-- 
+2.51.0

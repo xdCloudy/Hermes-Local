@@ -1,0 +1,24 @@
+From aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Fri, 7 Aug 2026 20:15:00 +0100
+Subject: [PATCH] feat(desktop): wire bounded About path actions
+
+---
+ apps/desktop/src/app/local-workstation/about-hub.tsx | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/apps/desktop/src/app/local-workstation/about-hub.tsx b/apps/desktop/src/app/local-workstation/about-hub.tsx
+--- a/apps/desktop/src/app/local-workstation/about-hub.tsx
++++ b/apps/desktop/src/app/local-workstation/about-hub.tsx
+@@ -151,3 +151,3 @@ export function AboutHub({ onNavigate, onRun, snapshot }: Props) {
+   const copy = (value: string) => void navigator.clipboard.writeText(value)
+-  const openRoot = () => void window.hermesDesktop.localWorkstation.openRoot()
++  const openRelative = (relativePath: string) => void window.hermesDesktop.localWorkstation.openPath(relativePath)
+   const external = (url: string) => void window.hermesDesktop.openExternal(url)
+@@ -202,3 +202,3 @@ export function AboutHub({ onNavigate, onRun, snapshot }: Props) {
+             <Button onClick={() => copy(snapshot.updates.installed.integrationCommit || '')} size="sm" variant="outline">Copy build</Button>
+-            <Button onClick={openRoot} size="sm" variant="outline"><IconFolder className="size-3.5" /> Open installation folder</Button>
++            <Button onClick={() => openRelative('.')} size="sm" variant="outline"><IconFolder className="size-3.5" /> Open installation folder</Button>
+           </div>
+-- 
+2.51.0
