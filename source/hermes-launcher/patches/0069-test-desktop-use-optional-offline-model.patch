@@ -1,0 +1,23 @@
+From 7777777777777777777777777777777777777777 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Fri, 7 Aug 2026 19:40:00 +0100
+Subject: [PATCH] test(desktop): use optional model for offline About fixture
+
+---
+ apps/desktop/src/app/local-workstation/about-hub.test.tsx | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/apps/desktop/src/app/local-workstation/about-hub.test.tsx b/apps/desktop/src/app/local-workstation/about-hub.test.tsx
+--- a/apps/desktop/src/app/local-workstation/about-hub.test.tsx
++++ b/apps/desktop/src/app/local-workstation/about-hub.test.tsx
+@@ -221,7 +221,7 @@ describe('About diagnostics hub', () => {
+       onRun={vi.fn()}
+       snapshot={makeSnapshot({
+         health: { dashboard: false, hermes: false, model: false },
+-        model: null
++        model: undefined
+       })}
+     />)
+ 
+-- 
+2.51.0
