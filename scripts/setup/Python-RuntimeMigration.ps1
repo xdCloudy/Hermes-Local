@@ -18,6 +18,76 @@ function Get-HermesTargetPythonMinorVersion {
     return [string]$Matches.minor
 }
 
+function Sync-HermesConfiguredPythonVersion {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string] $ManifestPath,
+
+        [Parameter(Mandatory)]
+        [string] $UserSettingsPath
+    )
+
+    $targetVersion = Get-HermesTargetPythonMinorVersion -ManifestPath $ManifestPath
+    if (-not (Test-Path -LiteralPath $UserSettingsPath -PathType Leaf)) {
+        return $targetVersion
+    }
+
+    try {
+        $settings = Get-Content -Raw -LiteralPath $UserSettingsPath |
+            ConvertFrom-Json -AsHashtable -Depth 64
+    } catch {
+        throw "Invalid Hermes user settings JSON at '$UserSettingsPath': $($_.Exception.Message)"
+    }
+
+    if (-not $settings -or -not $settings.Contains('runtime') -or $null -eq $settings.runtime) {
+        return $targetVersion
+    }
+    if ($settings.runtime -isnot [System.Collections.IDictionary]) {
+        throw "Hermes user settings runtime must be an object: $UserSettingsPath"
+    }
+    if (-not $settings.runtime.Contains('pythonVersion')) {
+        return $targetVersion
+    }
+
+    $configuredVersion = [string]$settings.runtime.pythonVersion
+    if ($configuredVersion -eq $targetVersion) {
+        return $targetVersion
+    }
+
+    $settings.runtime.pythonVersion = $targetVersion
+    $absolutePath = [System.IO.Path]::GetFullPath($UserSettingsPath)
+    $directory = [System.IO.Path]::GetDirectoryName($absolutePath)
+    [System.IO.Directory]::CreateDirectory($directory) | Out-Null
+    $temporary = "$absolutePath.$([guid]::NewGuid().ToString('N')).tmp"
+    try {
+        $content = ($settings | ConvertTo-Json -Depth 64) + [Environment]::NewLine
+        [System.IO.File]::WriteAllText(
+            $temporary,
+            $content,
+            [System.Text.UTF8Encoding]::new($false)
+        )
+        [System.IO.File]::Move($temporary, $absolutePath, $true)
+    } finally {
+        if (Test-Path -LiteralPath $temporary) {
+            Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    if (Get-Command Write-HermesLog -ErrorAction SilentlyContinue) {
+        $previous = if ([string]::IsNullOrWhiteSpace($configuredVersion)) {
+            '<unset>'
+        } else {
+            $configuredVersion
+        }
+        Write-HermesLog -Component setup -Level WARN -Message (
+            "Normalized stale user Python setting from $previous to build-required Python $targetVersion."
+        )
+    }
+
+    return $targetVersion
+}
+
 function Get-HermesInstalledPythonMinorVersion {
     [CmdletBinding()]
     param(
