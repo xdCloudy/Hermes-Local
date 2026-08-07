@@ -67,6 +67,44 @@ try {
         throw 'The target Python minor version was not derived from VERSION.json.'
     }
 
+    $userSettingsPath = Join-Path $temp 'config\launcher\user-settings.json'
+    [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($userSettingsPath)) | Out-Null
+    @{
+        schemaVersion = 1
+        runtime = @{
+            acceleration = 'cpu'
+            pythonVersion = '3.11'
+        }
+        models = @(
+            @{
+                id = 'local-test'
+                displayName = 'Local test'
+                alias = 'local-test'
+                filename = 'local-test.gguf'
+                localPath = 'models\local-test.gguf'
+                source = $null
+            }
+        )
+    } | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath $userSettingsPath -Encoding utf8
+
+    $synchronizedVersion = Sync-HermesConfiguredPythonVersion `
+        -ManifestPath $manifestPath `
+        -UserSettingsPath $userSettingsPath
+    if ($synchronizedVersion -ne '3.13') {
+        throw "User settings synchronization returned '$synchronizedVersion'; expected '3.13'."
+    }
+    $synchronizedSettings = Get-Content -Raw -LiteralPath $userSettingsPath |
+        ConvertFrom-Json -AsHashtable -Depth 64
+    if ([string]$synchronizedSettings.runtime.pythonVersion -ne '3.13') {
+        throw 'Setup did not canonicalize a stale user Python setting to the VERSION.json runtime line.'
+    }
+    if ([string]$synchronizedSettings.runtime.acceleration -ne 'cpu') {
+        throw 'Python setting synchronization modified an unrelated runtime setting.'
+    }
+    if ($null -ne $synchronizedSettings.models[0].source) {
+        throw 'Python setting synchronization modified nullable model metadata.'
+    }
+
     $incompleteRuntime = Join-Path $temp 'second\runtimes\python\hermes'
     [System.IO.Directory]::CreateDirectory($incompleteRuntime) | Out-Null
     Set-Content -LiteralPath (Join-Path $incompleteRuntime 'partial.txt') -Value 'partial' -Encoding utf8
@@ -85,13 +123,20 @@ try {
 
 $wrapper = [System.IO.File]::ReadAllText($wrapperPath)
 $implementation = [System.IO.File]::ReadAllText($implementationPath)
+$settingsSyncIndex = $wrapper.IndexOf('Sync-HermesConfiguredPythonVersion', [System.StringComparison]::Ordinal)
 $migrationIndex = $wrapper.IndexOf('Invoke-HermesPythonRuntimeMigration', [System.StringComparison]::Ordinal)
 $implementationIndex = $wrapper.IndexOf('& $implementation @forwardedParameters', [System.StringComparison]::Ordinal)
-if ($migrationIndex -lt 0 -or $implementationIndex -lt 0 -or $migrationIndex -ge $implementationIndex) {
-    throw 'Setup must migrate the Python runtime before invoking the preserved implementation.'
+if (
+    $settingsSyncIndex -lt 0 -or
+    $migrationIndex -lt 0 -or
+    $implementationIndex -lt 0 -or
+    $settingsSyncIndex -ge $migrationIndex -or
+    $migrationIndex -ge $implementationIndex
+) {
+    throw 'Setup must synchronize the build-required Python setting, migrate the runtime, then invoke the implementation.'
 }
 if (-not $wrapper.Contains('if (-not $SkipHermesDependencies)', [System.StringComparison]::Ordinal)) {
-    throw 'Setup does not respect -SkipHermesDependencies when deciding whether to migrate the runtime.'
+    throw 'Setup does not respect -SkipHermesDependencies when deciding whether to synchronize and migrate the runtime.'
 }
 if (-not $implementation.Contains('The existing Hermes runtime uses Python', [System.StringComparison]::Ordinal)) {
     throw 'The setup implementation no longer retains its incompatible-runtime safety check.'

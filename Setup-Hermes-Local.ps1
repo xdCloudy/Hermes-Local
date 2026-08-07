@@ -21,9 +21,13 @@ try {
     Set-HermesProcessEnvironment
 
     if (-not $SkipHermesDependencies) {
+        $manifestPath = Resolve-HermesPath 'VERSION.json'
+        $null = Sync-HermesConfiguredPythonVersion `
+            -ManifestPath $manifestPath `
+            -UserSettingsPath (Resolve-HermesPath 'config\launcher\user-settings.json')
         $null = Invoke-HermesPythonRuntimeMigration `
             -Runtime (Resolve-HermesPath 'runtimes\python\hermes') `
-            -ManifestPath (Resolve-HermesPath 'VERSION.json')
+            -ManifestPath $manifestPath
     }
 
     $implementationName = if ($LlamaRuntimeMode -eq 'source') {
