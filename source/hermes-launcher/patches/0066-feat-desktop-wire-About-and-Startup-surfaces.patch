@@ -19,7 +19,7 @@ diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src
  import { ModelDownloadCard } from './model-download-card'
  import { latestSecurityTask, securityTaskState } from './security-task'
  import { TaskCentre } from './task-centre'
-@@ -1817,6 +1818,11 @@ function SectionContent({
+@@ -1817,5 +1818,9 @@ function SectionContent({
      )
    }
  
@@ -32,21 +32,21 @@ diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src
 diff --git a/apps/desktop/src/app/settings/index.tsx b/apps/desktop/src/app/settings/index.tsx
 --- a/apps/desktop/src/app/settings/index.tsx
 +++ b/apps/desktop/src/app/settings/index.tsx
-@@ -35,6 +35,7 @@ import { PluginsSettings } from './plugins-settings'
+@@ -35,5 +35,6 @@ import { PluginsSettings } from './plugins-settings'
  import { PROVIDER_VIEWS, ProvidersSettings, type ProviderView } from './providers-settings'
  import { SessionsSettings } from './sessions-settings'
 +import { StartupSettings } from './startup-settings'
  import type { SettingsPageProps, SettingsView as SettingsViewId } from './types'
  
  const SETTINGS_VIEWS: readonly SettingsViewId[] = [
-@@ -50,6 +51,7 @@ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
+@@ -50,5 +51,6 @@ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
    'billing',
    'plugins',
    'sessions',
 +  'startup',
    'about'
  ]
-@@ -232,9 +234,17 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
+@@ -232,10 +234,17 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
          label: t.settings.nav.archivedChats,
          onSelect: () => setActiveView('sessions')
        },
@@ -64,7 +64,8 @@ diff --git a/apps/desktop/src/app/settings/index.tsx b/apps/desktop/src/app/sett
          icon: Info,
          id: 'about',
          label: t.settings.nav.about,
-@@ -287,6 +297,8 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
+         onSelect: () => setActiveView('about')
+@@ -287,5 +296,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
            ) : activeView === 'about' ? (
              <AboutSettings />
 +          ) : activeView === 'startup' ? (
@@ -75,7 +76,7 @@ diff --git a/apps/desktop/src/app/settings/index.tsx b/apps/desktop/src/app/sett
 diff --git a/apps/desktop/src/app/settings/types.ts b/apps/desktop/src/app/settings/types.ts
 --- a/apps/desktop/src/app/settings/types.ts
 +++ b/apps/desktop/src/app/settings/types.ts
-@@ -14,6 +14,7 @@ export type SettingsView =
+@@ -14,4 +14,5 @@ export type SettingsView =
    | 'plugins'
    | 'providers'
    | 'sessions'
