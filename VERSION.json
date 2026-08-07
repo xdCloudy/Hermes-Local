@@ -13,7 +13,7 @@
       "commit": "91937a6dc3ffbbe2f3be91a500f0ecf962c4cf53",
       "integrationBranch": "hermes-local-integration",
       "integrationCommit": "031ece24b88cdc6050a0a68f2cec0c590779c96e",
-      "integrationTree": "11cd6f0c65ea28fe94ca4869be7f3d717d4bc69d",
+      "integrationTree": "5a0c0567b3c5d4f7ea4184d0b479ebe6e4b306d6",
       "patchSeries": "source/hermes-launcher/patches"
     },
     "llamaCpp": {
@@ -53,5 +53,5 @@
     "modelAliasDefault": "qwen3.6-35b-a3b-apex-mtp-i-quality",
     "portableSettings": true
   },
-  "recordedAt": "2026-08-07T19:15:00+01:00"
+  "recordedAt": "2026-08-07T19:20:00+01:00"
 }
