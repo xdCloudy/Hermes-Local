@@ -41,8 +41,12 @@ On Models, choose:
 - IPv4 or IPv6 loopback;
 - separate model API and Hermes/dashboard ports from 1024 to 65535;
 - automatic or explicit build workers and CUDA architecture;
-- the project-managed Python major/minor line;
 - whether startup re-hashes the selected model.
+
+The Hermes Python major/minor line is product-managed. `VERSION.json` is the
+authority for the runtime line used by setup and updates; stale per-user
+`runtime.pythonVersion` values are normalized before dependency migration so
+setup cannot announce one Python line and recreate another.
 
 LAN and wildcard binding are intentionally unsupported. Restart the stack
 after changing a model, profile, port or acceleration mode.
@@ -115,6 +119,15 @@ The user file is versioned JSON and supports:
 ```
 
 All fields except `schemaVersion` are optional and layer over tracked defaults.
+`runtime.pythonVersion` is retained for compatibility with existing settings,
+but setup normalizes it to the Python line declared by `VERSION.json` before
+rebuilding dependencies. It is not a supported per-user runtime override.
+
+Optional model metadata may be stored explicitly as `null` when, for example,
+a locally registered GGUF has no download URL, repository revision, licence or
+chat-template override. Those null values are valid and do not prevent
+bootstrap configuration validation.
+
 The launcher validates IDs, ranges, GGUF paths, loopback binding and reserved
 llama-server arguments before writing atomically.
 
