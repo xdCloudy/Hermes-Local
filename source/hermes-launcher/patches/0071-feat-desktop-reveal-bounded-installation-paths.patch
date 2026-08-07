@@ -1,0 +1,77 @@
+From 9999999999999999999999999999999999999999 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Fri, 7 Aug 2026 20:06:00 +0100
+Subject: [PATCH] feat(desktop): reveal bounded installation paths
+
+---
+ apps/desktop/electron/hermes-local-control.ts | 25 +++++++++++++++++++++++++
+ apps/desktop/electron/preload.ts              |  1 +
+ apps/desktop/src/global.d.ts                  |  1 +
+ 3 files changed, 27 insertions(+)
+
+diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
+--- a/apps/desktop/electron/hermes-local-control.ts
++++ b/apps/desktop/electron/hermes-local-control.ts
+@@ -200,6 +200,30 @@ function resolveUnderRoot(relativePath: string): string {
+   return resolved
+ }
+ 
++async function openLocalPath(relativePathValue: unknown) {
++  const relativePath = String(relativePathValue || '').trim()
++
++  if (!relativePath || path.isAbsolute(relativePath) || relativePath.includes('\0')) {
++    throw new Error('Hermes Local path must be relative to the installation root')
++  }
++
++  const target = resolveUnderRoot(relativePath)
++
++  if (!fs.existsSync(target)) {
++    return { error: `Path does not exist: ${relativePath}`, ok: false, path: target }
++  }
++
++  if (fs.statSync(target).isDirectory()) {
++    const error = await shell.openPath(target)
++
++    return { error, ok: !error, path: target }
++  }
++
++  shell.showItemInFolder(target)
++
++  return { error: '', ok: true, path: target }
++}
++
+ function readJson<T>(relativePath: string): null | T {
+   const filePath = resolveUnderRoot(relativePath)
+ 
+@@ -2384,6 +2408,7 @@ export function registerHermesLocalControlIpc(
+ 
+     return { url }
+   })
++  ipcMain.handle('hermes:local:path:open', (_event, relativePath) => openLocalPath(relativePath))
+   ipcMain.handle('hermes:local:root:open', async () => {
+     const error = await shell.openPath(localRoot())
+ 
+diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
+--- a/apps/desktop/electron/preload.ts
++++ b/apps/desktop/electron/preload.ts
+@@ -140,6 +140,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
+       }
+     },
+     openDashboard: () => ipcRenderer.invoke('hermes:local:dashboard:open'),
++    openPath: relativePath => ipcRenderer.invoke('hermes:local:path:open', relativePath),
+     openRoot: () => ipcRenderer.invoke('hermes:local:root:open')
+   },
+   api: request => ipcRenderer.invoke('hermes:api', request),
+diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
+--- a/apps/desktop/src/global.d.ts
++++ b/apps/desktop/src/global.d.ts
+@@ -151,6 +151,7 @@ declare global {
+           state: () => Promise<HermesLocalDashboardState>
+         }
+         openDashboard: () => Promise<{ url: string }>
++        openPath: (relativePath: string) => Promise<{ error: string; ok: boolean; path: string }>
+         openRoot: () => Promise<{ error: string; ok: boolean }>
+         registerModel: (model: Partial<LocalModel> & { localPath: string }) => Promise<LocalModel>
+         removeModel: (id: string) => Promise<{ id: string; selected: string }>
+-- 
+2.51.0
