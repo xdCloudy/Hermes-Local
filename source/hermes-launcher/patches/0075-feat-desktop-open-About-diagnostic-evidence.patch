@@ -4,13 +4,13 @@ Date: Fri, 7 Aug 2026 20:17:00 +0100
 Subject: [PATCH] feat(desktop): open About diagnostic evidence
 
 ---
- apps/desktop/src/app/local-workstation/about-hub.tsx | 6 +++++-
- 1 file changed, 5 insertions(+), 1 deletion(-)
+ apps/desktop/src/app/local-workstation/about-hub.tsx | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
 
 diff --git a/apps/desktop/src/app/local-workstation/about-hub.tsx b/apps/desktop/src/app/local-workstation/about-hub.tsx
 --- a/apps/desktop/src/app/local-workstation/about-hub.tsx
 +++ b/apps/desktop/src/app/local-workstation/about-hub.tsx
-@@ -284,5 +284,9 @@ export function AboutHub({ onNavigate, onRun, snapshot }: Props) {
+@@ -284,5 +284,8 @@ export function AboutHub({ onNavigate, onRun, snapshot }: Props) {
              <Button disabled={!preview || !snapshot.actions.diagnostics} onClick={() => onRun('diagnostics')} size="sm">Export diagnostic bundle</Button>
              <Button onClick={() => onNavigate('/logs')} size="sm" variant="outline">Open logs</Button>
 -            <Button onClick={openRoot} size="sm" variant="outline">Open reports</Button>
