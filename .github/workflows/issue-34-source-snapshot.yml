@@ -1,0 +1,58 @@
+name: Issue 34 integration source snapshot
+
+on:
+  push:
+    branches:
+      - agent/issue-34-about-diagnostics-hub
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Reconstruct pinned Hermes Agent integration
+        shell: pwsh
+        run: |
+          $manifest = Get-Content -Raw -LiteralPath '.\VERSION.json' | ConvertFrom-Json
+          $candidate = [string]$manifest.sources.hermesAgent.commit
+          python .\scripts\ci\compatibility.py hermes-agent `
+            --repository-root . `
+            --candidate-ref $candidate `
+            --work-dir .\temp\issue-34-source `
+            --log-dir .\artifacts\issue-34-source\logs `
+            --report .\artifacts\issue-34-source\report.json `
+            --keep-workspace
+
+      - name: Stage source snapshot
+        shell: pwsh
+        run: |
+          $source = '.\temp\issue-34-source\hermes-agent'
+          $dest = '.\artifacts\issue-34-source\source'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          $files = @(
+            'apps\desktop\electron\hermes-local-control.ts',
+            'apps\desktop\electron\preload.ts',
+            'apps\desktop\src\app\local-workstation\index.tsx',
+            'apps\desktop\src\app\local-workstation\types.ts',
+            'apps\desktop\src\app\settings\index.tsx',
+            'apps\desktop\src\app\settings\types.ts',
+            'apps\desktop\src\app\settings\primitives.tsx',
+            'apps\desktop\src\global.d.ts'
+          )
+          foreach ($file in $files) {
+            $target = Join-Path $dest $file
+            New-Item -ItemType Directory -Force -Path (Split-Path $target -Parent) | Out-Null
+            Copy-Item -LiteralPath (Join-Path $source $file) -Destination $target
+          }
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: issue-34-integration-source
+          path: artifacts/issue-34-source
+          retention-days: 1
