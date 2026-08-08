@@ -50,10 +50,10 @@ jobs:
           foreach ($name in $tail) {
             $patch = Join-Path $patchRoot $name
             Write-Host "=== APPLY $name ==="
-            & git -C $probe apply --check --verbose $patch
-            if ($LASTEXITCODE -ne 0) { throw "plain apply check failed: $name" }
-            & git -C $probe apply $patch
-            if ($LASTEXITCODE -ne 0) { throw "plain apply failed: $name" }
+            & git -C $probe apply --check --verbose --ignore-space-change --ignore-whitespace $patch
+            if ($LASTEXITCODE -ne 0) { throw "tolerant apply check failed: $name" }
+            & git -C $probe apply --ignore-space-change --ignore-whitespace $patch
+            if ($LASTEXITCODE -ne 0) { throw "tolerant apply failed: $name" }
             Write-Host "=== CANONICAL $name BEGIN ==="
             & git -C $probe diff --full-index --no-ext-diff HEAD
             Write-Host "=== CANONICAL $name END ==="
