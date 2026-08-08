@@ -4,80 +4,70 @@ Date: Sat, 8 Aug 2026 02:45:00 +0100
 Subject: [PATCH] feat(desktop): route Trust Centre
 
 ---
- apps/desktop/src/app/chat/sidebar/index.tsx       |  8 ++++++++
- apps/desktop/src/app/contrib/surfaces.tsx         |  1 +
- apps/desktop/src/app/local-workstation/index.tsx  |  7 +++++++
- apps/desktop/src/app/routes.ts                     |  3 +++
- 4 files changed, 19 insertions(+)
-
-diff --git a/apps/desktop/src/app/routes.ts b/apps/desktop/src/app/routes.ts
---- a/apps/desktop/src/app/routes.ts
-+++ b/apps/desktop/src/app/routes.ts
-@@ -32,3 +32,4 @@ export const BENCHMARKS_ROUTE = '/benchmarks'
- export const SECURITY_ROUTE = '/security'
-+export const TRUST_ROUTE = '/trust'
- export const LOGS_ROUTE = '/logs'
- export const ABOUT_ROUTE = '/about'
-@@ -79,4 +80,5 @@ export type AppRouteId =
-   | 'benchmarks'
-   | 'security'
-+  | 'trust'
-   | 'logs'
-   | 'about'
-@@ -112,4 +114,5 @@ export const APP_ROUTES = [
-   { id: 'benchmarks', path: BENCHMARKS_ROUTE, view: 'workstation' },
-   { id: 'security', path: SECURITY_ROUTE, view: 'workstation' },
-+  { id: 'trust', path: TRUST_ROUTE, view: 'workstation' },
-   { id: 'logs', path: LOGS_ROUTE, view: 'workstation' },
-   { id: 'about', path: ABOUT_ROUTE, view: 'workstation' }
+ apps/desktop/src/app/chat/sidebar/index.tsx      | 7 +++++++
+ apps/desktop/src/app/contrib/surfaces.tsx        | 1 +
+ apps/desktop/src/app/local-workstation/index.tsx | 6 ++++++
+ apps/desktop/src/app/routes.ts                    | 3 +++
+ 4 files changed, 17 insertions(+)
 
 diff --git a/apps/desktop/src/app/chat/sidebar/index.tsx b/apps/desktop/src/app/chat/sidebar/index.tsx
+index e070821edde7ba9ed90ea7284f62634b53d9b5d2..e93d7fcb6a0a2b9a9a222837a4fc76408c186013 100644
 --- a/apps/desktop/src/app/chat/sidebar/index.tsx
 +++ b/apps/desktop/src/app/chat/sidebar/index.tsx
-@@ -119,4 +119,5 @@ import {
+@@ -118,6 +118,7 @@ import {
+   type SidebarNavContribution,
+   SKILLS_ROUTE,
    TASKS_ROUTE,
-   TOOLS_ROUTE,
 +  TRUST_ROUTE,
    TUI_ROUTE
  } from '../../routes'
-@@ -259,5 +260,11 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
+ import type { SidebarNavItem } from '../../types'
+@@ -248,6 +249,12 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
      icon: props => <Codicon name="shield" {...props} />,
      route: SECURITY_ROUTE
    },
 +  {
 +    id: 'trust',
-+    label: '',
++    label: 'Trust Centre',
 +    icon: props => <Codicon name="lock" {...props} />,
 +    route: TRUST_ROUTE
 +  },
    {
-     id: 'logs',
-
+     id: 'restore',
+     label: '',
 diff --git a/apps/desktop/src/app/contrib/surfaces.tsx b/apps/desktop/src/app/contrib/surfaces.tsx
+index 5857c9cfb90e8f44ebd5b1042155c2a51cc44abc..23e4ce49d50b6c0f94f7bcbbb38660bf41ac6bd5 100644
 --- a/apps/desktop/src/app/contrib/surfaces.tsx
 +++ b/apps/desktop/src/app/contrib/surfaces.tsx
-@@ -181,4 +181,5 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
+@@ -182,6 +182,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
+       <Route element={page(<LocalWorkstationView />)} path="projects" />
        <Route element={page(<LocalWorkstationView />)} path="benchmarks" />
        <Route element={page(<LocalWorkstationView />)} path="security" />
 +      <Route element={page(<LocalWorkstationView />)} path="trust" />
        <Route element={page(<LocalWorkstationView />)} path="logs" />
        <Route element={page(<LocalWorkstationView />)} path="about" />
-
+       <Route element={null} path="agents" />
 diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+index 77f6b7254f65631c04fbd232b1e4a41c4130969b..5ffaeb167c8d739a422bdedd270f900a16f6731e 100644
 --- a/apps/desktop/src/app/local-workstation/index.tsx
 +++ b/apps/desktop/src/app/local-workstation/index.tsx
-@@ -36,4 +36,5 @@ import { AboutHub } from './about-hub'
+@@ -37,6 +37,7 @@ import { AboutHub } from './about-hub'
  import { ModelDownloadCard } from './model-download-card'
  import { latestSecurityTask, securityTaskState } from './security-task'
  import { TaskCentre } from './task-centre'
 +import { TrustCentre } from './trust-centre'
  import type {
-@@ -56,3 +57,4 @@ const SECTION_COPY = {
+   HermesLocalDashboardBounds,
+   HermesLocalDashboardState,
+@@ -64,6 +65,7 @@ const SECTION_COPY = {
    projects: ['Projects', 'Manage local workspaces with the official Hermes project surface.'],
+   restore: ['Restore', 'Validate a managed backup and restore user data with automatic rollback.'],
    security: ['Security', 'Loopback trust boundaries, audits and remediation evidence.'],
 +  trust: ['Trust Centre', 'Source-bound skills, MCP permissions, scoped grants and invocation audit.'],
    sessions: ['Sessions', 'Resume and manage persistent local Hermes conversations.'],
-@@ -1817,5 +1819,9 @@ function SectionContent({
+   services: ['Services', 'Structured health, process ownership and lifecycle controls.'],
+   tasks: ['Tasks', 'Background operations, progress and recovery history.']
+@@ -2032,6 +2034,10 @@ function SectionContent({
      )
    }
  
@@ -87,5 +77,34 @@ diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src
 +
    if (section === 'about') {
      return <AboutHub onNavigate={onNavigate} onRun={onRun} snapshot={snapshot} />
+   }
+diff --git a/apps/desktop/src/app/routes.ts b/apps/desktop/src/app/routes.ts
+index ddfa625eeb85151ca00a8c39944b9514ede70194..d05d53902134080c72abb1d486038982f502a79e 100644
+--- a/apps/desktop/src/app/routes.ts
++++ b/apps/desktop/src/app/routes.ts
+@@ -31,6 +31,7 @@ export const SESSIONS_ROUTE = '/sessions'
+ export const PROJECTS_ROUTE = '/projects'
+ export const BENCHMARKS_ROUTE = '/benchmarks'
+ export const SECURITY_ROUTE = '/security'
++export const TRUST_ROUTE = '/trust'
+ export const RESTORE_ROUTE = '/restore'
+ export const LOGS_ROUTE = '/logs'
+ export const ABOUT_ROUTE = '/about'
+@@ -80,6 +81,7 @@ export type AppRouteId =
+   | 'projects'
+   | 'benchmarks'
+   | 'security'
++  | 'trust'
+   | 'restore'
+   | 'logs'
+   | 'about'
+@@ -115,6 +117,7 @@ export const APP_ROUTES = [
+   { id: 'projects', path: PROJECTS_ROUTE, view: 'workstation' },
+   { id: 'benchmarks', path: BENCHMARKS_ROUTE, view: 'workstation' },
+   { id: 'security', path: SECURITY_ROUTE, view: 'workstation' },
++  { id: 'trust', path: TRUST_ROUTE, view: 'workstation' },
+   { id: 'restore', path: RESTORE_ROUTE, view: 'workstation' },
+   { id: 'logs', path: LOGS_ROUTE, view: 'workstation' },
+   { id: 'about', path: ABOUT_ROUTE, view: 'workstation' }
 -- 
 2.51.0
