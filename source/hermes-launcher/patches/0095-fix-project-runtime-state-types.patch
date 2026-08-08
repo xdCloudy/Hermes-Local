@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Hermes Local Integration <hermes-local-ci@localhost>
+Date: Sat, 8 Aug 2026 17:23:00 +0100
+Subject: [PATCH] fix(projects): align project runtime state types
+
+---
+ apps/desktop/src/app/chat/composer/types.ts                  | 1 +
+ apps/desktop/src/app/session/hooks/use-session-actions/utils.ts | 2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/apps/desktop/src/app/chat/composer/types.ts b/apps/desktop/src/app/chat/composer/types.ts
+--- a/apps/desktop/src/app/chat/composer/types.ts
++++ b/apps/desktop/src/app/chat/composer/types.ts
+@@ -28,2 +28,3 @@ export interface ChatBarState {
+   }
++  projectId?: null | string
+   tools: { enabled: boolean; label: string; suggestions?: ContextSuggestion[] }
+diff --git a/apps/desktop/src/app/session/hooks/use-session-actions/utils.ts b/apps/desktop/src/app/session/hooks/use-session-actions/utils.ts
+--- a/apps/desktop/src/app/session/hooks/use-session-actions/utils.ts
++++ b/apps/desktop/src/app/session/hooks/use-session-actions/utils.ts
+@@ -925,3 +925,3 @@ type SessionRuntimeStatePatch = Partial<
+     ClientSessionState,
+-    'branch' | 'cwd' | 'fast' | 'model' | 'personality' | 'provider' | 'reasoningEffort' | 'serviceTier' | 'yolo'
++    'branch' | 'cwd' | 'fast' | 'model' | 'personality' | 'projectId' | 'provider' | 'reasoningEffort' | 'serviceTier' | 'yolo'
+   >
+-- 
+2.54.0

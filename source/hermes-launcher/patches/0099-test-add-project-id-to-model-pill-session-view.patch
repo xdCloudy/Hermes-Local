@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Hermes Local Integration <hermes-local-ci@localhost>
+Date: Sat, 8 Aug 2026 19:02:00 +0100
+Subject: [PATCH] test(desktop): add project id to model pill session view
+
+Keep the ModelPill tile fixture aligned with the SessionView contract now that
+project identity is a first-class per-surface runtime field.
+---
+ apps/desktop/src/app/chat/composer/model-pill.test.tsx | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/apps/desktop/src/app/chat/composer/model-pill.test.tsx b/apps/desktop/src/app/chat/composer/model-pill.test.tsx
+--- a/apps/desktop/src/app/chat/composer/model-pill.test.tsx
++++ b/apps/desktop/src/app/chat/composer/model-pill.test.tsx
+@@ -91,9 +91,10 @@ describe('ModelPill per-surface model label', () => {
+       $lastVisibleIsUser: atom(false),
+       $messages: atom([]),
+       $messagesEmpty: atom(true),
+       $model: atom('tile/claude-sonnet'),
++      $projectId: atom(null),
+       $provider: atom('anthropic'),
+       $reasoningEffort: atom('high'),
+       $runtimeId: atom('tile-runtime'),
+       $storedId: atom('stored-tile')
+     }
+-- 
+2.54.0

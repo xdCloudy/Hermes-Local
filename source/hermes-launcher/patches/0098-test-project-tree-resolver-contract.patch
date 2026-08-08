@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Hermes Local Integration <hermes-local-ci@localhost>
+Date: Sat, 8 Aug 2026 18:52:00 +0100
+Subject: [PATCH] test(projects): use project tree resolver contract
+
+The Project tree resolver returns a metadata mapping, not a bare repository
+path. Keep the project-binding regressions aligned with that contract.
+---
+ tests/tui_gateway/test_project_tree.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/tests/tui_gateway/test_project_tree.py b/tests/tui_gateway/test_project_tree.py
+--- a/tests/tui_gateway/test_project_tree.py
++++ b/tests/tui_gateway/test_project_tree.py
+@@ -576,21 +576,21 @@ def test_explicit_projectless_session_does_not_path_fallback():
+     projects = [{"id": "p_one", "name": "One", "folders": [{"path": "/one"}]}]
+     session = {
+         "id": "chat", "project_id": "", "cwd": "/one/src",
+         "git_repo_root": "/one", "git_branch": "main", "started_at": 1, "last_active": 2,
+     }
+-    tree = pt.build_tree(projects, [session], [], resolve=lambda _cwd: "/one", hydrate=True)
++    tree = pt.build_tree(projects, [session], [], resolve=lambda _cwd: {"repo_root": "/one"}, hydrate=True)
+     one_project = next(node for node in tree["projects"] if node["id"] == "p_one")
+     assert one_project["sessionCount"] == 0
+     assert "chat" in tree["scoped_session_ids"]
+ 
+ 
+ def test_legacy_null_project_id_still_migrates_by_path():
+     projects = [{"id": "p_one", "name": "One", "folders": [{"path": "/one"}]}]
+     session = {
+         "id": "legacy", "project_id": None, "cwd": "/one/src",
+         "git_repo_root": "/one", "git_branch": "main", "started_at": 1, "last_active": 2,
+     }
+-    tree = pt.build_tree(projects, [session], [], resolve=lambda _cwd: "/one", hydrate=True)
++    tree = pt.build_tree(projects, [session], [], resolve=lambda _cwd: {"repo_root": "/one"}, hydrate=True)
+     one_project = next(node for node in tree["projects"] if node["id"] == "p_one")
+     assert one_project["sessionCount"] == 1
+     assert "legacy" in tree["scoped_session_ids"]
+-- 
+2.54.0
