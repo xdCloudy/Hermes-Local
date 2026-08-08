@@ -12,46 +12,33 @@ Subject: [PATCH] feat(desktop): wire native Trust Centre IPC
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
-@@ -8,3 +8,4 @@ import { promisify } from 'node:util'
- 
+@@ -10,1 +10,2 @@
  import { ipcMain, shell } from 'electron'
 +import { registerHermesLocalTrustCentreIpc } from './hermes-local-trust-centre'
- 
-@@ -2408,3 +2409,4 @@ export function registerHermesLocalControlIpc(
-     return { url }
-   })
-+  registerHermesLocalTrustCentreIpc()
+@@ -2411,1 +2412,2 @@
    ipcMain.handle('hermes:local:path:open', (_event, relativePath) => openLocalPath(relativePath))
++  registerHermesLocalTrustCentreIpc()
 
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
-@@ -140,5 +140,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
-     },
-     openDashboard: () => ipcRenderer.invoke('hermes:local:dashboard:open'),
-     openPath: relativePath => ipcRenderer.invoke('hermes:local:path:open', relativePath),
+@@ -143,1 +143,4 @@
 -    openRoot: () => ipcRenderer.invoke('hermes:local:root:open')
 +    openRoot: () => ipcRenderer.invoke('hermes:local:root:open'),
 +    trustSnapshot: () => ipcRenderer.invoke('hermes:local:trust:snapshot'),
 +    setTrustPolicy: input => ipcRenderer.invoke('hermes:local:trust:policy', input),
 +    exportTrustDiagnostics: () => ipcRenderer.invoke('hermes:local:trust:diagnostics')
-   },
 
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
-@@ -8,3 +8,4 @@ import type {
-   LocalWorkstationSnapshot
+@@ -10,1 +10,2 @@
  } from './app/local-workstation/types'
 +import type { TrustCentreSnapshot, TrustIntegrationRecord, TrustPolicyInput } from './app/local-workstation/trust-types'
- import type {
-@@ -152,4 +153,7 @@ declare global {
-         openDashboard: () => Promise<{ url: string }>
-         openPath: (relativePath: string) => Promise<{ error: string; ok: boolean; path: string }>
+@@ -155,1 +156,4 @@
          openRoot: () => Promise<{ error: string; ok: boolean }>
 +        trustSnapshot: () => Promise<TrustCentreSnapshot>
 +        setTrustPolicy: (input: TrustPolicyInput) => Promise<TrustIntegrationRecord>
 +        exportTrustDiagnostics: () => Promise<{ path: string }>
-         registerModel: (model: Partial<LocalModel> & { localPath: string }) => Promise<LocalModel>
 -- 
 2.51.0
