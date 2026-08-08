@@ -1,6 +1,9 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'Common-Hermes.psm1')
+Import-Module (Join-Path $PSScriptRoot 'Hermes-Configuration.psm1')
+Import-Module (Join-Path $PSScriptRoot 'Hermes-UpdateOrchestrator.psm1')
 Import-Module (Join-Path $PSScriptRoot 'Hermes-RuntimeManager.psm1')
 
 function Get-HermesRuntimeUpdateDecision {
@@ -64,7 +67,7 @@ function New-HermesLlamaRuntimeUpdateAdapter {
 
         verify = {
             param($Context)
-            $lifecycle = if ($Context.Working.RuntimeLifecycle) {
+            $lifecycle = if ($Context.Working.ContainsKey('RuntimeLifecycle')) {
                 $Context.Working.RuntimeLifecycle
             } else {
                 Get-HermesRuntimeLifecyclePaths
@@ -101,14 +104,17 @@ function New-HermesLlamaRuntimeUpdateAdapter {
             $manifest = Install-HermesLlamaRuntime -Decision $decision -Force:$force
             $Context.Working.RuntimePromoted = $true
             $Context.Working.PromotedIdentity = Get-HermesRuntimeManifestIdentity -Manifest $manifest
+            $lifecycle = $Context.Working.RuntimeLifecycle
+            $state = if (Test-Path -LiteralPath $lifecycle.StatePath -PathType Leaf) {
+                Get-Content -Raw -LiteralPath $lifecycle.StatePath | ConvertFrom-Json -Depth 64
+            } else {
+                $null
+            }
             [ordered]@{
                 promoted = $true
                 identity = $Context.Working.PromotedIdentity
-                previousPath = $(
-                    if (Test-Path -LiteralPath (Resolve-HermesPath 'runtimes\llama.cpp\managed\current.json') -PathType Leaf) {
-                        (Get-Content -Raw -LiteralPath (Resolve-HermesPath 'runtimes\llama.cpp\managed\current.json') | ConvertFrom-Json -Depth 64).previousPath
-                    } else { $null }
-                )
+                previousIdentity = $(if ($state) { $state.previousIdentity } else { $null })
+                previousPath = $(if ($state) { [string]$state.previousPath } else { $null })
             }
         }
 
