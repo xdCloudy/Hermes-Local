@@ -4,10 +4,10 @@ Date: Sat, 8 Aug 2026 02:35:00 +0100
 Subject: [PATCH] feat(desktop): wire native Trust Centre IPC
 
 ---
- apps/desktop/electron/main.ts  | 2 ++
+ apps/desktop/electron/main.ts    | 2 ++
  apps/desktop/electron/preload.ts | 5 ++++-
- apps/desktop/src/global.d.ts   | 5 +++++
- 3 files changed, 11 insertions(+), 1 deletion(-)
+ apps/desktop/src/global.d.ts     | 4 ++++
+ 3 files changed, 10 insertions(+), 1 deletion(-)
 
 diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
 --- a/apps/desktop/electron/main.ts
@@ -23,8 +23,8 @@ diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
  
  registerHermesLocalControlIpc()
 +registerHermesLocalTrustCentreIpc()
- 
- diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
+
+diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
 @@ -140,6 +140,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
@@ -37,7 +37,8 @@ diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
 +    setTrustPolicy: input => ipcRenderer.invoke('hermes:local:trust:policy', input),
 +    exportTrustDiagnostics: () => ipcRenderer.invoke('hermes:local:trust:diagnostics')
    },
- diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
+
+diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
 @@ -8,6 +8,7 @@ import type {
