@@ -6,6 +6,7 @@ $ErrorActionPreference = 'Stop'
 
 $root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $runtimeModule = Join-Path $root 'scripts\Hermes-RuntimeManager.psm1'
+$orchestratorModule = Join-Path $root 'scripts\Hermes-UpdateOrchestrator.psm1'
 $adapterModule = Join-Path $root 'scripts\Hermes-RuntimeUpdateAdapter.psm1'
 
 function Assert-Contract {
@@ -30,7 +31,11 @@ Import-Module $runtimeModule -Force
 
 $catalog = Get-HermesRuntimeCatalog
 $lifecycle = Get-HermesRuntimeLifecyclePaths -Catalog $catalog
-$rootPrefix = $root.TrimEnd('\') + '\'
+$rootPrefix = if ($root.EndsWith([string][System.IO.Path]::DirectorySeparatorChar)) {
+    $root
+} else {
+    $root + [System.IO.Path]::DirectorySeparatorChar
+}
 foreach ($path in @(
     $lifecycle.StagingRoot,
     $lifecycle.ActivePath,
@@ -141,6 +146,9 @@ Assert-Throws `
     -Action { $null = Get-HermesRuntimeLifecyclePaths -Catalog $unsafeCatalog } `
     -Message 'An escaping runtime lifecycle path was accepted.'
 
+# Import the orchestrator in caller scope so its exported registry commands are
+# available to inspect after the runtime adapter registers itself.
+Import-Module $orchestratorModule -Force
 Import-Module $adapterModule -Force
 $adapter = Get-HermesUpdateAdapter -Name LlamaCpp
 Assert-Contract ($null -ne $adapter) 'The managed LlamaCpp update adapter was not registered.'
