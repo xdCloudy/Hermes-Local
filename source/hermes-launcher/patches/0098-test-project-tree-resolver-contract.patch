@@ -12,7 +12,7 @@ path. Keep the project-binding regressions aligned with that contract.
 diff --git a/tests/tui_gateway/test_project_tree.py b/tests/tui_gateway/test_project_tree.py
 --- a/tests/tui_gateway/test_project_tree.py
 +++ b/tests/tui_gateway/test_project_tree.py
-@@ -576,22 +576,22 @@ def test_explicit_projectless_session_does_not_path_fallback():
+@@ -576,21 +576,21 @@ def test_explicit_projectless_session_does_not_path_fallback():
      projects = [{"id": "p_one", "name": "One", "folders": [{"path": "/one"}]}]
      session = {
          "id": "chat", "project_id": "", "cwd": "/one/src",
