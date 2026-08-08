@@ -7,25 +7,34 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'scripts\Common-Hermes.psm1') -Force
-Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-Configuration.psm1') -Force
-Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-RuntimeManager.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-UpdateOrchestrator.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'scripts\Hermes-RuntimeUpdateAdapter.psm1') -Force
 
 try {
     Assert-HermesRoot
     Initialize-HermesLayout
     Set-HermesProcessEnvironment
-    $configuration = Get-HermesConfiguration
-    $requested = Get-HermesRequestedAcceleration -Configuration $configuration
-    $hardware = Assert-HermesMachine -Acceleration $(if ($requested -eq 'cuda') { 'cuda' } else { 'auto' })
-    $decision = Resolve-HermesLlamaRuntimePackage -Configuration $configuration -Hardware $hardware
-    Write-Host "Selection: $($decision.SelectionState)"
-    Write-Host "Reason: $($decision.Reason)"
-    if (-not $decision.Package) {
-        throw 'No compatible verified prebuilt runtime is available. Use Setup-Hermes-Local.ps1 -LlamaRuntimeMode source for a custom build.'
+
+    $options = @{}
+    if ($Force) {
+        $options.Force = $true
     }
-    $manifest = Install-HermesLlamaRuntime -Decision $decision -Force:$Force
-    Write-Host "Active runtime: $($manifest.packageId) ($($manifest.acceleration), source $($manifest.sourceCommit))."
-    exit 0
+    $result = Invoke-HermesUpdateOperation `
+        -Mode Apply `
+        -Component LlamaCpp `
+        -Caller Cli `
+        -Input $options
+
+    if ($result.status -eq 'succeeded') {
+        $identity = $result.stageResults.validate.identity
+        Write-Host "Active runtime: $($identity.key) [$($identity.fingerprint)]."
+        exit 0
+    }
+    if ($result.status -eq 'rolled-back') {
+        Write-Host "Hermes runtime update failed and the previous runtime was restored. State: $($result.statePath)" -ForegroundColor Yellow
+        exit 1
+    }
+    throw "Hermes runtime update failed. State: $($result.statePath)"
 } catch {
     Write-HermesLog -Component setup -Level ERROR -Message $_.Exception.ToString()
     Write-Host "Hermes runtime update failed: $($_.Exception.Message)" -ForegroundColor Red

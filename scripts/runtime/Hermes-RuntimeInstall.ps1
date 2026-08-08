@@ -82,6 +82,27 @@ function Get-HermesRuntimeFileInventory {
         })
 }
 
+function Get-HermesRuntimeDependencyInventory {
+    param(
+        [Parameter(Mandatory)][string] $Path,
+        [Parameter(Mandatory)][pscustomobject] $Policy
+    )
+
+    $extensions = @($Policy.includeExtensions | ForEach-Object { ([string]$_).ToLowerInvariant() })
+    $prefix = [System.IO.Path]::GetFullPath($Path).TrimEnd('\') + '\'
+    return @(Get-ChildItem -LiteralPath $Path -Recurse -File |
+        Where-Object { $extensions -contains $_.Extension.ToLowerInvariant() } |
+        Sort-Object FullName |
+        ForEach-Object {
+            [ordered]@{
+                path = $_.FullName.Substring($prefix.Length).Replace('\', '/')
+                kind = $_.Extension.TrimStart('.').ToLowerInvariant()
+                sizeBytes = $_.Length
+                sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
+        })
+}
+
 function Write-HermesRuntimeHistory {
     param([Parameter(Mandatory)][System.Collections.IDictionary] $Entry)
 
@@ -115,19 +136,21 @@ function Install-HermesLlamaRuntime {
         [switch] $Force
     )
 
-    if (-not $Decision.Package) {
-        throw "$($Decision.SelectionState): $($Decision.Reason)"
-    }
+    $catalog = Get-HermesRuntimeCatalog
+    $identity = Assert-HermesLlamaRuntimeDecision -Decision $Decision -Catalog $catalog
     Assert-HermesRuntimeProcessesStopped
     [System.IO.Directory]::CreateDirectory($script:ManagedRoot) | Out-Null
+    [System.IO.Directory]::CreateDirectory($script:StagingRoot) | Out-Null
+    [System.IO.Directory]::CreateDirectory($script:RollbackRoot) | Out-Null
     $package = $Decision.Package
+
     if (-not $Force -and (Test-Path -LiteralPath (Join-Path $script:BuildRoot 'runtime-manifest.json') -PathType Leaf)) {
         try {
-            $installed = Get-Content -Raw -LiteralPath (Join-Path $script:BuildRoot 'runtime-manifest.json') | ConvertFrom-Json -Depth 64
-            if ([string]$installed.packageId -eq [string]$package.id) {
-                [void](Test-HermesRuntimePayload -Path $script:BuildRoot)
+            $installed = Test-HermesRuntimeAtPath -Path $script:BuildRoot
+            if ($installed.Valid -and
+                [string]$installed.Identity.fingerprint -eq [string]$identity.fingerprint) {
                 Set-HermesResolvedAcceleration -Requested $Decision.RequestedAcceleration -Resolved $Decision.ResolvedAcceleration
-                return $installed
+                return $installed.Manifest
             }
         } catch {
             Write-HermesLog -Component setup -Level WARN -Message "Existing managed runtime requires replacement: $($_.Exception.Message)"
@@ -135,7 +158,7 @@ function Install-HermesLlamaRuntime {
     }
 
     $transactionId = [guid]::NewGuid().ToString('N')
-    $stage = Join-Path $script:ManagedRoot "staging\$transactionId"
+    $stage = Join-Path $script:StagingRoot $transactionId
     $payload = Join-Path $stage 'payload'
     $downloads = Join-Path $stage 'downloads'
     [System.IO.Directory]::CreateDirectory($downloads) | Out-Null
@@ -168,9 +191,12 @@ function Install-HermesLlamaRuntime {
                 publishedAt = $asset.PublishedAt
             })
         }
+
         $executables = Test-HermesRuntimePayload -Path $payload -SmokeTest
         $notice = @(
             'Hermes Local managed inference runtime',
+            "Identity: $($identity.key)",
+            "Fingerprint: $($identity.fingerprint)",
             "Package: $($package.id)",
             "Source: $($package.sourceRepository)@$($package.sourceCommit)",
             "Licences: $(@($package.licenses) -join ', ')",
@@ -181,9 +207,12 @@ function Install-HermesLlamaRuntime {
             $notice + [Environment]::NewLine,
             [System.Text.UTF8Encoding]::new($false)
         )
+
+        $dependencyFiles = Get-HermesRuntimeDependencyInventory -Path $payload -Policy $package.dependencyInventory
         $manifest = [ordered]@{
-            schemaVersion = 1
+            schemaVersion = 2
             component = 'llama.cpp'
+            identity = $identity
             packageId = [string]$package.id
             version = [string]$package.version
             distribution = [string]$package.distribution
@@ -193,33 +222,51 @@ function Install-HermesLlamaRuntime {
             acceleration = [string]$package.acceleration
             buildFlags = @($package.buildFlags)
             cudaArchitectures = @($package.cudaArchitectures)
+            modelFormats = @($package.modelFormats)
             compatibility = $package.compatibility
+            licenses = @($package.licenses)
             artifacts = $resolvedArtifacts.ToArray()
             executables = [ordered]@{
                 server = [System.IO.Path]::GetRelativePath($payload, $executables.server).Replace('\', '/')
                 cli = [System.IO.Path]::GetRelativePath($payload, $executables.cli).Replace('\', '/')
                 benchmark = [System.IO.Path]::GetRelativePath($payload, $executables.benchmark).Replace('\', '/')
             }
+            dependencyInventory = [ordered]@{
+                mode = [string]$package.dependencyInventory.mode
+                hashAlgorithm = [string]$package.dependencyInventory.hashAlgorithm
+                includeExtensions = @($package.dependencyInventory.includeExtensions)
+                files = @($dependencyFiles)
+            }
             files = @(Get-HermesRuntimeFileInventory -Path $payload)
             integrity = [ordered]@{
                 state = 'verified'
+                algorithm = [string]$package.integrity.algorithm
+                requirePublishedDigests = [bool]$package.integrity.requirePublishedDigests
+                recordPayloadInventory = [bool]$package.integrity.recordPayloadInventory
                 verifiedAt = (Get-Date).ToUniversalTime().ToString('o')
-                smokeTests = @('llama-server --version', 'llama-cli --version', 'llama-bench --version')
+                smokeTests = @($package.integrity.smokeTests)
             }
             provenance = [ordered]@{
-                provider = 'github-release-assets'
+                provider = [string]$package.provenance.provider
+                repository = [string]$package.provenance.repository
+                tag = [string]$package.provenance.tag
+                sourceCommit = [string]$package.provenance.sourceCommit
                 catalog = 'config/runtime/llama-runtime-catalog.json'
+                catalogVersion = [string]$catalog.catalogVersion
+                resolvedArtifacts = $resolvedArtifacts.ToArray()
             }
         }
         Write-HermesAtomicText -Path (Join-Path $payload 'runtime-manifest.json') `
             -Content (($manifest | ConvertTo-Json -Depth 64) + [Environment]::NewLine)
 
-        $rollbackRoot = Join-Path $script:ManagedRoot 'rollback'
-        [System.IO.Directory]::CreateDirectory($rollbackRoot) | Out-Null
+        [void](Test-HermesRuntimeAtPath -Path $payload -SmokeTest)
+
         $previousPath = $null
+        $previousIdentity = $null
         if (Test-Path -LiteralPath $script:BuildRoot -PathType Container) {
+            try { $previousIdentity = Get-HermesInstalledLlamaRuntimeIdentity -Path $script:BuildRoot } catch { $previousIdentity = $null }
             $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
-            $previousPath = Join-Path $rollbackRoot "$stamp-$transactionId"
+            $previousPath = Join-Path $script:RollbackRoot "$stamp-$transactionId"
             Move-Item -LiteralPath $script:BuildRoot -Destination $previousPath
         }
         try {
@@ -231,21 +278,31 @@ function Install-HermesLlamaRuntime {
             }
             throw
         }
+
         $state = [ordered]@{
-            schemaVersion = 1
+            schemaVersion = 2
             packageId = [string]$package.id
+            installedIdentity = $identity
+            previousIdentity = $previousIdentity
             requestedAcceleration = [string]$Decision.RequestedAcceleration
             resolvedAcceleration = [string]$Decision.ResolvedAcceleration
+            modelFormat = [string]$Decision.ModelFormat
             selectionState = [string]$Decision.SelectionState
             selectionReason = [string]$Decision.Reason
+            lifecycle = [ordered]@{
+                stagingRoot = $script:StagingRoot
+                activePath = $script:BuildRoot
+                retainedRoot = $script:RollbackRoot
+            }
             activePath = $script:BuildRoot
             previousPath = $previousPath
             installedAt = (Get-Date).ToUniversalTime().ToString('o')
             integrityState = 'verified'
         }
-        Write-HermesAtomicText -Path $script:StatePath -Content (($state | ConvertTo-Json -Depth 32) + [Environment]::NewLine)
+        Write-HermesAtomicText -Path $script:StatePath -Content (($state | ConvertTo-Json -Depth 64) + [Environment]::NewLine)
+
         $diagnostic = [ordered]@{
-            schemaVersion = 1
+            schemaVersion = 2
             selection = $state
             hardware = [ordered]@{
                 operatingSystem = [string]$Decision.Hardware.OperatingSystem
@@ -257,6 +314,7 @@ function Install-HermesLlamaRuntime {
                 nvidia = $Decision.Hardware.Nvidia
             }
             package = [ordered]@{
+                identity = $manifest.identity
                 id = [string]$manifest.packageId
                 version = [string]$manifest.version
                 distribution = [string]$manifest.distribution
@@ -264,9 +322,13 @@ function Install-HermesLlamaRuntime {
                 sourceCommit = [string]$manifest.sourceCommit
                 buildFlags = @($manifest.buildFlags)
                 cudaArchitectures = @($manifest.cudaArchitectures)
+                modelFormats = @($manifest.modelFormats)
                 compatibility = $manifest.compatibility
+                licenses = @($manifest.licenses)
                 artifacts = @($manifest.artifacts)
+                dependencyInventory = $manifest.dependencyInventory
                 integrity = $manifest.integrity
+                provenance = $manifest.provenance
                 manifestPath = (Join-Path $script:BuildRoot 'runtime-manifest.json')
             }
         }
@@ -274,12 +336,14 @@ function Install-HermesLlamaRuntime {
         Write-HermesRuntimeHistory -Entry ([ordered]@{
             action = 'install'
             packageId = [string]$package.id
+            identity = $identity
+            previousIdentity = $previousIdentity
             previousPath = $previousPath
             completedAt = (Get-Date).ToUniversalTime().ToString('o')
             integrityState = 'verified'
         })
         Set-HermesResolvedAcceleration -Requested $Decision.RequestedAcceleration -Resolved $Decision.ResolvedAcceleration
-        Write-HermesLog -Component setup -Message "Promoted verified runtime package '$($package.id)' atomically."
+        Write-HermesLog -Component setup -Message "Promoted verified runtime identity '$($identity.key)' atomically."
         return [pscustomobject]$manifest
     } finally {
         if (Test-Path -LiteralPath $stage) {

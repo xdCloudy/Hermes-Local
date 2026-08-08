@@ -4,12 +4,13 @@
   "title": "Hermes Local llama.cpp runtime catalog",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "component", "catalogVersion", "packages"],
+  "required": ["schemaVersion", "component", "catalogVersion", "lifecycle", "packages"],
   "properties": {
     "$schema": { "type": "string" },
     "schemaVersion": { "const": 1 },
     "component": { "const": "llama.cpp" },
     "catalogVersion": { "type": "string", "minLength": 1 },
+    "lifecycle": { "$ref": "#/$defs/lifecycle" },
     "packages": {
       "type": "array",
       "minItems": 1,
@@ -18,13 +19,76 @@
   },
   "$defs": {
     "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![A-Za-z]:)(?![/\\\\])(?!.*(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$))[A-Za-z0-9._/\\\\-]+$"
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stagingRoot", "activePath", "retainedRoot", "statePath", "historyPath", "diagnosticPath"
+      ],
+      "properties": {
+        "stagingRoot": { "$ref": "#/$defs/relativePath" },
+        "activePath": { "$ref": "#/$defs/relativePath" },
+        "retainedRoot": { "$ref": "#/$defs/relativePath" },
+        "statePath": { "$ref": "#/$defs/relativePath" },
+        "historyPath": { "$ref": "#/$defs/relativePath" },
+        "diagnosticPath": { "$ref": "#/$defs/relativePath" }
+      }
+    },
+    "integrityPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "requirePublishedDigests", "recordPayloadInventory", "smokeTests"],
+      "properties": {
+        "algorithm": { "const": "sha256" },
+        "requirePublishedDigests": { "const": true },
+        "recordPayloadInventory": { "const": true },
+        "smokeTests": {
+          "type": "array",
+          "minItems": 3,
+          "uniqueItems": true,
+          "items": { "enum": ["llama-server --version", "llama-cli --version", "llama-bench --version"] }
+        }
+      }
+    },
+    "dependencyInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "hashAlgorithm", "includeExtensions"],
+      "properties": {
+        "mode": { "const": "payload-file-inventory" },
+        "hashAlgorithm": { "const": "sha256" },
+        "includeExtensions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^\\.[A-Za-z0-9]+$" }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "repository", "tag", "sourceCommit"],
+      "properties": {
+        "provider": { "const": "github-release-assets" },
+        "repository": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+        "tag": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$" },
+        "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      }
+    },
     "package": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "id", "version", "distribution", "sourceRepository", "sourceCommit",
         "platform", "acceleration", "priority", "buildFlags", "cudaArchitectures",
-        "compatibility", "artifacts", "licenses"
+        "modelFormats", "compatibility", "integrity", "dependencyInventory",
+        "provenance", "artifacts", "licenses"
       ],
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,95}$" },
@@ -37,6 +101,12 @@
         "priority": { "type": "integer", "minimum": 0 },
         "buildFlags": { "type": "array", "items": { "type": "string" } },
         "cudaArchitectures": { "type": "array", "items": { "type": "string", "pattern": "^[0-9]{2,3}$" } },
+        "modelFormats": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["gguf"] }
+        },
         "compatibility": {
           "type": "object",
           "additionalProperties": false,
@@ -50,6 +120,9 @@
             "runtimeRange": { "type": "string", "minLength": 1 }
           }
         },
+        "integrity": { "$ref": "#/$defs/integrityPolicy" },
+        "dependencyInventory": { "$ref": "#/$defs/dependencyInventory" },
+        "provenance": { "$ref": "#/$defs/provenance" },
         "artifacts": {
           "type": "array",
           "minItems": 1,
