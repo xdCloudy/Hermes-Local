@@ -62,11 +62,12 @@ class PrebuiltRuntimeContractTests(unittest.TestCase):
             "Move-Item -LiteralPath $payload -Destination $script:BuildRoot",
             "Move-Item -LiteralPath $previousPath -Destination $script:BuildRoot",
             "runtime-manifest.json",
-            "llama-runtime.json",
         ]
         for marker in required:
             with self.subTest(marker=marker):
                 self.assertIn(marker, manager)
+        self.assertEqual(self.catalog["lifecycle"]["diagnosticPath"], "data/runtime/llama-runtime.json")
+        self.assertIn("$script:DiagnosticPath = $script:Lifecycle.DiagnosticPath", manager)
 
     def test_normal_setup_uses_prebuilt_mode_without_native_toolchain(self) -> None:
         wrapper = (ROOT / "Setup-Hermes-Local.ps1").read_text(encoding="utf-8")
