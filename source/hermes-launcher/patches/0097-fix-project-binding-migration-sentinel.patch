@@ -29,7 +29,7 @@ diff --git a/hermes_state.py b/hermes_state.py
                  (session_id,),
              )
  
-@@ -3619,10 +3619,10 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin):
+@@ -3619,8 +3619,8 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin):
      def update_session_project(self, session_id: str, project_id: Optional[str]) -> None:
 -        """Persist the stable Project owning a session, or detach it."""
 +        """Persist a stable Project id, or '' for an explicit projectless binding."""
@@ -43,7 +43,7 @@ diff --git a/hermes_state.py b/hermes_state.py
 diff --git a/tui_gateway/server.py b/tui_gateway/server.py
 --- a/tui_gateway/server.py
 +++ b/tui_gateway/server.py
-@@ -2722,9 +2722,9 @@ def _ensure_session_db_row(session: dict) -> None:
+@@ -2722,8 +2722,8 @@ def _ensure_session_db_row(session: dict) -> None:
              # means the launch/default profile (matches run_agent's convention).
              profile_name=Path(profile_home).name if profile_home else None,
          )
@@ -55,7 +55,7 @@ diff --git a/tui_gateway/server.py b/tui_gateway/server.py
 +            db.update_session_project(key, session.get("project_id"))
      except Exception as exc:
          # Disk-full is not a soft failure: if we swallow it here, prompt.submit
-@@ -2953,10 +2953,17 @@ def _session_project_identity(
+@@ -2953,11 +2953,17 @@ def _session_project_identity(
      key = str(session.get("session_key") or "").strip()
      if key:
          try:
@@ -93,7 +93,7 @@ diff --git a/tui_gateway/methods_session.py b/tui_gateway/methods_session.py
          migration_session = {
              "cwd": stored_cwd,
              "explicit_cwd": True,
-@@ -392,8 +394,12 @@ def _(rid, params: dict) -> dict:
+@@ -392,8 +394,11 @@ def _(rid, params: dict) -> dict:
              "source": found.get("source") or "desktop",
          }
          stored_project_id, _ = _session_project_identity(migration_session, stored_cwd)
@@ -122,7 +122,7 @@ diff --git a/tui_gateway/project_tree.py b/tui_gateway/project_tree.py
 diff --git a/apps/desktop/src/app/chat/sidebar/projects/workspace-groups.ts b/apps/desktop/src/app/chat/sidebar/projects/workspace-groups.ts
 --- a/apps/desktop/src/app/chat/sidebar/projects/workspace-groups.ts
 +++ b/apps/desktop/src/app/chat/sidebar/projects/workspace-groups.ts
-@@ -381,10 +381,12 @@ function isPathUnder(folder: string, target: string): boolean {
+@@ -381,10 +381,11 @@ function isPathUnder(folder: string, target: string): boolean {
   * only the repo-root AUTO-project fallback needs cwd-under-root confidence.
   */
  export function liveSessionProjectId(session: SessionInfo, explicitProjects: ProjectInfo[]): null | string {
@@ -140,7 +140,7 @@ diff --git a/apps/desktop/src/app/chat/sidebar/projects/workspace-groups.ts b/ap
 diff --git a/tests/tui_gateway/test_project_tree.py b/tests/tui_gateway/test_project_tree.py
 --- a/tests/tui_gateway/test_project_tree.py
 +++ b/tests/tui_gateway/test_project_tree.py
-@@ -576,7 +576,7 @@ def test_explicit_projectless_session_does_not_path_fallback():
+@@ -576,6 +576,6 @@ def test_explicit_projectless_session_does_not_path_fallback():
      projects = [{"id": "p_one", "name": "One", "folders": [{"path": "/one"}]}]
      session = {
 -        "id": "chat", "project_id": None, "cwd": "/one/src",
@@ -148,7 +148,7 @@ diff --git a/tests/tui_gateway/test_project_tree.py b/tests/tui_gateway/test_pro
          "git_repo_root": "/one", "git_branch": "main", "started_at": 1, "last_active": 2,
      }
      tree = pt.build_tree(projects, [session], [], resolve=lambda _cwd: "/one", hydrate=True)
-@@ -584,3 +584,17 @@ def test_explicit_projectless_session_does_not_path_fallback():
+@@ -584,3 +584,15 @@ def test_explicit_projectless_session_does_not_path_fallback():
      one_project = next(node for node in tree["projects"] if node["id"] == "p_one")
      assert one_project["sessionCount"] == 0
      assert "chat" in tree["scoped_session_ids"]
