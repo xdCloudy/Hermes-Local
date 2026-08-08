@@ -11,10 +11,11 @@ silently reattaches to a project after restart.
  apps/desktop/src/app/chat/sidebar/projects/workspace-groups.ts | 8 +++++---
  hermes_state.py                                                | 8 ++++----
  tests/tui_gateway/test_project_tree.py                         | 14 ++++++++++++++
+ tests/tui_gateway/test_projects_rpc.py                         | 2 +-
  tui_gateway/methods_session.py                                 | 14 ++++++++++----
  tui_gateway/project_tree.py                                    | 2 +-
  tui_gateway/server.py                                          | 17 ++++++++++++-----
- 6 files changed, 46 insertions(+), 17 deletions(-)
+ 7 files changed, 47 insertions(+), 18 deletions(-)
 
 diff --git a/hermes_state.py b/hermes_state.py
 --- a/hermes_state.py
@@ -163,5 +164,17 @@ diff --git a/tests/tui_gateway/test_project_tree.py b/tests/tui_gateway/test_pro
 +    one_project = next(node for node in tree["projects"] if node["id"] == "p_one")
 +    assert one_project["sessionCount"] == 1
 +    assert "legacy" in tree["scoped_session_ids"]
++diff --git a/tests/tui_gateway/test_projects_rpc.py b/tests/tui_gateway/test_projects_rpc.py
++--- a/tests/tui_gateway/test_projects_rpc.py
+++++ b/tests/tui_gateway/test_projects_rpc.py
++@@ -530,7 +530,7 @@ def test_desktop_session_project_switch_persists_stable_identity(monkeypatch, tmp_path):
++        assert raw["project_id"] is None
++        assert raw["project"] is None
++        assert raw["branch"] == ""
++-        assert server._get_db().get_session(stored_id)["project_id"] is None
+++        assert server._get_db().get_session(stored_id)["project_id"] == ""
++
++        detached = _call(
++            "session.cwd.set",
 -- 
 2.54.0
