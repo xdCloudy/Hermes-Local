@@ -10,11 +10,16 @@ Import-Module (Join-Path $PSScriptRoot 'Common-Hermes.psm1')
 Import-Module (Join-Path $PSScriptRoot 'Hermes-Configuration.psm1')
 
 $script:CatalogPath = Resolve-HermesPath 'config\runtime\llama-runtime-catalog.json'
-$script:ManagedRoot = Resolve-HermesPath 'runtimes\llama.cpp\managed'
-$script:BuildRoot = Resolve-HermesPath 'runtimes\llama.cpp\build'
-$script:StatePath = Join-Path $script:ManagedRoot 'current.json'
-$script:HistoryPath = Join-Path $script:ManagedRoot 'history.json'
-$script:DiagnosticPath = Resolve-HermesPath 'data\runtime\llama-runtime.json'
+. (Join-Path $PSScriptRoot 'runtime\Hermes-RuntimeIdentity.ps1')
+
+$script:Lifecycle = Get-HermesRuntimeLifecyclePaths -CatalogPath $script:CatalogPath
+$script:StagingRoot = $script:Lifecycle.StagingRoot
+$script:BuildRoot = $script:Lifecycle.ActivePath
+$script:RollbackRoot = $script:Lifecycle.RetainedRoot
+$script:StatePath = $script:Lifecycle.StatePath
+$script:HistoryPath = $script:Lifecycle.HistoryPath
+$script:DiagnosticPath = $script:Lifecycle.DiagnosticPath
+$script:ManagedRoot = [System.IO.Path]::GetDirectoryName($script:StatePath)
 
 . (Join-Path $PSScriptRoot 'runtime\Hermes-RuntimeCatalog.ps1')
 . (Join-Path $PSScriptRoot 'runtime\Hermes-RuntimeInstall.ps1')
@@ -23,6 +28,12 @@ $script:DiagnosticPath = Resolve-HermesPath 'data\runtime\llama-runtime.json'
 Export-ModuleMember -Function @(
     'Get-HermesCpuFeatures',
     'Get-HermesRuntimeCatalog',
+    'Get-HermesRuntimeLifecyclePaths',
+    'Get-HermesSelectedModelFormat',
+    'Get-HermesLlamaRuntimePackageIdentity',
+    'Get-HermesInstalledLlamaRuntimeIdentity',
+    'Get-HermesLlamaRuntimeUpdateSnapshot',
+    'Assert-HermesLlamaRuntimeDecision',
     'Get-HermesRequestedAcceleration',
     'Resolve-HermesLlamaRuntimePackage',
     'Install-HermesLlamaRuntime',
