@@ -17,6 +17,7 @@ Subject: [PATCH] fix(projects): make session project selection authoritative
  10 files changed, 181 insertions(+), 26 deletions(-)
 
 diff --git a/apps/desktop/src/app/chat/composer/index.tsx b/apps/desktop/src/app/chat/composer/index.tsx
+index 44213bf9f..44213bf9f 100644
 --- a/apps/desktop/src/app/chat/composer/index.tsx
 +++ b/apps/desktop/src/app/chat/composer/index.tsx
 @@ -201,13 +201,13 @@
@@ -36,6 +37,7 @@ diff --git a/apps/desktop/src/app/chat/composer/index.tsx b/apps/desktop/src/app
          setCurrentCwdTransient(projectCwd)
        }
 diff --git a/apps/desktop/src/app/chat/composer/types.ts b/apps/desktop/src/app/chat/composer/types.ts
+index 77187d35e..77187d35e 100644
 --- a/apps/desktop/src/app/chat/composer/types.ts
 +++ b/apps/desktop/src/app/chat/composer/types.ts
 @@ -40,3 +40,3 @@
@@ -44,6 +46,7 @@ diff --git a/apps/desktop/src/app/chat/composer/types.ts b/apps/desktop/src/app/
 +  onChangeSessionCwd?: (cwd: string, projectId?: null | string) => Promise<void> | void
    onAddContextRef?: (refText: string, label?: string, detail?: string) => void
 diff --git a/apps/desktop/src/app/chat/index.tsx b/apps/desktop/src/app/chat/index.tsx
+index a3ae03f00..a3ae03f00 100644
 --- a/apps/desktop/src/app/chat/index.tsx
 +++ b/apps/desktop/src/app/chat/index.tsx
 @@ -68,5 +68,5 @@
@@ -54,6 +57,7 @@ diff --git a/apps/desktop/src/app/chat/index.tsx b/apps/desktop/src/app/chat/ind
 +  onChangeSessionCwd?: (cwd: string, projectId?: null | string) => Promise<void> | void
    onAddContextRef: (refText: string, label?: string, detail?: string) => void
 diff --git a/apps/desktop/src/app/types.ts b/apps/desktop/src/app/types.ts
+index f7452607f..f7452607f 100644
 --- a/apps/desktop/src/app/types.ts
 +++ b/apps/desktop/src/app/types.ts
 @@ -178,5 +178,7 @@
@@ -65,6 +69,7 @@ diff --git a/apps/desktop/src/app/types.ts b/apps/desktop/src/app/types.ts
    branch: string
    cwd: string
 diff --git a/apps/desktop/src/app/session/hooks/use-cwd-actions.ts b/apps/desktop/src/app/session/hooks/use-cwd-actions.ts
+index 742537993..742537993 100644
 --- a/apps/desktop/src/app/session/hooks/use-cwd-actions.ts
 +++ b/apps/desktop/src/app/session/hooks/use-cwd-actions.ts
 @@ -7,13 +7,14 @@
@@ -129,6 +134,7 @@ diff --git a/apps/desktop/src/app/session/hooks/use-cwd-actions.ts b/apps/deskto
          const message = err instanceof Error ? err.message : String(err)
  
 diff --git a/apps/desktop/src/app/session/hooks/use-session-actions/utils.ts b/apps/desktop/src/app/session/hooks/use-session-actions/utils.ts
+index b0e5ce2f7..b0e5ce2f7 100644
 --- a/apps/desktop/src/app/session/hooks/use-session-actions/utils.ts
 +++ b/apps/desktop/src/app/session/hooks/use-session-actions/utils.ts
 @@ -1019,8 +1019,11 @@
@@ -140,12 +146,13 @@ diff --git a/apps/desktop/src/app/session/hooks/use-session-actions/utils.ts b/a
 +  if (info.project_id !== undefined) {
 +    sessionState.projectId = info.project_id?.trim() || null
 +    if (foreground) {
-+      setCurrentProjectId(sessionState.projectId)
++      setCurrentProjectId(info.project_id?.trim() || null)
 +    }
    }
  
    if (info.branch !== undefined) {
 diff --git a/tui_gateway/methods_session.py b/tui_gateway/methods_session.py
+index b37f2bd46..b37f2bd46 100644
 --- a/tui_gateway/methods_session.py
 +++ b/tui_gateway/methods_session.py
 @@ -20,2 +20,3 @@
@@ -228,6 +235,7 @@ diff --git a/tui_gateway/methods_session.py b/tui_gateway/methods_session.py
              "project_id": project_id,
              "project": project,
 diff --git a/tui_gateway/server.py b/tui_gateway/server.py
+index e9f52d67b..e9f52d67b 100644
 --- a/tui_gateway/server.py
 +++ b/tui_gateway/server.py
 @@ -2870,9 +2870,13 @@
@@ -294,6 +302,7 @@ diff --git a/tui_gateway/server.py b/tui_gateway/server.py
          "desktop_contract": DESKTOP_BACKEND_CONTRACT,
          "project_id": project_id,
 diff --git a/tests/tui_gateway/test_project_tree.py b/tests/tui_gateway/test_project_tree.py
+index 405f09b6f..405f09b6f 100644
 --- a/tests/tui_gateway/test_project_tree.py
 +++ b/tests/tui_gateway/test_project_tree.py
 @@ -566,4 +566,6 @@
@@ -305,6 +314,7 @@ diff --git a/tests/tui_gateway/test_project_tree.py b/tests/tui_gateway/test_pro
 +    # but the chat remains discoverable under Home so it can be reattached.
 +    assert "chat" in tree["scoped_session_ids"]
 diff --git a/tests/tui_gateway/test_projects_rpc.py b/tests/tui_gateway/test_projects_rpc.py
+index c33540040..c33540040 100644
 --- a/tests/tui_gateway/test_projects_rpc.py
 +++ b/tests/tui_gateway/test_projects_rpc.py
 @@ -480,2 +480,70 @@
