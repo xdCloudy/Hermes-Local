@@ -2,7 +2,15 @@
   "$schema": "../schemas/llama-runtime-catalog.schema.json",
   "schemaVersion": 1,
   "component": "llama.cpp",
-  "catalogVersion": "2026.08.05.1",
+  "catalogVersion": "2026.08.08.1",
+  "lifecycle": {
+    "stagingRoot": "runtimes/llama.cpp/managed/staging",
+    "activePath": "runtimes/llama.cpp/build",
+    "retainedRoot": "runtimes/llama.cpp/managed/rollback",
+    "statePath": "runtimes/llama.cpp/managed/current.json",
+    "historyPath": "runtimes/llama.cpp/managed/history.json",
+    "diagnosticPath": "data/runtime/llama-runtime.json"
+  },
   "packages": [
     {
       "id": "llama.cpp-b10107-windows-x64-cuda12",
@@ -15,6 +23,7 @@
       "priority": 320,
       "buildFlags": ["GGML_CUDA=ON", "LLAMA_BUILD_EXAMPLES=ON"],
       "cudaArchitectures": ["75", "80", "86", "89"],
+      "modelFormats": ["gguf"],
       "compatibility": {
         "minimumWindowsBuild": 19045,
         "cpuFeatures": ["avx2"],
@@ -22,6 +31,23 @@
         "maximumComputeCapability": "8.9",
         "minimumDriver": "551.61",
         "runtimeRange": "CUDA 12.x runtime bundle"
+      },
+      "integrity": {
+        "algorithm": "sha256",
+        "requirePublishedDigests": true,
+        "recordPayloadInventory": true,
+        "smokeTests": ["llama-server --version", "llama-cli --version", "llama-bench --version"]
+      },
+      "dependencyInventory": {
+        "mode": "payload-file-inventory",
+        "hashAlgorithm": "sha256",
+        "includeExtensions": [".dll", ".exe"]
+      },
+      "provenance": {
+        "provider": "github-release-assets",
+        "repository": "ggml-org/llama.cpp",
+        "tag": "b10107",
+        "sourceCommit": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
       },
       "artifacts": [
         {
@@ -49,12 +75,30 @@
       "priority": 310,
       "buildFlags": ["GGML_CUDA=ON", "LLAMA_BUILD_EXAMPLES=ON"],
       "cudaArchitectures": ["90", "100", "120"],
+      "modelFormats": ["gguf"],
       "compatibility": {
         "minimumWindowsBuild": 19045,
         "cpuFeatures": ["avx2"],
         "minimumComputeCapability": "9.0",
         "minimumDriver": "580.65",
         "runtimeRange": "CUDA 13.x runtime bundle"
+      },
+      "integrity": {
+        "algorithm": "sha256",
+        "requirePublishedDigests": true,
+        "recordPayloadInventory": true,
+        "smokeTests": ["llama-server --version", "llama-cli --version", "llama-bench --version"]
+      },
+      "dependencyInventory": {
+        "mode": "payload-file-inventory",
+        "hashAlgorithm": "sha256",
+        "includeExtensions": [".dll", ".exe"]
+      },
+      "provenance": {
+        "provider": "github-release-assets",
+        "repository": "ggml-org/llama.cpp",
+        "tag": "b10107",
+        "sourceCommit": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
       },
       "artifacts": [
         {
@@ -82,10 +126,28 @@
       "priority": 200,
       "buildFlags": ["GGML_CUDA=OFF", "LLAMA_BUILD_EXAMPLES=ON"],
       "cudaArchitectures": [],
+      "modelFormats": ["gguf"],
       "compatibility": {
         "minimumWindowsBuild": 19045,
         "cpuFeatures": ["avx2"],
         "runtimeRange": "Windows x64 AVX2"
+      },
+      "integrity": {
+        "algorithm": "sha256",
+        "requirePublishedDigests": true,
+        "recordPayloadInventory": true,
+        "smokeTests": ["llama-server --version", "llama-cli --version", "llama-bench --version"]
+      },
+      "dependencyInventory": {
+        "mode": "payload-file-inventory",
+        "hashAlgorithm": "sha256",
+        "includeExtensions": [".dll", ".exe"]
+      },
+      "provenance": {
+        "provider": "github-release-assets",
+        "repository": "ggml-org/llama.cpp",
+        "tag": "b10107",
+        "sourceCommit": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
       },
       "artifacts": [
         {
