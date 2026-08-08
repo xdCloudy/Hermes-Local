@@ -85,6 +85,22 @@ jobs:
             Get-Content -LiteralPath $stderrPath | ForEach-Object { Write-Host $_ }
           }
 
+          if ($checkerExit -ne 0) {
+            $desktopRoot = Join-Path $workRoot 'hermes-agent\apps\desktop'
+            $diagnosticFiles = @(
+              @{ Path = Join-Path $desktopRoot 'electron\hermes-local-control.ts'; Pattern = "ipcMain|hermes:local:path:open|registerHermesLocalControlIpc|from 'electron'" },
+              @{ Path = Join-Path $desktopRoot 'electron\preload.ts'; Pattern = 'openRoot|openPath|openDashboard' },
+              @{ Path = Join-Path $desktopRoot 'src\global.d.ts'; Pattern = 'LocalWorkstationSnapshot|openRoot|registerModel' }
+            )
+            foreach ($diagnostic in $diagnosticFiles) {
+              if (Test-Path -LiteralPath $diagnostic.Path -PathType Leaf) {
+                Write-Host "=== bounded patch context: $($diagnostic.Path) ==="
+                Select-String -LiteralPath $diagnostic.Path -Pattern $diagnostic.Pattern -Context 2,2 |
+                  ForEach-Object { Write-Host $_.ToString() }
+              }
+            }
+          }
+
           if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
             throw 'Compatibility checker did not produce a report.'
           }
