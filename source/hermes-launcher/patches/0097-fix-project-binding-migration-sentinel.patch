@@ -147,7 +147,8 @@ diff --git a/tests/tui_gateway/test_project_tree.py b/tests/tui_gateway/test_pro
 +        "id": "chat", "project_id": "", "cwd": "/one/src",
          "git_repo_root": "/one", "git_branch": "main", "started_at": 1, "last_active": 2,
      }
-     tree = pt.build_tree(projects, [session], [], resolve=lambda _cwd: "/one", hydrate=True)
+-    tree = pt.build_tree(projects, [session], [], resolve=lambda _cwd: "/one", hydrate=True)
++    tree = pt.build_tree(projects, [session], [], resolve=lambda _cwd: {"repo_root": "/one"}, hydrate=True)
 @@ -584,3 +584,15 @@ def test_explicit_projectless_session_does_not_path_fallback():
      one_project = next(node for node in tree["projects"] if node["id"] == "p_one")
      assert one_project["sessionCount"] == 0
@@ -160,7 +161,7 @@ diff --git a/tests/tui_gateway/test_project_tree.py b/tests/tui_gateway/test_pro
 +        "id": "legacy", "project_id": None, "cwd": "/one/src",
 +        "git_repo_root": "/one", "git_branch": "main", "started_at": 1, "last_active": 2,
 +    }
-+    tree = pt.build_tree(projects, [session], [], resolve=lambda _cwd: "/one", hydrate=True)
++    tree = pt.build_tree(projects, [session], [], resolve=lambda _cwd: {"repo_root": "/one"}, hydrate=True)
 +    one_project = next(node for node in tree["projects"] if node["id"] == "p_one")
 +    assert one_project["sessionCount"] == 1
 +    assert "legacy" in tree["scoped_session_ids"]
