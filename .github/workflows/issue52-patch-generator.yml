@@ -1,0 +1,51 @@
+name: Issue 52 patch generator
+
+on:
+  push:
+    branches:
+      - fix/issue-52-stable-session-projects
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Hermes Local
+        uses: actions/checkout@v4
+
+      - name: Reconstruct pinned Hermes integration tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/NousResearch/hermes-agent.git /tmp/hermes-agent
+          git -C /tmp/hermes-agent checkout --quiet 91937a6dc3ffbbe2f3be91a500f0ecf962c4cf53
+
+          for patch in source/hermes-launcher/patches/*.patch; do
+            name="$(basename "$patch")"
+            if [[ "$name" == "0089-feat-persist-stable-session-project-ids.patch" ]]; then
+              continue
+            fi
+            git -C /tmp/hermes-agent am --3way "$GITHUB_WORKSPACE/$patch"
+          done
+
+          actual="$(git -C /tmp/hermes-agent rev-parse 'HEAD^{tree}')"
+          expected="aedc223f25a1002350cb9d4ef200f32947a5a8cd"
+          echo "Reconstructed integration tree: $actual"
+          test "$actual" = "$expected"
+
+      - name: Generate issue 52 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ci/issue52_backend_gen.py /tmp/hermes-agent
+          python scripts/ci/issue52_frontend_gen.py /tmp/hermes-agent /tmp/0093-feat-associate-chats-with-stable-project-ids.patch
+          git -C /tmp/hermes-agent show --check --stat --oneline HEAD
+
+      - name: Upload generated patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue52-generated-patch
+          path: /tmp/0093-feat-associate-chats-with-stable-project-ids.patch
+          if-no-files-found: error
