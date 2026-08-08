@@ -4,13 +4,13 @@ Date: Sat, 8 Aug 2026 03:12:00 +0100
 Subject: [PATCH] test(trust): cover source-bound skills and agent scopes
 
 ---
- tests/hermes_cli/test_hermes_local_trust.py | 80 +++++++++++++++++++++++++++++
- 1 file changed, 80 insertions(+)
-
 diff --git a/tests/hermes_cli/test_hermes_local_trust.py b/tests/hermes_cli/test_hermes_local_trust.py
+index 832b30f967173c6498ee7c2e38327f7094abba4a..63aa521a70a5465dabf40f00c96a6eb7782faf7f 100644
 --- a/tests/hermes_cli/test_hermes_local_trust.py
 +++ b/tests/hermes_cli/test_hermes_local_trust.py
-@@ -169,1 +169,81 @@ def test_renderer_or_server_trust_claims_cannot_grant_authority():
+@@ -167,3 +167,83 @@ def test_renderer_or_server_trust_claims_cannot_grant_authority():
+     record = trust.sync_mcp_server_identity("local", config)
+     assert record["identity"]["trustState"] == "restricted"
      assert trust.filter_authorized_mcp_servers({"local": config}) == {}
 +def test_same_basename_command_and_same_count_argument_changes_revoke_grants():
 +    first = local_config(command="/safe/server", args=["--mode", "safe"])

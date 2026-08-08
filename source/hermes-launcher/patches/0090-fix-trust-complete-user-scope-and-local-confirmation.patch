@@ -4,14 +4,12 @@ Date: Sat, 8 Aug 2026 03:20:00 +0100
 Subject: [PATCH] fix(trust): complete user scope and local confirmation
 
 ---
- hermes_cli/hermes_local_trust.py             |  9 ++++++++-
- tests/hermes_cli/test_hermes_local_trust.py  | 25 +++++++++++++++++++++++++
- 2 files changed, 33 insertions(+), 1 deletion(-)
-
 diff --git a/hermes_cli/hermes_local_trust.py b/hermes_cli/hermes_local_trust.py
+index be2ba80c9010899684bbcd768bb8b690713689e0..8910af0eb75a34db8b815482dd3976627f3844d2 100644
 --- a/hermes_cli/hermes_local_trust.py
 +++ b/hermes_cli/hermes_local_trust.py
-@@ -183,2 +183,6 @@ def _scope_candidates() -> list[dict[str, str]]:
+@@ -190,6 +190,10 @@ def _scope_candidates() -> list[dict[str, str]]:
+     result: list[dict[str, str]] = []
      principal = _principal()
      result.append({"kind": "agent", "id": principal["id"]})
 +    local_user = str(os.getenv("USERNAME") or os.getenv("USER") or "").strip()
@@ -19,17 +17,27 @@ diff --git a/hermes_cli/hermes_local_trust.py b/hermes_cli/hermes_local_trust.py
 +        result.append({"kind": "user", "id": _safe_id(local_user, "user")})
 +
      project = os.getenv("HERMES_PROJECT_ID", "").strip()
-@@ -364,2 +368,5 @@ def authorize_mcp_operation(server_name: str, operation: str, *, interactive: bool = True) -> AuthorizationDecision:
+     if project:
+         result.append({"kind": "project", "id": _safe_id(project, "project")})
+@@ -365,7 +369,10 @@ def authorize_mcp_operation(server_name: str, operation: str, *, interactive: bo
+                 else:
+                     order = {"never": 0, "local-only": 1, "writes-or-side-effects": 2, "always": 3}
+                     confirmation = max((str(g.get("confirmation", "always")) for g in allows), key=lambda v: order.get(v, 3))
 -                    requires = interactive and (confirmation == "always" or (confirmation == "writes-or-side-effects" and capability in RISKY))
 +                    requires = interactive and (
 +                        confirmation in {"always", "local-only"}
 +                        or (confirmation == "writes-or-side-effects" and capability in RISKY)
 +                    )
                      decision = AuthorizationDecision(True, "matching grant", integration_id, capability, requires, confirmation)
+     _audit(
+         "authorization.allowed" if decision.allowed else "authorization.denied",
 diff --git a/tests/hermes_cli/test_hermes_local_trust.py b/tests/hermes_cli/test_hermes_local_trust.py
+index 63aa521a70a5465dabf40f00c96a6eb7782faf7f..aef0cac5bc816409dc26db5f22a46f80b104bd48 100644
 --- a/tests/hermes_cli/test_hermes_local_trust.py
 +++ b/tests/hermes_cli/test_hermes_local_trust.py
-@@ -249,1 +249,26 @@ def test_user_skill_disable_revokes_load_immediately(tmp_path):
+@@ -247,3 +247,28 @@ def test_user_skill_disable_revokes_load_immediately(tmp_path):
+ 
+     trust.set_integration_policy(record["identity"]["id"], "disabled", [], "never", {"kind": "global"})
      assert not trust.authorize_skill_load("disable-skill", skill_md).allowed
 +
 +

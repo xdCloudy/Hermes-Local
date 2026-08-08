@@ -4,32 +4,89 @@ Date: Sat, 8 Aug 2026 03:08:00 +0100
 Subject: [PATCH] fix(trust): harden identities and manage skill access
 
 ---
- hermes_cli/hermes_local_trust.py                        | 187 +++++++++++++++++-
- tools/skills_tool.py                                    |  40 ++++
- apps/desktop/electron/hermes-local-trust-centre.ts     |   1 +
- apps/desktop/src/app/local-workstation/trust-types.ts   |   3 +
- apps/desktop/src/app/local-workstation/trust-centre.tsx |   4 +-
- 5 files changed, 230 insertions(+), 5 deletions(-)
-
+diff --git a/apps/desktop/electron/hermes-local-trust-centre.ts b/apps/desktop/electron/hermes-local-trust-centre.ts
+index 238f0d3c0c85103fdeb892a2440c3ea108f66a55..629fa4d855082be9dad8d885550af3d4a0988352 100644
+--- a/apps/desktop/electron/hermes-local-trust-centre.ts
++++ b/apps/desktop/electron/hermes-local-trust-centre.ts
+@@ -87,6 +87,7 @@ export interface TrustIntegrationRecord {
+   identity: TrustIdentity
+   lastSeenAt?: string
+   serverName?: string
++  sourceLabel?: string
+   source?: string
+   transport?: 'remote' | 'stdio'
+   unknownCapabilities?: string[]
+diff --git a/apps/desktop/src/app/local-workstation/trust-centre.tsx b/apps/desktop/src/app/local-workstation/trust-centre.tsx
+index d1e2c55b3f8624238324d61cdc054daa890a1ae2..1d9afc8847471e710c94824926fa446353d2300f 100644
+--- a/apps/desktop/src/app/local-workstation/trust-centre.tsx
++++ b/apps/desktop/src/app/local-workstation/trust-centre.tsx
+@@ -102,7 +102,7 @@ export function TrustCentre() {
+     setScopeId(grant?.scope.id || '')
+   }, [selected, snapshot])
+ 
+-  const managed = selected?.identity.integrationType.startsWith('mcp-') ?? false
++  const managed = Boolean(selected && selected.identity.trustState !== 'built-in-verified' && (selected.identity.integrationType.startsWith('mcp-') || selected.identity.integrationType === 'skill'))
+ 
+   const toggleCapability = (capability: TrustCapability) => {
+     setCapabilities(current =>
+@@ -230,7 +230,7 @@ export function TrustCentre() {
+                 <div>
+                   <dt className="text-(--ui-text-tertiary)">Source</dt>
+                   <dd className="mt-1 break-all font-mono">
+-                    {selected.identity.provenance.uri || selected.identity.provenance.provenanceId}
++                    {selected.sourceLabel || selected.identity.provenance.uri || selected.identity.provenance.provenanceId}
+                   </dd>
+                 </div>
+                 <div>
+diff --git a/apps/desktop/src/app/local-workstation/trust-types.ts b/apps/desktop/src/app/local-workstation/trust-types.ts
+index 443e7800ca174d39bfe5b7c5ea59e4c70588cc5b..f762260f21f82f91d71f3ca7454746770ce09a01 100644
+--- a/apps/desktop/src/app/local-workstation/trust-types.ts
++++ b/apps/desktop/src/app/local-workstation/trust-types.ts
+@@ -70,6 +70,9 @@ export interface TrustIdentity {
+ 
+ export interface TrustIntegrationRecord {
+   identity: TrustIdentity
++  accessScopes?: Array<{ id?: string; kind: TrustScopeKind }>
++  accessPrincipals?: Array<{ id: string; kind: string }>
++  sourceLabel?: string
+   lastSeenAt?: string
+   serverName?: string
+   source?: string
 diff --git a/hermes_cli/hermes_local_trust.py b/hermes_cli/hermes_local_trust.py
+index 4b0a878cec5bc3e966157a37b11d58bb48ef9ed0..be2ba80c9010899684bbcd768bb8b690713689e0 100644
 --- a/hermes_cli/hermes_local_trust.py
 +++ b/hermes_cli/hermes_local_trust.py
-@@ -127,2 +127,4 @@ def _identity_material(config: dict[str, Any]) -> dict[str, Any]:
+@@ -139,7 +139,9 @@ def _identity_material(config: dict[str, Any]) -> dict[str, Any]:
+         "transport": "remote" if config.get("url") else "stdio",
+         "endpoint": _endpoint(config.get("url")),
          "command": Path(str(config.get("command") or "")).name or None,
 +        "commandSha256": hashlib.sha256(str(config.get("command") or "").encode("utf-8")).hexdigest(),
          "argumentCount": len(config.get("args") or []) if isinstance(config.get("args"), list) else 0,
 +        "argumentsSha256": hashlib.sha256(json.dumps(config.get("args") or [], sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).hexdigest(),
-@@ -179,2 +181,4 @@ def _scope_candidates() -> list[dict[str, str]]:
+         "environmentKeys": sorted(str(k) for k in (config.get("env") or {}) if isinstance(config.get("env"), dict)),
+         "headerKeys": sorted(str(k).lower() for k in (config.get("headers") or {}) if isinstance(config.get("headers"), dict)),
+         "authConfigured": bool(config.get("auth")),
+@@ -186,6 +188,8 @@ def _principal() -> dict[str, str]:
+ 
+ def _scope_candidates() -> list[dict[str, str]]:
      result: list[dict[str, str]] = []
 +    principal = _principal()
 +    result.append({"kind": "agent", "id": principal["id"]})
      project = os.getenv("HERMES_PROJECT_ID", "").strip()
-@@ -284,3 +288,4 @@ def sync_mcp_server_identity(name: str, config: dict[str, Any]) -> dict[str, Any]:
+     if project:
+         result.append({"kind": "project", "id": _safe_id(project, "project")})
+@@ -280,6 +284,7 @@ def sync_mcp_server_identity(name: str, config: dict[str, Any]) -> dict[str, Any
+         record = {
              "identity": identity, "serverName": str(name), "configurationSha256": digest,
              "transport": "remote" if remote else "stdio", "unknownCapabilities": unknown,
 +            "sourceLabel": _endpoint(config.get("url")) if remote else str(config.get("command") or ""),
              "lastSeenAt": _now(),
-@@ -381,1 +386,8 @@ def set_integration_policy(
+         }
+         if previous:
+@@ -405,16 +410,44 @@ def set_integration_policy(
+     if scope.get("kind") not in {"global", "project", "session", "profile", "agent", "user"}:
+         raise ValueError("unsupported scope")
+     if scope.get("kind") != "global":
 -        scope = {"kind": str(scope["kind"]), "id": _safe_id(scope.get("id"), str(scope["kind"]))}
 +        kind = str(scope["kind"])
 +        raw_scope_id = str(scope.get("id") or "").strip()
@@ -39,17 +96,19 @@ diff --git a/hermes_cli/hermes_local_trust.py b/hermes_cli/hermes_local_trust.py
 +            else _safe_id(raw_scope_id, kind)
 +        )
 +        scope = {"kind": kind, "id": canonical_scope_id}
-@@ -382,1 +394,4 @@ def set_integration_policy(
      with _LOCK:
 +        principal = {"kind": "agent", "id": _safe_id("main", "agent")}
 +        if scope.get("kind") == "agent":
 +            principal = {"kind": "agent", "id": str(scope["id"])}
-@@ -388,2 +403,4 @@ def set_integration_policy(
+         store = _integrations()
+         record = next((r for r in store["integrations"] if r.get("identity", {}).get("id") == integration_id), None)
+         if not record:
+             raise KeyError("integration not found")
          identity = record["identity"]
 +        if identity.get("trustState") == "built-in-verified":
 +            raise ValueError("built-in verified integrations are immutable")
          if not set(requested).issubset(set(identity.get("declaredCapabilities", []))):
-@@ -391,2 +408,18 @@ def set_integration_policy(
+             raise ValueError("grant includes an undeclared capability")
          _revoke(integration_id, "policy-replaced")
 +        if identity.get("integrationType") == "skill":
 +            identity["trustState"] = trust_state
@@ -68,10 +127,21 @@ diff --git a/hermes_cli/hermes_local_trust.py b/hermes_cli/hermes_local_trust.py
 +            _audit("grant.changed", "success", integration_id, trustState=trust_state, scopeKind=scope["kind"])
 +            return record
          identity["trustState"] = trust_state
-@@ -406,1 +440,1 @@ def set_integration_policy(
+         identity["manifestRevision"] = int(identity.get("manifestRevision", 1)) + 1
+         if trust_state in ACTIVE_STATES:
+@@ -427,7 +460,7 @@ def set_integration_policy(
+             for capability in requested:
+                 grants["grants"].append({
+                     "kind": "capabilityGrant", "schemaVersion": 1, "id": _rid("grant"),
 -                    "principal": {"kind": "agent", "id": _safe_id("main", "agent")},
 +                    "principal": principal,
-@@ -461,1 +495,149 @@ def _skill_inventory() -> list[dict[str, Any]]:
+                     "scope": scope, "capability": capability, "effect": "allow",
+                     "confirmation": confirmation, "constraints": {"integrationIds": [integration_id]},
+                     "issuedAt": _now(), "revision": 1,
+@@ -478,6 +511,154 @@ def _skill_inventory() -> list[dict[str, Any]]:
+     return output
+ 
+ 
 +def _bundled_skill_hashes() -> set[tuple[str, str]]:
 +    repo = Path(__file__).resolve().parents[1]
 +    output: set[tuple[str, str]] = set()
@@ -221,15 +291,26 @@ diff --git a/hermes_cli/hermes_local_trust.py b/hermes_cli/hermes_local_trust.py
 +
 +
  def _audit_tail(limit: int = 100) -> list[dict[str, Any]]:
-@@ -488,1 +670,2 @@ def trust_snapshot() -> dict[str, Any]:
+     path = _root() / "audit.jsonl"
+     if not path.is_file():
+@@ -504,7 +685,8 @@ def trust_snapshot() -> dict[str, Any]:
+             sync_mcp_inventory(servers)
+     except Exception:
+         pass
 -    integrations = _integrations()["integrations"] + _skill_inventory()
 +    sync_skill_inventory()
 +    integrations = _integrations()["integrations"]
-
+     grants = [grant for grant in _grants()["grants"] if not grant.get("revokedAt")]
+     audit = _audit_tail()
+     counts: dict[str, int] = {}
 diff --git a/tools/skills_tool.py b/tools/skills_tool.py
+index e38e3324690271e15e5648cdcc02c18a57f631e4..ab273bf45bb66c440b511588fa52a49bb91d3c7d 100644
 --- a/tools/skills_tool.py
 +++ b/tools/skills_tool.py
-@@ -881,1 +881,21 @@ def _serve_plugin_skill(
+@@ -878,6 +878,26 @@ def _serve_plugin_skill(
+             ensure_ascii=False,
+         )
+ 
 +    try:
 +        from hermes_cli.hermes_local_trust import authorize_skill_load
 +        trust_decision = authorize_skill_load(f"{namespace}:{bare}", skill_md)
@@ -251,7 +332,12 @@ diff --git a/tools/skills_tool.py b/tools/skills_tool.py
 +        )
 +
      try:
-@@ -1263,1 +1283,21 @@ def skill_view(
+         content = skill_md.read_text(encoding="utf-8")
+     except Exception as e:
+@@ -1290,6 +1310,26 @@ def skill_view(
+                 ensure_ascii=False,
+             )
+ 
 +        try:
 +            from hermes_cli.hermes_local_trust import authorize_skill_load
 +            trust_decision = authorize_skill_load(str(resolved_name), skill_md)
@@ -273,33 +359,7 @@ diff --git a/tools/skills_tool.py b/tools/skills_tool.py
 +            )
 +
          # If a specific file path is requested, read that instead
-
-diff --git a/apps/desktop/electron/hermes-local-trust-centre.ts b/apps/desktop/electron/hermes-local-trust-centre.ts
---- a/apps/desktop/electron/hermes-local-trust-centre.ts
-+++ b/apps/desktop/electron/hermes-local-trust-centre.ts
-@@ -109,2 +109,3 @@ export interface TrustIntegrationRecord {
-   serverName?: string
-+  sourceLabel?: string
-   source?: string
-
-diff --git a/apps/desktop/src/app/local-workstation/trust-types.ts b/apps/desktop/src/app/local-workstation/trust-types.ts
---- a/apps/desktop/src/app/local-workstation/trust-types.ts
-+++ b/apps/desktop/src/app/local-workstation/trust-types.ts
-@@ -76,2 +76,5 @@ export interface TrustIntegrationRecord {
-   identity: TrustIdentity
-+  accessScopes?: Array<{ id?: string; kind: TrustScopeKind }>
-+  accessPrincipals?: Array<{ id: string; kind: string }>
-+  sourceLabel?: string
-   lastSeenAt?: string
-
-diff --git a/apps/desktop/src/app/local-workstation/trust-centre.tsx b/apps/desktop/src/app/local-workstation/trust-centre.tsx
---- a/apps/desktop/src/app/local-workstation/trust-centre.tsx
-+++ b/apps/desktop/src/app/local-workstation/trust-centre.tsx
-@@ -104,1 +104,1 @@ export function TrustCentre() {
--  const managed = selected?.identity.integrationType.startsWith('mcp-') ?? false
-+  const managed = Boolean(selected && selected.identity.trustState !== 'built-in-verified' && (selected.identity.integrationType.startsWith('mcp-') || selected.identity.integrationType === 'skill'))
-@@ -240,1 +240,1 @@ export function TrustCentre() {
--                    {selected.identity.provenance.uri || selected.identity.provenance.provenanceId}
-+                    {selected.sourceLabel || selected.identity.provenance.uri || selected.identity.provenance.provenanceId}
+         if file_path and skill_dir:
+             from tools.path_security import validate_within_dir, has_traversal_component
 -- 
 2.51.0
