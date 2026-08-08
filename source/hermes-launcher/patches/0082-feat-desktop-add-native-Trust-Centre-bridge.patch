@@ -4,15 +4,15 @@ Date: Sat, 8 Aug 2026 02:31:00 +0100
 Subject: [PATCH] feat(desktop): add native Trust Centre bridge
 
 ---
- apps/desktop/electron/hermes-local-trust-centre.ts | 294 ++++++++++++++++++++
- 1 file changed, 294 insertions(+)
+ apps/desktop/electron/hermes-local-trust-centre.ts | 266 ++++++++++++++++++++
+ 1 file changed, 266 insertions(+)
  create mode 100644 apps/desktop/electron/hermes-local-trust-centre.ts
 
 diff --git a/apps/desktop/electron/hermes-local-trust-centre.ts b/apps/desktop/electron/hermes-local-trust-centre.ts
 new file mode 100644
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-trust-centre.ts
-@@ -0,0 +1,294 @@
+@@ -0,0 +1,266 @@
 +import { execFileSync } from 'node:child_process'
 +import fs from 'node:fs'
 +import path from 'node:path'
