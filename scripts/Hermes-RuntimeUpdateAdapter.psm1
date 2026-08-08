@@ -121,14 +121,23 @@ function New-HermesLlamaRuntimeUpdateAdapter {
         validate = {
             param($Context)
             $validation = Test-HermesManagedLlamaRuntime -SmokeTest
-            if (-not $validation.Valid) {
-                throw "Managed runtime validation failed after promotion: $($validation.Reason)"
-            }
             if ($Context.Mode -eq 'Rollback') {
+                # Restore-HermesLlamaRuntime already smoke-tests and validates the retained
+                # payload before swapping it into the active path. A legacy source-build
+                # rollback has no managed manifest by design, so preserve that explicit
+                # state instead of treating the absent manifest as a post-swap failure.
+                if ($validation.Managed -and -not $validation.Valid) {
+                    throw "Managed runtime validation failed after rollback: $($validation.Reason)"
+                }
                 return [ordered]@{
                     rollbackValidated = $true
+                    managed = [bool]$validation.Managed
                     identity = $validation.Identity
+                    integrity = $(if ($validation.Managed) { 'verified' } else { 'legacy-source-build' })
                 }
+            }
+            if (-not $validation.Valid) {
+                throw "Managed runtime validation failed after promotion: $($validation.Reason)"
             }
             $expected = $Context.Working.RuntimeDecision.PackageIdentity
             if ([string]$validation.Identity.fingerprint -ne [string]$expected.fingerprint) {
