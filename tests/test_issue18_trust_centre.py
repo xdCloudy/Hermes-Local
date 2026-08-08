@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -19,10 +20,51 @@ PATCH_NAMES = [
     "0086-feat-desktop-build-Skills-and-MCP-Trust-Centre.patch",
     "0087-feat-desktop-route-Trust-Centre.patch",
 ]
+HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
 
 def patch_text() -> str:
     return "\n".join((PATCH_ROOT / name).read_text(encoding="utf-8") for name in PATCH_NAMES)
+
+
+def hunk_count_errors(text: str) -> list[str]:
+    lines = text.splitlines()
+    errors: list[str] = []
+    index = 0
+    while index < len(lines):
+        match = HUNK_RE.match(lines[index])
+        if not match:
+            index += 1
+            continue
+        expected_old = int(match.group(2) or 1)
+        expected_new = int(match.group(4) or 1)
+        old_count = 0
+        new_count = 0
+        header = lines[index]
+        index += 1
+        while index < len(lines):
+            line = lines[index]
+            if HUNK_RE.match(line) or line.startswith("diff --git ") or line == "-- ":
+                break
+            if line.startswith("\\ No newline at end of file"):
+                index += 1
+                continue
+            if line.startswith(" "):
+                old_count += 1
+                new_count += 1
+            elif line.startswith("-"):
+                old_count += 1
+            elif line.startswith("+"):
+                new_count += 1
+            else:
+                break
+            index += 1
+        if (old_count, new_count) != (expected_old, expected_new):
+            errors.append(
+                f"{header}: expected old/new {expected_old}/{expected_new}, "
+                f"counted {old_count}/{new_count}"
+            )
+    return errors
 
 
 class TrustCentreContractTests(unittest.TestCase):
@@ -35,6 +77,12 @@ class TrustCentreContractTests(unittest.TestCase):
                 self.assertTrue(text.startswith("From "))
                 self.assertNotIn("\n+diff --git ", text)
                 self.assertNotIn("\n diff --git ", text)
+
+    def test_patch_hunk_counts_are_internally_consistent(self) -> None:
+        for name in PATCH_NAMES:
+            with self.subTest(name=name):
+                errors = hunk_count_errors((PATCH_ROOT / name).read_text(encoding="utf-8"))
+                self.assertEqual([], errors, "\n".join(errors))
 
     def test_native_authority_is_default_deny_and_source_bound(self) -> None:
         text = patch_text()
