@@ -1,0 +1,97 @@
+From 3939393939393939393939393939393939393939 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Sat, 8 Aug 2026 02:24:00 +0100
+Subject: [PATCH] feat(agent): gate MCP startup and invocation
+
+---
+ tools/mcp_tool.py | 51 ++++++++++++++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 46 insertions(+), 5 deletions(-)
+
+diff --git a/tools/mcp_tool.py b/tools/mcp_tool.py
+--- a/tools/mcp_tool.py
++++ b/tools/mcp_tool.py
+@@ -4601,14 +4601,11 @@ def _filter_suspicious_mcp_servers(servers: Dict[str, dict]) -> Dict[str, dict]:
+     except Exception:
+         _validate_mcp_server_entry: Callable[[str, dict[str, Any]], list[str]] | None = None
+ 
+-    if _validate_mcp_server_entry is None:
+-        return servers
+-
+     safe_servers = {}
+     for name, cfg in servers.items():
+         if not isinstance(cfg, dict):
+             safe_servers[name] = cfg
+             continue
+-        issues = _validate_mcp_server_entry(name, cfg)
++        issues = _validate_mcp_server_entry(name, cfg) if _validate_mcp_server_entry else []
+         if issues:
+             logger.warning(
+@@ -4618,3 +4615,10 @@ def _filter_suspicious_mcp_servers(servers: Dict[str, dict]) -> Dict[str, dict]:
+             continue
+         safe_servers[name] = cfg
+-    return safe_servers
++    try:
++        from hermes_cli.hermes_local_trust import filter_authorized_mcp_servers
++        return filter_authorized_mcp_servers(safe_servers)
++    except Exception as exc:
++        # Trust-store failure is a security failure, not an availability
++        # reason to execute configured commands without policy.
++        logger.warning("Hermes Local MCP trust gate failed closed: %s", exc)
++        return {}
+@@ -4870,4 +4874,37 @@ def _mark_server_call_started(server: Any) -> None:
+         mark_tool_call()
+ 
+ 
++def _hermes_local_mcp_call_gate(server_name: str, tool_name: str) -> Optional[str]:
++    """Re-evaluate native grants immediately before transport-visible work."""
++    try:
++        from hermes_cli.hermes_local_trust import authorize_mcp_operation
++
++        decision = authorize_mcp_operation(server_name, "tool.call", interactive=True)
++    except Exception as exc:
++        logger.error("Hermes Local MCP authorization failed closed: %s", exc)
++        return tool_error(
++            f"MCP integration '{server_name}' was blocked because native trust authorization failed."
++        )
++    if not decision.allowed:
++        return tool_error(
++            f"MCP integration '{server_name}' is denied by Hermes Local Trust Centre: "
++            f"{decision.reason}. Review source, capabilities and grants before retrying."
++        )
++    if not decision.requires_confirmation:
++        return None
++    try:
++        from tools.approval import request_tool_approval
++
++        approval = request_tool_approval(
++            f"mcp:{server_name}:{tool_name}",
++            f"Trust Centre requires confirmation before MCP tool '{tool_name}' "
++            f"on integration '{server_name}' may create an external side effect.",
++            rule_key=f"hermes-local-trust:{server_name}:{tool_name}",
++        )
++    except Exception as exc:
++        logger.error("Hermes Local MCP confirmation failed closed: %s", exc)
++        return tool_error(
++            f"MCP tool '{tool_name}' was blocked because confirmation was unavailable."
++        )
++    if not approval.get("approved"):
++        return tool_error(
++            approval.get("message")
++            or f"The user did not approve MCP tool '{tool_name}' on '{server_name}'."
++        )
++    return None
++
++
+ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
+@@ -4879,5 +4916,9 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
+     """
+ 
+     def _handler(args: dict, **kwargs) -> str:
++        trust_error = _hermes_local_mcp_call_gate(server_name, tool_name)
++        if trust_error is not None:
++            return trust_error
++
+         # Circuit breaker: if this server has failed too many times
+         # consecutively, short-circuit with a clear message so the model
+-- 
+2.51.0
