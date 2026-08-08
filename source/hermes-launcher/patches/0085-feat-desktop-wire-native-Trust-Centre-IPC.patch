@@ -12,7 +12,7 @@ Subject: [PATCH] feat(desktop): wire native Trust Centre IPC
 diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
 --- a/apps/desktop/electron/main.ts
 +++ b/apps/desktop/electron/main.ts
-@@ -249,6 +249,7 @@ import {
+@@ -249,4 +249,5 @@ import {
    hermesLocalTuiLaunch,
    registerHermesLocalControlIpc
  } from './hermes-local-control'
@@ -27,7 +27,7 @@ diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
-@@ -140,6 +140,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
+@@ -140,5 +140,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
      },
      openDashboard: () => ipcRenderer.invoke('hermes:local:dashboard:open'),
      openPath: relativePath => ipcRenderer.invoke('hermes:local:path:open', relativePath),
@@ -41,12 +41,12 @@ diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
-@@ -8,6 +8,7 @@ import type {
+@@ -8,3 +8,4 @@ import type {
    LocalWorkstationSnapshot
  } from './app/local-workstation/types'
 +import type { TrustCentreSnapshot, TrustIntegrationRecord, TrustPolicyInput } from './app/local-workstation/trust-types'
  import type {
-@@ -152,6 +153,9 @@ declare global {
+@@ -152,4 +153,7 @@ declare global {
          openDashboard: () => Promise<{ url: string }>
          openPath: (relativePath: string) => Promise<{ error: string; ok: boolean; path: string }>
          openRoot: () => Promise<{ error: string; ok: boolean }>
