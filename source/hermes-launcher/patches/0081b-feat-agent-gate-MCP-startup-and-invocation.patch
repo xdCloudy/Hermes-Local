@@ -4,13 +4,13 @@ Date: Sat, 8 Aug 2026 02:24:00 +0100
 Subject: [PATCH] feat(agent): gate MCP startup and invocation
 
 ---
- tools/mcp_tool.py | 33 ++++++++++++++++++++++++++++++++-
- 1 file changed, 32 insertions(+), 1 deletion(-)
+ tools/mcp_tool.py | 35 ++++++++++++++++++++++++++++++++++-
+ 1 file changed, 34 insertions(+), 1 deletion(-)
 
 diff --git a/tools/mcp_tool.py b/tools/mcp_tool.py
 --- a/tools/mcp_tool.py
 +++ b/tools/mcp_tool.py
-@@ -4665,3 +4665,8 @@ def _load_mcp_config() -> Dict[str, dict]:
+@@ -4665,4 +4665,9 @@ def _load_mcp_config() -> Dict[str, dict]:
                  _warn_hidden_whitespace(name, interpolated)
                  safe_servers[name] = interpolated
 -        return safe_servers
@@ -21,7 +21,7 @@ diff --git a/tools/mcp_tool.py b/tools/mcp_tool.py
 +            logger.warning("Hermes Local MCP trust gate failed closed: %s", trust_exc)
 +            return {}
      except Exception as exc:
-@@ -4881,3 +4886,29 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
+@@ -4881,3 +4886,31 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
  
      def _handler(args: dict, **kwargs) -> str:
 +        try:
