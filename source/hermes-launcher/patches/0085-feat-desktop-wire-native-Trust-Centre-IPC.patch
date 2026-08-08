@@ -5,40 +5,46 @@ Subject: [PATCH] feat(desktop): wire native Trust Centre IPC
 
 ---
  apps/desktop/electron/hermes-local-control.ts | 2 ++
- apps/desktop/electron/preload.ts               | 5 ++++-
- apps/desktop/src/global.d.ts                   | 4 ++++
+ apps/desktop/electron/preload.ts | 5 ++++-
+ apps/desktop/src/global.d.ts | 4 ++++
  3 files changed, 10 insertions(+), 1 deletion(-)
 
 diff --git a/apps/desktop/electron/hermes-local-control.ts b/apps/desktop/electron/hermes-local-control.ts
 --- a/apps/desktop/electron/hermes-local-control.ts
 +++ b/apps/desktop/electron/hermes-local-control.ts
-@@ -10,1 +10,2 @@
- import { ipcMain, shell } from 'electron'
+@@ -9 +9,2 @@
+ import { app, ipcMain, shell } from 'electron'
 +import { registerHermesLocalTrustCentreIpc } from './hermes-local-trust-centre'
-@@ -2411,1 +2412,2 @@
+@@ -2411,2 +2412,3 @@
    ipcMain.handle('hermes:local:path:open', (_event, relativePath) => openLocalPath(relativePath))
 +  registerHermesLocalTrustCentreIpc()
+   ipcMain.handle('hermes:local:root:open', async () => {
 
 diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
 --- a/apps/desktop/electron/preload.ts
 +++ b/apps/desktop/electron/preload.ts
-@@ -143,1 +143,4 @@
+@@ -142,4 +142,7 @@
+     openDashboard: () => ipcRenderer.invoke('hermes:local:dashboard:open'),
+     openPath: relativePath => ipcRenderer.invoke('hermes:local:path:open', relativePath),
 -    openRoot: () => ipcRenderer.invoke('hermes:local:root:open')
 +    openRoot: () => ipcRenderer.invoke('hermes:local:root:open'),
 +    trustSnapshot: () => ipcRenderer.invoke('hermes:local:trust:snapshot'),
 +    setTrustPolicy: input => ipcRenderer.invoke('hermes:local:trust:policy', input),
 +    exportTrustDiagnostics: () => ipcRenderer.invoke('hermes:local:trust:diagnostics')
+   },
 
 diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
 --- a/apps/desktop/src/global.d.ts
 +++ b/apps/desktop/src/global.d.ts
-@@ -10,1 +10,2 @@
+@@ -14,2 +14,3 @@
+   LocalWorkstationSnapshot
  } from './app/local-workstation/types'
 +import type { TrustCentreSnapshot, TrustIntegrationRecord, TrustPolicyInput } from './app/local-workstation/trust-types'
-@@ -155,1 +156,4 @@
+@@ -155,2 +156,5 @@
          openRoot: () => Promise<{ error: string; ok: boolean }>
 +        trustSnapshot: () => Promise<TrustCentreSnapshot>
 +        setTrustPolicy: (input: TrustPolicyInput) => Promise<TrustIntegrationRecord>
 +        exportTrustDiagnostics: () => Promise<{ path: string }>
+         registerModel: (model: Partial<LocalModel> & { localPath: string }) => Promise<LocalModel>
 -- 
 2.51.0
