@@ -8,6 +8,10 @@ out = sys.argv[2]
 
 backend_source = (repo / "scripts/ci/issue52_backend_gen.py").read_text(encoding="utf-8")
 
+# The regression-test appendix is written as a raw string in the temporary
+# generator. Make it a normal string so its \n escapes become real source lines.
+backend_source = backend_source.replace("text += r'''\\n\\n\\ndef test_stable", "text += '''\\n\\n\\ndef test_stable")
+
 cwd_call = '''one(
     "tui_gateway/server.py",
     '    session["cwd_from_settle"] = False\\n    _register_session_cwd(session)',
@@ -57,6 +61,18 @@ frontend_source = frontend_source.replace(
     '    "export const setCurrentProjectId = (projectId: null | string) => $currentProjectId.set(projectId)\\n\\n"\n'
     '    "export const setCurrentCwd = (next: Updater<string>) => {",',
 )
+# Keep the contract tests in lockstep with the v8 requirement.
+frontend_source = frontend_source.replace('"desktop_contract: 7"', '"reportBackendContract(7)"')
+frontend_source = frontend_source.replace('"desktop_contract: 8"', '"reportBackendContract(8)"')
+frontend_source = frontend_source.replace('"desktop_contract: 6"', '"reportBackendContract(6)"')
+
+# De-duplicate an accidental repeated StatusRow line in the generated selector
+# before the file is committed/formatted into the mail patch.
+project_write = 'write("apps/desktop/src/app/chat/composer/status-stack/project-row.tsx", project_row)'
+project_write_replacement = '''_project_lines = project_row.splitlines()\n_project_clean = []\nfor _line in _project_lines:\n    if _project_clean and _line == _project_clean[-1] and "<StatusRow leading=" in _line:\n        continue\n    _project_clean.append(_line)\nproject_row = "\\n".join(_project_clean) + "\\n"\nwrite("apps/desktop/src/app/chat/composer/status-stack/project-row.tsx", project_row)'''
+if frontend_source.count(project_write) != 1:
+    raise RuntimeError("frontend generator project-row write changed")
+frontend_source = frontend_source.replace(project_write, project_write_replacement)
 
 block_start = frontend_source.find(
     'one(\n    "apps/desktop/src/app/chat/composer/index.tsx",\n    \'\'\'                <CodingStatusRow'
