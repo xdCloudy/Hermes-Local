@@ -1,0 +1,57 @@
+From 7878787878787878787878787878787878787878 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Sat, 8 Aug 2026 02:35:00 +0100
+Subject: [PATCH] feat(desktop): wire native Trust Centre IPC
+
+---
+ apps/desktop/electron/main.ts  | 2 ++
+ apps/desktop/electron/preload.ts | 5 ++++-
+ apps/desktop/src/global.d.ts   | 5 +++++
+ 3 files changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/apps/desktop/electron/main.ts b/apps/desktop/electron/main.ts
+--- a/apps/desktop/electron/main.ts
++++ b/apps/desktop/electron/main.ts
+@@ -249,6 +249,7 @@ import {
+   hermesLocalTuiLaunch,
+   registerHermesLocalControlIpc
+ } from './hermes-local-control'
++import { registerHermesLocalTrustCentreIpc } from './hermes-local-trust-centre'
+ import { createLinkTitleWindow, guardLinkTitleSession, readLinkTitleWindowTitle } from './link-title-window'
+@@ -9473,3 +9474,4 @@ function createWindow() {
+ }
+ 
+ registerHermesLocalControlIpc()
++registerHermesLocalTrustCentreIpc()
+ 
+ diff --git a/apps/desktop/electron/preload.ts b/apps/desktop/electron/preload.ts
+--- a/apps/desktop/electron/preload.ts
++++ b/apps/desktop/electron/preload.ts
+@@ -140,6 +140,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
+     },
+     openDashboard: () => ipcRenderer.invoke('hermes:local:dashboard:open'),
+     openPath: relativePath => ipcRenderer.invoke('hermes:local:path:open', relativePath),
+-    openRoot: () => ipcRenderer.invoke('hermes:local:root:open')
++    openRoot: () => ipcRenderer.invoke('hermes:local:root:open'),
++    trustSnapshot: () => ipcRenderer.invoke('hermes:local:trust:snapshot'),
++    setTrustPolicy: input => ipcRenderer.invoke('hermes:local:trust:policy', input),
++    exportTrustDiagnostics: () => ipcRenderer.invoke('hermes:local:trust:diagnostics')
+   },
+ diff --git a/apps/desktop/src/global.d.ts b/apps/desktop/src/global.d.ts
+--- a/apps/desktop/src/global.d.ts
++++ b/apps/desktop/src/global.d.ts
+@@ -8,6 +8,7 @@ import type {
+   LocalWorkstationSnapshot
+ } from './app/local-workstation/types'
++import type { TrustCentreSnapshot, TrustIntegrationRecord, TrustPolicyInput } from './app/local-workstation/trust-types'
+ import type {
+@@ -152,6 +153,9 @@ declare global {
+         openDashboard: () => Promise<{ url: string }>
+         openPath: (relativePath: string) => Promise<{ error: string; ok: boolean; path: string }>
+         openRoot: () => Promise<{ error: string; ok: boolean }>
++        trustSnapshot: () => Promise<TrustCentreSnapshot>
++        setTrustPolicy: (input: TrustPolicyInput) => Promise<TrustIntegrationRecord>
++        exportTrustDiagnostics: () => Promise<{ path: string }>
+         registerModel: (model: Partial<LocalModel> & { localPath: string }) => Promise<LocalModel>
+-- 
+2.51.0
