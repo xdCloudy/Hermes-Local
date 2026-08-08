@@ -1,0 +1,189 @@
+name: Trust tail autofix
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/trust-tail-autofix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  canonicalize:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 1
+
+      - name: Generate and commit canonical tail patches
+        shell: pwsh
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifest = Get-Content -Raw -LiteralPath '.\VERSION.json' | ConvertFrom-Json
+          $candidate = [string]$manifest.sources.hermesAgent.commit
+          $probe = Join-Path $env:RUNNER_TEMP 'hermes-trust-tail-autofix'
+          New-Item -ItemType Directory -Path $probe -Force | Out-Null
+          & git -C $probe init --quiet
+          & git -C $probe remote add origin https://github.com/NousResearch/hermes-agent.git
+          & git -C $probe fetch --quiet --depth=1 origin $candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Hermes Agent fetch failed.' }
+          & git -C $probe checkout --quiet --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Hermes Agent checkout failed.' }
+          & git -C $probe config user.email 'ci@local.invalid'
+          & git -C $probe config user.name 'Hermes Local CI'
+
+          $patchRoot = (Resolve-Path '.\source\hermes-launcher\patches').Path
+          $prefix = Get-ChildItem -LiteralPath $patchRoot -Filter '*.patch' -File |
+            Sort-Object Name |
+            Where-Object { $_.Name -lt '0088-fix-trust-harden-identities-and-manage-skill-access.patch' }
+          & git -C $probe am --3way --committer-date-is-author-date @($prefix.FullName)
+          if ($LASTEXITCODE -ne 0) { throw 'Could not reconstruct Trust Centre preimage before patch 0088.' }
+
+          $applier = Join-Path $env:RUNNER_TEMP 'apply-normalized-hunks.py'
+          @'
+          from __future__ import annotations
+          import re
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          patch_path = Path(sys.argv[2])
+          patch_lines = patch_path.read_text(encoding='utf-8').splitlines()
+          hunk_re = re.compile(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@')
+
+          def apply_file(path: Path, hunks: list[tuple[int, list[str], list[str]]]) -> None:
+              raw = path.read_bytes()
+              eol = '\r\n' if b'\r\n' in raw else '\n'
+              normalized = raw.decode('utf-8').replace('\r\n', '\n')
+              lines = normalized.split('\n')
+              for old_start, old_lines, new_lines in hunks:
+                  width = len(old_lines)
+                  if width == 0:
+                      candidates = [max(0, min(len(lines), old_start - 1))]
+                  else:
+                      candidates = [
+                          index
+                          for index in range(0, len(lines) - width + 1)
+                          if lines[index:index + width] == old_lines
+                      ]
+                  if not candidates:
+                      preview = '\n'.join(old_lines[:8])
+                      raise RuntimeError(f'hunk target not found in {path}:\n{preview}')
+                  expected = max(0, old_start - 1)
+                  index = min(candidates, key=lambda value: abs(value - expected))
+                  lines[index:index + width] = new_lines
+              path.write_bytes(eol.join(lines).encode('utf-8'))
+
+          current_path: Path | None = None
+          current_hunks: list[tuple[int, list[str], list[str]]] = []
+          i = 0
+          while i < len(patch_lines):
+              line = patch_lines[i]
+              if line.startswith('diff --git a/'):
+                  if current_path is not None:
+                      apply_file(current_path, current_hunks)
+                  parts = line.split()
+                  current_path = root / parts[2][2:]
+                  current_hunks = []
+                  i += 1
+                  continue
+              match = hunk_re.match(line)
+              if match and current_path is not None:
+                  old_start = int(match.group(1))
+                  old_lines: list[str] = []
+                  new_lines: list[str] = []
+                  i += 1
+                  while i < len(patch_lines):
+                      body = patch_lines[i]
+                      if body.startswith('diff --git a/') or hunk_re.match(body) or body == '-- ':
+                          break
+                      if body.startswith('\\ No newline at end of file'):
+                          i += 1
+                          continue
+                      if body.startswith(' '):
+                          old_lines.append(body[1:])
+                          new_lines.append(body[1:])
+                      elif body.startswith('-') and not body.startswith('---'):
+                          old_lines.append(body[1:])
+                      elif body.startswith('+') and not body.startswith('+++'):
+                          new_lines.append(body[1:])
+                      i += 1
+                  current_hunks.append((old_start, old_lines, new_lines))
+                  continue
+              i += 1
+          if current_path is not None:
+              apply_file(current_path, current_hunks)
+          '@ | Set-Content -LiteralPath $applier -Encoding utf8NoBOM
+
+          $items = @(
+            [pscustomobject]@{
+              Name = '0088-fix-trust-harden-identities-and-manage-skill-access.patch'
+              From = 'a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8'
+              Date = 'Sat, 8 Aug 2026 03:08:00 +0100'
+              Subject = 'fix(trust): harden identities and manage skill access'
+            },
+            [pscustomobject]@{
+              Name = '0089-test-trust-cover-source-bound-skills-and-agent-scopes.patch'
+              From = 'b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9'
+              Date = 'Sat, 8 Aug 2026 03:12:00 +0100'
+              Subject = 'test(trust): cover source-bound skills and agent scopes'
+            },
+            [pscustomobject]@{
+              Name = '0090-fix-trust-complete-user-scope-and-local-confirmation.patch'
+              From = 'c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0'
+              Date = 'Sat, 8 Aug 2026 03:20:00 +0100'
+              Subject = 'fix(trust): complete user scope and local confirmation'
+            }
+          )
+
+          foreach ($item in $items) {
+            $sourcePatch = Join-Path $patchRoot $item.Name
+            & python $applier $probe $sourcePatch
+            if ($LASTEXITCODE -ne 0) { throw "Logical hunk application failed: $($item.Name)" }
+
+            $diffPath = Join-Path $env:RUNNER_TEMP ($item.Name + '.diff')
+            & git -C $probe diff --full-index --no-ext-diff --output=$diffPath HEAD
+            if ($LASTEXITCODE -ne 0) { throw "Canonical diff generation failed: $($item.Name)" }
+            $diff = [IO.File]::ReadAllText($diffPath, [Text.UTF8Encoding]::new($false))
+            if ([string]::IsNullOrWhiteSpace($diff)) { throw "Canonical diff was empty: $($item.Name)" }
+
+            $mail = @(
+              "From $($item.From) Mon Sep 17 00:00:00 2001",
+              'From: OpenAI <openai@localhost>',
+              "Date: $($item.Date)",
+              "Subject: [PATCH] $($item.Subject)",
+              '',
+              '---',
+              $diff.TrimEnd("`r", "`n"),
+              '-- ',
+              '2.51.0',
+              ''
+            ) -join "`n"
+            [IO.File]::WriteAllText($sourcePatch, $mail, [Text.UTF8Encoding]::new($false))
+
+            & git -C $probe add -A
+            & git -C $probe commit --quiet -m "canonical $($item.Name)"
+            if ($LASTEXITCODE -ne 0) { throw "Probe canonical commit failed: $($item.Name)" }
+          }
+
+          & git config user.email '52116030+xdCloudy@users.noreply.github.com'
+          & git config user.name 'xdCloudy'
+          & git add -- `
+            source/hermes-launcher/patches/0088-fix-trust-harden-identities-and-manage-skill-access.patch `
+            source/hermes-launcher/patches/0089-test-trust-cover-source-bound-skills-and-agent-scopes.patch `
+            source/hermes-launcher/patches/0090-fix-trust-complete-user-scope-and-local-confirmation.patch
+          if (git diff --cached --quiet) {
+            Write-Host 'Tail patches were already canonical.'
+            exit 0
+          }
+          & git commit -m 'fix(ci): canonicalize Trust Centre tail patches'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not commit canonical Trust Centre tail patches.' }
+          & git push origin "HEAD:$env:HEAD_BRANCH"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not push canonical Trust Centre tail patches.' }
