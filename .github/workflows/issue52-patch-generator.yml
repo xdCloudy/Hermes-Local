@@ -9,7 +9,7 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   generate:
@@ -46,6 +46,7 @@ jobs:
           set -euo pipefail
           python scripts/ci/issue52_generator_driver.py /tmp/hermes-agent /tmp/0093-feat-associate-chats-with-stable-project-ids.patch
           git -C /tmp/hermes-agent show --check --stat --oneline HEAD
+          echo "Generated integration tree: $(git -C /tmp/hermes-agent rev-parse 'HEAD^{tree}')"
 
       - name: Upload generated patch
         uses: actions/upload-artifact@v4
@@ -53,3 +54,27 @@ jobs:
           name: issue52-generated-patch
           path: /tmp/0093-feat-associate-chats-with-stable-project-ids.patch
           if-no-files-found: error
+
+      - name: Finalize branch with generated patch
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp /tmp/0093-feat-associate-chats-with-stable-project-ids.patch \
+            source/hermes-launcher/patches/0093-feat-associate-chats-with-stable-project-ids.patch
+          rm -f source/hermes-launcher/patches/0089-feat-persist-stable-session-project-ids.patch
+
+          git fetch --quiet origin main --depth=1
+          git checkout origin/main -- .github/workflows/hermes-agent-patch-smoke.yml
+
+          git rm -f --ignore-unmatch \
+            .github/workflows/issue52-patch-generator.yml \
+            scripts/ci/issue52_backend_gen.py \
+            scripts/ci/issue52_frontend_gen.py \
+            scripts/ci/issue52_generator_driver.py
+
+          git config user.name 'xdCloudy'
+          git config user.email 'connerabery@gmail.com'
+          git add source/hermes-launcher/patches .github/workflows/hermes-agent-patch-smoke.yml
+          git commit -m 'feat(projects): associate chats with stable project ids'
+          git push origin HEAD:fix/issue-52-stable-session-projects
