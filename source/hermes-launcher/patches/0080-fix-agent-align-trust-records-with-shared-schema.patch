@@ -1,0 +1,26 @@
+From 2828282828282828282828282828282828282828 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Sat, 8 Aug 2026 02:18:00 +0100
+Subject: [PATCH] fix(agent): align trust records with shared schema
+
+---
+ hermes_cli/hermes_local_trust.py | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/hermes_cli/hermes_local_trust.py b/hermes_cli/hermes_local_trust.py
+--- a/hermes_cli/hermes_local_trust.py
++++ b/hermes_cli/hermes_local_trust.py
+@@ -266,3 +266,3 @@ def sync_mcp_server_identity(name: str, config: dict[str, Any]) -> dict[str, Any]:
+-            "displayName": str(name)[:160], "integrationType": "mcp-remote" if remote else "mcp-local",
++            "displayName": str(name)[:120], "integrationType": "mcp-remote" if remote else "mcp-local",
+             "provenance": {
+-                "sourceType": "remote-endpoint" if remote else "local-command",
++                "sourceType": "remote-endpoint" if remote else "local-path",
+@@ -426,3 +426,3 @@ def _skill_inventory() -> list[dict[str, Any]]:
+-                    "displayName": name[:160], "integrationType": "skill",
++                    "displayName": name[:120], "integrationType": "skill",
+                     "provenance": {
+-                        "sourceType": source_type,
++                        "sourceType": "built-in" if source_type == "bundled" else "local-path",
+-- 
+2.51.0
