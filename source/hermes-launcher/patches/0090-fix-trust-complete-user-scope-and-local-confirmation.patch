@@ -4,9 +4,9 @@ Date: Sat, 8 Aug 2026 03:20:00 +0100
 Subject: [PATCH] fix(trust): complete user scope and local confirmation
 
 ---
- hermes_cli/hermes_local_trust.py             | 10 ++++++++--
+ hermes_cli/hermes_local_trust.py             |  9 ++++++++-
  tests/hermes_cli/test_hermes_local_trust.py  | 25 +++++++++++++++++++++++++
- 2 files changed, 33 insertions(+), 2 deletions(-)
+ 2 files changed, 33 insertions(+), 1 deletion(-)
 
 diff --git a/hermes_cli/hermes_local_trust.py b/hermes_cli/hermes_local_trust.py
 --- a/hermes_cli/hermes_local_trust.py
@@ -19,7 +19,7 @@ diff --git a/hermes_cli/hermes_local_trust.py b/hermes_cli/hermes_local_trust.py
 +        result.append({"kind": "user", "id": _safe_id(local_user, "user")})
 +
      project = os.getenv("HERMES_PROJECT_ID", "").strip()
-@@ -364,2 +368,4 @@ def authorize_mcp_operation(server_name: str, operation: str, *, interactive: bool = True) -> AuthorizationDecision:
+@@ -364,2 +368,5 @@ def authorize_mcp_operation(server_name: str, operation: str, *, interactive: bool = True) -> AuthorizationDecision:
 -                    requires = interactive and (confirmation == "always" or (confirmation == "writes-or-side-effects" and capability in RISKY))
 +                    requires = interactive and (
 +                        confirmation in {"always", "local-only"}
