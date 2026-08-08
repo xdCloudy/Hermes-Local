@@ -12,7 +12,7 @@ diff --git a/tui_gateway/project_tree.py b/tui_gateway/project_tree.py
 index e425c2c42..e425c2c42 100644
 --- a/tui_gateway/project_tree.py
 +++ b/tui_gateway/project_tree.py
-@@ -580,16 +580,20 @@ def build_tree(
+@@ -580,17 +580,18 @@ def build_tree(
  
      by_project: dict[str, list[dict]] = {}
      unowned: list[dict] = []
@@ -50,7 +50,7 @@ index e425c2c42..e425c2c42 100644
 diff --git a/tests/tui_gateway/test_project_tree.py b/tests/tui_gateway/test_project_tree.py
 --- a/tests/tui_gateway/test_project_tree.py
 +++ b/tests/tui_gateway/test_project_tree.py
-@@ -568,3 +568,15 @@ def test_stale_stable_project_id_does_not_path_fallback():
+@@ -568,2 +568,14 @@ def test_stale_stable_project_id_does_not_path_fallback():
      # but the chat remains discoverable under Home so it can be reattached.
      assert "chat" in tree["scoped_session_ids"]
 +
