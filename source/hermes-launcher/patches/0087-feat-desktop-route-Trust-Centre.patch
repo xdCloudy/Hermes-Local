@@ -1,0 +1,91 @@
+From 9898989898989898989898989898989898989898 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Sat, 8 Aug 2026 02:45:00 +0100
+Subject: [PATCH] feat(desktop): route Trust Centre
+
+---
+ apps/desktop/src/app/chat/sidebar/index.tsx       |  8 ++++++++
+ apps/desktop/src/app/contrib/surfaces.tsx         |  1 +
+ apps/desktop/src/app/local-workstation/index.tsx  |  7 +++++++
+ apps/desktop/src/app/routes.ts                     |  3 +++
+ 4 files changed, 19 insertions(+)
+
+diff --git a/apps/desktop/src/app/routes.ts b/apps/desktop/src/app/routes.ts
+--- a/apps/desktop/src/app/routes.ts
++++ b/apps/desktop/src/app/routes.ts
+@@ -32,6 +32,7 @@ export const BENCHMARKS_ROUTE = '/benchmarks'
+ export const SECURITY_ROUTE = '/security'
++export const TRUST_ROUTE = '/trust'
+ export const LOGS_ROUTE = '/logs'
+ export const ABOUT_ROUTE = '/about'
+@@ -79,6 +80,7 @@ export type AppRouteId =
+   | 'benchmarks'
+   | 'security'
++  | 'trust'
+   | 'logs'
+   | 'about'
+@@ -112,6 +114,7 @@ export const APP_ROUTES = [
+   { id: 'benchmarks', path: BENCHMARKS_ROUTE, view: 'workstation' },
+   { id: 'security', path: SECURITY_ROUTE, view: 'workstation' },
++  { id: 'trust', path: TRUST_ROUTE, view: 'workstation' },
+   { id: 'logs', path: LOGS_ROUTE, view: 'workstation' },
+   { id: 'about', path: ABOUT_ROUTE, view: 'workstation' }
+
+diff --git a/apps/desktop/src/app/chat/sidebar/index.tsx b/apps/desktop/src/app/chat/sidebar/index.tsx
+--- a/apps/desktop/src/app/chat/sidebar/index.tsx
++++ b/apps/desktop/src/app/chat/sidebar/index.tsx
+@@ -119,6 +119,7 @@ import {
+   TASKS_ROUTE,
+   TOOLS_ROUTE,
++  TRUST_ROUTE,
+   TUI_ROUTE
+ } from '../../routes'
+@@ -259,6 +260,13 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
+     icon: props => <Codicon name="shield" {...props} />,
+     route: SECURITY_ROUTE
+   },
++  {
++    id: 'trust',
++    label: '',
++    icon: props => <Codicon name="lock" {...props} />,
++    route: TRUST_ROUTE
++  },
+   {
+     id: 'logs',
+
+diff --git a/apps/desktop/src/app/contrib/surfaces.tsx b/apps/desktop/src/app/contrib/surfaces.tsx
+--- a/apps/desktop/src/app/contrib/surfaces.tsx
++++ b/apps/desktop/src/app/contrib/surfaces.tsx
+@@ -181,6 +181,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
+       <Route element={page(<LocalWorkstationView />)} path="benchmarks" />
+       <Route element={page(<LocalWorkstationView />)} path="security" />
++      <Route element={page(<LocalWorkstationView />)} path="trust" />
+       <Route element={page(<LocalWorkstationView />)} path="logs" />
+       <Route element={page(<LocalWorkstationView />)} path="about" />
+
+diff --git a/apps/desktop/src/app/local-workstation/index.tsx b/apps/desktop/src/app/local-workstation/index.tsx
+--- a/apps/desktop/src/app/local-workstation/index.tsx
++++ b/apps/desktop/src/app/local-workstation/index.tsx
+@@ -36,6 +36,7 @@ import { AboutHub } from './about-hub'
+ import { ModelDownloadCard } from './model-download-card'
+ import { latestSecurityTask, securityTaskState } from './security-task'
+ import { TaskCentre } from './task-centre'
++import { TrustCentre } from './trust-centre'
+ import type {
+@@ -56,6 +57,7 @@ const SECTION_COPY = {
+   projects: ['Projects', 'Manage local workspaces with the official Hermes project surface.'],
+   security: ['Security', 'Loopback trust boundaries, audits and remediation evidence.'],
++  trust: ['Trust Centre', 'Source-bound skills, MCP permissions, scoped grants and invocation audit.'],
+   sessions: ['Sessions', 'Resume and manage persistent local Hermes conversations.'],
+@@ -1817,6 +1819,10 @@ function SectionContent({
+     )
+   }
+ 
++  if (section === 'trust') {
++    return <TrustCentre />
++  }
++
+   if (section === 'about') {
+     return <AboutHub onNavigate={onNavigate} onRun={onRun} snapshot={snapshot} />
+-- 
+2.51.0
