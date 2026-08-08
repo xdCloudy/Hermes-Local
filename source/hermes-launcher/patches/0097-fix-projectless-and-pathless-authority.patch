@@ -6,11 +6,11 @@ Subject: [PATCH] fix(projects): enforce projectless and pathless authority
 ---
  apps/desktop/src/app/chat/composer/index.tsx                |  2 +-
  apps/desktop/src/app/chat/composer/status-stack/project-row.tsx |  9 ++++----
- tests/tui_gateway/test_project_tree.py                      | 13 +++++++++++
- tests/tui_gateway/test_projects_rpc.py                      | 28 +++++++++++++++++++++++
- tui_gateway/project_tree.py                                 | 14 +++++++-----
- tui_gateway/server.py                                       | 10 +++++----
- 6 files changed, 62 insertions(+), 14 deletions(-)
+ tests/tui_gateway/test_project_tree.py                      | 12 ++++++++++++
+ tests/tui_gateway/test_projects_rpc.py                      | 28 ++++++++++++++++++++++++++++
+ tui_gateway/project_tree.py                                 | 14 +++++++++-----
+ tui_gateway/server.py                                       | 10 ++++++----
+ 6 files changed, 60 insertions(+), 15 deletions(-)
 
 diff --git a/apps/desktop/src/app/chat/composer/index.tsx b/apps/desktop/src/app/chat/composer/index.tsx
 --- a/apps/desktop/src/app/chat/composer/index.tsx
@@ -45,7 +45,7 @@ diff --git a/apps/desktop/src/app/chat/composer/status-stack/project-row.tsx b/a
 diff --git a/tui_gateway/project_tree.py b/tui_gateway/project_tree.py
 --- a/tui_gateway/project_tree.py
 +++ b/tui_gateway/project_tree.py
-@@ -582,15 +582,17 @@ def build_tree(
+@@ -582,15 +582,18 @@ def build_tree(
      unowned: list[dict] = []
      identity_orphans: list[dict] = []
      for session in sessions:
@@ -67,7 +67,7 @@ diff --git a/tui_gateway/project_tree.py b/tui_gateway/project_tree.py
              identity_orphans.append(session)
          else:
              unowned.append(session)
-@@ -634,3 +636,3 @@ def build_tree(
+@@ -634,3 +637,3 @@ def build_tree(
 -    # Explicit-but-missing project ids never fall back to cwd/repo heuristics.
 -    # Keep those rows visible under Home until the user reattaches them.
 +    # Explicit projectless or missing project identities never fall back to cwd/repo heuristics.
@@ -76,7 +76,7 @@ diff --git a/tui_gateway/project_tree.py b/tui_gateway/project_tree.py
 diff --git a/tui_gateway/server.py b/tui_gateway/server.py
 --- a/tui_gateway/server.py
 +++ b/tui_gateway/server.py
-@@ -2933,9 +2933,11 @@ def _set_session_project(
+@@ -2933,8 +2933,10 @@ def _set_session_project(
  
      project_cwd = str(project.get("primary_path") or "").strip()
 -    if not project_cwd:
@@ -94,7 +94,7 @@ diff --git a/tui_gateway/server.py b/tui_gateway/server.py
 diff --git a/tests/tui_gateway/test_project_tree.py b/tests/tui_gateway/test_project_tree.py
 --- a/tests/tui_gateway/test_project_tree.py
 +++ b/tests/tui_gateway/test_project_tree.py
-@@ -570,2 +570,15 @@ def test_stale_stable_project_id_does_not_path_fallback():
+@@ -570,2 +570,14 @@ def test_stale_stable_project_id_does_not_path_fallback():
      assert one_project["sessionCount"] == 0
      assert "chat" in tree["scoped_session_ids"]
 +
