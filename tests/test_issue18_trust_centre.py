@@ -22,6 +22,7 @@ PATCH_NAMES = [
     "0088-fix-trust-harden-identities-and-manage-skill-access.patch",
     "0089-test-trust-cover-source-bound-skills-and-agent-scopes.patch",
     "0090-fix-trust-complete-user-scope-and-local-confirmation.patch",
+    "0091-fix-trust-respect-injected-skill-discovery-roots.patch",
 ]
 HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
@@ -122,6 +123,7 @@ class TrustCentreContractTests(unittest.TestCase):
             (PATCH_ROOT / PATCH_NAMES[4]).read_text(encoding="utf-8")
             + (PATCH_ROOT / PATCH_NAMES[12]).read_text(encoding="utf-8")
             + (PATCH_ROOT / PATCH_NAMES[13]).read_text(encoding="utf-8")
+            + (PATCH_ROOT / PATCH_NAMES[14]).read_text(encoding="utf-8")
         )
         for marker in (
             "test_delegated_child_does_not_inherit_main_agent_grant",
@@ -136,6 +138,7 @@ class TrustCentreContractTests(unittest.TestCase):
             "test_user_skill_disable_revokes_load_immediately",
             "test_user_scope_matches_trusted_local_user_identity",
             "test_local_only_confirmation_is_conservative_until_remote_context_exists",
+            "test_skill_root_classifier_enforces_managed_roots_but_not_injected_fixtures",
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, tests)
@@ -145,6 +148,7 @@ class TrustCentreContractTests(unittest.TestCase):
         for marker in (
             "sync_skill_identity",
             "authorize_skill_load",
+            "skill_requires_authorization",
             "built-in verified skill",
             "no matching agent access",
             "no matching scope access",
