@@ -254,8 +254,9 @@ index e9f52d67b..e9f52d67b 100644
 +                db.update_session_project(key, None)
              except Exception:
                  logger.debug("failed to persist session cwd", exc_info=True)
-@@ -2915,4 +2915,32 @@
+@@ -2915,5 +2915,33 @@
          pass
+ 
  
  
 +def _set_session_project(
