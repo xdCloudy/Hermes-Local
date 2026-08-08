@@ -23,6 +23,7 @@ PATCH_NAMES = [
     "0089-test-trust-cover-source-bound-skills-and-agent-scopes.patch",
     "0090-fix-trust-complete-user-scope-and-local-confirmation.patch",
     "0091-fix-trust-respect-injected-skill-discovery-roots.patch",
+    "0092-style-desktop-satisfy-Trust-Centre-lint-rules.patch",
 ]
 HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
