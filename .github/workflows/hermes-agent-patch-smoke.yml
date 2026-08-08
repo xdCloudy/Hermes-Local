@@ -33,47 +33,6 @@ jobs:
         shell: pwsh
         run: python -m unittest tests.test_issue18_trust_centre
 
-      - name: Probe Trust Centre integration preimage
-        shell: pwsh
-        run: |
-          $manifest = Get-Content -Raw -LiteralPath '.\VERSION.json' | ConvertFrom-Json
-          $candidate = [string]$manifest.sources.hermesAgent.commit
-          $probe = Join-Path $env:RUNNER_TEMP 'hermes-trust-preimage'
-          if (Test-Path -LiteralPath $probe) {
-            Remove-Item -LiteralPath $probe -Recurse -Force
-          }
-          & git clone --quiet --no-checkout https://github.com/NousResearch/hermes-agent.git $probe
-          if ($LASTEXITCODE -ne 0) { throw 'Could not clone Hermes Agent for Trust Centre preimage probe.' }
-          & git -C $probe checkout --quiet --detach $candidate
-          if ($LASTEXITCODE -ne 0) { throw 'Could not check out pinned Hermes Agent candidate.' }
-          & git -C $probe config user.email 'ci@local.invalid'
-          & git -C $probe config user.name 'Hermes Local CI'
-
-          $patches = Get-ChildItem -LiteralPath '.\source\hermes-launcher\patches' -Filter '*.patch' -File |
-            Sort-Object Name |
-            Where-Object { $_.Name -lt '0085-feat-desktop-wire-native-Trust-Centre-IPC.patch' }
-          & git -C $probe am --3way --committer-date-is-author-date @($patches.FullName)
-          if ($LASTEXITCODE -ne 0) { throw 'Trust Centre preimage probe failed before patch 0085.' }
-
-          $files = @(
-            @{ Path = Join-Path $probe 'apps\desktop\electron\hermes-local-control.ts'; Pattern = "ipcMain|hermes:local:path:open|registerHermesLocalControlIpc|from 'electron'" },
-            @{ Path = Join-Path $probe 'apps\desktop\electron\preload.ts'; Pattern = 'openRoot|openPath|openDashboard' },
-            @{ Path = Join-Path $probe 'apps\desktop\src\global.d.ts'; Pattern = 'LocalWorkstationSnapshot|openRoot|registerModel' }
-          )
-          foreach ($file in $files) {
-            Write-Host "=== exact preimage: $($file.Path) ==="
-            Select-String -LiteralPath $file.Path -Pattern $file.Pattern -Context 3,3 |
-              ForEach-Object { Write-Host $_.ToString() }
-          }
-
-          $patch85 = (Resolve-Path '.\source\hermes-launcher\patches\0085-feat-desktop-wire-native-Trust-Centre-IPC.patch').Path
-          Write-Host '=== direct git apply check for patch 0085 ==='
-          & git -C $probe apply --check --verbose $patch85
-          Write-Host "git apply --check exit: $LASTEXITCODE"
-          & git -C $probe hash-object 'apps/desktop/electron/hermes-local-control.ts'
-          & git -C $probe hash-object 'apps/desktop/electron/preload.ts'
-          & git -C $probe hash-object 'apps/desktop/src/global.d.ts'
-
       - name: Reconstruct and validate pinned release integration
         shell: pwsh
         env:
