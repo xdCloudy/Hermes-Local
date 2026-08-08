@@ -4,15 +4,15 @@ Date: Sat, 8 Aug 2026 02:33:00 +0100
 Subject: [PATCH] test(desktop): cover native Trust Centre bridge
 
 ---
- apps/desktop/electron/hermes-local-trust-centre.test.ts | 57 +++++++++++++++++
- 1 file changed, 57 insertions(+)
+ apps/desktop/electron/hermes-local-trust-centre.test.ts | 54 +++++++++++++++++
+ 1 file changed, 54 insertions(+)
  create mode 100644 apps/desktop/electron/hermes-local-trust-centre.test.ts
 
 diff --git a/apps/desktop/electron/hermes-local-trust-centre.test.ts b/apps/desktop/electron/hermes-local-trust-centre.test.ts
 new file mode 100644
 --- /dev/null
 +++ b/apps/desktop/electron/hermes-local-trust-centre.test.ts
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,54 @@
 +import { describe, expect, it } from 'vitest'
 +
 +import { sanitizeTrustPolicyInput, trustCliEnvironment } from './hermes-local-trust-centre'
