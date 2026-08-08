@@ -1,0 +1,96 @@
+From b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Sat, 8 Aug 2026 03:12:00 +0100
+Subject: [PATCH] test(trust): cover source-bound skills and agent scopes
+
+---
+ tests/hermes_cli/test_hermes_local_trust.py | 80 +++++++++++++++++++++++++++++
+ 1 file changed, 80 insertions(+)
+
+diff --git a/tests/hermes_cli/test_hermes_local_trust.py b/tests/hermes_cli/test_hermes_local_trust.py
+--- a/tests/hermes_cli/test_hermes_local_trust.py
++++ b/tests/hermes_cli/test_hermes_local_trust.py
+@@ -169,1 +169,81 @@ def test_renderer_or_server_trust_claims_cannot_grant_authority():
+     assert trust.filter_authorized_mcp_servers({"local": config}) == {}
++def test_same_basename_command_and_same_count_argument_changes_revoke_grants():
++    first = local_config(command="/safe/server", args=["--mode", "safe"])
++    record = trust.sync_mcp_server_identity("local", first)
++    approve(record)
++    assert trust.authorize_mcp_operation("local", "transport.local", interactive=False).allowed
++
++    moved = local_config(command="/other/server", args=["--mode", "safe"])
++    changed = trust.sync_mcp_server_identity("local", moved)
++    assert changed["identity"]["trustState"] == "restricted"
++    assert not trust.authorize_mcp_operation("local", "transport.local", interactive=False).allowed
++
++    approve(changed)
++    changed_args = trust.sync_mcp_server_identity(
++        "local",
++        local_config(command="/other/server", args=["--mode", "danger"]),
++    )
++    assert changed_args["identity"]["trustState"] == "restricted"
++    assert not trust.authorize_mcp_operation("local", "transport.local", interactive=False).allowed
++
++
++def test_agent_scoped_grant_targets_delegated_agent_without_main_inheritance(monkeypatch):
++    record = trust.sync_mcp_server_identity("local", local_config())
++    trust.set_integration_policy(
++        record["identity"]["id"],
++        "reviewed-managed",
++        record["identity"]["declaredCapabilities"],
++        "never",
++        {"kind": "agent", "id": "delegated"},
++    )
++
++    main = trust.authorize_mcp_operation("local", "transport.local", interactive=False)
++    assert not main.allowed
++
++    monkeypatch.setenv("HERMES_DELEGATED_CHILD_CONTEXT", "1")
++    delegated = trust.authorize_mcp_operation("local", "transport.local", interactive=False)
++    assert delegated.allowed
++
++
++def test_user_skill_is_default_denied_scoped_and_revision_bound(tmp_path, monkeypatch):
++    skill_dir = tmp_path / "custom-skill"
++    skill_dir.mkdir()
++    skill_md = skill_dir / "SKILL.md"
++    skill_md.write_text("---\nname: custom-skill\n---\n# Safe instructions\n", encoding="utf-8")
++
++    record = trust.sync_skill_identity("custom-skill", skill_md)
++    assert record["identity"]["trustState"] == "restricted"
++    assert record["sourceLabel"] == str(skill_dir.resolve())
++    assert not trust.authorize_skill_load("custom-skill", skill_md).allowed
++
++    trust.set_integration_policy(
++        record["identity"]["id"],
++        "user-trusted",
++        [],
++        "never",
++        {"kind": "global"},
++    )
++    assert trust.authorize_skill_load("custom-skill", skill_md).allowed
++
++    monkeypatch.setenv("HERMES_DELEGATED_CHILD_CONTEXT", "1")
++    assert not trust.authorize_skill_load("custom-skill", skill_md).allowed
++    monkeypatch.delenv("HERMES_DELEGATED_CHILD_CONTEXT", raising=False)
++
++    skill_md.write_text("---\nname: custom-skill\n---\n# Changed instructions\n", encoding="utf-8")
++    changed = trust.sync_skill_identity("custom-skill", skill_md)
++    assert changed["identity"]["trustState"] == "restricted"
++    assert not trust.authorize_skill_load("custom-skill", skill_md).allowed
++
++
++def test_user_skill_disable_revokes_load_immediately(tmp_path):
++    skill_dir = tmp_path / "disable-skill"
++    skill_dir.mkdir()
++    skill_md = skill_dir / "SKILL.md"
++    skill_md.write_text("---\nname: disable-skill\n---\n# Instructions\n", encoding="utf-8")
++
++    record = trust.sync_skill_identity("disable-skill", skill_md)
++    trust.set_integration_policy(record["identity"]["id"], "user-trusted", [], "never", {"kind": "global"})
++    assert trust.authorize_skill_load("disable-skill", skill_md).allowed
++
++    trust.set_integration_policy(record["identity"]["id"], "disabled", [], "never", {"kind": "global"})
++    assert not trust.authorize_skill_load("disable-skill", skill_md).allowed
+-- 
+2.51.0
