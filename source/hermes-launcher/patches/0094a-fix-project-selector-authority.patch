@@ -4,22 +4,9 @@ Date: Sat, 8 Aug 2026 17:31:00 +0100
 Subject: [PATCH] fix(projects): make explicit project selection authoritative
 
 ---
- apps/desktop/src/app/chat/composer/index.tsx | 2 +-
  apps/desktop/src/app/chat/composer/status-stack/project-row.tsx | 7 +++----
- 2 files changed, 4 insertions(+), 5 deletions(-)
+ 1 file changed, 3 insertions(+), 4 deletions(-)
 
-diff --git a/apps/desktop/src/app/chat/composer/index.tsx b/apps/desktop/src/app/chat/composer/index.tsx
---- a/apps/desktop/src/app/chat/composer/index.tsx
-+++ b/apps/desktop/src/app/chat/composer/index.tsx
-@@ -1218,7 +1218,7 @@ export function ChatBar({
-                   )}
-                 />
-                 <ProjectStatusRow onSelectProject={changeProject} selectedProjectId={selectedProjectId} />
--                {selectedProjectId && (
-+                {selectedProjectId && cwd?.trim() && (
-                 <CodingStatusRow
-                   onBranchOff={handleBranchOff}
-                   onConvertBranch={handleConvertBranch}
 diff --git a/apps/desktop/src/app/chat/composer/status-stack/project-row.tsx b/apps/desktop/src/app/chat/composer/status-stack/project-row.tsx
 index dca498775..dca498775 100644
 --- a/apps/desktop/src/app/chat/composer/status-stack/project-row.tsx
