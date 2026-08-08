@@ -1,0 +1,200 @@
+name: Trust style autofix
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/trust-style-autofix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  canonicalize:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 1
+
+      - name: Generate final canonical style patch and release identity
+        shell: pwsh
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifestPath = (Resolve-Path '.\VERSION.json').Path
+          $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+          $candidate = [string]$manifest.sources.hermesAgent.commit
+          $probe = Join-Path $env:RUNNER_TEMP 'hermes-trust-style-autofix'
+          New-Item -ItemType Directory -Path $probe -Force | Out-Null
+          & git -C $probe init --quiet
+          & git -C $probe remote add origin https://github.com/NousResearch/hermes-agent.git
+          & git -C $probe fetch --quiet --depth=1 origin $candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Hermes Agent fetch failed.' }
+          & git -C $probe checkout --quiet --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Hermes Agent checkout failed.' }
+          & git -C $probe config user.email 'hermes-local-ci@localhost'
+          & git -C $probe config user.name 'Hermes Local Compatibility CI'
+
+          $patchRoot = (Resolve-Path '.\source\hermes-launcher\patches').Path
+          $patches = Get-ChildItem -LiteralPath $patchRoot -Filter '*.patch' -File | Sort-Object Name
+          & git -C $probe am --3way --committer-date-is-author-date @($patches.FullName)
+          if ($LASTEXITCODE -ne 0) { throw 'Could not reconstruct Trust Centre integration through patch 0091.' }
+
+          $editor = Join-Path $env:RUNNER_TEMP 'edit-trust-style.py'
+          @'
+          from __future__ import annotations
+          import re
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+
+          def read(relative: str) -> tuple[Path, str, str]:
+              path = root / relative
+              raw = path.read_bytes()
+              eol = '\r\n' if b'\r\n' in raw else '\n'
+              return path, raw.decode('utf-8').replace('\r\n', '\n'), eol
+
+          def write(path: Path, text: str, eol: str) -> None:
+              path.write_bytes(text.replace('\n', eol).encode('utf-8'))
+
+          # Native control: keep external imports separated, then insert the
+          # local Trust Centre module in lexical module-path order.
+          path, text, eol = read('apps/desktop/electron/hermes-local-control.ts')
+          trust_line = "import { registerHermesLocalTrustCentreIpc } from './hermes-local-trust-centre'\n"
+          if trust_line not in text:
+              raise RuntimeError('Trust Centre control import is missing')
+          text = text.replace(trust_line, '', 1)
+          text = re.sub(r"(from 'electron'\n)\n*", r"\1\n", text, count=1)
+          import_re = re.compile(r"(?ms)^import\s+.*?\s+from\s+'([^']+)'\n")
+          local = []
+          for match in import_re.finditer(text):
+              module = match.group(1)
+              if module.startswith('./'):
+                  local.append((module, match.start()))
+          insert_at = None
+          target_module = './hermes-local-trust-centre'
+          for module, position in local:
+              if module > target_module:
+                  insert_at = position
+                  break
+          if insert_at is None:
+              if not local:
+                  raise RuntimeError('No local control imports found')
+              last_module = local[-1][0]
+              last_match = next(match for match in import_re.finditer(text) if match.group(1) == last_module)
+              insert_at = last_match.end()
+          text = text[:insert_at] + trust_line + text[insert_at:]
+          write(path, text, eol)
+
+          # Renderer component: only the nine blocking lint errors from the
+          # release evidence, not the repository's existing warnings.
+          path, text, eol = read('apps/desktop/src/app/local-workstation/trust-centre.tsx')
+          old_imports = (
+              "import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'\n"
+              "import { IconAlertTriangle, IconDownload, IconRefresh, IconShieldLock } from '@tabler/icons-react'\n"
+          )
+          new_imports = (
+              "import { IconAlertTriangle, IconDownload, IconRefresh, IconShieldLock } from '@tabler/icons-react'\n"
+              "import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'\n"
+          )
+          if old_imports not in text:
+              raise RuntimeError('Trust Centre component import anchor changed')
+          text = text.replace(old_imports, new_imports, 1)
+          replacements = [
+              ("  if (!value) return 'not recorded'\n", "  if (!value) {\n    return 'not recorded'\n  }\n"),
+              ("    if (!snapshot || !selected) return\n", "    if (!snapshot || !selected) {\n      return\n    }\n"),
+              ("    if (!selected || !managed) return\n", "    if (!selected || !managed) {\n      return\n    }\n"),
+          ]
+          for old, new in replacements:
+              if old not in text:
+                  raise RuntimeError(f'Trust Centre curly anchor changed: {old!r}')
+              text = text.replace(old, new, 1)
+          write(path, text, eol)
+
+          # Global types: trust-types sorts before types under the repository's
+          # perfectionist import ordering.
+          path, text, eol = read('apps/desktop/src/global.d.ts')
+          type_block = re.compile(
+              r"(import type \{\n(?:.*\n)*?\} from './app/local-workstation/types'\n)"
+              r"(import type \{ TrustCentreSnapshot, TrustIntegrationRecord, TrustPolicyInput \} from './app/local-workstation/trust-types'\n)"
+          )
+          match = type_block.search(text)
+          if not match:
+              raise RuntimeError('Global trust type import anchor changed')
+          text = text[:match.start()] + match.group(2) + match.group(1) + text[match.end():]
+          write(path, text, eol)
+          '@ | Set-Content -LiteralPath $editor -Encoding utf8NoBOM
+
+          & python $editor $probe
+          if ($LASTEXITCODE -ne 0) { throw 'Trust Centre style edits failed.' }
+
+          $diffPath = Join-Path $env:RUNNER_TEMP '0092-trust-style.diff'
+          & git -C $probe diff --full-index --no-ext-diff --output=$diffPath HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Canonical patch 0092 diff generation failed.' }
+          $diff = [IO.File]::ReadAllText($diffPath, [Text.UTF8Encoding]::new($false))
+          if ([string]::IsNullOrWhiteSpace($diff)) { throw 'Canonical patch 0092 diff was empty.' }
+
+          $targetName = '0092-style-desktop-satisfy-Trust-Centre-lint-rules.patch'
+          $target = Join-Path $patchRoot $targetName
+          $mail = @(
+            'From e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2 Mon Sep 17 00:00:00 2001',
+            'From: OpenAI <openai@localhost>',
+            'Date: Sat, 8 Aug 2026 04:28:00 +0100',
+            'Subject: [PATCH] style(desktop): satisfy Trust Centre lint rules',
+            '',
+            '---',
+            $diff.TrimEnd("`r", "`n"),
+            '-- ',
+            '2.51.0',
+            ''
+          ) -join "`n"
+          [IO.File]::WriteAllText($target, $mail, [Text.UTF8Encoding]::new($false))
+
+          # Apply the generated mail patch exactly as compatibility.py will so
+          # VERSION.json records the deterministic commit and tree identities.
+          & git -C $probe reset --hard HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Could not reset style probe.' }
+          & git -C $probe am --3way --committer-date-is-author-date $target
+          if ($LASTEXITCODE -ne 0) { throw 'Generated patch 0092 did not apply through git am.' }
+          $integrationCommit = (& git -C $probe rev-parse HEAD).Trim()
+          $integrationTree = (& git -C $probe rev-parse 'HEAD^{tree}').Trim()
+
+          # Register the patch in the repository-level structural contract.
+          $contractPath = (Resolve-Path '.\tests\test_issue18_trust_centre.py').Path
+          $contract = [IO.File]::ReadAllText($contractPath)
+          if ($contract -notmatch [regex]::Escape($targetName)) {
+            $anchor = '    "0091-fix-trust-respect-injected-skill-discovery-roots.patch",'
+            if (-not $contract.Contains($anchor)) { throw 'Contract patch-list anchor changed.' }
+            $contract = $contract.Replace($anchor, "$anchor`n    `"$targetName`",")
+            [IO.File]::WriteAllText($contractPath, $contract, [Text.UTF8Encoding]::new($false))
+          }
+
+          # Keep 0.18.62: this is the same #18 feature implementation, with
+          # release identity promoted to the final lint-clean integration.
+          $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+          $manifest.sources.hermesAgent.integrationCommit = $integrationCommit
+          $manifest.sources.hermesAgent.integrationTree = $integrationTree
+          $manifest.recordedAt = '2026-08-08T04:28:00+01:00'
+          $json = $manifest | ConvertTo-Json -Depth 32
+          [IO.File]::WriteAllText($manifestPath, $json + "`n", [Text.UTF8Encoding]::new($false))
+
+          # This workflow is intentionally one-shot; remove it in the same
+          # commit so the final PR head contains no temporary CI machinery.
+          git rm -- '.github/workflows/trust-style-autofix.yml'
+
+          & git config user.email '52116030+xdCloudy@users.noreply.github.com'
+          & git config user.name 'xdCloudy'
+          & git add -- $target 'tests/test_issue18_trust_centre.py' 'VERSION.json'
+          & git commit -m 'style(desktop): satisfy Trust Centre lint rules'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not commit final Trust Centre style patch.' }
+          & git push origin "HEAD:$env:HEAD_BRANCH"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not push final Trust Centre style patch.' }
+
+          Write-Host "Final integration commit: $integrationCommit"
+          Write-Host "Final integration tree:   $integrationTree"
