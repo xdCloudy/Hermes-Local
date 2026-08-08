@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "currentStage": "reliable-platform",
+  "currentStage": "operational-control-plane",
   "stages": [
     {
       "id": "reliable-platform",

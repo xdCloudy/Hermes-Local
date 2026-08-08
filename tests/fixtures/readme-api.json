@@ -71,11 +71,17 @@
   "issues": [
     {
       "number": 1,
-      "state": "closed"
+      "state": "closed",
+      "milestone": {
+        "number": 5
+      }
     },
     {
       "number": 2,
-      "state": "open"
+      "state": "open",
+      "milestone": {
+        "number": 6
+      }
     }
   ],
   "commits": [

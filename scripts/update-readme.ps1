@@ -76,7 +76,11 @@ function Invoke-GitHubPagedRequest {
         $responseHeaders = $null
         $page = Invoke-RestMethod -Uri $nextUri -Headers (Get-GitHubHeaders) `
             -ResponseHeadersVariable responseHeaders
-        foreach ($item in @($page)) {
+        # Invoke-RestMethod returns top-level JSON arrays as a single pipeline
+        # object. A foreach statement enumerates that value correctly; wrapping
+        # it in @() can preserve the whole response as one nested item and make
+        # issue/PR filtering and pagination counts silently wrong.
+        foreach ($item in $page) {
             $items.Add($item)
         }
 
@@ -198,11 +202,44 @@ function Get-MilestoneProgress {
     param(
         [Parameter(Mandatory)]
         [AllowEmptyCollection()]
-        [object[]]$Milestones
+        [object[]]$Milestones,
+
+        [Parameter()]
+        [AllowEmptyCollection()]
+        [object[]]$Issues = @()
     )
 
     $open = 0
     $closed = 0
+
+    # GitHub's milestone open_issues/closed_issues counters can lag issue state
+    # changes. The paginated issue inventory is already loaded and is the more
+    # immediate source of truth. Fixtures without milestone-bearing issues keep
+    # using the milestone counters for backwards compatibility.
+    $milestoneNumbers = @($Milestones | ForEach-Object { [int]$_.number })
+    $hasIssueMilestoneData = @(
+        $Issues | Where-Object {
+            $_.PSObject.Properties['milestone'] -and $null -ne $_.milestone
+        }
+    ).Count -gt 0
+
+    if ($hasIssueMilestoneData) {
+        foreach ($issue in @($Issues)) {
+            if (-not $issue.PSObject.Properties['milestone'] -or
+                $null -eq $issue.milestone -or
+                [int]$issue.milestone.number -notin $milestoneNumbers) {
+                continue
+            }
+            if ([string]$issue.state -eq 'closed') {
+                $closed++
+            } elseif ([string]$issue.state -eq 'open') {
+                $open++
+            }
+        }
+        $total = $open + $closed
+        $percent = if ($total -gt 0) { [math]::Round(($closed / $total) * 100) } else { 0 }
+        return [pscustomobject]@{ Open = $open; Closed = $closed; Total = $total; Percent = $percent }
+    }
 
     foreach ($milestone in @($Milestones)) {
         if ($null -eq $milestone) {
@@ -294,7 +331,7 @@ function New-RoadmapMarkdown {
     foreach ($stage in $Roadmap.stages) {
         $numbers = @($stage.milestones | ForEach-Object { [int]$_ })
         $milestones = @($Data.milestones | Where-Object { [int]$_.number -in $numbers })
-        $progress = Get-MilestoneProgress -Milestones $milestones
+        $progress = Get-MilestoneProgress -Milestones $milestones -Issues @($Data.issues)
         $icon = [string]$stage.icon
         $stateOverride = if ($stage.PSObject.Properties['stateOverride']) {
             [string]$stage.stateOverride
