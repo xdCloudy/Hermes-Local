@@ -119,6 +119,7 @@ jobs:
           & '.\tests\Test-SecurityToolBootstrap.ps1'
           & '.\tests\Test-PythonRuntimeMigration.ps1'
           & '.\tests\Test-ModelArtifactContract.ps1'
+          & '.\tests\Test-HermesRuntimeIdentity.ps1'
           & '.\tests\Test-HermesUpdateOrchestrator.ps1'
           & '.\tests\Test-HermesUpdateFailurePaths.ps1' `
             -EvidencePath '.\artifacts\test-evidence\issue-44-update-failure-paths.json'
