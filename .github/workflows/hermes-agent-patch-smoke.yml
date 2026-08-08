@@ -66,6 +66,14 @@ jobs:
               ForEach-Object { Write-Host $_.ToString() }
           }
 
+          $patch85 = (Resolve-Path '.\source\hermes-launcher\patches\0085-feat-desktop-wire-native-Trust-Centre-IPC.patch').Path
+          Write-Host '=== direct git apply check for patch 0085 ==='
+          & git -C $probe apply --check --verbose $patch85
+          Write-Host "git apply --check exit: $LASTEXITCODE"
+          & git -C $probe hash-object 'apps/desktop/electron/hermes-local-control.ts'
+          & git -C $probe hash-object 'apps/desktop/electron/preload.ts'
+          & git -C $probe hash-object 'apps/desktop/src/global.d.ts'
+
       - name: Reconstruct and validate pinned release integration
         shell: pwsh
         env:
