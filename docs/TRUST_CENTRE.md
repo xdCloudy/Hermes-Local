@@ -80,13 +80,13 @@ Confirmation is separate from permission. Supported MCP confirmation policies ar
 - `writes-or-side-effects`
 - `local-only`
 
-The Trust Centre uses Hermes' existing human approval gate for confirmation-required MCP calls. Non-interactive contexts therefore retain the approval subsystem's fail-closed behavior for a required tool approval.
+The Trust Centre uses Hermes' existing human approval gate for confirmation-required MCP calls. Non-interactive contexts therefore retain the approval subsystem's fail-closed behavior for a required tool approval. Until a separately authenticated remote execution context is implemented, `local-only` is interpreted conservatively as confirmation-required for interactive calls rather than silently weakening policy.
 
 ## Scope and delegation
 
 Grants are bound to a principal and one canonical scope. Supported scope kinds are `global`, `project`, `session`, `profile`, `agent` and `user`.
 
-Project/session/profile scope is reconstructed from local execution context. Scoped ids are canonicalized before matching. An `agent` scope selects the corresponding canonical agent principal without allowing the renderer to submit an arbitrary principal object. A delegated child is treated as a different agent principal and does **not** inherit the main agent's MCP grants or non-built-in skill access merely because it runs inside the same Hermes process.
+Project/session/profile scope is reconstructed from local execution context. `user` scope is reconstructed from the trusted local operating-system user identity. Scoped ids are canonicalized before matching. An `agent` scope selects the corresponding canonical agent principal without allowing the renderer to submit an arbitrary principal object. A delegated child is treated as a different agent principal and does **not** inherit the main agent's MCP grants or non-built-in skill access merely because it runs inside the same Hermes process.
 
 This is intentional: delegation is not a permission-escalation mechanism.
 
