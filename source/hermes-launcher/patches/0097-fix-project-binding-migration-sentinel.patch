@@ -164,17 +164,18 @@ diff --git a/tests/tui_gateway/test_project_tree.py b/tests/tui_gateway/test_pro
 +    one_project = next(node for node in tree["projects"] if node["id"] == "p_one")
 +    assert one_project["sessionCount"] == 1
 +    assert "legacy" in tree["scoped_session_ids"]
-+diff --git a/tests/tui_gateway/test_projects_rpc.py b/tests/tui_gateway/test_projects_rpc.py
-+--- a/tests/tui_gateway/test_projects_rpc.py
-++++ b/tests/tui_gateway/test_projects_rpc.py
-+@@ -530,7 +530,7 @@ def test_desktop_session_project_switch_persists_stable_identity(monkeypatch, tmp_path):
-+        assert raw["project_id"] is None
-+        assert raw["project"] is None
-+        assert raw["branch"] == ""
-+-        assert server._get_db().get_session(stored_id)["project_id"] is None
-++        assert server._get_db().get_session(stored_id)["project_id"] == ""
-+
-+        detached = _call(
-+            "session.cwd.set",
+
+diff --git a/tests/tui_gateway/test_projects_rpc.py b/tests/tui_gateway/test_projects_rpc.py
+--- a/tests/tui_gateway/test_projects_rpc.py
++++ b/tests/tui_gateway/test_projects_rpc.py
+@@ -530,7 +530,7 @@ def test_desktop_session_project_switch_persists_stable_identity(monkeypatch, tmp_path):
+         assert raw["project_id"] is None
+         assert raw["project"] is None
+         assert raw["branch"] == ""
+-        assert server._get_db().get_session(stored_id)["project_id"] is None
++        assert server._get_db().get_session(stored_id)["project_id"] == ""
+ 
+         detached = _call(
+             "session.cwd.set",
 -- 
 2.54.0
