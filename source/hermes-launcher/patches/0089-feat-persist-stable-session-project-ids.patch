@@ -6,6 +6,7 @@ Subject: [PATCH] feat(projects): persist stable project identity per session
 ---
 
 diff --git a/hermes_state_common.py b/hermes_state_common.py
+index c520f1c51df6396d472f731917bf9dacec47327e..c520f1c51df6396d472f731917bf9dacec47327e 100644
 --- a/hermes_state_common.py
 +++ b/hermes_state_common.py
 @@ -198,4 +198,5 @@
@@ -15,6 +16,7 @@ diff --git a/hermes_state_common.py b/hermes_state_common.py
 +    project_id TEXT,
      billing_provider TEXT,
 diff --git a/hermes_state.py b/hermes_state.py
+index 9f1d4148e7ffe4f15e810615ae2bc5be6d61b9a3..9f1d4148e7ffe4f15e810615ae2bc5be6d61b9a3 100644
 --- a/hermes_state.py
 +++ b/hermes_state.py
 @@ -3607,10 +3607,25 @@
@@ -45,6 +47,7 @@ diff --git a/hermes_state.py b/hermes_state.py
 +
      def backfill_repo_roots(self, cwd_to_root: Dict[str, str]) -> None:
 diff --git a/tui_gateway/project_tree.py b/tui_gateway/project_tree.py
+index 38e74aabcf3f4f4f65d5104d67eba3784b84be4b..38e74aabcf3f4f4f65d5104d67eba3784b84be4b 100644
 --- a/tui_gateway/project_tree.py
 +++ b/tui_gateway/project_tree.py
 @@ -568,11 +568,26 @@
@@ -83,6 +86,7 @@ diff --git a/tui_gateway/project_tree.py b/tui_gateway/project_tree.py
 +    # being reattached by cwd/repo heuristics.
 +    homeless: list[dict] = list(identity_orphans)
 diff --git a/tui_gateway/server.py b/tui_gateway/server.py
+index 5b256af102414aebd37c30d09b05f3dc85508a88..5b256af102414aebd37c30d09b05f3dc85508a88 100644
 --- a/tui_gateway/server.py
 +++ b/tui_gateway/server.py
 @@ -2709,4 +2709,7 @@
@@ -255,6 +259,7 @@ diff --git a/tui_gateway/server.py b/tui_gateway/server.py
          "lazy": True,
          "model": _resolve_model(),
 diff --git a/tui_gateway/methods_session.py b/tui_gateway/methods_session.py
+index e94ba932d4979b14d752694e200fef8c7e008d08..e94ba932d4979b14d752694e200fef8c7e008d08 100644
 --- a/tui_gateway/methods_session.py
 +++ b/tui_gateway/methods_session.py
 @@ -25,3 +25,4 @@
