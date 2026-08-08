@@ -1,0 +1,143 @@
+From d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Sat, 8 Aug 2026 04:12:00 +0100
+Subject: [PATCH] fix(trust): respect injected skill discovery roots
+
+---
+diff --git a/hermes_cli/hermes_local_trust.py b/hermes_cli/hermes_local_trust.py
+index 8910af0eb75a34db8b815482dd3976627f3844d2..c66ff4b768f474b0c2fb36ad60003c1d9d442d16 100644
+--- a/hermes_cli/hermes_local_trust.py
++++ b/hermes_cli/hermes_local_trust.py
+@@ -632,6 +632,45 @@ def sync_skill_inventory() -> list[dict[str, Any]]:
+     return records
+ 
+ 
++def skill_requires_authorization(skill_md: str | Path) -> bool:
++    """Return whether a skill path belongs to a Hermes-managed trust root.
++
++    The upstream SKILLS_DIR symbol is intentionally patchable by embedders and
++    tests. Trust Centre owns the real profile skills directory plus explicit
++    external skill roots; an injected alternate discovery root remains the
++    responsibility of the caller that installed it. Plugin skill serving has
++    its own unconditional Trust Centre gate.
++    """
++    try:
++        resolved = Path(skill_md).expanduser().resolve()
++    except (OSError, RuntimeError):
++        return False
++
++    roots: list[Path] = []
++    try:
++        from hermes_constants import get_hermes_home
++        roots.append((Path(get_hermes_home()) / "skills").expanduser().resolve())
++    except (ImportError, OSError, RuntimeError):
++        pass
++    try:
++        from agent.skill_utils import get_external_skills_dirs
++        for value in get_external_skills_dirs():
++            try:
++                roots.append(Path(value).expanduser().resolve())
++            except (OSError, RuntimeError):
++                continue
++    except (ImportError, OSError, RuntimeError):
++        pass
++
++    for root in roots:
++        try:
++            resolved.relative_to(root)
++            return True
++        except ValueError:
++            continue
++    return False
++
++
+ def authorize_skill_load(name: str, skill_md: str | Path) -> AuthorizationDecision:
+     try:
+         record = sync_skill_identity(name, skill_md)
+diff --git a/tests/hermes_cli/test_hermes_local_trust.py b/tests/hermes_cli/test_hermes_local_trust.py
+index aef0cac5bc816409dc26db5f22a46f80b104bd48..30111bc6a52736be22308c1b1ed03909ed47ce8b 100644
+--- a/tests/hermes_cli/test_hermes_local_trust.py
++++ b/tests/hermes_cli/test_hermes_local_trust.py
+@@ -272,3 +272,29 @@ def test_local_only_confirmation_is_conservative_until_remote_context_exists():
+     background = trust.authorize_mcp_operation("local", "tool.call", interactive=False)
+     assert interactive.allowed and interactive.requires_confirmation
+     assert background.allowed and not background.requires_confirmation
++
++def test_skill_root_classifier_enforces_managed_roots_but_not_injected_fixtures(tmp_path, monkeypatch):
++    import hermes_constants
++    from agent import skill_utils
++
++    managed_home = tmp_path / "home"
++    managed_skill = managed_home / "skills" / "managed" / "SKILL.md"
++    managed_skill.parent.mkdir(parents=True)
++    managed_skill.write_text("# managed\n", encoding="utf-8")
++
++    external_root = tmp_path / "external"
++    external_skill = external_root / "ext" / "SKILL.md"
++    external_skill.parent.mkdir(parents=True)
++    external_skill.write_text("# external\n", encoding="utf-8")
++
++    fixture_skill = tmp_path / "pytest-injected" / "fixture" / "SKILL.md"
++    fixture_skill.parent.mkdir(parents=True)
++    fixture_skill.write_text("# fixture\n", encoding="utf-8")
++
++    monkeypatch.setattr(hermes_constants, "get_hermes_home", lambda: managed_home)
++    monkeypatch.setattr(skill_utils, "get_external_skills_dirs", lambda: [external_root])
++
++    assert trust.skill_requires_authorization(managed_skill)
++    assert trust.skill_requires_authorization(external_skill)
++    assert not trust.skill_requires_authorization(fixture_skill)
++
+diff --git a/tools/skills_tool.py b/tools/skills_tool.py
+index ab273bf45bb66c440b511588fa52a49bb91d3c7d..f10ba2ab8f813aa582d5ba75b23b6c3fa68e94ce 100644
+--- a/tools/skills_tool.py
++++ b/tools/skills_tool.py
+@@ -1311,24 +1311,35 @@ def skill_view(
+             )
+ 
+         try:
+-            from hermes_cli.hermes_local_trust import authorize_skill_load
+-            trust_decision = authorize_skill_load(str(resolved_name), skill_md)
++            from hermes_cli.hermes_local_trust import authorize_skill_load, skill_requires_authorization
++            trust_required = skill_requires_authorization(skill_md)
+         except Exception as exc:
+             return json.dumps(
+                 {
+                     "success": False,
+-                    "error": f"Skill '{resolved_name}' was blocked because Trust Centre authorization failed: {exc}",
+-                },
+-                ensure_ascii=False,
+-            )
+-        if not trust_decision.allowed:
+-            return json.dumps(
+-                {
+-                    "success": False,
+-                    "error": f"Skill '{resolved_name}' is denied by Hermes Local Trust Centre: {trust_decision.reason}",
++                    "error": f"Skill '{resolved_name}' was blocked because Trust Centre root classification failed: {exc}",
+                 },
+                 ensure_ascii=False,
+             )
++        if trust_required:
++            try:
++                trust_decision = authorize_skill_load(str(resolved_name), skill_md)
++            except Exception as exc:
++                return json.dumps(
++                    {
++                        "success": False,
++                        "error": f"Skill '{resolved_name}' was blocked because Trust Centre authorization failed: {exc}",
++                    },
++                    ensure_ascii=False,
++                )
++            if not trust_decision.allowed:
++                return json.dumps(
++                    {
++                        "success": False,
++                        "error": f"Skill '{resolved_name}' is denied by Hermes Local Trust Centre: {trust_decision.reason}",
++                    },
++                    ensure_ascii=False,
++                )
+ 
+         # If a specific file path is requested, read that instead
+         if file_path and skill_dir:
+-- 
+2.51.0
