@@ -19,6 +19,8 @@ PATCH_NAMES = [
     "0085-feat-desktop-wire-native-Trust-Centre-IPC.patch",
     "0086-feat-desktop-build-Skills-and-MCP-Trust-Centre.patch",
     "0087-feat-desktop-route-Trust-Centre.patch",
+    "0088-fix-trust-harden-identities-and-manage-skill-access.patch",
+    "0089-test-trust-cover-source-bound-skills-and-agent-scopes.patch",
 ]
 HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
@@ -94,6 +96,8 @@ class TrustCentreContractTests(unittest.TestCase):
             "manifest-changed",
             "approvedManifestSha256",
             "configurationSha256",
+            "commandSha256",
+            "argumentsSha256",
             "filter_authorized_mcp_servers",
             "Hermes Local MCP trust gate failed closed",
         ):
@@ -113,7 +117,7 @@ class TrustCentreContractTests(unittest.TestCase):
                 self.assertNotIn(forbidden, policy_shape)
 
     def test_delegation_revocation_and_health_invariants_are_covered(self) -> None:
-        tests = (PATCH_ROOT / PATCH_NAMES[4]).read_text(encoding="utf-8")
+        tests = (PATCH_ROOT / PATCH_NAMES[4]).read_text(encoding="utf-8") + (PATCH_ROOT / PATCH_NAMES[12]).read_text(encoding="utf-8")
         for marker in (
             "test_delegated_child_does_not_inherit_main_agent_grant",
             "test_source_change_and_capability_expansion_suspend_old_grants",
@@ -121,9 +125,27 @@ class TrustCentreContractTests(unittest.TestCase):
             "test_health_cannot_endorse_or_restore_permissions",
             "test_secret_values_never_land_in_identity_audit_or_diagnostics",
             "test_renderer_or_server_trust_claims_cannot_grant_authority",
+            "test_same_basename_command_and_same_count_argument_changes_revoke_grants",
+            "test_agent_scoped_grant_targets_delegated_agent_without_main_inheritance",
+            "test_user_skill_is_default_denied_scoped_and_revision_bound",
+            "test_user_skill_disable_revokes_load_immediately",
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, tests)
+
+    def test_skills_are_native_managed_and_fail_closed(self) -> None:
+        text = patch_text()
+        for marker in (
+            "sync_skill_identity",
+            "authorize_skill_load",
+            "built-in verified skill",
+            "no matching agent access",
+            "no matching scope access",
+            "is denied by Hermes Local Trust Centre",
+            "sourceLabel",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, text)
 
     def test_native_bridge_uses_minimal_child_environment(self) -> None:
         bridge = (PATCH_ROOT / PATCH_NAMES[5]).read_text(encoding="utf-8")
