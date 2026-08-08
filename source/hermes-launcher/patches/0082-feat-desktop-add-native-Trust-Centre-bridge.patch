@@ -1,0 +1,283 @@
+From 4848484848484848484848484848484848484848 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Sat, 8 Aug 2026 02:31:00 +0100
+Subject: [PATCH] feat(desktop): add native Trust Centre bridge
+
+---
+ apps/desktop/electron/hermes-local-trust-centre.ts | 294 ++++++++++++++++++++
+ 1 file changed, 294 insertions(+)
+ create mode 100644 apps/desktop/electron/hermes-local-trust-centre.ts
+
+diff --git a/apps/desktop/electron/hermes-local-trust-centre.ts b/apps/desktop/electron/hermes-local-trust-centre.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/electron/hermes-local-trust-centre.ts
+@@ -0,0 +1,294 @@
++import { execFileSync } from 'node:child_process'
++import fs from 'node:fs'
++import path from 'node:path'
++
++import { ipcMain, shell } from 'electron'
++
++const DEFAULT_ROOT = 'D:\\Hermes-Local'
++const MAX_OUTPUT = 2 * 1024 * 1024
++const INTEGRATION_ID = /^[a-z0-9][a-z0-9._:-]{0,127}$/
++const SCOPE_ID = /^[A-Za-z0-9][A-Za-z0-9 ._:@/-]{0,127}$/
++
++export const TRUST_STATES = [
++  'reviewed-managed',
++  'user-trusted',
++  'restricted',
++  'quarantined',
++  'disabled',
++  'unknown'
++] as const
++
++export const TRUST_CONFIRMATIONS = ['never', 'always', 'writes-or-side-effects', 'local-only'] as const
++
++export const TRUST_CAPABILITIES = [
++  'filesystem.read',
++  'filesystem.write',
++  'filesystem.delete',
++  'process.execute',
++  'network.outbound',
++  'network.listen',
++  'browser.control',
++  'clipboard.read',
++  'clipboard.write',
++  'media.microphone',
++  'media.camera',
++  'credentials.use',
++  'credentials.manage',
++  'communications.read',
++  'communications.send',
++  'calendar.read',
++  'calendar.write',
++  'external.side-effect',
++  'runtime.read',
++  'runtime.manage',
++  'project.read',
++  'project.write',
++  'index.read',
++  'index.write',
++  'audit.read',
++  'remote.connect',
++  'remote.admin',
++  'embedded.render',
++  'embedded.navigate'
++] as const
++
++export type TrustState = (typeof TRUST_STATES)[number] | 'built-in-verified'
++export type TrustConfirmation = (typeof TRUST_CONFIRMATIONS)[number]
++export type TrustCapability = (typeof TRUST_CAPABILITIES)[number]
++export type TrustScopeKind = 'agent' | 'global' | 'profile' | 'project' | 'session' | 'user'
++
++export interface TrustIdentity {
++  approvedManifestSha256?: string
++  declaredCapabilities: TrustCapability[]
++  displayName: string
++  healthState: 'degraded' | 'healthy' | 'stopped' | 'unhealthy' | 'unknown'
++  id: string
++  integrationType:
++    | 'browser-bridge'
++    | 'built-in-tool'
++    | 'executable'
++    | 'mcp-local'
++    | 'mcp-remote'
++    | 'project-integration'
++    | 'remote-client'
++    | 'skill'
++  manifestRevision: number
++  provenance: {
++    provenanceId: string
++    revision: string
++    sha256?: string
++    sourceType: 'built-in' | 'github' | 'local-path' | 'package' | 'remote-endpoint'
++    uri?: string
++  }
++  trustState: TrustState
++}
++
++export interface TrustIntegrationRecord {
++  identity: TrustIdentity
++  lastSeenAt?: string
++  serverName?: string
++  source?: string
++  transport?: 'remote' | 'stdio'
++  unknownCapabilities?: string[]
++}
++
++export interface TrustCentreSnapshot {
++  activeGrants: unknown[]
++  alerts: Array<{ integrationId?: string; reason: string; severity: 'high' | 'info' }>
++  auditSummary: { counts: Record<string, number>; recent: unknown[] }
++  generatedAt: string
++  integrations: TrustIntegrationRecord[]
++  schemaVersion: 1
++}
++
++export interface TrustPolicyInput {
++  capabilities: TrustCapability[]
++  confirmation: TrustConfirmation
++  integrationId: string
++  scope: { id?: string; kind: TrustScopeKind }
++  state: Exclude<TrustState, 'built-in-verified'>
++}
++
++function localRoot(): string {
++  const configured = String(process.env.HERMES_LOCAL_ROOT || DEFAULT_ROOT).trim()
++  if (!path.isAbsolute(configured)) {
++    throw new Error('HERMES_LOCAL_ROOT must be absolute')
++  }
++  return path.resolve(configured)
++}
++
++function resolveUnderRoot(root: string, relative: string): string {
++  const candidate = path.resolve(root, relative)
++  const rootKey = root.toLocaleLowerCase()
++  const candidateKey = candidate.toLocaleLowerCase()
++  const prefix = `${rootKey}${path.sep}`
++  if (candidateKey !== rootKey && !candidateKey.startsWith(prefix)) {
++    throw new Error('Trust Centre path escapes the Hermes Local root')
++  }
++  return candidate
++}
++
++export function trustCliEnvironment(root: string, source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
++  const environment: NodeJS.ProcessEnv = {}
++  for (const key of [
++    'SystemRoot',
++    'WINDIR',
++    'ComSpec',
++    'PATH',
++    'PATHEXT',
++    'TEMP',
++    'TMP',
++    'USERPROFILE',
++    'HOMEDRIVE',
++    'HOMEPATH',
++    'LOCALAPPDATA',
++    'APPDATA'
++  ]) {
++    const value = source[key]
++    if (typeof value === 'string' && value) {
++      environment[key] = value
++    }
++  }
++  environment.HERMES_LOCAL_ROOT = root
++  environment.HERMES_HOME = resolveUnderRoot(root, 'data\\hermes')
++  environment.PYTHONUTF8 = '1'
++  return environment
++}
++
++function runTrustCli<T>(arguments_: string[]): T {
++  const root = localRoot()
++  const python = resolveUnderRoot(root, 'runtimes\\python\\hermes\\Scripts\\python.exe')
++  const sourceRoot = resolveUnderRoot(root, 'source\\hermes-agent')
++  if (!fs.existsSync(python) || !fs.existsSync(sourceRoot)) {
++    throw new Error('Hermes Local managed Python runtime is unavailable')
++  }
++  const output = execFileSync(python, ['-m', 'hermes_cli.hermes_local_trust', ...arguments_], {
++    cwd: sourceRoot,
++    encoding: 'utf8',
++    env: trustCliEnvironment(root),
++    maxBuffer: MAX_OUTPUT,
++    timeout: 15_000,
++    windowsHide: true
++  })
++  const trimmed = String(output || '').trim()
++  if (!trimmed) {
++    throw new Error('Hermes Local Trust Centre returned no data')
++  }
++  return JSON.parse(trimmed) as T
++}
++
++export function sanitizeTrustPolicyInput(value: unknown): TrustPolicyInput {
++  if (!value || typeof value !== 'object' || Array.isArray(value)) {
++    throw new Error('Trust policy input must be an object')
++  }
++  const input = value as Partial<TrustPolicyInput>
++  const integrationId = String(input.integrationId || '').trim()
++  const state = String(input.state || '') as TrustPolicyInput['state']
++  const confirmation = String(input.confirmation || '') as TrustConfirmation
++  const scope = input.scope && typeof input.scope === 'object' ? input.scope : { kind: 'global' as const }
++  if (!INTEGRATION_ID.test(integrationId)) {
++    throw new Error('Invalid Trust Centre integration identity')
++  }
++  if (!(TRUST_STATES as readonly string[]).includes(state)) {
++    throw new Error('Unsupported mutable trust state')
++  }
++  if (!(TRUST_CONFIRMATIONS as readonly string[]).includes(confirmation)) {
++    throw new Error('Unsupported confirmation policy')
++  }
++  const capabilities = Array.isArray(input.capabilities)
++    ? [...new Set(input.capabilities.map(item => String(item) as TrustCapability))]
++    : []
++  if (capabilities.some(item => !(TRUST_CAPABILITIES as readonly string[]).includes(item))) {
++    throw new Error('Unknown capability')
++  }
++  const kind = String(scope.kind || 'global') as TrustScopeKind
++  if (!['agent', 'global', 'profile', 'project', 'session', 'user'].includes(kind)) {
++    throw new Error('Unsupported trust scope')
++  }
++  const scopeId = String(scope.id || '').trim()
++  if (kind !== 'global' && !SCOPE_ID.test(scopeId)) {
++    throw new Error('Scoped grants require a bounded scope id')
++  }
++  return {
++    capabilities,
++    confirmation,
++    integrationId,
++    scope: kind === 'global' ? { kind } : { id: scopeId, kind },
++    state
++  }
++}
++
++export function trustCentreSnapshot(): TrustCentreSnapshot {
++  return runTrustCli<TrustCentreSnapshot>(['snapshot'])
++}
++
++export function setTrustCentrePolicy(value: unknown): TrustIntegrationRecord {
++  const input = sanitizeTrustPolicyInput(value)
++  const args = [
++    'policy',
++    '--integration',
++    input.integrationId,
++    '--state',
++    input.state,
++    '--confirmation',
++    input.confirmation,
++    '--scope-kind',
++    input.scope.kind
++  ]
++  if (input.scope.id) {
++    args.push('--scope-id', input.scope.id)
++  }
++  for (const capability of input.capabilities) {
++    args.push('--capability', capability)
++  }
++  return runTrustCli<TrustIntegrationRecord>(args)
++}
++
++export function exportTrustCentreDiagnostics(): { path: string } {
++  const root = localRoot()
++  const result = runTrustCli<{ path: string }>(['diagnostics'])
++  const absolute = path.resolve(String(result.path || ''))
++  resolveUnderRoot(root, path.relative(root, absolute))
++  if (!fs.existsSync(absolute)) {
++    throw new Error('Trust Centre diagnostics export is missing')
++  }
++  return { path: absolute }
++}
++
++export function registerHermesLocalTrustCentreIpc(): void {
++  ipcMain.handle('hermes:local:trust:snapshot', () => trustCentreSnapshot())
++  ipcMain.handle('hermes:local:trust:policy', (_event, input) => setTrustCentrePolicy(input))
++  ipcMain.handle('hermes:local:trust:diagnostics', async () => {
++    const result = exportTrustCentreDiagnostics()
++    shell.showItemInFolder(result.path)
++    return result
++  })
++}
+-- 
+2.51.0
