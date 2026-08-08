@@ -1,0 +1,63 @@
+name: Trust tail canonicalize
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/trust-tail-canonicalize.yml'
+      - 'source/hermes-launcher/patches/0088-fix-trust-harden-identities-and-manage-skill-access.patch'
+      - 'source/hermes-launcher/patches/0089-test-trust-cover-source-bound-skills-and-agent-scopes.patch'
+      - 'source/hermes-launcher/patches/0090-fix-trust-complete-user-scope-and-local-confirmation.patch'
+
+permissions:
+  contents: read
+
+jobs:
+  canonicalize:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Canonicalize final trust patches
+        shell: pwsh
+        run: |
+          $manifest = Get-Content -Raw -LiteralPath '.\VERSION.json' | ConvertFrom-Json
+          $candidate = [string]$manifest.sources.hermesAgent.commit
+          $probe = Join-Path $env:RUNNER_TEMP 'hermes-trust-tail-canonical'
+          New-Item -ItemType Directory -Path $probe -Force | Out-Null
+          & git -C $probe init --quiet
+          & git -C $probe remote add origin https://github.com/NousResearch/hermes-agent.git
+          & git -C $probe fetch --quiet --depth=1 origin $candidate
+          if ($LASTEXITCODE -ne 0) { throw 'fetch failed' }
+          & git -C $probe checkout --quiet --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'checkout failed' }
+          & git -C $probe config user.email 'ci@local.invalid'
+          & git -C $probe config user.name 'Hermes Local CI'
+
+          $patchRoot = (Resolve-Path '.\source\hermes-launcher\patches').Path
+          $prefix = Get-ChildItem -LiteralPath $patchRoot -Filter '*.patch' -File |
+            Sort-Object Name |
+            Where-Object { $_.Name -lt '0088-fix-trust-harden-identities-and-manage-skill-access.patch' }
+          & git -C $probe am --3way --committer-date-is-author-date @($prefix.FullName)
+          if ($LASTEXITCODE -ne 0) { throw 'preimage reconstruction failed before 0088' }
+
+          $tail = @(
+            '0088-fix-trust-harden-identities-and-manage-skill-access.patch',
+            '0089-test-trust-cover-source-bound-skills-and-agent-scopes.patch',
+            '0090-fix-trust-complete-user-scope-and-local-confirmation.patch'
+          )
+          foreach ($name in $tail) {
+            $patch = Join-Path $patchRoot $name
+            Write-Host "=== APPLY $name ==="
+            & git -C $probe apply --check --verbose $patch
+            if ($LASTEXITCODE -ne 0) { throw "plain apply check failed: $name" }
+            & git -C $probe apply $patch
+            if ($LASTEXITCODE -ne 0) { throw "plain apply failed: $name" }
+            Write-Host "=== CANONICAL $name BEGIN ==="
+            & git -C $probe diff --full-index --no-ext-diff HEAD
+            Write-Host "=== CANONICAL $name END ==="
+            & git -C $probe add -A
+            & git -C $probe commit --quiet -m "canonical $name"
+            if ($LASTEXITCODE -ne 0) { throw "canonical commit failed: $name" }
+          }
