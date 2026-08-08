@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Hermes Local Integration <hermes-local-ci@localhost>
+Date: Sat, 8 Aug 2026 19:14:00 +0100
+Subject: [PATCH] style(projects): satisfy desktop lint
+
+Brace the project selector guard and keep session-store imports in the
+repository's enforced sort order.
+---
+ apps/desktop/src/app/chat/composer/status-stack/project-row.tsx | 4 +++-
+ apps/desktop/src/app/session/hooks/use-session-actions/index.ts | 2 +-
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/apps/desktop/src/app/chat/composer/status-stack/project-row.tsx b/apps/desktop/src/app/chat/composer/status-stack/project-row.tsx
+--- a/apps/desktop/src/app/chat/composer/status-stack/project-row.tsx
++++ b/apps/desktop/src/app/chat/composer/status-stack/project-row.tsx
+@@ -34,11 +34,13 @@ export function selectedProjectIdForCwd(
+ 
+   let selected: null | string = null
+   let bestLength = -1
+   for (const project of projects) {
+-    if (project.archived) continue
++    if (project.archived) {
++      continue
++    }
+     for (const folder of project.folders) {
+       if (isInside(folder.path, path) && folder.path.length > bestLength) {
+         bestLength = folder.path.length
+         selected = project.id
+       }
+     }
+diff --git a/apps/desktop/src/app/session/hooks/use-session-actions/index.ts b/apps/desktop/src/app/session/hooks/use-session-actions/index.ts
+--- a/apps/desktop/src/app/session/hooks/use-session-actions/index.ts
++++ b/apps/desktop/src/app/session/hooks/use-session-actions/index.ts
+@@ -25,7 +25,7 @@ import {
+   $activeSessionStoredIdRotation,
+   $currentCwd,
+   $currentFastMode,
+-  $currentProjectId,
+   $currentModel,
++  $currentProjectId,
+   $currentProvider,
+   $currentReasoningEffort,
+-- 
+2.54.0
