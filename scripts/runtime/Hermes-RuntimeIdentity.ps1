@@ -1,3 +1,20 @@
+function Get-HermesRuntimeObjectProperty {
+    param(
+        [AllowNull()][object] $Object,
+        [Parameter(Mandatory)][string] $Name,
+        [AllowNull()][object] $Default = $null
+    )
+
+    if ($null -eq $Object) { return $Default }
+    if ($Object -is [System.Collections.IDictionary]) {
+        if ($Object.Contains($Name)) { return $Object[$Name] }
+        return $Default
+    }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($property) { return $property.Value }
+    $Default
+}
+
 function Resolve-HermesRuntimeLifecyclePath {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string] $RelativePath)
@@ -36,17 +53,18 @@ function Get-HermesRuntimeLifecyclePaths {
             throw "Runtime catalog JSON is invalid: $($_.Exception.Message)"
         }
     }
-    if (-not $Catalog.lifecycle) {
+    $lifecycle = Get-HermesRuntimeObjectProperty -Object $Catalog -Name lifecycle
+    if (-not $lifecycle) {
         throw 'Runtime catalog does not declare lifecycle paths.'
     }
 
     $paths = [ordered]@{
-        StagingRoot = Resolve-HermesRuntimeLifecyclePath ([string]$Catalog.lifecycle.stagingRoot)
-        ActivePath = Resolve-HermesRuntimeLifecyclePath ([string]$Catalog.lifecycle.activePath)
-        RetainedRoot = Resolve-HermesRuntimeLifecyclePath ([string]$Catalog.lifecycle.retainedRoot)
-        StatePath = Resolve-HermesRuntimeLifecyclePath ([string]$Catalog.lifecycle.statePath)
-        HistoryPath = Resolve-HermesRuntimeLifecyclePath ([string]$Catalog.lifecycle.historyPath)
-        DiagnosticPath = Resolve-HermesRuntimeLifecyclePath ([string]$Catalog.lifecycle.diagnosticPath)
+        StagingRoot = Resolve-HermesRuntimeLifecyclePath ([string](Get-HermesRuntimeObjectProperty $lifecycle 'stagingRoot'))
+        ActivePath = Resolve-HermesRuntimeLifecyclePath ([string](Get-HermesRuntimeObjectProperty $lifecycle 'activePath'))
+        RetainedRoot = Resolve-HermesRuntimeLifecyclePath ([string](Get-HermesRuntimeObjectProperty $lifecycle 'retainedRoot'))
+        StatePath = Resolve-HermesRuntimeLifecyclePath ([string](Get-HermesRuntimeObjectProperty $lifecycle 'statePath'))
+        HistoryPath = Resolve-HermesRuntimeLifecyclePath ([string](Get-HermesRuntimeObjectProperty $lifecycle 'historyPath'))
+        DiagnosticPath = Resolve-HermesRuntimeLifecyclePath ([string](Get-HermesRuntimeObjectProperty $lifecycle 'diagnosticPath'))
     }
     if ($paths.StagingRoot -eq $paths.ActivePath -or
         $paths.RetainedRoot -eq $paths.ActivePath -or
@@ -60,14 +78,16 @@ function Get-HermesSelectedModelFormat {
     [CmdletBinding()]
     param([pscustomobject] $Configuration = (Get-HermesConfiguration))
 
-    $model = $Configuration.selectedModel
+    $model = Get-HermesRuntimeObjectProperty -Object $Configuration -Name selectedModel
     if (-not $model) {
         throw 'A selected model is required to resolve an inference runtime package.'
     }
-    $candidate = if ($model.filename) { [string]$model.filename } elseif ($model.localPath) { [string]$model.localPath } else { '' }
+    $filename = [string](Get-HermesRuntimeObjectProperty -Object $model -Name filename)
+    $localPath = [string](Get-HermesRuntimeObjectProperty -Object $model -Name localPath)
+    $candidate = if ($filename) { $filename } else { $localPath }
     $extension = [System.IO.Path]::GetExtension($candidate).TrimStart('.').ToLowerInvariant()
     if ([string]::IsNullOrWhiteSpace($extension)) {
-        throw "The selected model '$($model.displayName)' does not declare a model format."
+        throw "The selected model '$([string](Get-HermesRuntimeObjectProperty $model 'displayName' 'selected model'))' does not declare a model format."
     }
     $extension
 }
@@ -94,12 +114,11 @@ function Get-HermesLlamaRuntimePackageIdentity {
     }
     $artifacts = @(
         foreach ($artifact in @($Package.artifacts)) {
-            $expected = $artifact.PSObject.Properties['expectedSha256']
             [ordered]@{
                 repository = [string]$artifact.repository
                 tag = [string]$artifact.tag
                 asset = [string]$artifact.asset
-                expectedSha256 = if ($expected) { [string]$expected.Value } else { $null }
+                expectedSha256 = [string](Get-HermesRuntimeObjectProperty -Object $artifact -Name expectedSha256)
             }
         }
     )
@@ -174,34 +193,43 @@ function Get-HermesRuntimeManifestIdentity {
         [pscustomobject] $Catalog = (Get-HermesRuntimeCatalog)
     )
 
-    if ($Manifest.identity -and [string]$Manifest.identity.fingerprint -match '^sha256:[0-9a-f]{64}$') {
-        return $Manifest.identity
+    $recordedIdentity = Get-HermesRuntimeObjectProperty -Object $Manifest -Name identity
+    $recordedFingerprint = [string](Get-HermesRuntimeObjectProperty -Object $recordedIdentity -Name fingerprint)
+    if ($recordedIdentity -and $recordedFingerprint -match '^sha256:[0-9a-f]{64}$') {
+        return $recordedIdentity
     }
 
+    $packageId = [string](Get-HermesRuntimeObjectProperty $Manifest 'packageId')
+    $version = [string](Get-HermesRuntimeObjectProperty $Manifest 'version')
+    $sourceCommit = [string](Get-HermesRuntimeObjectProperty $Manifest 'sourceCommit')
+    $platform = [string](Get-HermesRuntimeObjectProperty $Manifest 'platform')
+    $acceleration = [string](Get-HermesRuntimeObjectProperty $Manifest 'acceleration')
     $matches = @($Catalog.packages | Where-Object {
-        [string]$_.id -eq [string]$Manifest.packageId -and
-        [string]$_.version -eq [string]$Manifest.version -and
-        [string]$_.sourceCommit -eq [string]$Manifest.sourceCommit -and
-        [string]$_.platform -eq [string]$Manifest.platform -and
-        [string]$_.acceleration -eq [string]$Manifest.acceleration
+        [string]$_.id -eq $packageId -and
+        [string]$_.version -eq $version -and
+        [string]$_.sourceCommit -eq $sourceCommit -and
+        [string]$_.platform -eq $platform -and
+        [string]$_.acceleration -eq $acceleration
     })
     if ($matches.Count -eq 1) {
         return Get-HermesLlamaRuntimePackageIdentity -Package $matches[0] -Catalog $Catalog
     }
 
+    $component = [string](Get-HermesRuntimeObjectProperty $Manifest 'component' 'llama.cpp')
+    $formats = Get-HermesRuntimeObjectProperty $Manifest 'modelFormats' @('gguf')
     $legacy = [ordered]@{
         schemaVersion = 1
-        family = $(if ($Manifest.component) { [string]$Manifest.component } else { 'llama.cpp' })
-        packageId = [string]$Manifest.packageId
-        packageVersion = [string]$Manifest.version
-        distribution = [string]$Manifest.distribution
-        revision = [string]$Manifest.sourceCommit
-        sourceRepository = [string]$Manifest.sourceRepository
-        platform = [string]$Manifest.platform
-        hardwareBackend = [string]$Manifest.acceleration
-        buildFlags = @($Manifest.buildFlags | ForEach-Object { [string]$_ })
-        cudaArchitectures = @($Manifest.cudaArchitectures | ForEach-Object { [string]$_ })
-        modelFormats = @($(if ($Manifest.modelFormats) { $Manifest.modelFormats } else { 'gguf' }) | ForEach-Object { [string]$_ })
+        family = $component
+        packageId = $packageId
+        packageVersion = $version
+        distribution = [string](Get-HermesRuntimeObjectProperty $Manifest 'distribution')
+        revision = $sourceCommit
+        sourceRepository = [string](Get-HermesRuntimeObjectProperty $Manifest 'sourceRepository')
+        platform = $platform
+        hardwareBackend = $acceleration
+        buildFlags = @(Get-HermesRuntimeObjectProperty $Manifest 'buildFlags' @() | ForEach-Object { [string]$_ })
+        cudaArchitectures = @(Get-HermesRuntimeObjectProperty $Manifest 'cudaArchitectures' @() | ForEach-Object { [string]$_ })
+        modelFormats = @($formats | ForEach-Object { [string]$_ })
     }
     $fingerprint = Get-HermesRuntimeIdentityFingerprint -Material $legacy
     [pscustomobject]([ordered]@{
@@ -244,40 +272,39 @@ function Assert-HermesLlamaRuntimeDecision {
         [pscustomobject] $Catalog = (Get-HermesRuntimeCatalog)
     )
 
-    if (-not $Decision.Package) {
-        throw "$($Decision.SelectionState): $($Decision.Reason)"
+    $package = Get-HermesRuntimeObjectProperty -Object $Decision -Name Package
+    if (-not $package) {
+        throw "$([string](Get-HermesRuntimeObjectProperty $Decision 'SelectionState')): $([string](Get-HermesRuntimeObjectProperty $Decision 'Reason'))"
     }
-    $packageId = [string]$Decision.Package.id
+    $packageId = [string]$package.id
     $matches = @($Catalog.packages | Where-Object { [string]$_.id -eq $packageId })
     if ($matches.Count -ne 1) {
         throw "Runtime decision references package '$packageId', which is not uniquely present in the authoritative catalog."
     }
     $catalogPackage = $matches[0]
     $expectedIdentity = Get-HermesLlamaRuntimePackageIdentity -Package $catalogPackage -Catalog $Catalog
-    $decisionIdentity = if ($Decision.PackageIdentity) {
-        $Decision.PackageIdentity
-    } else {
-        Get-HermesLlamaRuntimePackageIdentity -Package $Decision.Package -Catalog $Catalog
+    $decisionIdentity = Get-HermesRuntimeObjectProperty -Object $Decision -Name PackageIdentity
+    if (-not $decisionIdentity) {
+        $decisionIdentity = Get-HermesLlamaRuntimePackageIdentity -Package $package -Catalog $Catalog
     }
     if ([string]$decisionIdentity.fingerprint -ne [string]$expectedIdentity.fingerprint) {
         throw "Runtime decision identity for '$packageId' does not match the authoritative catalog."
     }
 
-    $modelFormat = if ($Decision.PSObject.Properties['ModelFormat'] -and $Decision.ModelFormat) {
-        [string]$Decision.ModelFormat
-    } else {
-        Get-HermesSelectedModelFormat
-    }
+    $modelFormat = [string](Get-HermesRuntimeObjectProperty -Object $Decision -Name ModelFormat)
+    if (-not $modelFormat) { $modelFormat = Get-HermesSelectedModelFormat }
+    $hardware = Get-HermesRuntimeObjectProperty -Object $Decision -Name Hardware
+    $cpuFeatures = @(Get-HermesRuntimeObjectProperty -Object $Decision -Name CpuFeatures -Default @())
     $compatibility = Test-HermesRuntimePackageCompatibility `
         -Package $catalogPackage `
-        -Hardware $Decision.Hardware `
-        -CpuFeatures @($Decision.CpuFeatures) `
+        -Hardware $hardware `
+        -CpuFeatures $cpuFeatures `
         -ModelFormat $modelFormat
     if (-not $compatibility.Compatible) {
         throw "Runtime package '$packageId' is incompatible: $($compatibility.Reasons -join '; ')"
     }
-    if ([string]$Decision.ResolvedAcceleration -ne [string]$catalogPackage.acceleration) {
-        throw "Runtime decision backend '$($Decision.ResolvedAcceleration)' does not match package '$packageId'."
+    if ([string](Get-HermesRuntimeObjectProperty $Decision 'ResolvedAcceleration') -ne [string]$catalogPackage.acceleration) {
+        throw "Runtime decision backend '$([string](Get-HermesRuntimeObjectProperty $Decision 'ResolvedAcceleration'))' does not match package '$packageId'."
     }
     $expectedIdentity
 }
@@ -286,7 +313,8 @@ function Get-HermesLlamaRuntimeUpdateSnapshot {
     [CmdletBinding()]
     param([Parameter(Mandatory)][pscustomobject] $Decision)
 
-    $target = if ($Decision.Package) { Assert-HermesLlamaRuntimeDecision -Decision $Decision } else { $null }
+    $package = Get-HermesRuntimeObjectProperty -Object $Decision -Name Package
+    $target = if ($package) { Assert-HermesLlamaRuntimeDecision -Decision $Decision } else { $null }
     $installed = Get-HermesInstalledLlamaRuntimeIdentity
     $lifecycle = Get-HermesRuntimeLifecyclePaths
     [ordered]@{
@@ -297,11 +325,11 @@ function Get-HermesLlamaRuntimeUpdateSnapshot {
         installedIdentity = $installed
         targetIdentity = $target
         compatibility = [ordered]@{
-            state = [string]$Decision.SelectionState
-            reason = [string]$Decision.Reason
-            requestedAcceleration = [string]$Decision.RequestedAcceleration
-            resolvedAcceleration = [string]$Decision.ResolvedAcceleration
-            modelFormat = [string]$Decision.ModelFormat
+            state = [string](Get-HermesRuntimeObjectProperty $Decision 'SelectionState')
+            reason = [string](Get-HermesRuntimeObjectProperty $Decision 'Reason')
+            requestedAcceleration = [string](Get-HermesRuntimeObjectProperty $Decision 'RequestedAcceleration')
+            resolvedAcceleration = [string](Get-HermesRuntimeObjectProperty $Decision 'ResolvedAcceleration')
+            modelFormat = [string](Get-HermesRuntimeObjectProperty $Decision 'ModelFormat')
         }
         lifecycle = [ordered]@{
             staging = $lifecycle.StagingRoot
