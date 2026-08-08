@@ -24,6 +24,8 @@ jobs:
           set -euo pipefail
           git clone --quiet https://github.com/NousResearch/hermes-agent.git /tmp/hermes-agent
           git -C /tmp/hermes-agent checkout --quiet 91937a6dc3ffbbe2f3be91a500f0ecf962c4cf53
+          git -C /tmp/hermes-agent config user.name 'Hermes Local Patch Generator'
+          git -C /tmp/hermes-agent config user.email 'patch-generator@hermes.local'
 
           for patch in source/hermes-launcher/patches/*.patch; do
             name="$(basename "$patch")"
