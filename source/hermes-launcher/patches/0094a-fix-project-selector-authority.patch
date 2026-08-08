@@ -4,8 +4,8 @@ Date: Sat, 8 Aug 2026 17:31:00 +0100
 Subject: [PATCH] fix(projects): make explicit project selection authoritative
 
 ---
- apps/desktop/src/app/chat/composer/status-stack/project-row.tsx | 7 +++----
- 1 file changed, 3 insertions(+), 4 deletions(-)
+ apps/desktop/src/app/chat/composer/status-stack/project-row.tsx | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
 
 diff --git a/apps/desktop/src/app/chat/composer/status-stack/project-row.tsx b/apps/desktop/src/app/chat/composer/status-stack/project-row.tsx
 index dca498775..dca498775 100644
@@ -25,13 +25,5 @@ index dca498775..dca498775 100644
 -
    const path = cwd?.trim() || ''
    if (!path) {
-@@ -78,7 +77,6 @@ export const ProjectStatusRow = memo(function ProjectStatusRow({
-         return renderActionItem(kit, {
-           key: project.id,
-           label: <span className="truncate">{project.name}</span>,
--          disabled: !cwd,
-           onSelect: () => void onSelectProject(project.id, cwd)
-         })
-       })
 -- 
 2.54.0
