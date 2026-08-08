@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Hermes Local Integration <hermes-local-ci@localhost>
+Date: Sat, 8 Aug 2026 17:32:00 +0100
+Subject: [PATCH] fix(projects): keep explicit projectless chats in Home
+
+---
+ tests/tui_gateway/test_project_tree.py | 12 ++++++++++++
+ tui_gateway/project_tree.py            | 14 +++++++++-----
+ 2 files changed, 21 insertions(+), 5 deletions(-)
+
+diff --git a/tui_gateway/project_tree.py b/tui_gateway/project_tree.py
+index e425c2c42..e425c2c42 100644
+--- a/tui_gateway/project_tree.py
++++ b/tui_gateway/project_tree.py
+@@ -580,16 +580,20 @@ def build_tree(
+ 
+     by_project: dict[str, list[dict]] = {}
+     unowned: list[dict] = []
+     identity_orphans: list[dict] = []
+     for session in sessions:
++        has_project_identity = "project_id" in session
+         selected_project_id = str(session.get("project_id") or "").strip()
+-        owner = (
+-            project_by_id.get(selected_project_id)
+-            if selected_project_id
+-            else _project_for_session(session, folder_index, resolve)
+-        )
++        if has_project_identity:
++            owner = project_by_id.get(selected_project_id) if selected_project_id else None
++        else:
++            owner = _project_for_session(session, folder_index, resolve)
++
+         if owner:
+             by_project.setdefault(owner["id"], []).append(session)
+-        elif selected_project_id:
++        elif has_project_identity:
+             identity_orphans.append(session)
+         else:
+             unowned.append(session)
+@@ -632,7 +636,7 @@ def build_tree(
+     # The pre-Projects desktop grouped every non-empty cwd; keeping that fallback
+     # prevents upgrades from flattening those sessions into Recents.
+     by_auto_root: dict[str, dict] = {}
+-    # Explicit-but-missing project ids never fall back to cwd/repo heuristics.
+-    # Keep those rows visible under Home until the user reattaches them.
++    # Explicit projectless or missing project identities never fall back to cwd/repo heuristics.
++    # Keep those rows visible under Home until the user attaches or reattaches them.
+     homeless: list[dict] = list(identity_orphans)
+ 
+diff --git a/tests/tui_gateway/test_project_tree.py b/tests/tui_gateway/test_project_tree.py
+--- a/tests/tui_gateway/test_project_tree.py
++++ b/tests/tui_gateway/test_project_tree.py
+@@ -568,3 +568,15 @@ def test_stale_stable_project_id_does_not_path_fallback():
+     # but the chat remains discoverable under Home so it can be reattached.
+     assert "chat" in tree["scoped_session_ids"]
++
++
++def test_explicit_projectless_session_does_not_path_fallback():
++    projects = [{"id": "p_one", "name": "One", "folders": [{"path": "/one"}]}]
++    session = {
++        "id": "chat", "project_id": None, "cwd": "/one/src",
++        "git_repo_root": "/one", "git_branch": "main", "started_at": 1, "last_active": 2,
++    }
++    tree = pt.build_tree(projects, [session], [], resolve=lambda _cwd: "/one", hydrate=True)
++    one_project = next(node for node in tree["projects"] if node["id"] == "p_one")
++    assert one_project["sessionCount"] == 0
++    assert "chat" in tree["scoped_session_ids"]
+-- 
+2.54.0
