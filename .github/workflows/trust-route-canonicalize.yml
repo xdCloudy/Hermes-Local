@@ -71,19 +71,17 @@ jobs:
               "  TASKS_ROUTE,${nl}  TOOLS_ROUTE,${nl}  TUI_ROUTE",
               "  TASKS_ROUTE,${nl}  TOOLS_ROUTE,${nl}  TRUST_ROUTE,${nl}  TUI_ROUTE"
             )
-            $text.Replace(
-              "    icon: props => <Codicon name=\"shield\" {...props} />,${nl}    route: SECURITY_ROUTE${nl}  },${nl}  {${nl}    id: 'logs',",
-              "    icon: props => <Codicon name=\"shield\" {...props} />,${nl}    route: SECURITY_ROUTE${nl}  },${nl}  {${nl}    id: 'trust',${nl}    label: 'Trust Centre',${nl}    icon: props => <Codicon name=\"lock\" {...props} />,${nl}    route: TRUST_ROUTE${nl}  },${nl}  {${nl}    id: 'logs',"
-            )
+            $old = "    icon: props => <Codicon name=`"shield`" {...props} />,${nl}    route: SECURITY_ROUTE${nl}  },${nl}  {${nl}    id: 'logs',"
+            $new = "    icon: props => <Codicon name=`"shield`" {...props} />,${nl}    route: SECURITY_ROUTE${nl}  },${nl}  {${nl}    id: 'trust',${nl}    label: 'Trust Centre',${nl}    icon: props => <Codicon name=`"lock`" {...props} />,${nl}    route: TRUST_ROUTE${nl}  },${nl}  {${nl}    id: 'logs',"
+            $text.Replace($old, $new)
           }
 
           $surfaces = Join-Path $probe 'apps\desktop\src\app\contrib\surfaces.tsx'
           Edit-File $surfaces {
             param($text, $nl)
-            $text.Replace(
-              "      <Route element={page(<LocalWorkstationView />)} path=\"security\" />${nl}      <Route element={page(<LocalWorkstationView />)} path=\"logs\" />",
-              "      <Route element={page(<LocalWorkstationView />)} path=\"security\" />${nl}      <Route element={page(<LocalWorkstationView />)} path=\"trust\" />${nl}      <Route element={page(<LocalWorkstationView />)} path=\"logs\" />"
-            )
+            $old = "      <Route element={page(<LocalWorkstationView />)} path=`"security`" />${nl}      <Route element={page(<LocalWorkstationView />)} path=`"logs`" />"
+            $new = "      <Route element={page(<LocalWorkstationView />)} path=`"security`" />${nl}      <Route element={page(<LocalWorkstationView />)} path=`"trust`" />${nl}      <Route element={page(<LocalWorkstationView />)} path=`"logs`" />"
+            $text.Replace($old, $new)
           }
 
           $workstation = Join-Path $probe 'apps\desktop\src\app\local-workstation\index.tsx'
