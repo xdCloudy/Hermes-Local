@@ -82,6 +82,10 @@ jobs:
           if ($generated -match '\[`aaaaaaa`\].*docs: refresh project dashboard') {
             throw 'README status selected a generated dashboard commit.'
           }
+          if ($generated -notmatch '\*\*100%\*\*<br>1/1 issues' -or
+              $generated -notmatch '\*\*0%\*\*<br>0/1 issues') {
+            throw 'README milestone progress was not derived from the issue inventory.'
+          }
           & '.\scripts\update-readme.ps1' @arguments
           $secondHash = (Get-FileHash -LiteralPath $testReadme).Hash
           if ($firstHash -ne $secondHash) {

@@ -293,6 +293,17 @@ jobs:
               per_page: 100
             })
             const existing = issues.find(issue => !issue.pull_request && (issue.body || '').includes(marker))
+            const existingLabels = existing ? existing.labels.map(label => label.name) : []
+            const retainedLabels = existingLabels.filter(label => !label.startsWith('status: '))
+            const statusLabel = actionable ? 'status: blocked' : 'status: done'
+            const labels = [...new Set([
+              ...retainedLabels,
+              'type: maintenance',
+              'upstream',
+              'component: ci-testing',
+              'priority: high',
+              statusLabel
+            ])]
             const componentRows = report.components.map(component => {
               const candidate = component.candidate ? `\`${component.candidate}\`` : 'unresolved'
               return `| ${component.component} | ${candidate} | \`${component.status}\` |`
@@ -331,7 +342,8 @@ jobs:
                   issue_number: existing.number,
                   title: 'Compatibility: upstream candidate intervention required',
                   body,
-                  state: 'open'
+                  state: 'open',
+                  labels
                 })
               } else {
                 await github.rest.issues.create({
@@ -339,7 +351,7 @@ jobs:
                   repo,
                   title: 'Compatibility: upstream candidate intervention required',
                   body,
-                  labels: ['upstream', 'component: ci-testing', 'priority: high']
+                  labels
                 })
               }
             } else if (existing && existing.state === 'open') {
@@ -349,7 +361,8 @@ jobs:
                 issue_number: existing.number,
                 body,
                 state: 'closed',
-                state_reason: 'completed'
+                state_reason: 'completed',
+                labels
               })
             }
 

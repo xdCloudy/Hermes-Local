@@ -11,14 +11,18 @@ should not be installed inside WSL or a Docker filesystem.
 Required:
 
 - PowerShell 7
-- Git, Node.js, uv and CMake (setup can install missing official packages with
+- Git, Node.js and uv (setup can install missing official packages with
   `winget`)
-- Visual Studio 2022 C++ build tools
 - at least 16 GiB free before adding model weights
 
 Optional:
 
-- an NVIDIA GPU, current driver and CUDA Toolkit for CUDA acceleration
+- an NVIDIA GPU and current driver for CUDA acceleration
+
+The default verified prebuilt runtime path does not require CMake, Ninja,
+Visual Studio C++ Build Tools, `nvcc` or a locally installed CUDA Toolkit. Those
+tools are required only for the explicit `-LlamaRuntimeMode source` developer
+path.
 
 CPU-only inference is supported. Performance and memory requirements depend
 mostly on the selected GGUF, context length and cache type.
@@ -52,10 +56,17 @@ directory missing the Hermes Local markers is rejected as a safety boundary.
 
 ## Acceleration selection
 
-The tracked default is `auto`:
+The tracked default is `auto`. Setup detects Windows and CPU capabilities,
+NVIDIA compute capability and driver version, RAM, VRAM and free storage, then
+selects the highest-priority compatible verified package from the runtime
+catalog. If no supported CUDA package matches, automatic selection may use the
+verified CPU fallback and records the reason in diagnostics.
 
-- CUDA is used when both `nvidia-smi` and `nvcc` are available;
-- otherwise llama.cpp is built for CPU inference.
+To select a source build for unsupported hardware or custom compiler options:
+
+```powershell
+& '.\Setup-Hermes-Local.ps1' -LlamaRuntimeMode source -NonInteractive
+```
 
 To force a mode before setup, create
 `config\launcher\user-settings.json` from this minimal example:
@@ -69,10 +80,9 @@ To force a mode before setup, create
 }
 ```
 
-Use `"cuda"` to require CUDA. CUDA architecture is discovered from
-`nvidia-smi`; build parallelism is based on the logical CPU count. Both can be
-overridden in the same runtime object using `cudaArchitecture` and
-`buildParallelism`.
+Use `"cuda"` to require a compatible CUDA package. CUDA architecture is
+discovered from `nvidia-smi`. Source mode additionally supports explicit
+`cudaArchitecture` and `buildParallelism` overrides.
 
 After the launcher is built, these choices are available under **Models →
 Runtime and network**.
@@ -137,7 +147,8 @@ Setup is idempotent. It:
 1. validates the project root, Windows architecture and available storage;
 2. reads the per-user model, profile, port and acceleration selection;
 3. reconstructs the pinned official Hermes integration;
-4. builds llama.cpp for CPU or the detected CUDA architecture;
+4. installs and verifies a compatible prebuilt llama.cpp package, or builds
+   llama.cpp when source mode was explicitly selected;
 5. installs the configured Python runtime and locked Hermes dependencies;
 6. downloads and verifies the selected model plus required sidecar artifacts
    only when they are missing or invalid;
@@ -147,7 +158,7 @@ Setup is idempotent. It:
 
 ### Rebuilding an existing installation
 
-Stop Hermes Local before running setup without `-SkipLlamaBuild`:
+Stop Hermes Local before replacing the active runtime:
 
 ```powershell
 & '.\Stop-Hermes-Local.ps1' -NonInteractive
@@ -155,13 +166,14 @@ Stop Hermes Local before running setup without `-SkipLlamaBuild`:
 ```
 
 A running `llama-server`, `llama-cli` or `llama-bench` process can keep native
-DLLs locked and prevent MSBuild from replacing them. Setup now detects those
-processes before configuration and exits with a direct instruction instead of
-allowing an opaque `LNK1104` linker failure.
+files locked and prevent runtime promotion or a developer rebuild. Setup
+detects those processes before configuration and exits with a direct
+instruction.
 
-`-SkipLlamaBuild` retains the existing native binaries. Use it only when that
-build already matches the pinned llama.cpp revision and supports every argument
-required by the selected model manifest.
+`-SkipLlamaBuild` retains the existing native binaries. Use it only when the
+active runtime already matches the selected catalog/package identity or the
+source revision and supports every argument required by the selected model
+manifest.
 
 ## First start
 

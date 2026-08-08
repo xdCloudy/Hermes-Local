@@ -38,15 +38,16 @@ a paid inference API.
 > [!IMPORTANT]
 > Hermes Local is active pre-1.0 software. The current Windows release packages
 > the control centre, but it is not yet a one-click full workstation installer.
-> A provisioned repository checkout and native runtime are still required.
-> Guided installation and verified prebuilt runtimes are tracked for v1.0.
+> A provisioned repository checkout is still required. Setup now installs a
+> verified prebuilt runtime by default; the guided installer remains tracked for
+> v1.0.
 
 ## At a glance
 
 <!-- BEGIN GENERATED STATUS -->
 | Release | Delivery | Repository |
 |---|---|---|
-| **Current build:** v0.18.62<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 28 open · 34 closed<br>**Overall completion:** 55%<br>**Recent commit:** [`12b49c8`](https://github.com/xdCloudy/Hermes-Local/commit/12b49c80cdfd113fe85a4f1269518f246fc7806a) feat: add Skills and MCP Trust Centre (#125) |
+| **Current build:** v0.18.62<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.19 - Dependable Distribution and Control Plane](https://github.com/xdCloudy/Hermes-Local/milestone/6)<br>**Current focus:** Complete dependable distribution, durable operations and shared update orchestration.<br>**Next:** Project Centre and Product UX | **Issues:** 28 open · 34 closed<br>**Overall completion:** 55%<br>**Recent commit:** [`12b49c8`](https://github.com/xdCloudy/Hermes-Local/commit/12b49c80cdfd113fe85a4f1269518f246fc7806a) feat: add Skills and MCP Trust Centre (#125) |
 
 > Status is generated from GitHub issues, milestones, releases and commits.
 <!-- END GENERATED STATUS -->
@@ -81,15 +82,15 @@ output, reasoning, long context and stability—not only generation speed.
 |---|---|:---:|
 | Desktop and TUI | Packaged Electron control centre plus the integrated Hermes TUI | ✅ |
 | Local inference | Managed llama.cpp CPU/CUDA serving through authenticated loopback endpoints | ✅ |
-| Models | GGUF registration, selection and a tracked Qwen3.6 vision/MTP starter manifest; live model-switch activation remains open in [#84](https://github.com/xdCloudy/Hermes-Local/issues/84) | 🟡 |
+| Models | GGUF registration, verified downloads, selection, managed stack restart and a tracked Qwen3.6 vision/MTP starter manifest | ✅ |
 | Profiles | Context, KV cache, threads, batching, offload, Flash Attention and prompt caching | ✅ |
 | Lifecycle | Setup, start, stop, restart, repair, diagnostics and owned messaging-gateway management | ✅ |
-| Benchmarks | Reproducible performance and memory runs with generated evidence; durable benchmark task instrumentation remains open in [#24](https://github.com/xdCloudy/Hermes-Local/issues/24) | 🟡 |
-| Task Centre | Durable task schema, persistence and UI are present; feature-specific integrations are still being completed | 🟡 |
-| Updates | Transactional PowerShell update and rollback paths exist; shared orchestration and native Desktop update flows remain active work | 🟡 |
-| Projects | Basic project/session surfaces exist; stable project identity and the full Project Centre are tracked in [#27](https://github.com/xdCloudy/Hermes-Local/issues/27) | 🚧 |
+| Benchmarks | Reproducible performance and memory runs with durable Task Centre progress, cancellation and generated evidence | ✅ |
+| Task Centre | Durable task schema, persistence, recovery and UI cover lifecycle, updates, backup, diagnostics, benchmarks, security scans, restore and model downloads | ✅ |
+| Updates | Transactional Hermes Agent and Desktop update/rollback paths use shared durable orchestration; the managed runtime adapter remains tracked in [#45](https://github.com/xdCloudy/Hermes-Local/issues/45) | 🟡 |
+| Projects | Stable project identity and path recovery are available; chat association is in review and the complete Project Centre remains tracked in [#27](https://github.com/xdCloudy/Hermes-Local/issues/27) | 🚧 |
 | Memory and data | Local user-owned state, backup and restore exist; the Memory Centre and scoped data model remain planned | 🚧 |
-| Security | Loopback authentication, DPAPI-protected credentials, threat modelling and security scans exist; signing, SBOM and provenance work remains open | 🟡 |
+| Security | Loopback authentication, DPAPI-protected credentials, trust contracts and Trust Centre controls are implemented; current published binaries still predate the signing/provenance release gate | 🟡 |
 | Remote access | Local messaging integrations are supported; paired and permission-scoped remote access is planned in [#17](https://github.com/xdCloudy/Hermes-Local/issues/17) | ⏳ |
 | Multi-backend inference | Runtime adapters, certification, routing and AutoTune are deliberately scheduled after the stable distribution work | ⏳ |
 
@@ -128,8 +129,8 @@ native blocked-by relationships.
 <!-- BEGIN GENERATED ROADMAP -->
 | Stage | Purpose and success criteria | GitHub milestones | Progress |
 |---|---|---|---:|
-| 🚧 **Reliable Platform** | **Purpose:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Success:** Cold starts, model changes, lifecycle transitions and recovery paths fail clearly and recover predictably. | [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5) | **100%**<br>10/10 issues |
-| 🚧 **Operational Control Plane** | **Purpose:** Complete dependable distribution, durable operations and shared update orchestration.<br>**Success:** Long-running work, updates, release evidence and lifecycle controls share authoritative state and recovery paths. | [v0.19 - Dependable Distribution and Control Plane](https://github.com/xdCloudy/Hermes-Local/milestone/6) | **85%**<br>17/20 issues |
+| ✅ **Reliable Platform** | **Purpose:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Success:** Cold starts, model changes, lifecycle transitions and recovery paths fail clearly and recover predictably. | [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5) | **100%**<br>10/10 issues |
+| 🚧 **Operational Control Plane** | **Purpose:** Complete dependable distribution, durable operations and shared update orchestration.<br>**Success:** Long-running work, updates, release evidence and lifecycle controls share authoritative state and recovery paths. | [v0.19 - Dependable Distribution and Control Plane](https://github.com/xdCloudy/Hermes-Local/milestone/6) | **90%**<br>18/20 issues |
 | 🚧 **Project Centre and Product UX** | **Purpose:** Introduce stable project identity and complete the main product-management surfaces.<br>**Success:** Projects, chats, tasks, reports and product diagnostics remain correctly associated and recoverable. | [v0.20 - Project Centre and Product UX](https://github.com/xdCloudy/Hermes-Local/milestone/10) | **36%**<br>4/11 issues |
 | 🚧 **Trust and Data Boundaries** | **Purpose:** Add shared trust contracts, scoped data access and secure access controls.<br>**Success:** Integrations, projects, memories, indexing and remote clients obey explicit permissions and isolation rules. | [v0.21 - Trust and Data Boundaries](https://github.com/xdCloudy/Hermes-Local/milestone/4) | **17%**<br>1/6 issues |
 | 🎯 **Version 1.0 Stable** | **Purpose:** Deliver a supported Windows distribution for users who should not need a native build toolchain.<br>**Success:** Guided installation, verified runtime packages, release integrity and lifecycle recovery pass the stable release matrix. | [v1.0 - Stable](https://github.com/xdCloudy/Hermes-Local/milestone/11) | **0%**<br>0/3 issues |
@@ -208,19 +209,22 @@ future adapters are planned behind typed capability and lifecycle contracts.
 
 ### Current installation model
 
-Hermes Local currently provisions a repository checkout and builds its managed
-llama.cpp runtime locally. The release installer and portable executable contain
-the control centre only; they do not bundle the source checkout, runtime or
-model weights.
+Hermes Local currently provisions a repository checkout and installs a verified
+prebuilt llama.cpp runtime by default. The release installer and portable
+executable contain the control centre only; they do not bundle the source
+checkout, runtime or model weights. An explicit developer mode retains the
+local source-build path.
 
 ### Requirements
 
 - Windows 10 or Windows 11 x64
 - PowerShell 7
-- Git, Node.js, uv and CMake; setup can install missing official packages with `winget`
-- Visual Studio 2022 C++ Build Tools
+- Git, Node.js and uv; setup can install missing official packages with `winget`
 - At least 16 GiB free before model weights
-- Optional NVIDIA GPU, current driver and CUDA Toolkit for CUDA acceleration
+- Optional NVIDIA GPU and current driver for CUDA acceleration
+
+CMake, Visual Studio C++ Build Tools and a CUDA Toolkit are required only for
+the explicit `-LlamaRuntimeMode source` developer path.
 
 The tracked Qwen3.6 starter configuration requires roughly 24.4 GB for the main
 GGUF and vision projector. Allow at least 30 GB for those artifacts and more for
@@ -235,9 +239,10 @@ Set-Location .\Hermes-Local
 ```
 
 Setup reconstructs the pinned Hermes Agent integration, installs managed
-dependencies, builds llama.cpp for the selected acceleration mode, optionally
-downloads and verifies the starter model, writes provider configuration and
-runs bootstrap diagnostics. It is designed to be rerun safely.
+dependencies, selects and verifies a compatible prebuilt llama.cpp package,
+optionally downloads and verifies the starter model, writes provider
+configuration and runs bootstrap diagnostics. It is designed to be rerun
+safely.
 
 The [latest Windows release](https://github.com/xdCloudy/Hermes-Local/releases/latest)
 can provide the packaged control centre after the repository has been
@@ -337,8 +342,8 @@ series, launcher, supervisor, inference runtime and workstation lifecycle.
 <summary><strong>Do I need Docker, WSL, cloud APIs or an NVIDIA GPU?</strong></summary>
 
 No. Docker, WSL and paid APIs are not required. CPU inference is supported;
-NVIDIA CUDA acceleration is optional. The current source-provisioned setup does
-require a Windows native build toolchain.
+NVIDIA CUDA acceleration is optional. The default verified prebuilt runtime
+path does not require a Windows native build toolchain.
 
 </details>
 
@@ -365,8 +370,8 @@ credentials are protected for the current Windows user with DPAPI.
 
 The current launcher has native packaging, lifecycle management, recovery,
 benchmarking, security controls and a large automated QA corpus. It remains
-pre-1.0: guided installation, verified runtime distribution, stable Project
-Centre behaviour and several Desktop workflows are still under development.
+pre-1.0: guided installation, stable Project Centre behaviour and several
+Desktop workflows are still under development.
 Known limitations are published in the
 [acceptance results](docs/ACCEPTANCE_RESULTS.md).
 
