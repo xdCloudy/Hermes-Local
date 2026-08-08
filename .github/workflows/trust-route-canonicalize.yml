@@ -1,0 +1,112 @@
+name: Trust route canonicalize
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/trust-route-canonicalize.yml'
+      - 'source/hermes-launcher/patches/0087-feat-desktop-route-Trust-Centre.patch'
+
+permissions:
+  contents: read
+
+jobs:
+  canonicalize:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Generate exact full-index route diff
+        shell: pwsh
+        run: |
+          $manifest = Get-Content -Raw -LiteralPath '.\VERSION.json' | ConvertFrom-Json
+          $candidate = [string]$manifest.sources.hermesAgent.commit
+          $probe = Join-Path $env:RUNNER_TEMP 'hermes-trust-route-canonical'
+          New-Item -ItemType Directory -Path $probe -Force | Out-Null
+          & git -C $probe init --quiet
+          & git -C $probe remote add origin https://github.com/NousResearch/hermes-agent.git
+          & git -C $probe fetch --quiet --depth=1 origin $candidate
+          if ($LASTEXITCODE -ne 0) { throw 'fetch failed' }
+          & git -C $probe checkout --quiet --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'checkout failed' }
+          & git -C $probe config user.email 'ci@local.invalid'
+          & git -C $probe config user.name 'Hermes Local CI'
+
+          $patches = Get-ChildItem -LiteralPath '.\source\hermes-launcher\patches' -Filter '*.patch' -File |
+            Sort-Object Name |
+            Where-Object { $_.Name -lt '0087-feat-desktop-route-Trust-Centre.patch' }
+          & git -C $probe am --3way --committer-date-is-author-date @($patches.FullName)
+          if ($LASTEXITCODE -ne 0) { throw 'preimage reconstruction failed' }
+
+          function Edit-File([string]$Path, [scriptblock]$Editor) {
+            $text = [IO.File]::ReadAllText($Path)
+            $newline = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
+            $updated = & $Editor $text $newline
+            if ($updated -eq $text) { throw "edit made no change: $Path" }
+            [IO.File]::WriteAllText($Path, $updated, [Text.UTF8Encoding]::new($false))
+          }
+
+          $routes = Join-Path $probe 'apps\desktop\src\app\routes.ts'
+          Edit-File $routes {
+            param($text, $nl)
+            $text = $text.Replace(
+              "export const SECURITY_ROUTE = '/security'${nl}export const LOGS_ROUTE = '/logs'",
+              "export const SECURITY_ROUTE = '/security'${nl}export const TRUST_ROUTE = '/trust'${nl}export const LOGS_ROUTE = '/logs'"
+            )
+            $text = $text.Replace(
+              "  | 'security'${nl}  | 'logs'",
+              "  | 'security'${nl}  | 'trust'${nl}  | 'logs'"
+            )
+            $text.Replace(
+              "  { id: 'security', path: SECURITY_ROUTE, view: 'workstation' },${nl}  { id: 'logs', path: LOGS_ROUTE, view: 'workstation' },",
+              "  { id: 'security', path: SECURITY_ROUTE, view: 'workstation' },${nl}  { id: 'trust', path: TRUST_ROUTE, view: 'workstation' },${nl}  { id: 'logs', path: LOGS_ROUTE, view: 'workstation' },"
+            )
+          }
+
+          $sidebar = Join-Path $probe 'apps\desktop\src\app\chat\sidebar\index.tsx'
+          Edit-File $sidebar {
+            param($text, $nl)
+            $text = $text.Replace(
+              "  TASKS_ROUTE,${nl}  TOOLS_ROUTE,${nl}  TUI_ROUTE",
+              "  TASKS_ROUTE,${nl}  TOOLS_ROUTE,${nl}  TRUST_ROUTE,${nl}  TUI_ROUTE"
+            )
+            $text.Replace(
+              "    icon: props => <Codicon name=\"shield\" {...props} />,${nl}    route: SECURITY_ROUTE${nl}  },${nl}  {${nl}    id: 'logs',",
+              "    icon: props => <Codicon name=\"shield\" {...props} />,${nl}    route: SECURITY_ROUTE${nl}  },${nl}  {${nl}    id: 'trust',${nl}    label: 'Trust Centre',${nl}    icon: props => <Codicon name=\"lock\" {...props} />,${nl}    route: TRUST_ROUTE${nl}  },${nl}  {${nl}    id: 'logs',"
+            )
+          }
+
+          $surfaces = Join-Path $probe 'apps\desktop\src\app\contrib\surfaces.tsx'
+          Edit-File $surfaces {
+            param($text, $nl)
+            $text.Replace(
+              "      <Route element={page(<LocalWorkstationView />)} path=\"security\" />${nl}      <Route element={page(<LocalWorkstationView />)} path=\"logs\" />",
+              "      <Route element={page(<LocalWorkstationView />)} path=\"security\" />${nl}      <Route element={page(<LocalWorkstationView />)} path=\"trust\" />${nl}      <Route element={page(<LocalWorkstationView />)} path=\"logs\" />"
+            )
+          }
+
+          $workstation = Join-Path $probe 'apps\desktop\src\app\local-workstation\index.tsx'
+          Edit-File $workstation {
+            param($text, $nl)
+            $text = $text.Replace(
+              "import { TaskCentre } from './task-centre'${nl}import type {",
+              "import { TaskCentre } from './task-centre'${nl}import { TrustCentre } from './trust-centre'${nl}import type {"
+            )
+            $text = $text.Replace(
+              "  security: ['Security', 'Loopback trust boundaries, audits and remediation evidence.'],${nl}  sessions:",
+              "  security: ['Security', 'Loopback trust boundaries, audits and remediation evidence.'],${nl}  trust: ['Trust Centre', 'Source-bound skills, MCP permissions, scoped grants and invocation audit.'],${nl}  sessions:"
+            )
+            $text.Replace(
+              "  if (section === 'about') {",
+              "  if (section === 'trust') {${nl}    return <TrustCentre />${nl}  }${nl}${nl}  if (section === 'about') {"
+            )
+          }
+
+          Write-Host '=== CANONICAL ROUTE DIFF BEGIN ==='
+          & git -C $probe diff --full-index --no-ext-diff -- `
+            apps/desktop/src/app/routes.ts `
+            apps/desktop/src/app/chat/sidebar/index.tsx `
+            apps/desktop/src/app/contrib/surfaces.tsx `
+            apps/desktop/src/app/local-workstation/index.tsx
+          Write-Host '=== CANONICAL ROUTE DIFF END ==='
