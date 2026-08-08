@@ -12,7 +12,7 @@ project identity is a first-class per-surface runtime field.
 diff --git a/apps/desktop/src/app/chat/composer/model-pill.test.tsx b/apps/desktop/src/app/chat/composer/model-pill.test.tsx
 --- a/apps/desktop/src/app/chat/composer/model-pill.test.tsx
 +++ b/apps/desktop/src/app/chat/composer/model-pill.test.tsx
-@@ -91,10 +91,11 @@ describe('ModelPill per-surface model label', () => {
+@@ -91,9 +91,10 @@ describe('ModelPill per-surface model label', () => {
        $lastVisibleIsUser: atom(false),
        $messages: atom([]),
        $messagesEmpty: atom(true),
