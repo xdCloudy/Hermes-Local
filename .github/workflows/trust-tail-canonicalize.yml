@@ -42,13 +42,81 @@ jobs:
           & git -C $probe am --3way --committer-date-is-author-date @($prefix.FullName)
           if ($LASTEXITCODE -ne 0) { throw 'preimage reconstruction failed before 0088' }
 
-          # The Windows runner checks text files out as CRLF. Re-materialize the
-          # exact LF blobs from the just-reconstructed HEAD before feeding the
-          # old hand-authored LF patches to git apply. The resulting emitted
-          # full-index diffs are strict and do not depend on this normalization.
-          & git -C $probe config core.autocrlf false
-          & git -C $probe reset --hard HEAD
-          if ($LASTEXITCODE -ne 0) { throw 'could not normalize probe working tree' }
+          $applier = Join-Path $env:RUNNER_TEMP 'apply-normalized-hunks.py'
+          @'
+          from __future__ import annotations
+          import re
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          patch_path = Path(sys.argv[2])
+          patch_lines = patch_path.read_text(encoding='utf-8').splitlines()
+          hunk_re = re.compile(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@')
+
+          def apply_file(path: Path, hunks: list[tuple[int, list[str], list[str]]]) -> None:
+              raw = path.read_bytes()
+              eol = '\r\n' if b'\r\n' in raw else '\n'
+              text = raw.decode('utf-8')
+              normalized = text.replace('\r\n', '\n')
+              lines = normalized.split('\n')
+              for old_start, old_lines, new_lines in hunks:
+                  candidates = []
+                  width = len(old_lines)
+                  if width == 0:
+                      candidates = [max(0, min(len(lines), old_start - 1))]
+                  else:
+                      for index in range(0, len(lines) - width + 1):
+                          if lines[index:index + width] == old_lines:
+                              candidates.append(index)
+                  if not candidates:
+                      preview = '\n'.join(old_lines[:6])
+                      raise RuntimeError(f'hunk target not found in {path}:\n{preview}')
+                  expected = max(0, old_start - 1)
+                  index = min(candidates, key=lambda value: abs(value - expected))
+                  lines[index:index + width] = new_lines
+              path.write_bytes(eol.join(lines).encode('utf-8'))
+
+          current_path: Path | None = None
+          current_hunks: list[tuple[int, list[str], list[str]]] = []
+          i = 0
+          while i < len(patch_lines):
+              line = patch_lines[i]
+              if line.startswith('diff --git a/'):
+                  if current_path is not None:
+                      apply_file(current_path, current_hunks)
+                  parts = line.split()
+                  current_path = root / parts[2][2:]
+                  current_hunks = []
+                  i += 1
+                  continue
+              match = hunk_re.match(line)
+              if match and current_path is not None:
+                  old_start = int(match.group(1))
+                  old_lines: list[str] = []
+                  new_lines: list[str] = []
+                  i += 1
+                  while i < len(patch_lines):
+                      body = patch_lines[i]
+                      if body.startswith('diff --git a/') or hunk_re.match(body) or body == '-- ':
+                          break
+                      if body.startswith('\\ No newline at end of file'):
+                          i += 1
+                          continue
+                      if body.startswith(' '):
+                          old_lines.append(body[1:])
+                          new_lines.append(body[1:])
+                      elif body.startswith('-') and not body.startswith('---'):
+                          old_lines.append(body[1:])
+                      elif body.startswith('+') and not body.startswith('+++'):
+                          new_lines.append(body[1:])
+                      i += 1
+                  current_hunks.append((old_start, old_lines, new_lines))
+                  continue
+              i += 1
+          if current_path is not None:
+              apply_file(current_path, current_hunks)
+          '@ | Set-Content -LiteralPath $applier -Encoding utf8NoBOM
 
           $tail = @(
             '0088-fix-trust-harden-identities-and-manage-skill-access.patch',
@@ -57,14 +125,20 @@ jobs:
           )
           foreach ($name in $tail) {
             $patch = Join-Path $patchRoot $name
-            Write-Host "=== APPLY $name ==="
-            & git -C $probe apply --check --verbose $patch
-            if ($LASTEXITCODE -ne 0) { throw "apply check failed after LF normalization: $name" }
-            & git -C $probe apply $patch
-            if ($LASTEXITCODE -ne 0) { throw "apply failed after LF normalization: $name" }
-            Write-Host "=== CANONICAL $name BEGIN ==="
-            & git -C $probe diff --full-index --no-ext-diff HEAD
-            Write-Host "=== CANONICAL $name END ==="
+            Write-Host "=== LOGICAL APPLY $name ==="
+            & python $applier $probe $patch
+            if ($LASTEXITCODE -ne 0) { throw "normalized hunk application failed: $name" }
+
+            $diffPath = Join-Path $env:RUNNER_TEMP ($name + '.canonical.diff')
+            $process = Start-Process -FilePath 'git' -ArgumentList @(
+              '-C', $probe, 'diff', '--full-index', '--no-ext-diff', 'HEAD'
+            ) -Wait -PassThru -NoNewWindow -RedirectStandardOutput $diffPath
+            if ($process.ExitCode -ne 0) { throw "canonical diff failed: $name" }
+            $encoded = [Convert]::ToBase64String([IO.File]::ReadAllBytes($diffPath))
+            Write-Host "=== CANONICAL BASE64 $name BEGIN ==="
+            Write-Host $encoded
+            Write-Host "=== CANONICAL BASE64 $name END ==="
+
             & git -C $probe add -A
             & git -C $probe commit --quiet -m "canonical $name"
             if ($LASTEXITCODE -ne 0) { throw "canonical commit failed: $name" }
