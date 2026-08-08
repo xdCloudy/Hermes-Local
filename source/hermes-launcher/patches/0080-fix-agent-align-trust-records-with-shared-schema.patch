@@ -10,17 +10,22 @@ Subject: [PATCH] fix(agent): align trust records with shared schema
 diff --git a/hermes_cli/hermes_local_trust.py b/hermes_cli/hermes_local_trust.py
 --- a/hermes_cli/hermes_local_trust.py
 +++ b/hermes_cli/hermes_local_trust.py
-@@ -266,3 +266,3 @@ def sync_mcp_server_identity(name: str, config: dict[str, Any]) -> dict[str, Any]:
+@@ -266,6 +266,6 @@ def sync_mcp_server_identity(name: str, config: dict[str, Any]) -> dict[str, Any]:
+         identity = {
+             "kind": "integrationIdentity", "schemaVersion": 1, "id": integration_id,
 -            "displayName": str(name)[:160], "integrationType": "mcp-remote" if remote else "mcp-local",
 +            "displayName": str(name)[:120], "integrationType": "mcp-remote" if remote else "mcp-local",
              "provenance": {
 -                "sourceType": "remote-endpoint" if remote else "local-command",
 +                "sourceType": "remote-endpoint" if remote else "local-path",
-@@ -426,3 +426,3 @@ def _skill_inventory() -> list[dict[str, Any]]:
+                 "provenanceId": integration_id, "revision": revision[:256], "sha256": digest,
+@@ -465,5 +465,5 @@ def _skill_inventory() -> list[dict[str, Any]]:
+                     "id": _safe_id(f"{source_type}-{name}-{digest[:12]}", "skill"),
 -                    "displayName": name[:160], "integrationType": "skill",
 +                    "displayName": name[:120], "integrationType": "skill",
                      "provenance": {
 -                        "sourceType": source_type,
 +                        "sourceType": "built-in" if source_type == "bundled" else "local-path",
+                         "provenanceId": _safe_id(str(skill_file.parent), "skill-source"),
 -- 
 2.51.0
