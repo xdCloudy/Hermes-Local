@@ -44,8 +44,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/ci/issue52_backend_gen.py /tmp/hermes-agent
-          python scripts/ci/issue52_frontend_gen.py /tmp/hermes-agent /tmp/0093-feat-associate-chats-with-stable-project-ids.patch
+          python scripts/ci/issue52_generator_driver.py /tmp/hermes-agent /tmp/0093-feat-associate-chats-with-stable-project-ids.patch
           git -C /tmp/hermes-agent show --check --stat --oneline HEAD
 
       - name: Upload generated patch
