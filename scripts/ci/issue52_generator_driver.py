@@ -58,9 +58,6 @@ frontend_source = frontend_source.replace(
     '    "export const setCurrentCwd = (next: Updater<string>) => {",',
 )
 
-# Patch 0016's composer block has evolved since it was authored. Replace the
-# generator's brittle whole-block match with a structural rewrite around the
-# unique CodingStatusRow instance.
 block_start = frontend_source.find(
     'one(\n    "apps/desktop/src/app/chat/composer/index.tsx",\n    \'\'\'                <CodingStatusRow'
 )
@@ -92,6 +89,26 @@ replacement = (
 write("apps/desktop/src/app/chat/composer/index.tsx", text[:start] + replacement + text[end:])
 '''
 frontend_source = frontend_source[:block_start] + structural_rewrite + frontend_source[block_end:]
+
+updates_start = frontend_source.find(
+    'one(\n    "apps/desktop/src/store/updates.ts",'
+)
+updates_end_marker = '\nupdates = read("apps/desktop/src/store/updates.test.ts")'
+updates_end = frontend_source.find(updates_end_marker, updates_start)
+if updates_start < 0 or updates_end < 0:
+    raise RuntimeError("frontend generator backend contract block changed")
+updates_rewrite = r'''text = read("apps/desktop/src/store/updates.ts")
+old = "const REQUIRED_BACKEND_CONTRACT = 7"
+if text.count(old) != 1:
+    raise RuntimeError("updates.ts backend contract v7 constant not found exactly once")
+text = text.replace(
+    old,
+    "// v8: requires stable per-session Project identity in session.info.\nconst REQUIRED_BACKEND_CONTRACT = 8",
+    1,
+)
+write("apps/desktop/src/store/updates.ts", text)
+'''
+frontend_source = frontend_source[:updates_start] + updates_rewrite + frontend_source[updates_end:]
 
 frontend_fixed = Path("/tmp/issue52_frontend_gen_fixed.py")
 frontend_fixed.write_text(frontend_source, encoding="utf-8", newline="")
