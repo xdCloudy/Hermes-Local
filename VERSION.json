@@ -13,7 +13,7 @@
       "commit": "91937a6dc3ffbbe2f3be91a500f0ecf962c4cf53",
       "integrationBranch": "hermes-local-integration",
       "integrationCommit": "801d84874a8a4020f71d169c35ff68b192498a6c",
-      "integrationTree": "806a140f3917d9c747acf5a4e4ef67b22129c591",
+      "integrationTree": "8ce361890378bb0237d9016216c8da7e35b8e006",
       "patchSeries": "source/hermes-launcher/patches"
     },
     "llamaCpp": {
