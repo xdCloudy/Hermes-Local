@@ -168,20 +168,20 @@ function Restore-HermesLlamaRuntime {
         package = $(if ($manifest) {
             [ordered]@{
                 identity = $identity
-                id = [string]$manifest.packageId
-                version = [string]$manifest.version
-                distribution = [string]$manifest.distribution
-                sourceRepository = [string]$manifest.sourceRepository
-                sourceCommit = [string]$manifest.sourceCommit
-                buildFlags = @($manifest.buildFlags)
-                cudaArchitectures = @($manifest.cudaArchitectures)
-                modelFormats = @($manifest.modelFormats)
-                compatibility = $manifest.compatibility
-                licenses = @($manifest.licenses)
-                artifacts = @($manifest.artifacts)
-                dependencyInventory = $manifest.dependencyInventory
-                integrity = $manifest.integrity
-                provenance = $manifest.provenance
+                id = [string](Get-HermesRuntimeObjectProperty $manifest 'packageId')
+                version = [string](Get-HermesRuntimeObjectProperty $manifest 'version')
+                distribution = [string](Get-HermesRuntimeObjectProperty $manifest 'distribution')
+                sourceRepository = [string](Get-HermesRuntimeObjectProperty $manifest 'sourceRepository')
+                sourceCommit = [string](Get-HermesRuntimeObjectProperty $manifest 'sourceCommit')
+                buildFlags = @(Get-HermesRuntimeObjectProperty $manifest 'buildFlags' @())
+                cudaArchitectures = @(Get-HermesRuntimeObjectProperty $manifest 'cudaArchitectures' @())
+                modelFormats = @(Get-HermesRuntimeObjectProperty $manifest 'modelFormats' @('gguf'))
+                compatibility = Get-HermesRuntimeObjectProperty $manifest 'compatibility'
+                licenses = @(Get-HermesRuntimeObjectProperty $manifest 'licenses' @())
+                artifacts = @(Get-HermesRuntimeObjectProperty $manifest 'artifacts' @())
+                dependencyInventory = Get-HermesRuntimeObjectProperty $manifest 'dependencyInventory'
+                integrity = Get-HermesRuntimeObjectProperty $manifest 'integrity'
+                provenance = Get-HermesRuntimeObjectProperty $manifest 'provenance'
                 manifestPath = $manifestPath
             }
         } else { $null })
