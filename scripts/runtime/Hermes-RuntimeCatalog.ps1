@@ -43,6 +43,8 @@ function Get-HermesRuntimeCatalog {
     if ([int]$catalog.schemaVersion -ne 1 -or [string]$catalog.component -ne 'llama.cpp') {
         throw "Unsupported runtime catalog: $Path"
     }
+    [void](Get-HermesRuntimeLifecyclePaths -Catalog $catalog)
+
     $ids = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($package in @($catalog.packages)) {
         if ([string]$package.id -notmatch '^[a-z0-9][a-z0-9._-]{0,95}$') {
@@ -58,6 +60,35 @@ function Get-HermesRuntimeCatalog {
         if ([string]$package.sourceCommit -notmatch '^[0-9a-f]{40}$') {
             throw "Runtime package '$($package.id)' has an invalid source commit."
         }
+        if (@($package.modelFormats).Count -lt 1 -or @($package.modelFormats | Where-Object { [string]$_ -ne 'gguf' }).Count -gt 0) {
+            throw "Runtime package '$($package.id)' has unsupported model-format declarations."
+        }
+        if ([string]$package.integrity.algorithm -ne 'sha256' -or
+            -not [bool]$package.integrity.requirePublishedDigests -or
+            -not [bool]$package.integrity.recordPayloadInventory) {
+            throw "Runtime package '$($package.id)' has an unsupported integrity policy."
+        }
+        $requiredSmokeTests = @('llama-server --version', 'llama-cli --version', 'llama-bench --version')
+        foreach ($smokeTest in $requiredSmokeTests) {
+            if (@($package.integrity.smokeTests) -notcontains $smokeTest) {
+                throw "Runtime package '$($package.id)' is missing required smoke test '$smokeTest'."
+            }
+        }
+        if ([string]$package.dependencyInventory.mode -ne 'payload-file-inventory' -or
+            [string]$package.dependencyInventory.hashAlgorithm -ne 'sha256' -or
+            @($package.dependencyInventory.includeExtensions).Count -lt 1) {
+            throw "Runtime package '$($package.id)' has an unsupported dependency inventory policy."
+        }
+
+        $sourceRepository = ([string]$package.sourceRepository).TrimEnd('/').Replace('https://github.com/', '')
+        if ($sourceRepository.EndsWith('.git', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $sourceRepository = $sourceRepository.Substring(0, $sourceRepository.Length - 4)
+        }
+        if ([string]$package.provenance.provider -ne 'github-release-assets' -or
+            [string]$package.provenance.repository -ne $sourceRepository -or
+            [string]$package.provenance.sourceCommit -ne [string]$package.sourceCommit) {
+            throw "Runtime package '$($package.id)' provenance does not match its source identity."
+        }
         if (@($package.artifacts).Count -lt 1) {
             throw "Runtime package '$($package.id)' has no artifacts."
         }
@@ -69,10 +100,17 @@ function Get-HermesRuntimeCatalog {
                 [string]$artifact.tag -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$') {
                 throw "Runtime package '$($package.id)' has an invalid release identity."
             }
+            if ([string]$artifact.repository -ne [string]$package.provenance.repository -or
+                [string]$artifact.tag -ne [string]$package.provenance.tag) {
+                throw "Runtime package '$($package.id)' artifact release identity differs from its provenance."
+            }
             $expectedHashProperty = $artifact.PSObject.Properties['expectedSha256']
             if ($expectedHashProperty -and [string]$expectedHashProperty.Value -notmatch '^[0-9a-f]{64}$') {
                 throw "Runtime package '$($package.id)' has an invalid expected SHA-256."
             }
+        }
+        if (@($package.licenses).Count -lt 1) {
+            throw "Runtime package '$($package.id)' has no licence declaration."
         }
     }
     return $catalog
@@ -82,7 +120,8 @@ function Test-HermesRuntimePackageCompatibility {
     param(
         [Parameter(Mandatory)][pscustomobject] $Package,
         [Parameter(Mandatory)][pscustomobject] $Hardware,
-        [Parameter(Mandatory)][string[]] $CpuFeatures
+        [Parameter(Mandatory)][string[]] $CpuFeatures,
+        [string] $ModelFormat
     )
 
     $reasons = [System.Collections.Generic.List[string]]::new()
@@ -94,6 +133,9 @@ function Test-HermesRuntimePackageCompatibility {
         if ($CpuFeatures -notcontains [string]$feature) {
             $reasons.Add("CPU feature '$feature' is unavailable")
         }
+    }
+    if ($ModelFormat -and @($Package.modelFormats) -notcontains $ModelFormat.ToLowerInvariant()) {
+        $reasons.Add("model format '$ModelFormat' is unsupported")
     }
     if ([string]$Package.acceleration -eq 'cuda') {
         if (-not $Hardware.Nvidia) {
@@ -156,9 +198,14 @@ function Resolve-HermesLlamaRuntimePackage {
     } else {
         $requested
     }
+    $modelFormat = Get-HermesSelectedModelFormat -Configuration $Configuration
     $cpuFeatures = @(Get-HermesCpuFeatures)
     $evaluations = @($Catalog.packages | ForEach-Object {
-        $compatibility = Test-HermesRuntimePackageCompatibility -Package $_ -Hardware $Hardware -CpuFeatures $cpuFeatures
+        $compatibility = Test-HermesRuntimePackageCompatibility `
+            -Package $_ `
+            -Hardware $Hardware `
+            -CpuFeatures $cpuFeatures `
+            -ModelFormat $modelFormat
         [pscustomobject]@{
             Package = $_
             Compatible = $compatibility.Compatible
@@ -170,7 +217,7 @@ function Resolve-HermesLlamaRuntimePackage {
         Sort-Object { [int]$_.Package.priority } -Descending |
         Select-Object -First 1)
     $state = 'Recommended prebuilt runtime'
-    $reason = "Selected the highest-priority compatible $preferred package."
+    $reason = "Selected the highest-priority compatible $preferred package for $modelFormat models."
 
     if ($selected.Count -eq 0 -and $requested -eq 'auto' -and $preferred -eq 'cuda') {
         $selected = @($evaluations |
@@ -179,7 +226,7 @@ function Resolve-HermesLlamaRuntimePackage {
             Select-Object -First 1)
         if ($selected.Count -gt 0) {
             $state = 'CPU fallback available'
-            $reason = 'No compatible CUDA package matched; selected the verified CPU fallback.'
+            $reason = "No compatible CUDA package matched; selected the verified CPU fallback for $modelFormat models."
         }
     }
     if ($selected.Count -eq 0) {
@@ -191,17 +238,22 @@ function Resolve-HermesLlamaRuntimePackage {
             Reason = "No compatible prebuilt runtime matched. $details"
             RequestedAcceleration = $requested
             ResolvedAcceleration = $null
+            ModelFormat = $modelFormat
             Package = $null
+            PackageIdentity = $null
             Hardware = $Hardware
             CpuFeatures = $cpuFeatures
         }
     }
+    $package = $selected[0].Package
     return [pscustomobject]@{
         SelectionState = $state
         Reason = $reason
         RequestedAcceleration = $requested
-        ResolvedAcceleration = [string]$selected[0].Package.acceleration
-        Package = $selected[0].Package
+        ResolvedAcceleration = [string]$package.acceleration
+        ModelFormat = $modelFormat
+        Package = $package
+        PackageIdentity = Get-HermesLlamaRuntimePackageIdentity -Package $package -Catalog $Catalog
         Hardware = $Hardware
         CpuFeatures = $cpuFeatures
     }
