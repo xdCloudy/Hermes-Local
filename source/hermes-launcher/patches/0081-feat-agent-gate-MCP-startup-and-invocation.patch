@@ -1,0 +1,303 @@
+From 3838383838383838383838383838383838383838 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Sat, 8 Aug 2026 02:23:00 +0100
+Subject: [PATCH] feat(agent): gate MCP startup and invocation
+
+---
+ hermes_cli/mcp_config.py                    |  8 ++++++
+ tests/hermes_cli/test_hermes_local_trust.py | 169 ++++++++++++++++++++++++++++
+ tools/mcp_tool.py                            |  46 +++++++-
+ 3 files changed, 221 insertions(+), 2 deletions(-)
+ create mode 100644 tests/hermes_cli/test_hermes_local_trust.py
+
+diff --git a/hermes_cli/mcp_config.py b/hermes_cli/mcp_config.py
+--- a/hermes_cli/mcp_config.py
++++ b/hermes_cli/mcp_config.py
+@@ -25,3 +25,8 @@ from hermes_cli.colors import Colors, color
+ from hermes_constants import display_hermes_home
+ from hermes_cli.mcp_security import validate_mcp_server_entry
++from hermes_cli.hermes_local_trust import (
++    mark_mcp_server_removed,
++    sync_mcp_inventory,
++    sync_mcp_server_identity,
++)
+ from tools.mcp_tool import _ENV_VAR_PATTERN, _env_ref_name
+@@ -90,4 +95,5 @@ def _save_mcp_server(name: str, server_config: dict) -> bool:
+     config = load_config()
+     config.setdefault("mcp_servers", {})[name] = server_config
+     save_config(config)
++    sync_mcp_server_identity(name, server_config)
+     return True
+@@ -103,3 +109,4 @@ def _remove_mcp_server(name: str) -> bool:
+         config.pop("mcp_servers", None)
+     save_config(config)
++    mark_mcp_server_removed(name)
+     return True
+@@ -139,3 +146,4 @@ def _replace_mcp_servers(servers: Dict[str, dict]) -> Tuple[bool, List[str]]:
+     else:
+         config.pop("mcp_servers", None)
+     save_config(config)
++    sync_mcp_inventory(servers)
+     return True, []
+diff --git a/tools/mcp_tool.py b/tools/mcp_tool.py
+--- a/tools/mcp_tool.py
++++ b/tools/mcp_tool.py
+@@ -4601,10 +4601,8 @@ def _filter_suspicious_mcp_servers(servers: Dict[str, dict]) -> Dict[str, dict]:
+     except Exception:
+         _validate_mcp_server_entry: Callable[[str, dict[str, Any]], list[str]] | None = None
+ 
+-    if _validate_mcp_server_entry is None:
+-        return servers
+-
+     safe_servers = {}
+     for name, cfg in servers.items():
+         if not isinstance(cfg, dict):
+             safe_servers[name] = cfg
+             continue
+-        issues = _validate_mcp_server_entry(name, cfg)
++        issues = _validate_mcp_server_entry(name, cfg) if _validate_mcp_server_entry else []
+         if issues:
+             logger.warning(
+@@ -4618,3 +4616,10 @@ def _filter_suspicious_mcp_servers(servers: Dict[str, dict]) -> Dict[str, dict]:
+             continue
+         safe_servers[name] = cfg
+-    return safe_servers
++    try:
++        from hermes_cli.hermes_local_trust import filter_authorized_mcp_servers
++        return filter_authorized_mcp_servers(safe_servers)
++    except Exception as exc:
++        # Trust-store failure is a security failure, not an availability
++        # reason to execute configured commands without policy.
++        logger.warning("Hermes Local MCP trust gate failed closed: %s", exc)
++        return {}
+@@ -4870,6 +4875,39 @@ def _mark_server_call_started(server: Any) -> None:
+         mark_tool_call()
+ 
+ 
++def _hermes_local_mcp_call_gate(server_name: str, tool_name: str) -> Optional[str]:
++    """Re-evaluate native grants immediately before transport-visible work."""
++    try:
++        from hermes_cli.hermes_local_trust import authorize_mcp_operation
++
++        decision = authorize_mcp_operation(server_name, "tool.call", interactive=True)
++    except Exception as exc:
++        logger.error("Hermes Local MCP authorization failed closed: %s", exc)
++        return tool_error(
++            f"MCP integration '{server_name}' was blocked because native trust authorization failed."
++        )
++    if not decision.allowed:
++        return tool_error(
++            f"MCP integration '{server_name}' is denied by Hermes Local Trust Centre: "
++            f"{decision.reason}. Review source, capabilities and grants before retrying."
++        )
++    if not decision.requires_confirmation:
++        return None
++    try:
++        from tools.approval import request_tool_approval
++
++        approval = request_tool_approval(
++            f"mcp:{server_name}:{tool_name}",
++            f"Trust Centre requires confirmation before MCP tool '{tool_name}' "
++            f"on integration '{server_name}' may create an external side effect.",
++            rule_key=f"hermes-local-trust:{server_name}:{tool_name}",
++        )
++    except Exception as exc:
++        logger.error("Hermes Local MCP confirmation failed closed: %s", exc)
++        return tool_error(
++            f"MCP tool '{tool_name}' was blocked because confirmation was unavailable."
++        )
++    if not approval.get("approved"):
++        return tool_error(
++            approval.get("message")
++            or f"The user did not approve MCP tool '{tool_name}' on '{server_name}'."
++        )
++    return None
++
++
+ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
+@@ -4879,6 +4917,10 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
+     """
+ 
+     def _handler(args: dict, **kwargs) -> str:
++        trust_error = _hermes_local_mcp_call_gate(server_name, tool_name)
++        if trust_error is not None:
++            return trust_error
++
+         # Circuit breaker: if this server has failed too many times
+         # consecutively, short-circuit with a clear message so the model
+diff --git a/tests/hermes_cli/test_hermes_local_trust.py b/tests/hermes_cli/test_hermes_local_trust.py
+new file mode 100644
+--- /dev/null
++++ b/tests/hermes_cli/test_hermes_local_trust.py
+@@ -0,0 +1,169 @@
++from __future__ import annotations
++
++import json
++
++import pytest
++
++from hermes_cli import hermes_local_trust as trust
++
++
++@pytest.fixture(autouse=True)
++def isolated_store(tmp_path, monkeypatch):
++    monkeypatch.setenv("HERMES_LOCAL_ROOT", str(tmp_path))
++    monkeypatch.delenv("HERMES_LOCAL_AGENT_ID", raising=False)
++    monkeypatch.delenv("HERMES_DELEGATED_CHILD_CONTEXT", raising=False)
++    monkeypatch.delenv("HERMES_PROJECT_ID", raising=False)
++    yield tmp_path
++
++
++def local_config(**extra):
++    value = {"command": "python", "args": ["server.py"]}
++    value.update(extra)
++    return value
++
++
++def remote_config(**extra):
++    value = {"url": "https://mcp.example.test/mcp"}
++    value.update(extra)
++    return value
++
++
++def approve(record, capabilities=None, confirmation="writes-or-side-effects", scope=None):
++    identity = record["identity"]
++    return trust.set_integration_policy(
++        identity["id"],
++        "reviewed-managed",
++        capabilities or identity["declaredCapabilities"],
++        confirmation,
++        scope or {"kind": "global"},
++    )
++
++
++def test_new_integration_is_restricted_and_cannot_spawn_before_approval():
++    servers = {"local": local_config()}
++    record = trust.sync_mcp_server_identity("local", servers["local"])
++    assert record["identity"]["trustState"] == "restricted"
++    assert trust.filter_authorized_mcp_servers(servers) == {}
++    approve(record)
++    assert set(trust.filter_authorized_mcp_servers(servers)) == {"local"}
++
++
++def test_unknown_and_undeclared_capabilities_fail_closed():
++    missing = trust.authorize_mcp_operation("missing", "tool.call")
++    assert not missing.allowed
++    record = trust.sync_mcp_server_identity("local", local_config())
++    approve(record, ["process.execute"])
++    decision = trust.authorize_mcp_operation("local", "tool.call")
++    assert not decision.allowed
++    assert "allow grant" in decision.reason
++
++
++def test_source_change_and_capability_expansion_suspend_old_grants():
++    record = trust.sync_mcp_server_identity("remote", remote_config())
++    approve(record)
++    assert trust.authorize_mcp_operation("remote", "transport.remote", interactive=False).allowed
++    changed = trust.sync_mcp_server_identity(
++        "remote",
++        remote_config(hermes_trust={"capabilities": ["filesystem.write"]}),
++    )
++    assert "filesystem.write" in changed["identity"]["declaredCapabilities"]
++    assert changed["identity"]["trustState"] == "restricted"
++    assert changed["identity"]["manifestRevision"] > record["identity"]["manifestRevision"]
++    assert not trust.authorize_mcp_operation("remote", "transport.remote", interactive=False).allowed
++
++
++def test_unknown_capability_declaration_is_unknown_and_denied():
++    config = local_config(hermes_trust={"capabilities": ["root.everything"]})
++    record = trust.sync_mcp_server_identity("bad", config)
++    assert record["identity"]["trustState"] == "unknown"
++    assert record["unknownCapabilities"] == ["root.everything"]
++    assert trust.filter_authorized_mcp_servers({"bad": config}) == {}
++
++
++def test_delegated_child_does_not_inherit_main_agent_grant(monkeypatch):
++    record = trust.sync_mcp_server_identity("local", local_config())
++    approve(record)
++    assert trust.authorize_mcp_operation("local", "transport.local", interactive=False).allowed
++    monkeypatch.setenv("HERMES_DELEGATED_CHILD_CONTEXT", "1")
++    decision = trust.authorize_mcp_operation("local", "transport.local", interactive=False)
++    assert not decision.allowed
++    assert "allow grant" in decision.reason
++
++
++def test_project_scoped_grant_is_canonical_and_isolated(monkeypatch):
++    record = trust.sync_mcp_server_identity("local", local_config())
++    approve(record, scope={"kind": "project", "id": "Alpha Project"})
++    monkeypatch.setenv("HERMES_PROJECT_ID", "Alpha Project")
++    assert trust.authorize_mcp_operation("local", "transport.local", interactive=False).allowed
++    monkeypatch.setenv("HERMES_PROJECT_ID", "Other Project")
++    assert not trust.authorize_mcp_operation("local", "transport.local", interactive=False).allowed
++
++
++def test_confirmation_policy_is_checked_at_call_time():
++    record = trust.sync_mcp_server_identity("local", local_config())
++    approve(record, confirmation="writes-or-side-effects")
++    transport = trust.authorize_mcp_operation("local", "transport.local", interactive=False)
++    call = trust.authorize_mcp_operation("local", "tool.call", interactive=True)
++    assert transport.allowed and not transport.requires_confirmation
++    assert call.allowed and call.requires_confirmation
++
++
++def test_disable_and_remove_revoke_new_calls_immediately():
++    record = trust.sync_mcp_server_identity("local", local_config())
++    approve(record)
++    assert trust.authorize_mcp_operation("local", "tool.call").allowed
++    trust.set_integration_policy(record["identity"]["id"], "disabled", [], "never")
++    assert not trust.authorize_mcp_operation("local", "tool.call").allowed
++
++    second = trust.sync_mcp_server_identity("other", local_config())
++    approve(second)
++    trust.mark_mcp_server_removed("other")
++    denied = trust.authorize_mcp_operation("other", "transport.local", interactive=False)
++    assert not denied.allowed
++    assert "disabled" in denied.reason
++
++
++def test_health_cannot_endorse_or_restore_permissions():
++    record = trust.sync_mcp_server_identity("local", local_config())
++    approve(record)
++    trust.set_integration_policy(record["identity"]["id"], "quarantined", [], "never")
++    store = trust._integrations()
++    stored = next(
++        item for item in store["integrations"]
++        if item["identity"]["id"] == record["identity"]["id"]
++    )
++    stored["identity"]["healthState"] = "healthy"
++    trust._write("integrations.json", store)
++    assert not trust.authorize_mcp_operation("local", "tool.call").allowed
++
++
++def test_secret_values_never_land_in_identity_audit_or_diagnostics(tmp_path):
++    secret = "SUPER_SECRET_VALUE_123456789"
++    config = remote_config(
++        headers={"Authorization": f"Bearer {secret}"},
++        env={"API_TOKEN": secret},
++        args=[secret],
++    )
++    record = trust.sync_mcp_server_identity("remote", config)
++    approve(record)
++    trust.authorize_mcp_operation("remote", "tool.call")
++    report = trust.export_diagnostics()
++    corpus = "\n".join(
++        path.read_text(encoding="utf-8", errors="replace")
++        for path in (tmp_path / "data" / "trust").glob("*")
++        if path.is_file()
++    )
++    assert secret not in corpus
++    assert json.loads(report.read_text(encoding="utf-8"))["redaction"]["applied"] is True
++
++
++def test_renderer_or_server_trust_claims_cannot_grant_authority():
++    config = local_config(
++        trustState="built-in-verified",
++        allow=True,
++        principal="system",
++        scope={"kind": "global"},
++    )
++    record = trust.sync_mcp_server_identity("local", config)
++    assert record["identity"]["trustState"] == "restricted"
++    assert trust.filter_authorized_mcp_servers({"local": config}) == {}
++-- 
++2.51.0
