@@ -1,0 +1,820 @@
+From 160131c0582ab97258db3fb04b6d7e80144861e0 Mon Sep 17 00:00:00 2001
+From: xdCloudy <connerabery@gmail.com>
+Date: Sat, 8 Aug 2026 13:50:21 +0000
+Subject: [PATCH] feat(projects): associate chats with stable project ids
+
+---
+ apps/desktop/src/app/chat/composer/index.tsx  |  44 ++++---
+ .../composer/status-stack/project-row.tsx     | 103 ++++++++++++++++
+ .../chat/sidebar/projects/workspace-groups.ts |   8 ++
+ .../hooks/use-session-actions/index.ts        |   7 +-
+ .../hooks/use-session-actions/utils.ts        |  14 ++-
+ apps/desktop/src/store/session.ts             |   3 +
+ apps/desktop/src/store/updates.test.ts        |   6 +-
+ apps/desktop/src/store/updates.ts             |   3 +-
+ apps/desktop/src/types/hermes.ts              |   3 +
+ hermes_state.py                               |  17 ++-
+ hermes_state_common.py                        |   1 +
+ tests/tui_gateway/test_project_tree.py        |  29 +++++
+ tui_gateway/methods_session.py                |  24 +++-
+ tui_gateway/project_tree.py                   |  20 +++-
+ tui_gateway/server.py                         | 112 +++++++++++++++---
+ 15 files changed, 348 insertions(+), 46 deletions(-)
+ create mode 100644 apps/desktop/src/app/chat/composer/status-stack/project-row.tsx
+
+diff --git a/apps/desktop/src/app/chat/composer/index.tsx b/apps/desktop/src/app/chat/composer/index.tsx
+index dd8e03f9e..44213bf9f 100644
+--- a/apps/desktop/src/app/chat/composer/index.tsx
++++ b/apps/desktop/src/app/chat/composer/index.tsx
+@@ -8,7 +8,6 @@ import { Slot as ContribSlot } from '@/contrib/react/slot'
+ import { useI18n } from '@/i18n'
+ import { chatMessageText } from '@/lib/chat-messages'
+ import { sanitizeComposerInput } from '@/lib/composer-input-sanitize'
+-import { selectDesktopPaths } from '@/lib/desktop-fs'
+ import { DATA_IMAGE_URL_RE } from '@/lib/embedded-images'
+ import { triggerHaptic } from '@/lib/haptics'
+ import { cn } from '@/lib/utils'
+@@ -17,8 +16,9 @@ import { sessionCompacting } from '@/store/compaction'
+ import { browseBackward, browseForward, deriveUserHistory, isBrowsingHistory } from '@/store/composer-input-history'
+ import { POPOUT_WIDTH_REM } from '@/store/composer-popout'
+ import { parkQueuedPrompts, removeQueuedPrompt, unparkQueuedPrompts } from '@/store/composer-queue'
++import { $projects } from '@/store/projects'
+ import { toggleReview } from '@/store/review'
+-import { $gatewayState } from '@/store/session'
++import { $currentProjectId, $gatewayState, setCurrentCwdTransient, setCurrentProjectId } from '@/store/session'
+ import { $threadScrolledUp } from '@/store/thread-scroll'
+ import { $autoSpeakReplies } from '@/store/voice-prefs'
+ import { useTheme } from '@/themes'
+@@ -70,6 +70,7 @@ import {
+ import { useComposerScope } from './scope'
+ import { ComposerStatusStack } from './status-stack'
+ import { CodingStatusRow } from './status-stack/coding-row'
++import { ProjectStatusRow, selectedProjectIdForCwd } from './status-stack/project-row'
+ import { extractClipboardImageBlobs, openDirectiveScope } from './text-utils'
+ import { ComposerTriggerPopover } from './trigger-popover'
+ import type { ChatBarProps } from './types'
+@@ -200,21 +201,27 @@ export function ChatBar({
+   const reconnecting = gatewayState === 'closed' || gatewayState === 'error'
+   const inputDisabled = disabled && !reconnecting
+ 
+-  const changeProject = useCallback(async () => {
+-    if (!onChangeSessionCwd) {
+-      return
+-    }
+-
+-    const [selected] = await selectDesktopPaths({
+-      defaultPath: cwd || undefined,
+-      directories: true,
+-      multiple: false
+-    })
++  const projects = useStore($projects)
++  const currentProjectId = useStore($currentProjectId)
++  const selectedProjectId = selectedProjectIdForCwd(
++    projects,
++    cwd,
++    scope.target === 'main' ? currentProjectId : null
++  )
+ 
+-    if (selected) {
+-      await onChangeSessionCwd(selected)
+-    }
+-  }, [cwd, onChangeSessionCwd])
++  const changeProject = useCallback(
++    async (projectId: null | string, projectCwd: string) => {
++      if (onChangeSessionCwd) {
++        await onChangeSessionCwd(projectCwd)
++      } else {
++        setCurrentCwdTransient(projectCwd)
++      }
++      if (scope.target === 'main') {
++        setCurrentProjectId(projectId)
++      }
++    },
++    [onChangeSessionCwd, scope.target]
++  )
+ 
+   // The draft engine — detached source of truth (DOM + draftRef + edge
+   // selectors); typing never re-renders the chrome. ChatBar owns `queueEditRef`
+@@ -1207,9 +1214,10 @@ export function ChatBar({
+                     composerSurfaceGlass
+                   )}
+                 />
++                <ProjectStatusRow onSelectProject={changeProject} selectedProjectId={selectedProjectId} />
++                {selectedProjectId && (
+                 <CodingStatusRow
+                   onBranchOff={handleBranchOff}
+-                  onChangeProject={onChangeSessionCwd ? changeProject : undefined}
+                   onConvertBranch={handleConvertBranch}
+                   onListBranches={handleListBranches}
+                   // A tile's rail reviews ITS worktree: pin the pane's scope to
+@@ -1217,10 +1225,10 @@ export function ChatBar({
+                   // active-session scope (null).
+                   onOpen={() => toggleReview(scope.target === 'main' ? null : (cwd ?? null))}
+                   onOpenWorktree={openInWorktree}
+-                  onRemoveProject={onChangeSessionCwd && cwd ? () => onChangeSessionCwd('') : undefined}
+                   onSwitchBranch={handleSwitchBranch}
+                   repoPath={cwd}
+                 />
++                )}
+                 <div
+                   className={cn(
+                     'relative z-1 flex min-h-0 w-full flex-col gap-(--composer-row-gap) overflow-hidden rounded-[inherit] px-(--composer-surface-pad-x) py-(--composer-surface-pad-y) transition-opacity duration-200 ease-out',
+diff --git a/apps/desktop/src/app/chat/composer/status-stack/project-row.tsx b/apps/desktop/src/app/chat/composer/status-stack/project-row.tsx
+new file mode 100644
+index 000000000..dca498775
+--- /dev/null
++++ b/apps/desktop/src/app/chat/composer/status-stack/project-row.tsx
+@@ -0,0 +1,103 @@
++import { useStore } from '@nanostores/react'
++import { memo } from 'react'
++
++import { StatusRow } from '@/components/chat/status-row'
++import { ActionsMenu, type MenuKit, renderActionItem } from '@/components/ui/actions-menu'
++import { Button } from '@/components/ui/button'
++import { Codicon } from '@/components/ui/codicon'
++import { useI18n } from '@/i18n'
++import { $projects, openProjectCreate } from '@/store/projects'
++import type { ProjectInfo } from '@/types/hermes'
++
++const normalizePath = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
++
++const isInside = (folder: string, target: string) => {
++  const base = normalizePath(folder)
++  const candidate = normalizePath(target)
++  return Boolean(base && candidate && (candidate === base || candidate.startsWith(`${base}/`)))
++}
++
++export function selectedProjectIdForCwd(
++  projects: ProjectInfo[],
++  cwd: null | string | undefined,
++  preferredId: null | string | undefined
++): null | string {
++  const preferred = preferredId?.trim()
++  if (preferred) {
++    return projects.some(project => !project.archived && project.id === preferred) ? preferred : null
++  }
++
++  const path = cwd?.trim() || ''
++  if (!path) {
++    return null
++  }
++
++  let selected: null | string = null
++  let bestLength = -1
++  for (const project of projects) {
++    if (project.archived) continue
++    for (const folder of project.folders) {
++      if (isInside(folder.path, path) && folder.path.length > bestLength) {
++        bestLength = folder.path.length
++        selected = project.id
++      }
++    }
++  }
++  return selected
++}
++
++interface ProjectStatusRowProps {
++  onSelectProject: (projectId: null | string, cwd: string) => Promise<void> | void
++  selectedProjectId: null | string
++}
++
++export const ProjectStatusRow = memo(function ProjectStatusRow({
++  onSelectProject,
++  selectedProjectId
++}: ProjectStatusRowProps) {
++  const { t } = useI18n()
++  const projects = useStore($projects).filter(project => !project.archived)
++  const selected = projects.find(project => project.id === selectedProjectId) ?? null
++  const label = selected?.name || t.rightSidebar.noProjectTitle
++
++  const renderItems = (kit: MenuKit) => (
++    <>
++      {renderActionItem(kit, {
++        key: '__no-project__',
++        label: <span className="truncate">{t.rightSidebar.noProjectTitle}</span>,
++        onSelect: () => void onSelectProject(null, '')
++      })}
++      {projects.length > 0 && <kit.Separator />}
++      {projects.map(project => {
++        const cwd =
++          project.primary_path?.trim() ||
++          project.folders.find(folder => folder.is_primary)?.path?.trim() ||
++          project.folders[0]?.path?.trim() ||
++          ''
++        return renderActionItem(kit, {
++          key: project.id,
++          label: <span className="truncate">{project.name}</span>,
++          disabled: !cwd,
++          onSelect: () => void onSelectProject(project.id, cwd)
++        })
++      })}
++      <kit.Separator />
++      {renderActionItem(kit, {
++        key: '__create-project__',
++        label: <span className="truncate">{t.sidebar.projects.createTitle}</span>,
++        onSelect: () => openProjectCreate()
++      })}
++    </>
++  )
++
++  return (
++    <StatusRow leading={<Codicon className="text-muted-foreground/75" name="folder" size="0.8rem" />}>
++      <ActionsMenu align="start" contentClassName="w-64" items={renderItems} side="top">
++        <Button className="h-6 min-w-0 max-w-full justify-start gap-1 px-1.5 text-xs font-normal" variant="ghost">
++          <span className="truncate">{label}</span>
++          <Codicon className="shrink-0 text-muted-foreground/70" name="chevron-down" size="0.7rem" />
++        </Button>
++      </ActionsMenu>
++    </StatusRow>
++  )
++})
+diff --git a/apps/desktop/src/app/chat/sidebar/projects/workspace-groups.ts b/apps/desktop/src/app/chat/sidebar/projects/workspace-groups.ts
+index 55f36bf99..78f3100d4 100644
+--- a/apps/desktop/src/app/chat/sidebar/projects/workspace-groups.ts
++++ b/apps/desktop/src/app/chat/sidebar/projects/workspace-groups.ts
+@@ -381,6 +381,14 @@ function isPathUnder(folder: string, target: string): boolean {
+  * only the repo-root AUTO-project fallback needs cwd-under-root confidence.
+  */
+ export function liveSessionProjectId(session: SessionInfo, explicitProjects: ProjectInfo[]): null | string {
++  const stableProjectId = session.project_id?.trim()
++
++  if (stableProjectId) {
++    return explicitProjects.some(project => !project.archived && project.id === stableProjectId)
++      ? stableProjectId
++      : null
++  }
++
+   const cwd = (session.cwd || '').trim()
+   // A session may carry only a git_repo_root and no cwd — older/imported rows,
+   // or ones captured before cwd tracking. The backend still groups those by repo
+diff --git a/apps/desktop/src/app/session/hooks/use-session-actions/index.ts b/apps/desktop/src/app/session/hooks/use-session-actions/index.ts
+index 0f13a375c..395e916ae 100644
+--- a/apps/desktop/src/app/session/hooks/use-session-actions/index.ts
++++ b/apps/desktop/src/app/session/hooks/use-session-actions/index.ts
+@@ -25,6 +25,7 @@ import {
+   $activeSessionStoredIdRotation,
+   $currentCwd,
+   $currentFastMode,
++  $currentProjectId,
+   $currentModel,
+   $currentProvider,
+   $currentReasoningEffort,
+@@ -42,6 +43,7 @@ import {
+   setCurrentBranch,
+   setCurrentCwd,
+   setCurrentCwdTransient,
++  setCurrentProjectId,
+   setCurrentServiceTier,
+   setCurrentUsage,
+   setFreshDraftReady,
+@@ -166,7 +168,8 @@ async function desktopSessionCreateParams(cwd: string): Promise<Record<string, u
+     effort: $currentReasoningEffort.get().trim(),
+     fast: $currentFastMode.get(),
+     model: $currentModel.get().trim(),
+-    provider: $currentProvider.get().trim()
++    provider: $currentProvider.get().trim(),
++    projectId: $currentProjectId.get()?.trim() || null
+   }
+ 
+   const profile = $newChatProfile.get() ?? normalizeProfileKey($activeGatewayProfile.get())
+@@ -176,6 +179,7 @@ async function desktopSessionCreateParams(cwd: string): Promise<Record<string, u
+     cols: 96,
+     source: 'desktop',
+     ...(cwd && { cwd }),
++    ...(selection.projectId ? { project_id: selection.projectId } : {}),
+     ...(profile ? { profile } : {}),
+     ...(selection.model
+       ? { model: selection.model, ...(selection.provider ? { provider: selection.provider } : {}) }
+@@ -327,6 +331,7 @@ export function useSessionActions({
+       // refreshCurrentModel). Only $currentServiceTier (a live-session mirror)
+       // is cleared.
+       setCurrentServiceTier('')
++      setCurrentProjectId(null)
+       setYoloActive(false)
+       setNewChatWorkspaceTarget(hasWorkspaceTarget ? workspaceTarget : undefined)
+ 
+diff --git a/apps/desktop/src/app/session/hooks/use-session-actions/utils.ts b/apps/desktop/src/app/session/hooks/use-session-actions/utils.ts
+index b6bc4ae6d..b0e5ce2f7 100644
+--- a/apps/desktop/src/app/session/hooks/use-session-actions/utils.ts
++++ b/apps/desktop/src/app/session/hooks/use-session-actions/utils.ts
+@@ -15,6 +15,7 @@ import {
+   setCurrentFastMode,
+   setCurrentModel,
+   setCurrentPersonality,
++  setCurrentProjectId,
+   setCurrentProvider,
+   setCurrentReasoningEffort,
+   setCurrentServiceTier,
+@@ -1017,8 +1018,12 @@ export function applyRuntimeInfo(
+     sessionState.provider = info.provider
+   }
+ 
+-  if (info.cwd) {
+-    sessionState.cwd = info.cwd
++  if (info.cwd !== undefined) {
++    sessionState.cwd = info.cwd || ''
++  }
++
++  if (foreground && info.project_id !== undefined) {
++    setCurrentProjectId(info.project_id?.trim() || null)
+   }
+ 
+   if (info.branch !== undefined) {
+@@ -1056,8 +1061,11 @@ export function applyRuntimeInfo(
+   return sessionState
+ }
+ 
+-export function applyStoredSessionPreviewRuntimeInfo(stored: { model?: null | string } | undefined) {
++export function applyStoredSessionPreviewRuntimeInfo(
++  stored: { model?: null | string; project_id?: null | string } | undefined
++) {
+   setCurrentModel(stored?.model || '')
++  setCurrentProjectId(stored?.project_id?.trim() || null)
+   setCurrentProvider('')
+   setCurrentReasoningEffort('')
+   setCurrentServiceTier('')
+diff --git a/apps/desktop/src/store/session.ts b/apps/desktop/src/store/session.ts
+index 7042e9092..795253b7f 100644
+--- a/apps/desktop/src/store/session.ts
++++ b/apps/desktop/src/store/session.ts
+@@ -448,6 +448,7 @@ export const $currentFastMode = atom(storedBoolean(COMPOSER_FAST_KEY, false))
+ // reflection of the truth the gateway reports rather than its own store.
+ export const $yoloActive = atom(false)
+ export const $currentCwd = atom(getRememberedWorkspaceCwd())
++export const $currentProjectId = atom<null | string>(null)
+ export const $newChatWorkspaceTarget = atom<NewChatWorkspaceTarget>(undefined)
+ export const $newChatWorkspaceTargetGeneration = atom(0)
+ export const $currentBranch = atom('')
+@@ -564,6 +565,8 @@ export const setCurrentFastMode = (next: Updater<boolean>) => {
+ 
+ export const setYoloActive = (next: Updater<boolean>) => updateAtom($yoloActive, next)
+ 
++export const setCurrentProjectId = (projectId: null | string) => $currentProjectId.set(projectId)
++
+ export const setCurrentCwd = (next: Updater<string>) => {
+   updateAtom($currentCwd, next)
+   persistString(workspaceCwdKey(), $currentCwd.get().trim() || null)
+diff --git a/apps/desktop/src/store/updates.test.ts b/apps/desktop/src/store/updates.test.ts
+index 9298491f1..64d4dc60e 100644
+--- a/apps/desktop/src/store/updates.test.ts
++++ b/apps/desktop/src/store/updates.test.ts
+@@ -134,7 +134,7 @@ describe('reportBackendContract', () => {
+   })
+ 
+   it('dismisses the toast when the backend meets the contract', () => {
+-    reportBackendContract(7)
++    reportBackendContract(8)
+     expect(dismissSpy).toHaveBeenCalledWith('backend-contract-skew')
+     expect(notifySpy).not.toHaveBeenCalled()
+   })
+@@ -174,8 +174,8 @@ describe('reportBackendContract', () => {
+     lastToast().onDismiss()
+     notifySpy.mockClear()
+ 
+-    reportBackendContract(7) // backend updated → satisfied, snooze cleared
+-    reportBackendContract(6) // a later regression must warn immediately
++    reportBackendContract(8) // backend updated → satisfied, snooze cleared
++    reportBackendContract(7) // a later regression must warn immediately
+     expect(notifySpy).toHaveBeenCalledTimes(1)
+   })
+ })
+diff --git a/apps/desktop/src/store/updates.ts b/apps/desktop/src/store/updates.ts
+index 0fe6eaafd..a08189622 100644
+--- a/apps/desktop/src/store/updates.ts
++++ b/apps/desktop/src/store/updates.ts
+@@ -96,7 +96,8 @@ function isUpdateToastSnoozed(): boolean {
+ // v5: requires raised WebSocket frame size for large one-shot file.attach.
+ // v6: requires implicit desktop execution cwd to remain projectless in session.info.
+ // v7: requires session.cwd.set with an empty cwd to detach a chat from its project.
+-const REQUIRED_BACKEND_CONTRACT = 7
++// v8: requires stable per-session Project identity in session.info.
++const REQUIRED_BACKEND_CONTRACT = 8
+ const SKEW_TOAST_ID = 'backend-contract-skew'
+ // The contract check runs on every session.resume (applyRuntimeInfo), so
+ // without a snooze the warning re-popped on every thread the user opened, even
+diff --git a/apps/desktop/src/types/hermes.ts b/apps/desktop/src/types/hermes.ts
+index fcbcd679c..64192781b 100644
+--- a/apps/desktop/src/types/hermes.ts
++++ b/apps/desktop/src/types/hermes.ts
+@@ -474,6 +474,8 @@ export interface SessionInfo {
+    *  groups by this instead of probing git in the GUI. Null for non-git
+    *  workspaces and not-yet-backfilled rows. */
+   git_repo_root?: null | string
++  /** Stable first-class Project association; null means projectless. */
++  project_id?: null | string
+   ended_at: null | number
+   id: string
+   /** Original root id of a compression chain, when this entry is a projected
+@@ -620,6 +622,7 @@ export interface SessionRuntimeInfo {
+   install_warning?: string
+   model?: string
+   personality?: string
++  project_id?: null | string
+   provider?: string
+   reasoning_effort?: string
+   running?: boolean
+diff --git a/hermes_state.py b/hermes_state.py
+index 9f1d4148e..e932eb3ec 100644
+--- a/hermes_state.py
++++ b/hermes_state.py
+@@ -3610,12 +3610,27 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
+ 
+         def _do(conn):
+             conn.execute(
+-                "UPDATE sessions SET cwd = NULL, git_branch = NULL, git_repo_root = NULL WHERE id = ?",
++                "UPDATE sessions SET cwd = NULL, git_branch = NULL, git_repo_root = NULL, "
++                "project_id = NULL WHERE id = ?",
+                 (session_id,),
+             )
+ 
+         self._execute_write(_do)
+ 
++    def update_session_project(self, session_id: str, project_id: Optional[str]) -> None:
++        """Persist the stable Project owning a session, or detach it."""
++        if not session_id:
++            return
++        value = str(project_id or "").strip() or None
++
++        def _do(conn):
++            conn.execute(
++                "UPDATE sessions SET project_id = ? WHERE id = ?",
++                (value, session_id),
++            )
++
++        self._execute_write(_do)
++
+     def backfill_repo_roots(self, cwd_to_root: Dict[str, str]) -> None:
+         """Persist resolved git repo roots for cwds that don't have one yet.
+ 
+diff --git a/hermes_state_common.py b/hermes_state_common.py
+index c520f1c51..a676cb1dd 100644
+--- a/hermes_state_common.py
++++ b/hermes_state_common.py
+@@ -221,6 +221,7 @@ CREATE TABLE IF NOT EXISTS sessions (
+     cwd TEXT,
+     git_branch TEXT,
+     git_repo_root TEXT,
++    project_id TEXT,
+     billing_provider TEXT,
+     billing_base_url TEXT,
+     billing_mode TEXT,
+diff --git a/tests/tui_gateway/test_project_tree.py b/tests/tui_gateway/test_project_tree.py
+index 8ac24ab38..405f09b6f 100644
+--- a/tests/tui_gateway/test_project_tree.py
++++ b/tests/tui_gateway/test_project_tree.py
+@@ -543,3 +543,32 @@ def test_explicit_project_path_alias_keeps_moved_session_association():
+         for group in repo["groups"]
+         for row in group["sessions"]
+     ] == ["legacy-chat"]
++
++
++
++def test_stable_project_id_beats_cwd_heuristics():
++    projects = [
++        {"id": "p_one", "name": "One", "folders": [{"path": "/one"}]},
++        {"id": "p_two", "name": "Two", "folders": [{"path": "/two"}]},
++    ]
++    session = {
++        "id": "chat", "project_id": "p_two", "cwd": "/one/src",
++        "git_repo_root": "", "git_branch": "", "started_at": 1, "last_active": 2,
++    }
++    tree = pt.build_tree(projects, [session], [], resolve=lambda _cwd: None, hydrate=True)
++    one_project = next(node for node in tree["projects"] if node["id"] == "p_one")
++    two_project = next(node for node in tree["projects"] if node["id"] == "p_two")
++    assert one_project["sessionCount"] == 0
++    assert two_project["sessionCount"] == 1
++
++
++def test_stale_stable_project_id_does_not_path_fallback():
++    projects = [{"id": "p_one", "name": "One", "folders": [{"path": "/one"}]}]
++    session = {
++        "id": "chat", "project_id": "deleted-project", "cwd": "/one/src",
++        "git_repo_root": "", "git_branch": "", "started_at": 1, "last_active": 2,
++    }
++    tree = pt.build_tree(projects, [session], [], resolve=lambda _cwd: None, hydrate=True)
++    one_project = next(node for node in tree["projects"] if node["id"] == "p_one")
++    assert one_project["sessionCount"] == 0
++    assert "chat" not in tree["scoped_session_ids"]
+diff --git a/tui_gateway/methods_session.py b/tui_gateway/methods_session.py
+index e94ba932d..b37f2bd46 100644
+--- a/tui_gateway/methods_session.py
++++ b/tui_gateway/methods_session.py
+@@ -125,6 +125,9 @@ def _(rid, params: dict) -> dict:
+     _schedule_session_cap_enforcement()  # trim detached idle sessions over the cap
+ 
+     display_cwd = _display_session_cwd(_sessions[sid])
++    display_project = _project_info_for_cwd(display_cwd, _sessions[sid]) if display_cwd else None
++    display_project_id = str((display_project or {}).get("id") or "").strip() or None
++    _sessions[sid]["project_id"] = display_project_id
+ 
+     return _ok(
+         rid,
+@@ -152,7 +155,8 @@ def _(rid, params: dict) -> dict:
+                 "skills": {},
+                 "cwd": display_cwd,
+                 "branch": _git_branch_for_cwd(display_cwd),
+-                "project": _project_info_for_cwd(display_cwd),
++                "project_id": display_project_id,
++                "project": display_project,
+                 "lazy": True,
+                 "desktop_contract": DESKTOP_BACKEND_CONTRACT,
+                 "profile_name": _response_profile_name(profile),
+@@ -376,6 +380,18 @@ def _(rid, params: dict) -> dict:
+             found = db.get_session(target) or found
+ 
+     stored_cwd = str(found.get("cwd") or "").strip()
++    stored_project_id = str(found.get("project_id") or "").strip() or None
++    if stored_cwd and not stored_project_id:
++        migration_session = {
++            "cwd": stored_cwd,
++            "explicit_cwd": True,
++            "profile_home": str(profile_home) if profile_home is not None else None,
++            "session_key": target,
++            "source": found.get("source") or "desktop",
++        }
++        stored_project_id, _ = _session_project_identity(migration_session, stored_cwd)
++        if stored_project_id:
++            found["project_id"] = stored_project_id
+     profile_resume_cwd = stored_cwd or _profile_configured_cwd(
+         profile_home
+     )
+@@ -441,6 +457,7 @@ def _(rid, params: dict) -> dict:
+             lazy=True,
+             explicit_cwd=bool(stored_cwd),
+         )
++        record["project_id"] = stored_project_id
+         if (live := _claim_or_reuse_live(sid, target, record, lease)) is not None:
+             return _ok(rid, _reuse_live_payload(*live))
+         # A delegated child mid-run emits no session events of its own — report
+@@ -542,6 +559,7 @@ def _(rid, params: dict) -> dict:
+             model_override=overrides.get("model_override"),
+             resume_runtime_overrides=overrides or None,
+         )
++        record["project_id"] = stored_project_id
+         if (live := _claim_or_reuse_live(sid, target, record, lease)) is not None:
+             return _ok(rid, _reuse_live_payload(*live))
+ 
+@@ -746,6 +764,7 @@ def _(rid, params: dict) -> dict:
+             cwd = _set_session_cwd(session, raw)
+         except ValueError as e:
+             return _err(rid, 4017, str(e))
++    project_id, project = _session_project_identity(session, cwd)
+     agent = session.get("agent")
+     info = (
+         _session_info(agent, session)
+@@ -753,7 +772,8 @@ def _(rid, params: dict) -> dict:
+         else {
+             "cwd": cwd,
+             "branch": _git_branch_for_cwd(cwd),
+-            "project": _project_info_for_cwd(cwd),
++            "project_id": project_id,
++            "project": project,
+             "lazy": True,
+             "desktop_contract": DESKTOP_BACKEND_CONTRACT,
+         }
+diff --git a/tui_gateway/project_tree.py b/tui_gateway/project_tree.py
+index 38e74aabc..e425c2c42 100644
+--- a/tui_gateway/project_tree.py
++++ b/tui_gateway/project_tree.py
+@@ -572,13 +572,26 @@ def build_tree(
+     _junk_cwd = is_junk_cwd or (lambda _cwd: False)
+     _exists = exists or (lambda _path: True)
+     folder_index = _FolderIndex(active_projects)
++    project_by_id = {
++        str(project.get("id")): project
++        for project in active_projects
++        if str(project.get("id") or "").strip()
++    }
+ 
+     by_project: dict[str, list[dict]] = {}
+     unowned: list[dict] = []
++    identity_orphans: list[dict] = []
+     for session in sessions:
+-        owner = _project_for_session(session, folder_index, resolve)
++        selected_project_id = str(session.get("project_id") or "").strip()
++        owner = (
++            project_by_id.get(selected_project_id)
++            if selected_project_id
++            else _project_for_session(session, folder_index, resolve)
++        )
+         if owner:
+             by_project.setdefault(owner["id"], []).append(session)
++        elif selected_project_id:
++            identity_orphans.append(session)
+         else:
+             unowned.append(session)
+ 
+@@ -621,8 +634,9 @@ def build_tree(
+     # The pre-Projects desktop grouped every non-empty cwd; keeping that fallback
+     # prevents upgrades from flattening those sessions into Recents.
+     by_auto_root: dict[str, dict] = {}
+-    # Every session no tier could place. These are the Home bucket's rows.
+-    homeless: list[dict] = []
++    # Explicit-but-missing project ids never fall back to cwd/repo heuristics.
++    # Keep those rows visible under Home until the user reattaches them.
++    homeless: list[dict] = list(identity_orphans)
+ 
+     def _add_auto(root: str, session: dict) -> None:
+         key = _path_key(root)
+diff --git a/tui_gateway/server.py b/tui_gateway/server.py
+index 5b256af10..e9f52d67b 100644
+--- a/tui_gateway/server.py
++++ b/tui_gateway/server.py
+@@ -2722,6 +2722,9 @@ def _ensure_session_db_row(session: dict) -> None:
+             # means the launch/default profile (matches run_agent's convention).
+             profile_name=Path(profile_home).name if profile_home else None,
+         )
++        project_id = str(session.get("project_id") or "").strip()
++        if project_id:
++            db.update_session_project(key, project_id)
+     except Exception as exc:
+         # Disk-full is not a soft failure: if we swallow it here, prompt.submit
+         # returns {"status":"streaming"} and the user's message vanishes with
+@@ -2867,6 +2870,7 @@ def _set_session_cwd(session: dict, cwd: str) -> str:
+     # A user's choice supersedes any earlier settle-adopted cwd: from here on
+     # the terminal wandering must not move the workspace again.
+     session["cwd_from_settle"] = False
++    session.pop("project_id", None)
+     _register_session_cwd(session)
+     with _session_db(session) as db:
+         if db is not None:
+@@ -2893,6 +2897,7 @@ def _clear_session_cwd(session: dict) -> None:
+ 
+     session["cwd"] = neutral
+     session["explicit_cwd"] = False
++    session["project_id"] = None
+     _register_session_cwd(session)
+     with _session_db(session) as db:
+         if db is not None:
+@@ -2908,6 +2913,86 @@ def _clear_session_cwd(session: dict) -> None:
+         pass
+ 
+ 
++
++def _projects_db_path_for_session(session: dict | None) -> Path | None:
++    profile_home = str((session or {}).get("profile_home") or "").strip()
++    return Path(profile_home) / "projects.db" if profile_home else None
++
++
++def _project_payload(project) -> dict | None:
++    if project is None:
++        return None
++    return {
++        "id": project.id,
++        "slug": project.slug,
++        "name": project.name,
++        "primary_path": project.primary_path,
++    }
++
++
++def _project_info_for_id(project_id: str | None, session: dict | None = None) -> dict | None:
++    selected = str(project_id or "").strip()
++    if not selected:
++        return None
++    try:
++        from hermes_cli import projects_db as pdb
++
++        with pdb.connect_closing(_projects_db_path_for_session(session)) as conn:
++            project = pdb.get_project(conn, selected)
++        if project is None or getattr(project, "archived", False):
++            return None
++        return _project_payload(project)
++    except Exception:
++        logger.debug("failed to resolve project id", exc_info=True)
++        return None
++
++
++def _session_project_identity(
++    session: dict | None, cwd: str | None = None
++) -> tuple[str | None, dict | None]:
++    """Return/backfill the authoritative stable Project id for a session."""
++    if not isinstance(session, dict):
++        return None, None
++
++    if "project_id" in session:
++        selected = str(session.get("project_id") or "").strip() or None
++        return selected, _project_info_for_id(selected, session) if selected else None
++
++    key = str(session.get("session_key") or "").strip()
++    if key:
++        try:
++            with _session_db(session) as db:
++                row = db.get_session(key) if db is not None else None
++            selected = str((row or {}).get("project_id") or "").strip() or None
++            if selected:
++                session["project_id"] = selected
++                return selected, _project_info_for_id(selected, session)
++        except Exception:
++            logger.debug("failed to read persisted session project", exc_info=True)
++
++    display_cwd = _display_session_cwd(session) if cwd is None else str(cwd or "")
++    if display_cwd:
++        project = (
++            _project_info_for_cwd(display_cwd, session)
++            if session.get("profile_home")
++            else _project_info_for_cwd(display_cwd)
++        )
++        selected = str((project or {}).get("id") or "").strip() or None
++        if selected:
++            session["project_id"] = selected
++            if key:
++                try:
++                    with _session_db(session) as db:
++                        if db is not None:
++                            db.update_session_project(key, selected)
++                except Exception:
++                    logger.debug("failed to backfill session project", exc_info=True)
++            return selected, project
++
++    session["project_id"] = None
++    return None, None
++
++
+ # ── Config I/O ────────────────────────────────────────────────────────
+ 
+ 
+@@ -4995,7 +5080,8 @@ def _current_profile_name() -> str:
+ # v5: uvicorn ws_max_size raised for one-shot base64 file.attach frames (>16 MiB).
+ # v6: implicit desktop execution cwd is never reported as an attached workspace.
+ # v7: session.cwd.set accepts an empty cwd to explicitly detach a chat.
+-DESKTOP_BACKEND_CONTRACT = 7
++# v8: sessions persist and report an authoritative stable Project id.
++DESKTOP_BACKEND_CONTRACT = 8
+ 
+ 
+ def _session_usage_snapshot(session: dict | None) -> dict:
+@@ -5008,7 +5094,7 @@ def _session_usage_snapshot(session: dict | None) -> dict:
+     return dict(mirror_usage) if isinstance(mirror_usage, dict) else {}
+ 
+ 
+-def _project_info_for_cwd(cwd: str) -> dict | None:
++def _project_info_for_cwd(cwd: str, session: dict | None = None) -> dict | None:
+     """Return the first-class Project owning ``cwd`` for UI status surfaces.
+ 
+     Backed by the per-profile projects.db (the same store the desktop's project
+@@ -5022,16 +5108,9 @@ def _project_info_for_cwd(cwd: str) -> dict | None:
+     try:
+         from hermes_cli import projects_db as pdb
+ 
+-        with pdb.connect_closing() as conn:
++        with pdb.connect_closing(_projects_db_path_for_session(session)) as conn:
+             project = pdb.project_for_path(conn, cwd)
+-        if project is None:
+-            return None
+-        return {
+-            "id": project.id,
+-            "slug": project.slug,
+-            "name": project.name,
+-            "primary_path": project.primary_path,
+-        }
++        return _project_payload(project)
+     except Exception:
+         logger.debug("failed to resolve project for cwd", exc_info=True)
+         return None
+@@ -5045,6 +5124,7 @@ def _session_info(agent, session: dict | None = None) -> dict:
+                 break
+     mirror = _metadata_mirror(session)
+     cwd = _display_session_cwd(session)
++    project_id, project = _session_project_identity(session, cwd)
+     session_key = str(
+         (session or {}).get("session_key") or getattr(agent, "session_id", "") or ""
+     )
+@@ -5101,7 +5181,8 @@ def _session_info(agent, session: dict | None = None) -> dict:
+         "skills": dict(mirror.get("skills") or {}) if isinstance(mirror.get("skills"), dict) else {},
+         "cwd": cwd,
+         "branch": _git_branch_for_cwd(cwd),
+-        "project": _project_info_for_cwd(cwd),
++        "project_id": project_id,
++        "project": project,
+         "personality": str(personality or ""),
+         "running": bool((session or {}).get("running")),
+         "title": _session_live_title(session or {}, session_key) if session_key else "",
+@@ -5760,6 +5841,7 @@ def _apply_project_workspace(task_id: str, path: str, _name: str = "") -> None:
+     session["explicit_cwd"] = True
+     # An explicit project switch supersedes any earlier settle-adopted cwd.
+     session["cwd_from_settle"] = False
++    session.pop("project_id", None)
+     _register_session_cwd(session)
+ 
+     with _session_db(session) as db:
+@@ -7875,13 +7957,15 @@ def _find_live_session_by_key(session_key: str) -> tuple[str, dict] | None:
+ def _fallback_session_info(session: dict) -> dict:
+     agent = session.get("agent")
+     if agent is not None:
+-        return _session_info(agent)
++        return _session_info(agent, session)
+     cwd = _display_session_cwd(session)
++    project_id, project = _session_project_identity(session, cwd)
+     return {
+         "branch": _git_branch_for_cwd(cwd),
+         "cwd": cwd,
+         "desktop_contract": DESKTOP_BACKEND_CONTRACT,
+-        "project": _project_info_for_cwd(cwd),
++        "project_id": project_id,
++        "project": project,
+         "lazy": True,
+         "model": _resolve_model(),
+         "skills": {},
+-- 
+2.54.0
+

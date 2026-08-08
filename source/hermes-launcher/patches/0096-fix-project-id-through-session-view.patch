@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Hermes Local Integration <hermes-local-ci@localhost>
+Date: Sat, 8 Aug 2026 17:26:00 +0100
+Subject: [PATCH] fix(projects): route project id through session views
+
+---
+ apps/desktop/src/app/chat/index.tsx        | 4 +++-
+ apps/desktop/src/app/chat/session-tile.tsx | 1 +
+ apps/desktop/src/app/chat/session-view.tsx | 4 ++++
+ 3 files changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/apps/desktop/src/app/chat/index.tsx b/apps/desktop/src/app/chat/index.tsx
+--- a/apps/desktop/src/app/chat/index.tsx
++++ b/apps/desktop/src/app/chat/index.tsx
+@@ -285,4 +285,5 @@ export const ChatView = memo(function ChatView({
+   const currentCwd = useStore(view.$cwd)
+   const currentModel = useStore(view.$model)
+   const currentProvider = useStore(view.$provider)
++  const currentProjectId = useStore(view.$projectId)
+   // A pet anywhere (in-window or popped out) owns the hearts; composer only when none.
+@@ -419,5 +420,6 @@ export const ChatView = memo(function ChatView({
+         modelMenuContent,
+         quickModels
+       },
++      projectId: currentProjectId,
+       tools: {
+         enabled: true,
+@@ -433,4 +435,4 @@ export const ChatView = memo(function ChatView({
+       }
+     }),
+-    [contextSuggestions, currentModel, currentProvider, gatewayOpen, modelMenuContent, quickModels]
++    [contextSuggestions, currentModel, currentProjectId, currentProvider, gatewayOpen, modelMenuContent, quickModels]
+   )
+ 
+diff --git a/apps/desktop/src/app/chat/session-tile.tsx b/apps/desktop/src/app/chat/session-tile.tsx
+--- a/apps/desktop/src/app/chat/session-tile.tsx
++++ b/apps/desktop/src/app/chat/session-tile.tsx
+@@ -99,4 +99,5 @@ function buildTileView(storedSessionId: string): SessionView {
+     $messagesEmpty: computed($messages, messages => messages.length === 0),
+     $model: computed($state, state => state?.model ?? ''),
++    $projectId: computed($state, state => state?.projectId ?? null),
+     $provider: computed($state, state => state?.provider ?? ''),
+     $reasoningEffort: computed($state, state => state?.reasoningEffort ?? ''),
+diff --git a/apps/desktop/src/app/chat/session-view.tsx b/apps/desktop/src/app/chat/session-view.tsx
+--- a/apps/desktop/src/app/chat/session-view.tsx
++++ b/apps/desktop/src/app/chat/session-view.tsx
+@@ -11,5 +11,6 @@ import {
+   $currentCwd,
+   $currentFastMode,
+   $currentModel,
++  $currentProjectId,
+   $currentProvider,
+   $currentReasoningEffort,
+@@ -49,4 +50,5 @@ export interface SessionView {
+   $cwd: ReadableAtom<string>
+   $model: ReadableAtom<string>
++  $projectId: ReadableAtom<null | string>
+   $provider: ReadableAtom<string>
+   $fast: ReadableAtom<boolean>
+@@ -85,4 +87,5 @@ export const PRIMARY_SESSION_VIEW: SessionView = {
+   $messagesEmpty: computed($primaryMessages, messages => messages.length === 0),
+   $model: primaryField<string>(state => state.model, $currentModel),
++  $projectId: primaryField<null | string>(state => state.projectId ?? null, $currentProjectId),
+   $provider: primaryField<string>(state => state.provider, $currentProvider),
+   $reasoningEffort: primaryField<string>(state => state.reasoningEffort, $currentReasoningEffort),
+-- 
+2.54.0
