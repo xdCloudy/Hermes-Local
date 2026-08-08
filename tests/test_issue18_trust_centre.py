@@ -9,7 +9,9 @@ PATCH_ROOT = ROOT / "source" / "hermes-launcher" / "patches"
 PATCH_NAMES = [
     "0079-feat-agent-enforce-managed-MCP-trust-policy.patch",
     "0080-fix-agent-align-trust-records-with-shared-schema.patch",
-    "0081-feat-agent-gate-MCP-startup-and-invocation.patch",
+    "0081-feat-agent-sync-MCP-trust-identities.patch",
+    "0081b-feat-agent-gate-MCP-startup-and-invocation.patch",
+    "0081c-test-agent-cover-managed-MCP-trust-policy.patch",
     "0082-feat-desktop-add-native-Trust-Centre-bridge.patch",
     "0083-test-desktop-cover-native-Trust-Centre-bridge.patch",
     "0084-feat-desktop-model-Trust-Centre-view-types.patch",
@@ -51,7 +53,7 @@ class TrustCentreContractTests(unittest.TestCase):
                 self.assertIn(marker, text)
 
     def test_renderer_cannot_submit_principal_or_manifest_authority(self) -> None:
-        bridge = (PATCH_ROOT / PATCH_NAMES[3]).read_text(encoding="utf-8")
+        bridge = (PATCH_ROOT / PATCH_NAMES[5]).read_text(encoding="utf-8")
         policy_shape = bridge.split("export interface TrustPolicyInput", 1)[1].split("function localRoot", 1)[0]
         self.assertIn("integrationId", policy_shape)
         self.assertIn("capabilities", policy_shape)
@@ -63,7 +65,7 @@ class TrustCentreContractTests(unittest.TestCase):
                 self.assertNotIn(forbidden, policy_shape)
 
     def test_delegation_revocation_and_health_invariants_are_covered(self) -> None:
-        tests = (PATCH_ROOT / PATCH_NAMES[2]).read_text(encoding="utf-8")
+        tests = (PATCH_ROOT / PATCH_NAMES[4]).read_text(encoding="utf-8")
         for marker in (
             "test_delegated_child_does_not_inherit_main_agent_grant",
             "test_source_change_and_capability_expansion_suspend_old_grants",
@@ -76,12 +78,12 @@ class TrustCentreContractTests(unittest.TestCase):
                 self.assertIn(marker, tests)
 
     def test_native_bridge_uses_minimal_child_environment(self) -> None:
-        bridge = (PATCH_ROOT / PATCH_NAMES[3]).read_text(encoding="utf-8")
+        bridge = (PATCH_ROOT / PATCH_NAMES[5]).read_text(encoding="utf-8")
         self.assertIn("trustCliEnvironment", bridge)
         self.assertIn("HERMES_LOCAL_ROOT", bridge)
         self.assertIn("HERMES_HOME", bridge)
         self.assertNotIn("...process.env", bridge)
-        test_patch = (PATCH_ROOT / PATCH_NAMES[4]).read_text(encoding="utf-8")
+        test_patch = (PATCH_ROOT / PATCH_NAMES[6]).read_text(encoding="utf-8")
         self.assertIn("OPENAI_API_KEY", test_patch)
         self.assertIn("toBeUndefined", test_patch)
 
