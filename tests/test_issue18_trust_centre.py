@@ -42,7 +42,7 @@ def hunk_count_errors(text: str) -> list[str]:
         new_count = 0
         header = lines[index]
         index += 1
-        while index < len(lines):
+        while index < len(lines) and (old_count < expected_old or new_count < expected_new):
             line = lines[index]
             if HUNK_RE.match(line) or line.startswith("diff --git ") or line == "-- ":
                 break
