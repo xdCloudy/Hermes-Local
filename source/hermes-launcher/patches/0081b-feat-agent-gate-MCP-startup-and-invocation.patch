@@ -38,7 +38,7 @@ diff --git a/tools/mcp_tool.py b/tools/mcp_tool.py
 +        # reason to execute configured commands without policy.
 +        logger.warning("Hermes Local MCP trust gate failed closed: %s", exc)
 +        return {}
-@@ -4870,4 +4874,37 @@ def _mark_server_call_started(server: Any) -> None:
+@@ -4870,4 +4874,44 @@ def _mark_server_call_started(server: Any) -> None:
          mark_tool_call()
  
  
@@ -83,7 +83,7 @@ diff --git a/tools/mcp_tool.py b/tools/mcp_tool.py
 +
 +
  def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
-@@ -4879,5 +4916,9 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
+@@ -4879,5 +4923,9 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
      """
  
      def _handler(args: dict, **kwargs) -> str:
