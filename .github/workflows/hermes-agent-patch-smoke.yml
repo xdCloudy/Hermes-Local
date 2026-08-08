@@ -7,6 +7,7 @@ on:
       - '.github/workflows/upstream-compatibility.yml'
       - 'scripts/ci/compatibility.py'
       - 'tests/test_compatibility.py'
+      - 'tests/test_issue18_trust_centre.py'
       - 'VERSION.json'
       - 'source/hermes-launcher/patches/**'
 
@@ -27,6 +28,10 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+
+      - name: Validate Trust Centre repository contract
+        shell: pwsh
+        run: python -m unittest tests.test_issue18_trust_centre
 
       - name: Reconstruct and validate pinned release integration
         shell: pwsh
@@ -120,27 +125,38 @@ jobs:
             $source = Resolve-Path (Join-Path $workRoot 'hermes-agent')
             $desktop = Join-Path $source 'apps\desktop'
 
-            Push-Location $desktop
+            Push-Location $source
             try {
-              & npm.cmd --prefix $source exec -- vitest run `
-                --project electron `
-                electron/hermes-local-control.test.ts `
-                electron/hermes-local-task-model.test.ts `
-                electron/hermes-local-model-download.test.ts `
-                electron/hermes-local-restore.test.ts `
-                electron/hermes-local-update.test.ts `
-                electron/hermes-local-security-progress.test.ts `
-                electron/hermes-local-benchmark-progress.test.ts
+              & uv run pytest tests/hermes_cli/test_hermes_local_trust.py -q
               $focusedTestExit = $LASTEXITCODE
-              if ($focusedTestExit -eq 0) {
-                & npm.cmd --prefix $source exec -- vitest run `
-                  src/app/local-workstation/task-centre.test.tsx `
-                  src/app/local-workstation/model-download-card.test.tsx `
-                  src/app/local-workstation/security-task-view.test.tsx
-                $focusedTestExit = $LASTEXITCODE
-              }
             } finally {
               Pop-Location
+            }
+
+            if ($focusedTestExit -eq 0) {
+              Push-Location $desktop
+              try {
+                & npm.cmd --prefix $source exec -- vitest run `
+                  --project electron `
+                  electron/hermes-local-control.test.ts `
+                  electron/hermes-local-task-model.test.ts `
+                  electron/hermes-local-model-download.test.ts `
+                  electron/hermes-local-restore.test.ts `
+                  electron/hermes-local-update.test.ts `
+                  electron/hermes-local-security-progress.test.ts `
+                  electron/hermes-local-benchmark-progress.test.ts `
+                  electron/hermes-local-trust-centre.test.ts
+                $focusedTestExit = $LASTEXITCODE
+                if ($focusedTestExit -eq 0) {
+                  & npm.cmd --prefix $source exec -- vitest run `
+                    src/app/local-workstation/task-centre.test.tsx `
+                    src/app/local-workstation/model-download-card.test.tsx `
+                    src/app/local-workstation/security-task-view.test.tsx
+                  $focusedTestExit = $LASTEXITCODE
+                }
+              } finally {
+                Pop-Location
+              }
             }
           }
 

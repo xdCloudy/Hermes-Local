@@ -1,0 +1,365 @@
+From a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Sat, 8 Aug 2026 03:08:00 +0100
+Subject: [PATCH] fix(trust): harden identities and manage skill access
+
+---
+diff --git a/apps/desktop/electron/hermes-local-trust-centre.ts b/apps/desktop/electron/hermes-local-trust-centre.ts
+index 238f0d3c0c85103fdeb892a2440c3ea108f66a55..629fa4d855082be9dad8d885550af3d4a0988352 100644
+--- a/apps/desktop/electron/hermes-local-trust-centre.ts
++++ b/apps/desktop/electron/hermes-local-trust-centre.ts
+@@ -87,6 +87,7 @@ export interface TrustIntegrationRecord {
+   identity: TrustIdentity
+   lastSeenAt?: string
+   serverName?: string
++  sourceLabel?: string
+   source?: string
+   transport?: 'remote' | 'stdio'
+   unknownCapabilities?: string[]
+diff --git a/apps/desktop/src/app/local-workstation/trust-centre.tsx b/apps/desktop/src/app/local-workstation/trust-centre.tsx
+index d1e2c55b3f8624238324d61cdc054daa890a1ae2..1d9afc8847471e710c94824926fa446353d2300f 100644
+--- a/apps/desktop/src/app/local-workstation/trust-centre.tsx
++++ b/apps/desktop/src/app/local-workstation/trust-centre.tsx
+@@ -102,7 +102,7 @@ export function TrustCentre() {
+     setScopeId(grant?.scope.id || '')
+   }, [selected, snapshot])
+ 
+-  const managed = selected?.identity.integrationType.startsWith('mcp-') ?? false
++  const managed = Boolean(selected && selected.identity.trustState !== 'built-in-verified' && (selected.identity.integrationType.startsWith('mcp-') || selected.identity.integrationType === 'skill'))
+ 
+   const toggleCapability = (capability: TrustCapability) => {
+     setCapabilities(current =>
+@@ -230,7 +230,7 @@ export function TrustCentre() {
+                 <div>
+                   <dt className="text-(--ui-text-tertiary)">Source</dt>
+                   <dd className="mt-1 break-all font-mono">
+-                    {selected.identity.provenance.uri || selected.identity.provenance.provenanceId}
++                    {selected.sourceLabel || selected.identity.provenance.uri || selected.identity.provenance.provenanceId}
+                   </dd>
+                 </div>
+                 <div>
+diff --git a/apps/desktop/src/app/local-workstation/trust-types.ts b/apps/desktop/src/app/local-workstation/trust-types.ts
+index 443e7800ca174d39bfe5b7c5ea59e4c70588cc5b..f762260f21f82f91d71f3ca7454746770ce09a01 100644
+--- a/apps/desktop/src/app/local-workstation/trust-types.ts
++++ b/apps/desktop/src/app/local-workstation/trust-types.ts
+@@ -70,6 +70,9 @@ export interface TrustIdentity {
+ 
+ export interface TrustIntegrationRecord {
+   identity: TrustIdentity
++  accessScopes?: Array<{ id?: string; kind: TrustScopeKind }>
++  accessPrincipals?: Array<{ id: string; kind: string }>
++  sourceLabel?: string
+   lastSeenAt?: string
+   serverName?: string
+   source?: string
+diff --git a/hermes_cli/hermes_local_trust.py b/hermes_cli/hermes_local_trust.py
+index 4b0a878cec5bc3e966157a37b11d58bb48ef9ed0..be2ba80c9010899684bbcd768bb8b690713689e0 100644
+--- a/hermes_cli/hermes_local_trust.py
++++ b/hermes_cli/hermes_local_trust.py
+@@ -139,7 +139,9 @@ def _identity_material(config: dict[str, Any]) -> dict[str, Any]:
+         "transport": "remote" if config.get("url") else "stdio",
+         "endpoint": _endpoint(config.get("url")),
+         "command": Path(str(config.get("command") or "")).name or None,
++        "commandSha256": hashlib.sha256(str(config.get("command") or "").encode("utf-8")).hexdigest(),
+         "argumentCount": len(config.get("args") or []) if isinstance(config.get("args"), list) else 0,
++        "argumentsSha256": hashlib.sha256(json.dumps(config.get("args") or [], sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).hexdigest(),
+         "environmentKeys": sorted(str(k) for k in (config.get("env") or {}) if isinstance(config.get("env"), dict)),
+         "headerKeys": sorted(str(k).lower() for k in (config.get("headers") or {}) if isinstance(config.get("headers"), dict)),
+         "authConfigured": bool(config.get("auth")),
+@@ -186,6 +188,8 @@ def _principal() -> dict[str, str]:
+ 
+ def _scope_candidates() -> list[dict[str, str]]:
+     result: list[dict[str, str]] = []
++    principal = _principal()
++    result.append({"kind": "agent", "id": principal["id"]})
+     project = os.getenv("HERMES_PROJECT_ID", "").strip()
+     if project:
+         result.append({"kind": "project", "id": _safe_id(project, "project")})
+@@ -280,6 +284,7 @@ def sync_mcp_server_identity(name: str, config: dict[str, Any]) -> dict[str, Any
+         record = {
+             "identity": identity, "serverName": str(name), "configurationSha256": digest,
+             "transport": "remote" if remote else "stdio", "unknownCapabilities": unknown,
++            "sourceLabel": _endpoint(config.get("url")) if remote else str(config.get("command") or ""),
+             "lastSeenAt": _now(),
+         }
+         if previous:
+@@ -405,16 +410,44 @@ def set_integration_policy(
+     if scope.get("kind") not in {"global", "project", "session", "profile", "agent", "user"}:
+         raise ValueError("unsupported scope")
+     if scope.get("kind") != "global":
+-        scope = {"kind": str(scope["kind"]), "id": _safe_id(scope.get("id"), str(scope["kind"]))}
++        kind = str(scope["kind"])
++        raw_scope_id = str(scope.get("id") or "").strip()
++        canonical_scope_id = (
++            raw_scope_id
++            if raw_scope_id.startswith(f"{kind}:") and _ID.fullmatch(raw_scope_id)
++            else _safe_id(raw_scope_id, kind)
++        )
++        scope = {"kind": kind, "id": canonical_scope_id}
+     with _LOCK:
++        principal = {"kind": "agent", "id": _safe_id("main", "agent")}
++        if scope.get("kind") == "agent":
++            principal = {"kind": "agent", "id": str(scope["id"])}
+         store = _integrations()
+         record = next((r for r in store["integrations"] if r.get("identity", {}).get("id") == integration_id), None)
+         if not record:
+             raise KeyError("integration not found")
+         identity = record["identity"]
++        if identity.get("trustState") == "built-in-verified":
++            raise ValueError("built-in verified integrations are immutable")
+         if not set(requested).issubset(set(identity.get("declaredCapabilities", []))):
+             raise ValueError("grant includes an undeclared capability")
+         _revoke(integration_id, "policy-replaced")
++        if identity.get("integrationType") == "skill":
++            identity["trustState"] = trust_state
++            identity["manifestRevision"] = int(identity.get("manifestRevision", 1)) + 1
++            if trust_state in {"reviewed-managed", "user-trusted"}:
++                identity["approvedManifestSha256"] = str(
++                    record.get("configurationSha256") or identity.get("provenance", {}).get("sha256") or ""
++                )
++                record["accessPrincipals"] = [principal]
++                record["accessScopes"] = [scope]
++            else:
++                identity.pop("approvedManifestSha256", None)
++                record.pop("accessPrincipals", None)
++                record.pop("accessScopes", None)
++            _write("integrations.json", store)
++            _audit("grant.changed", "success", integration_id, trustState=trust_state, scopeKind=scope["kind"])
++            return record
+         identity["trustState"] = trust_state
+         identity["manifestRevision"] = int(identity.get("manifestRevision", 1)) + 1
+         if trust_state in ACTIVE_STATES:
+@@ -427,7 +460,7 @@ def set_integration_policy(
+             for capability in requested:
+                 grants["grants"].append({
+                     "kind": "capabilityGrant", "schemaVersion": 1, "id": _rid("grant"),
+-                    "principal": {"kind": "agent", "id": _safe_id("main", "agent")},
++                    "principal": principal,
+                     "scope": scope, "capability": capability, "effect": "allow",
+                     "confirmation": confirmation, "constraints": {"integrationIds": [integration_id]},
+                     "issuedAt": _now(), "revision": 1,
+@@ -478,6 +511,154 @@ def _skill_inventory() -> list[dict[str, Any]]:
+     return output
+ 
+ 
++def _bundled_skill_hashes() -> set[tuple[str, str]]:
++    repo = Path(__file__).resolve().parents[1]
++    output: set[tuple[str, str]] = set()
++    for root in (repo / "skills", repo / "optional-skills"):
++        if not root.is_dir():
++            continue
++        for skill_file in root.rglob("SKILL.md"):
++            try:
++                output.add((skill_file.parent.name, hashlib.sha256(skill_file.read_bytes()).hexdigest()))
++            except OSError:
++                continue
++    return output
++
++
++def sync_skill_identity(name: str, skill_md: str | Path) -> dict[str, Any]:
++    path = Path(skill_md).expanduser().resolve()
++    if path.name != "SKILL.md" or not path.is_file():
++        raise ValueError("skill identity requires an existing SKILL.md")
++    digest = hashlib.sha256(path.read_bytes()).hexdigest()
++    path_key = hashlib.sha256(str(path).casefold().encode("utf-8")).hexdigest()[:24]
++    integration_id = f"skill:{path_key}"
++    bundled = (path.parent.name, digest) in _bundled_skill_hashes()
++    with _LOCK:
++        store = _integrations()
++        previous = next(
++            (record for record in store["integrations"] if record.get("identity", {}).get("id") == integration_id),
++            None,
++        )
++        previous_identity = previous.get("identity", {}) if previous else {}
++        changed = bool(previous and previous.get("configurationSha256") != digest)
++        if bundled:
++            state = "built-in-verified"
++        elif changed or not previous:
++            state = "restricted"
++        else:
++            state = str(previous_identity.get("trustState", "restricted"))
++        identity = {
++            "kind": "integrationIdentity",
++            "schemaVersion": 1,
++            "id": integration_id,
++            "displayName": str(name or path.parent.name)[:120],
++            "integrationType": "skill",
++            "provenance": {
++                "sourceType": "built-in" if bundled else "local-path",
++                "provenanceId": integration_id,
++                "revision": digest,
++                "sha256": digest,
++            },
++            "declaredCapabilities": [],
++            "trustState": state if state in TRUST_STATES else "unknown",
++            "healthState": "healthy",
++            "manifestRevision": max(
++                1,
++                int(previous_identity.get("manifestRevision", 0)) + (1 if changed else 0),
++            ),
++        }
++        if bundled:
++            identity["approvedManifestSha256"] = digest
++        elif previous_identity.get("approvedManifestSha256") and not changed:
++            identity["approvedManifestSha256"] = previous_identity["approvedManifestSha256"]
++        record = {
++            "identity": identity,
++            "configurationSha256": digest,
++            "sourceLabel": "bundled:" + identity["displayName"] if bundled else str(path.parent),
++            "skillPath": str(path),
++            "lastSeenAt": _now(),
++        }
++        if previous and not changed:
++            if previous.get("accessPrincipals"):
++                record["accessPrincipals"] = previous["accessPrincipals"]
++            if previous.get("accessScopes"):
++                record["accessScopes"] = previous["accessScopes"]
++        if previous:
++            store["integrations"][store["integrations"].index(previous)] = record
++        else:
++            store["integrations"].append(record)
++        _write("integrations.json", store)
++        if changed:
++            _revoke(integration_id, "manifest-changed")
++            _audit("integration.updated", "success", integration_id, manifestRevision=identity["manifestRevision"])
++        elif not previous:
++            _audit("integration.installed", "success", integration_id)
++        return record
++
++
++def sync_skill_inventory() -> list[dict[str, Any]]:
++    roots: list[Path] = []
++    try:
++        from hermes_constants import get_hermes_home
++        roots.append(Path(get_hermes_home()) / "skills")
++    except Exception:
++        pass
++    try:
++        from agent.skill_utils import get_external_skills_dirs
++        roots.extend(Path(value) for value in get_external_skills_dirs())
++    except Exception:
++        pass
++    records: list[dict[str, Any]] = []
++    seen: set[Path] = set()
++    for root in roots:
++        if not root.is_dir():
++            continue
++        for skill_file in root.rglob("SKILL.md"):
++            try:
++                resolved = skill_file.resolve()
++                if resolved in seen or skill_file.stat().st_size > 2 * 1024 * 1024:
++                    continue
++                seen.add(resolved)
++                records.append(sync_skill_identity(skill_file.parent.name, skill_file))
++            except (OSError, ValueError):
++                continue
++    return records
++
++
++def authorize_skill_load(name: str, skill_md: str | Path) -> AuthorizationDecision:
++    try:
++        record = sync_skill_identity(name, skill_md)
++    except Exception as exc:
++        decision = AuthorizationDecision(False, f"skill identity failed: {exc}", "skill:unknown", "")
++        _audit("authorization.denied", "denied", decision.integration_id, reason=decision.reason, operation="skill.load")
++        return decision
++    identity = record.get("identity", {})
++    integration_id = str(identity.get("id") or "skill:unknown")
++    state = str(identity.get("trustState") or "unknown")
++    if state == "built-in-verified":
++        decision = AuthorizationDecision(True, "built-in verified skill", integration_id, "")
++    elif state not in {"reviewed-managed", "user-trusted"}:
++        decision = AuthorizationDecision(False, f"trust state is {state}", integration_id, "")
++    else:
++        principal = _principal()
++        principals = record.get("accessPrincipals", [])
++        scopes = record.get("accessScopes", [])
++        if principal not in principals:
++            decision = AuthorizationDecision(False, "no matching agent access", integration_id, "")
++        elif not any(scope in _scope_candidates() for scope in scopes):
++            decision = AuthorizationDecision(False, "no matching scope access", integration_id, "")
++        else:
++            decision = AuthorizationDecision(True, "matching skill access", integration_id, "")
++    _audit(
++        "authorization.allowed" if decision.allowed else "authorization.denied",
++        "allowed" if decision.allowed else "denied",
++        integration_id,
++        reason=decision.reason,
++        operation="skill.load",
++    )
++    return decision
++
++
+ def _audit_tail(limit: int = 100) -> list[dict[str, Any]]:
+     path = _root() / "audit.jsonl"
+     if not path.is_file():
+@@ -504,7 +685,8 @@ def trust_snapshot() -> dict[str, Any]:
+             sync_mcp_inventory(servers)
+     except Exception:
+         pass
+-    integrations = _integrations()["integrations"] + _skill_inventory()
++    sync_skill_inventory()
++    integrations = _integrations()["integrations"]
+     grants = [grant for grant in _grants()["grants"] if not grant.get("revokedAt")]
+     audit = _audit_tail()
+     counts: dict[str, int] = {}
+diff --git a/tools/skills_tool.py b/tools/skills_tool.py
+index e38e3324690271e15e5648cdcc02c18a57f631e4..ab273bf45bb66c440b511588fa52a49bb91d3c7d 100644
+--- a/tools/skills_tool.py
++++ b/tools/skills_tool.py
+@@ -878,6 +878,26 @@ def _serve_plugin_skill(
+             ensure_ascii=False,
+         )
+ 
++    try:
++        from hermes_cli.hermes_local_trust import authorize_skill_load
++        trust_decision = authorize_skill_load(f"{namespace}:{bare}", skill_md)
++    except Exception as exc:
++        return json.dumps(
++            {
++                "success": False,
++                "error": f"Skill '{namespace}:{bare}' was blocked because Trust Centre authorization failed: {exc}",
++            },
++            ensure_ascii=False,
++        )
++    if not trust_decision.allowed:
++        return json.dumps(
++            {
++                "success": False,
++                "error": f"Skill '{namespace}:{bare}' is denied by Hermes Local Trust Centre: {trust_decision.reason}",
++            },
++            ensure_ascii=False,
++        )
++
+     try:
+         content = skill_md.read_text(encoding="utf-8")
+     except Exception as e:
+@@ -1290,6 +1310,26 @@ def skill_view(
+                 ensure_ascii=False,
+             )
+ 
++        try:
++            from hermes_cli.hermes_local_trust import authorize_skill_load
++            trust_decision = authorize_skill_load(str(resolved_name), skill_md)
++        except Exception as exc:
++            return json.dumps(
++                {
++                    "success": False,
++                    "error": f"Skill '{resolved_name}' was blocked because Trust Centre authorization failed: {exc}",
++                },
++                ensure_ascii=False,
++            )
++        if not trust_decision.allowed:
++            return json.dumps(
++                {
++                    "success": False,
++                    "error": f"Skill '{resolved_name}' is denied by Hermes Local Trust Centre: {trust_decision.reason}",
++                },
++                ensure_ascii=False,
++            )
++
+         # If a specific file path is requested, read that instead
+         if file_path and skill_dir:
+             from tools.path_security import validate_within_dir, has_traversal_component
+-- 
+2.51.0
