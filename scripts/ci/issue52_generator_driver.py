@@ -5,8 +5,8 @@ import sys
 repo = Path(__file__).resolve().parents[2]
 root = sys.argv[1]
 out = sys.argv[2]
-source_path = repo / "scripts/ci/issue52_backend_gen.py"
-source = source_path.read_text(encoding="utf-8")
+
+backend_source = (repo / "scripts/ci/issue52_backend_gen.py").read_text(encoding="utf-8")
 
 cwd_call = '''one(
     "tui_gateway/server.py",
@@ -22,9 +22,9 @@ if count != 2:
     raise RuntimeError(f"tui_gateway/server.py: expected 2 cwd invalidation sites, got {count}")
 write("tui_gateway/server.py", text.replace(old, new))
 '''
-if source.count(cwd_call) != 1:
+if backend_source.count(cwd_call) != 1:
     raise RuntimeError("backend generator cwd invalidation block changed")
-source = source.replace(cwd_call, cwd_replacement)
+backend_source = backend_source.replace(cwd_call, cwd_replacement)
 
 info_call = '''one(
     "tui_gateway/server.py",
@@ -40,11 +40,23 @@ if count != 2:
     raise RuntimeError(f"tui_gateway/server.py: expected 2 project info payloads, got {count}")
 write("tui_gateway/server.py", text.replace(old, new, 1))
 '''
-if source.count(info_call) != 1:
+if backend_source.count(info_call) != 1:
     raise RuntimeError("backend generator session info payload block changed")
-source = source.replace(info_call, info_replacement)
+backend_source = backend_source.replace(info_call, info_replacement)
 
-fixed = Path("/tmp/issue52_backend_gen_fixed.py")
-fixed.write_text(source, encoding="utf-8", newline="")
-subprocess.run([sys.executable, str(fixed), root], check=True)
-subprocess.run([sys.executable, str(repo / "scripts/ci/issue52_frontend_gen.py"), root, out], check=True)
+backend_fixed = Path("/tmp/issue52_backend_gen_fixed.py")
+backend_fixed.write_text(backend_source, encoding="utf-8", newline="")
+subprocess.run([sys.executable, str(backend_fixed), root], check=True)
+
+frontend_source = (repo / "scripts/ci/issue52_frontend_gen.py").read_text(encoding="utf-8")
+frontend_source = frontend_source.replace(
+    '    "export const setCurrentCwd = (cwd: string) => {",\n'
+    '    "export const setCurrentProjectId = (projectId: null | string) => $currentProjectId.set(projectId)\\n\\n"\n'
+    '    "export const setCurrentCwd = (cwd: string) => {",',
+    '    "export const setCurrentCwd = (next: Updater<string>) => {",\n'
+    '    "export const setCurrentProjectId = (projectId: null | string) => $currentProjectId.set(projectId)\\n\\n"\n'
+    '    "export const setCurrentCwd = (next: Updater<string>) => {",',
+)
+frontend_fixed = Path("/tmp/issue52_frontend_gen_fixed.py")
+frontend_fixed.write_text(frontend_source, encoding="utf-8", newline="")
+subprocess.run([sys.executable, str(frontend_fixed), root, out], check=True)
