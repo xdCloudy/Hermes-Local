@@ -1,0 +1,506 @@
+From 8888888888888888888888888888888888888888 Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Sat, 8 Aug 2026 02:41:00 +0100
+Subject: [PATCH] feat(desktop): build Skills and MCP Trust Centre
+
+---
+ apps/desktop/src/app/local-workstation/trust-centre.tsx | 490 +++++++++++++++++
+ 1 file changed, 490 insertions(+)
+ create mode 100644 apps/desktop/src/app/local-workstation/trust-centre.tsx
+
+diff --git a/apps/desktop/src/app/local-workstation/trust-centre.tsx b/apps/desktop/src/app/local-workstation/trust-centre.tsx
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/src/app/local-workstation/trust-centre.tsx
+@@ -0,0 +1,490 @@
++import { useCallback, useEffect, useMemo, useState } from 'react'
++import {
++  IconAlertTriangle,
++  IconCheck,
++  IconDownload,
++  IconRefresh,
++  IconShieldCheck,
++  IconShieldLock,
++  IconX
++} from '@tabler/icons-react'
++
++import { Button } from '@/components/ui/button'
++import { cn } from '@/lib/utils'
++
++import type {
++  TrustCapability,
++  TrustCentreSnapshot,
++  TrustConfirmation,
++  TrustPolicyInput,
++  TrustScopeKind,
++  TrustState
++} from './trust-types'
++
++const MUTABLE_STATES: Array<Exclude<TrustState, 'built-in-verified'>> = [
++  'reviewed-managed',
++  'user-trusted',
++  'restricted',
++  'quarantined',
++  'disabled',
++  'unknown'
++]
++
++const CONFIRMATIONS: TrustConfirmation[] = [
++  'writes-or-side-effects',
++  'always',
++  'never',
++  'local-only'
++]
++
++const SCOPES: TrustScopeKind[] = ['global', 'project', 'session', 'profile', 'agent', 'user']
++
++function shortHash(value?: string) {
++  if (!value) return 'not recorded'
++  return value.length > 20 ? `${value.slice(0, 12)}…${value.slice(-8)}` : value
++}
++
++function stateTone(state: TrustState) {
++  if (state === 'built-in-verified' || state === 'reviewed-managed' || state === 'user-trusted') {
++    return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
++  }
++  if (state === 'quarantined' || state === 'unknown') {
++    return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
++  }
++  if (state === 'disabled') {
++    return 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300'
++  }
++  return 'border-(--ui-stroke-secondary) bg-(--ui-control-background) text-(--ui-text-secondary)'
++}
++
++function Pill({ children, state }: { children: React.ReactNode; state?: TrustState }) {
++  return (
++    <span
++      className={cn(
++        'inline-flex items-center rounded-full border px-2 py-0.5 text-[0.6875rem] font-medium',
++        state ? stateTone(state) : 'border-(--ui-stroke-secondary) text-(--ui-text-tertiary)'
++      )}
++    >
++      {children}
++    </span>
++  )
++}
++
++function Panel({ children, title }: { children: React.ReactNode; title?: string }) {
++  return (
++    <section className="rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-card-background)">
++      {title ? (
++        <header className="border-b border-(--ui-stroke-secondary) px-4 py-3 text-sm font-semibold">{title}</header>
++      ) : null}
++      <div className="p-4">{children}</div>
++    </section>
++  )
++}
++
++function selectedGrantCapabilities(snapshot: TrustCentreSnapshot, integrationId: string): TrustCapability[] {
++  return snapshot.activeGrants
++    .filter(grant => grant.effect === 'allow' && grant.constraints.integrationIds?.includes(integrationId))
++    .map(grant => grant.capability)
++}
++
++function selectedConfirmation(snapshot: TrustCentreSnapshot, integrationId: string): TrustConfirmation {
++  return (
++    snapshot.activeGrants.find(
++      grant => grant.effect === 'allow' && grant.constraints.integrationIds?.includes(integrationId)
++    )?.confirmation || 'writes-or-side-effects'
++  )
++}
++
++function selectedScope(snapshot: TrustCentreSnapshot, integrationId: string) {
++  return (
++    snapshot.activeGrants.find(
++      grant => grant.effect === 'allow' && grant.constraints.integrationIds?.includes(integrationId)
++    )?.scope || { kind: 'global' as const }
++  )
++}
++
++export function TrustCentre() {
++  const [snapshot, setSnapshot] = useState<TrustCentreSnapshot | null>(null)
++  const [selectedId, setSelectedId] = useState('')
++  const [capabilities, setCapabilities] = useState<TrustCapability[]>([])
++  const [state, setState] = useState<Exclude<TrustState, 'built-in-verified'>>('restricted')
++  const [confirmation, setConfirmation] = useState<TrustConfirmation>('writes-or-side-effects')
++  const [scopeKind, setScopeKind] = useState<TrustScopeKind>('global')
++  const [scopeId, setScopeId] = useState('')
++  const [busy, setBusy] = useState(false)
++  const [error, setError] = useState('')
++
++  const refresh = useCallback(async () => {
++    setError('')
++    try {
++      const next = await window.hermesDesktop.localWorkstation.trustSnapshot()
++      setSnapshot(next)
++      setSelectedId(current =>
++        current && next.integrations.some(item => item.identity.id === current)
++          ? current
++          : next.integrations[0]?.identity.id || ''
++      )
++    } catch (nextError) {
++      setError(nextError instanceof Error ? nextError.message : String(nextError))
++    }
++  }, [])
++
++  useEffect(() => {
++    void refresh()
++  }, [refresh])
++
++  const selected = useMemo(
++    () => snapshot?.integrations.find(item => item.identity.id === selectedId) || null,
++    [selectedId, snapshot]
++  )
++
++  useEffect(() => {
++    if (!snapshot || !selected) return
++    const identity = selected.identity
++    setCapabilities(selectedGrantCapabilities(snapshot, identity.id))
++    setState(identity.trustState === 'built-in-verified' ? 'restricted' : identity.trustState)
++    setConfirmation(selectedConfirmation(snapshot, identity.id))
++    const scope = selectedScope(snapshot, identity.id)
++    setScopeKind(scope.kind)
++    setScopeId(scope.id || '')
++  }, [selected, snapshot])
++
++  const managed = selected?.identity.integrationType.startsWith('mcp-') ?? false
++  const highAlerts = snapshot?.alerts.filter(alert => alert.severity === 'high').length || 0
++  const restricted = snapshot?.integrations.filter(item =>
++    ['restricted', 'quarantined', 'disabled', 'unknown'].includes(item.identity.trustState)
++  ).length || 0
++
++  const toggleCapability = (capability: TrustCapability) => {
++    setCapabilities(current =>
++      current.includes(capability)
++        ? current.filter(item => item !== capability)
++        : [...current, capability]
++    )
++  }
++
++  const applyPolicy = async (override?: Partial<TrustPolicyInput>) => {
++    if (!selected || !managed) return
++    const input: TrustPolicyInput = {
++      integrationId: selected.identity.id,
++      state,
++      capabilities,
++      confirmation,
++      scope: scopeKind === 'global' ? { kind: 'global' } : { kind: scopeKind, id: scopeId },
++      ...override
++    }
++    setBusy(true)
++    setError('')
++    try {
++      await window.hermesDesktop.localWorkstation.setTrustPolicy(input)
++      await refresh()
++    } catch (nextError) {
++      setError(nextError instanceof Error ? nextError.message : String(nextError))
++    } finally {
++      setBusy(false)
++    }
++  }
++
++  if (!snapshot) {
++    return (
++      <Panel>
++        <div className="flex min-h-40 items-center justify-center text-sm text-(--ui-text-tertiary)">
++          {error || 'Loading Trust Centre…'}
++        </div>
++      </Panel>
++    )
++  }
++
++  return (
++    <div className="space-y-4">
++      <Panel>
++        <div className="flex flex-wrap items-start justify-between gap-4">
++          <div className="max-w-3xl">
++            <div className="mb-2 flex items-center gap-2">
++              <IconShieldLock className="size-5 text-(--ui-accent)" />
++              <h2 className="text-lg font-semibold">Skills and MCP Trust Centre</h2>
++            </div>
++            <p className="text-sm leading-6 text-(--ui-text-secondary)">
++              Native policy is the authority. Integrations must match their recorded source and revision,
++              declare capabilities, and hold an exact scoped grant before Hermes starts or invokes them.
++            </p>
++          </div>
++          <div className="flex gap-2">
++            <Button disabled={busy} onClick={() => void refresh()} size="sm" variant="outline">
++              <IconRefresh className="mr-1.5 size-3.5" />
++              Refresh
++            </Button>
++            <Button
++              disabled={busy}
++              onClick={() => void window.hermesDesktop.localWorkstation.exportTrustDiagnostics()}
++              size="sm"
++              variant="outline"
++            >
++              <IconDownload className="mr-1.5 size-3.5" />
++              Export diagnostics
++            </Button>
++          </div>
++        </div>
++        {error ? (
++          <div className="mt-3 flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
++            <IconX className="size-3.5" />
++            {error}
++          </div>
++        ) : null}
++        <div className="mt-4 grid gap-2 sm:grid-cols-4">
++          {[
++            ['Integrations', snapshot.integrations.length],
++            ['Active grants', snapshot.activeGrants.length],
++            ['Restricted / disabled', restricted],
++            ['High alerts', highAlerts]
++          ].map(([label, value]) => (
++            <div className="rounded-md border border-(--ui-stroke-secondary) p-3" key={label}>
++              <div className="text-lg font-semibold">{value}</div>
++              <div className="text-[0.6875rem] text-(--ui-text-tertiary)">{label}</div>
++            </div>
++          ))}
++        </div>
++      </Panel>
++
++      <div className="grid gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
++        <Panel title="Managed inventory">
++          <div className="max-h-[42rem] space-y-1 overflow-auto">
++            {snapshot.integrations.map(record => {
++              const identity = record.identity
++              return (
++                <button
++                  className={cn(
++                    'w-full rounded-md border px-3 py-2 text-left transition-colors',
++                    selectedId === identity.id
++                      ? 'border-(--ui-accent)/40 bg-(--ui-accent)/10'
++                      : 'border-transparent hover:bg-(--ui-control-hover-background)'
++                  )}
++                  key={identity.id}
++                  onClick={() => setSelectedId(identity.id)}
++                  type="button"
++                >
++                  <div className="flex items-center gap-2">
++                    <span className="min-w-0 flex-1 truncate text-xs font-semibold">{identity.displayName}</span>
++                    <Pill state={identity.trustState}>{identity.trustState}</Pill>
++                  </div>
++                  <div className="mt-1 flex items-center gap-2 text-[0.6875rem] text-(--ui-text-tertiary)">
++                    <span>{identity.integrationType}</span>
++                    <span>·</span>
++                    <span>{identity.provenance.sourceType}</span>
++                  </div>
++                </button>
++              )
++            })}
++          </div>
++        </Panel>
++
++        {selected ? (
++          <div className="space-y-4">
++            <Panel title={selected.identity.displayName}>
++              <div className="flex flex-wrap gap-2">
++                <Pill state={selected.identity.trustState}>{selected.identity.trustState}</Pill>
++                <Pill>{selected.identity.healthState}</Pill>
++                <Pill>{selected.identity.integrationType}</Pill>
++                {selected.unknownCapabilities?.length ? (
++                  <Pill state="unknown">{selected.unknownCapabilities.length} unknown capabilities</Pill>
++                ) : null}
++              </div>
++              <dl className="mt-4 grid gap-x-6 gap-y-3 text-xs sm:grid-cols-2">
++                <div>
++                  <dt className="text-(--ui-text-tertiary)">Source</dt>
++                  <dd className="mt-1 break-all font-mono">
++                    {selected.identity.provenance.uri || selected.identity.provenance.provenanceId}
++                  </dd>
++                </div>
++                <div>
++                  <dt className="text-(--ui-text-tertiary)">Revision</dt>
++                  <dd className="mt-1 break-all font-mono">{selected.identity.provenance.revision}</dd>
++                </div>
++                <div>
++                  <dt className="text-(--ui-text-tertiary)">Manifest SHA-256</dt>
++                  <dd className="mt-1 font-mono" title={selected.identity.provenance.sha256}>
++                    {shortHash(selected.identity.provenance.sha256)}
++                  </dd>
++                </div>
++                <div>
++                  <dt className="text-(--ui-text-tertiary)">Approved SHA-256</dt>
++                  <dd className="mt-1 font-mono" title={selected.identity.approvedManifestSha256}>
++                    {shortHash(selected.identity.approvedManifestSha256)}
++                  </dd>
++                </div>
++              </dl>
++            </Panel>
++
++            <Panel title="Declared capabilities">
++              {selected.identity.declaredCapabilities.length ? (
++                <div className="grid gap-2 sm:grid-cols-2">
++                  {selected.identity.declaredCapabilities.map(capability => {
++                    const checked = capabilities.includes(capability)
++                    return (
++                      <label
++                        className={cn(
++                          'flex items-center gap-2 rounded-md border px-3 py-2 text-xs',
++                          checked ? 'border-(--ui-accent)/40 bg-(--ui-accent)/8' : 'border-(--ui-stroke-secondary)'
++                        )}
++                        key={capability}
++                      >
++                        <input
++                          checked={checked}
++                          disabled={!managed || selected.identity.trustState === 'built-in-verified'}
++                          onChange={() => toggleCapability(capability)}
++                          type="checkbox"
++                        />
++                        <span className="font-mono">{capability}</span>
++                      </label>
++                    )
++                  })}
++                </div>
++              ) : (
++                <p className="text-xs text-(--ui-text-tertiary)">
++                  This inventory item declares no brokered capabilities. Skills are currently inventory-only;
++                  executable access still flows through their tool/runtime boundaries.
++                </p>
++              )}
++            </Panel>
++
++            <Panel title="Trust and scope">
++              {managed ? (
++                <div className="grid gap-3 sm:grid-cols-2">
++                  <label className="text-xs">
++                    <span className="mb-1 block text-(--ui-text-tertiary)">Trust state</span>
++                    <select
++                      className="h-9 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2"
++                      onChange={event => setState(event.currentTarget.value as Exclude<TrustState, 'built-in-verified'>)}
++                      value={state}
++                    >
++                      {MUTABLE_STATES.map(value => (
++                        <option key={value} value={value}>
++                          {value}
++                        </option>
++                      ))}
++                    </select>
++                  </label>
++                  <label className="text-xs">
++                    <span className="mb-1 block text-(--ui-text-tertiary)">Confirmation</span>
++                    <select
++                      className="h-9 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2"
++                      onChange={event => setConfirmation(event.currentTarget.value as TrustConfirmation)}
++                      value={confirmation}
++                    >
++                      {CONFIRMATIONS.map(value => (
++                        <option key={value} value={value}>
++                          {value}
++                        </option>
++                      ))}
++                    </select>
++                  </label>
++                  <label className="text-xs">
++                    <span className="mb-1 block text-(--ui-text-tertiary)">Grant scope</span>
++                    <select
++                      className="h-9 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2"
++                      onChange={event => setScopeKind(event.currentTarget.value as TrustScopeKind)}
++                      value={scopeKind}
++                    >
++                      {SCOPES.map(value => (
++                        <option key={value} value={value}>
++                          {value}
++                        </option>
++                      ))}
++                    </select>
++                  </label>
++                  <label className="text-xs">
++                    <span className="mb-1 block text-(--ui-text-tertiary)">Scope id</span>
++                    <input
++                      className="h-9 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2"
++                      disabled={scopeKind === 'global'}
++                      onChange={event => setScopeId(event.currentTarget.value)}
++                      placeholder={scopeKind === 'global' ? 'Not required' : `${scopeKind} id`}
++                      value={scopeId}
++                    />
++                  </label>
++                  <div className="flex flex-wrap gap-2 sm:col-span-2">
++                    <Button
++                      disabled={busy || (scopeKind !== 'global' && !scopeId)}
++                      onClick={() => void applyPolicy()}
++                      size="sm"
++                    >
++                      <IconCheck className="mr-1.5 size-3.5" />
++                      Save policy
++                    </Button>
++                    <Button
++                      disabled={busy}
++                      onClick={() =>
++                        void applyPolicy({
++                          capabilities: [],
++                          confirmation: 'never',
++                          scope: { kind: 'global' },
++                          state: 'disabled'
++                        })
++                      }
++                      size="sm"
++                      variant="destructive"
++                    >
++                      <IconShieldLock className="mr-1.5 size-3.5" />
++                      Disable now
++                    </Button>
++                  </div>
++                </div>
++              ) : (
++                <div className="flex items-start gap-2 text-xs text-(--ui-text-secondary)">
++                  <IconShieldCheck className="mt-0.5 size-4 text-(--ui-accent)" />
++                  <p>
++                    Skill trust is derived from its installed source and content hash. This surface does not
++                    allow renderer code to promote a skill to built-in or fabricate an approval.
++                  </p>
++                </div>
++              )}
++            </Panel>
++          </div>
++        ) : null}
++      </div>
++
++      <Panel title="Trust activity">
++        <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
++          <div className="space-y-2">
++            {Object.entries(snapshot.auditSummary.counts)
++              .sort(([a], [b]) => a.localeCompare(b))
++              .map(([event, count]) => (
++                <div className="flex justify-between gap-4 text-xs" key={event}>
++                  <span className="font-mono text-(--ui-text-secondary)">{event}</span>
++                  <span>{count}</span>
++                </div>
++              ))}
++          </div>
++          <div className="max-h-64 space-y-2 overflow-auto">
++            {snapshot.auditSummary.recent.length ? (
++              [...snapshot.auditSummary.recent].reverse().map(event => (
++                <div
++                  className="flex items-start gap-2 rounded-md border border-(--ui-stroke-secondary) px-3 py-2 text-xs"
++                  key={event.id}
++                >
++                  {event.outcome === 'denied' || event.outcome === 'failure' ? (
++                    <IconAlertTriangle className="mt-0.5 size-3.5 text-amber-500" />
++                  ) : (
++                    <IconCheck className="mt-0.5 size-3.5 text-emerald-500" />
++                  )}
++                  <div className="min-w-0 flex-1">
++                    <div className="font-mono">{event.eventType}</div>
++                    <div className="mt-0.5 truncate text-(--ui-text-tertiary)">
++                      {String(event.details.integrationId || '')}
++                    </div>
++                  </div>
++                  <time className="text-(--ui-text-tertiary)">
++                    {new Date(event.timestamp).toLocaleTimeString()}
++                  </time>
++                </div>
++              ))
++            ) : (
++              <p className="text-xs text-(--ui-text-tertiary)">No trust activity has been recorded yet.</p>
++            )}
++          </div>
++        </div>
++      </Panel>
++    </div>
++  )
++}
+-- 
+2.51.0
