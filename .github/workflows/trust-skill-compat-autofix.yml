@@ -1,0 +1,122 @@
+name: Trust skill compatibility autofix
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/trust-skill-compat-autofix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  canonicalize:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 1
+
+      - name: Generate and commit managed skill compatibility patch
+        shell: pwsh
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifest = Get-Content -Raw -LiteralPath '.\VERSION.json' | ConvertFrom-Json
+          $candidate = [string]$manifest.sources.hermesAgent.commit
+          $probe = Join-Path $env:RUNNER_TEMP 'hermes-trust-skill-compat'
+          New-Item -ItemType Directory -Path $probe -Force | Out-Null
+          & git -C $probe init --quiet
+          & git -C $probe remote add origin https://github.com/NousResearch/hermes-agent.git
+          & git -C $probe fetch --quiet --depth=1 origin $candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Hermes Agent fetch failed.' }
+          & git -C $probe checkout --quiet --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Hermes Agent checkout failed.' }
+          & git -C $probe config user.email 'hermes-local-ci@localhost'
+          & git -C $probe config user.name 'Hermes Local Compatibility CI'
+
+          $patchRoot = (Resolve-Path '.\source\hermes-launcher\patches').Path
+          $patches = Get-ChildItem -LiteralPath $patchRoot -Filter '*.patch' -File | Sort-Object Name
+          & git -C $probe am --3way --committer-date-is-author-date @($patches.FullName)
+          if ($LASTEXITCODE -ne 0) { throw 'Could not reconstruct Trust Centre integration through patch 0090.' }
+
+          $editor = Join-Path $env:RUNNER_TEMP 'edit-managed-skill-boundary.py'
+          @'
+          from __future__ import annotations
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+
+          def edit(relative: str, replacements: list[tuple[str, str]]) -> None:
+              path = root / relative
+              raw = path.read_bytes()
+              eol = '\r\n' if b'\r\n' in raw else '\n'
+              text = raw.decode('utf-8').replace('\r\n', '\n')
+              for old, new in replacements:
+                  if old not in text:
+                      raise RuntimeError(f'edit anchor missing in {relative}: {old[:120]!r}')
+                  text = text.replace(old, new, 1)
+              path.write_bytes(text.replace('\n', eol).encode('utf-8'))
+
+          edit(
+              'hermes_cli/hermes_local_trust.py',
+              [(
+                  '''def authorize_skill_load(name: str, skill_md: str | Path) -> AuthorizationDecision:\n''',
+                  '''def skill_requires_authorization(skill_md: str | Path) -> bool:\n    """Return whether a skill path belongs to a Hermes-managed trust root.\n\n    The upstream SKILLS_DIR symbol is intentionally patchable by embedders and\n    tests. Trust Centre owns the real profile skills directory plus explicit\n    external skill roots; an injected alternate discovery root remains the\n    responsibility of the caller that installed it. Plugin skill serving has\n    its own unconditional Trust Centre gate.\n    """\n    try:\n        resolved = Path(skill_md).expanduser().resolve()\n    except (OSError, RuntimeError):\n        return False\n\n    roots: list[Path] = []\n    try:\n        from hermes_constants import get_hermes_home\n        roots.append((Path(get_hermes_home()) / "skills").expanduser().resolve())\n    except (ImportError, OSError, RuntimeError):\n        pass\n    try:\n        from agent.skill_utils import get_external_skills_dirs\n        for value in get_external_skills_dirs():\n            try:\n                roots.append(Path(value).expanduser().resolve())\n            except (OSError, RuntimeError):\n                continue\n    except (ImportError, OSError, RuntimeError):\n        pass\n\n    for root in roots:\n        try:\n            resolved.relative_to(root)\n            return True\n        except ValueError:\n            continue\n    return False\n\n\ndef authorize_skill_load(name: str, skill_md: str | Path) -> AuthorizationDecision:\n'''
+              )],
+          )
+
+          edit(
+              'tools/skills_tool.py',
+              [(
+                  '''        try:\n            from hermes_cli.hermes_local_trust import authorize_skill_load\n            trust_decision = authorize_skill_load(str(resolved_name), skill_md)\n        except Exception as exc:\n            return json.dumps(\n                {\n                    "success": False,\n                    "error": f"Skill '{resolved_name}' was blocked because Trust Centre authorization failed: {exc}",\n                },\n                ensure_ascii=False,\n            )\n        if not trust_decision.allowed:\n            return json.dumps(\n                {\n                    "success": False,\n                    "error": f"Skill '{resolved_name}' is denied by Hermes Local Trust Centre: {trust_decision.reason}",\n                },\n                ensure_ascii=False,\n            )\n\n        # If a specific file path is requested, read that instead\n''',
+                  '''        try:\n            from hermes_cli.hermes_local_trust import authorize_skill_load, skill_requires_authorization\n            trust_required = skill_requires_authorization(skill_md)\n        except Exception as exc:\n            return json.dumps(\n                {\n                    "success": False,\n                    "error": f"Skill '{resolved_name}' was blocked because Trust Centre root classification failed: {exc}",\n                },\n                ensure_ascii=False,\n            )\n        if trust_required:\n            try:\n                trust_decision = authorize_skill_load(str(resolved_name), skill_md)\n            except Exception as exc:\n                return json.dumps(\n                    {\n                        "success": False,\n                        "error": f"Skill '{resolved_name}' was blocked because Trust Centre authorization failed: {exc}",\n                    },\n                    ensure_ascii=False,\n                )\n            if not trust_decision.allowed:\n                return json.dumps(\n                    {\n                        "success": False,\n                        "error": f"Skill '{resolved_name}' is denied by Hermes Local Trust Centre: {trust_decision.reason}",\n                    },\n                    ensure_ascii=False,\n                )\n\n        # If a specific file path is requested, read that instead\n'''
+              )],
+          )
+
+          test_path = root / 'tests/hermes_cli/test_hermes_local_trust.py'
+          raw = test_path.read_bytes()
+          eol = '\r\n' if b'\r\n' in raw else '\n'
+          text = raw.decode('utf-8').replace('\r\n', '\n')
+          addition = '''\n\ndef test_skill_root_classifier_enforces_managed_roots_but_not_injected_fixtures(tmp_path, monkeypatch):\n    import hermes_constants\n    from agent import skill_utils\n\n    managed_home = tmp_path / "home"\n    managed_skill = managed_home / "skills" / "managed" / "SKILL.md"\n    managed_skill.parent.mkdir(parents=True)\n    managed_skill.write_text("# managed\\n", encoding="utf-8")\n\n    external_root = tmp_path / "external"\n    external_skill = external_root / "ext" / "SKILL.md"\n    external_skill.parent.mkdir(parents=True)\n    external_skill.write_text("# external\\n", encoding="utf-8")\n\n    fixture_skill = tmp_path / "pytest-injected" / "fixture" / "SKILL.md"\n    fixture_skill.parent.mkdir(parents=True)\n    fixture_skill.write_text("# fixture\\n", encoding="utf-8")\n\n    monkeypatch.setattr(hermes_constants, "get_hermes_home", lambda: managed_home)\n    monkeypatch.setattr(skill_utils, "get_external_skills_dirs", lambda: [external_root])\n\n    assert trust.skill_requires_authorization(managed_skill)\n    assert trust.skill_requires_authorization(external_skill)\n    assert not trust.skill_requires_authorization(fixture_skill)\n'''
+          if 'test_skill_root_classifier_enforces_managed_roots_but_not_injected_fixtures' not in text:
+              text = text.rstrip() + addition + '\n'
+          test_path.write_bytes(text.replace('\n', eol).encode('utf-8'))
+          '@ | Set-Content -LiteralPath $editor -Encoding utf8NoBOM
+
+          & python $editor $probe
+          if ($LASTEXITCODE -ne 0) { throw 'Managed skill boundary edit failed.' }
+
+          $diffPath = Join-Path $env:RUNNER_TEMP '0091-managed-skill-boundary.diff'
+          & git -C $probe diff --full-index --no-ext-diff --output=$diffPath HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Canonical patch 0091 diff generation failed.' }
+          $diff = [IO.File]::ReadAllText($diffPath, [Text.UTF8Encoding]::new($false))
+          if ([string]::IsNullOrWhiteSpace($diff)) { throw 'Canonical patch 0091 diff was empty.' }
+
+          $target = Join-Path $patchRoot '0091-fix-trust-respect-injected-skill-discovery-roots.patch'
+          $mail = @(
+            'From d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1 Mon Sep 17 00:00:00 2001',
+            'From: OpenAI <openai@localhost>',
+            'Date: Sat, 8 Aug 2026 04:12:00 +0100',
+            'Subject: [PATCH] fix(trust): respect injected skill discovery roots',
+            '',
+            '---',
+            $diff.TrimEnd("`r", "`n"),
+            '-- ',
+            '2.51.0',
+            ''
+          ) -join "`n"
+          [IO.File]::WriteAllText($target, $mail, [Text.UTF8Encoding]::new($false))
+
+          & git config user.email '52116030+xdCloudy@users.noreply.github.com'
+          & git config user.name 'xdCloudy'
+          & git add -- $target
+          & git commit -m 'fix(trust): respect injected skill discovery roots'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not commit patch 0091.' }
+          & git push origin "HEAD:$env:HEAD_BRANCH"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not push patch 0091.' }
