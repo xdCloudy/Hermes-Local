@@ -46,7 +46,7 @@ a paid inference API.
 <!-- BEGIN GENERATED STATUS -->
 | Release | Delivery | Repository |
 |---|---|---|
-| **Current build:** v0.18.62<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 29 open · 33 closed<br>**Overall completion:** 53%<br>**Recent commit:** [`12b49c8`](https://github.com/xdCloudy/Hermes-Local/commit/12b49c80cdfd113fe85a4f1269518f246fc7806a) feat: add Skills and MCP Trust Centre (#125) |
+| **Current build:** v0.18.62<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.18.x - Reliability Patch](https://github.com/xdCloudy/Hermes-Local/milestone/5)<br>**Current focus:** Close the remaining model-switch and lifecycle reliability gaps before expanding the control plane.<br>**Next:** Operational Control Plane | **Issues:** 28 open · 34 closed<br>**Overall completion:** 55%<br>**Recent commit:** [`12b49c8`](https://github.com/xdCloudy/Hermes-Local/commit/12b49c80cdfd113fe85a4f1269518f246fc7806a) feat: add Skills and MCP Trust Centre (#125) |
 
 > Status is generated from GitHub issues, milestones, releases and commits.
 <!-- END GENERATED STATUS -->
