@@ -71,7 +71,7 @@ For startup, Hermes Local requires the exact transport grant before it starts a 
 
 For invocation, the integration identity, trust state, principal, scope, active grants and confirmation policy are read again immediately before the call. Explicit deny wins. No matching allow grant means deny.
 
-For skills, built-in verified content is loadable directly. A non-built-in skill must be `reviewed-managed` or `user-trusted` and its stored agent principal plus scope must match the current execution context. The central local `skill_view()` path and plugin-skill serving path both fail closed on Trust Centre authorization failure.
+For skills, built-in verified content is loadable directly. A non-built-in skill must be `reviewed-managed` or `user-trusted` and its stored agent principal plus scope must match the current execution context. The normal local `skill_view()` path enforces this boundary for the active profile skills directory and explicit external skill roots, while plugin-skill serving is always gated. The upstream `SKILLS_DIR` symbol is intentionally replaceable by embedders and tests; an explicitly injected alternate discovery root outside Hermes-managed roots remains the responsibility of the caller that installed it and is not silently adopted as a Hermes Local trust root.
 
 Confirmation is separate from permission. Supported MCP confirmation policies are:
 
