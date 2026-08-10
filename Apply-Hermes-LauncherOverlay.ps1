@@ -180,10 +180,15 @@ function Replace-RequiredLiteral {
         [Parameter(Mandatory)][string] $New,
         [Parameter(Mandatory)][string] $Description
     )
-    $sourceCount = ([regex]::Matches($Text, [regex]::Escape($Old))).Count
-    $appliedCount = ([regex]::Matches($Text, [regex]::Escape($New))).Count
+    $usesCrlf = $Text.Contains("`r`n")
+    $normalizedText = $Text.Replace("`r`n", "`n")
+    $sourceForm = $Old.Replace("`r`n", "`n")
+    $appliedForm = $New.Replace("`r`n", "`n")
+    $sourceCount = ([regex]::Matches($normalizedText, [regex]::Escape($sourceForm))).Count
+    $appliedCount = ([regex]::Matches($normalizedText, [regex]::Escape($appliedForm))).Count
     if ($sourceCount -eq 1) {
-        return $Text.Replace($Old, $New)
+        $updated = $normalizedText.Replace($sourceForm, $appliedForm)
+        return $(if ($usesCrlf) { $updated.Replace("`n", "`r`n") } else { $updated })
     }
     if ($sourceCount -eq 0 -and $appliedCount -eq 1) {
         return $Text
@@ -198,11 +203,15 @@ function Replace-RequiredRegex {
         [Parameter(Mandatory)][string] $Replacement,
         [Parameter(Mandatory)][string] $Description
     )
+    $usesCrlf = $Text.Contains("`r`n")
+    $normalizedText = $Text.Replace("`r`n", "`n")
     $regex = [regex]::new($Pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
-    $sourceCount = $regex.Matches($Text).Count
-    $appliedCount = ([regex]::Matches($Text, [regex]::Escape($Replacement))).Count
+    $appliedForm = $Replacement.Replace("`r`n", "`n")
+    $sourceCount = $regex.Matches($normalizedText).Count
+    $appliedCount = ([regex]::Matches($normalizedText, [regex]::Escape($appliedForm))).Count
     if ($sourceCount -eq 1) {
-        return $regex.Replace($Text, $Replacement, 1)
+        $updated = $regex.Replace($normalizedText, $appliedForm, 1)
+        return $(if ($usesCrlf) { $updated.Replace("`n", "`r`n") } else { $updated })
     }
     if ($sourceCount -eq 0 -and $appliedCount -eq 1) {
         return $Text
@@ -210,7 +219,7 @@ function Replace-RequiredRegex {
     if (
         $sourceCount -eq 0 -and
         $Description -eq 'Hermes Local update poller bypass' -and
-        $Text -notmatch 'window\.hermesDesktop\?\.localWorkstation'
+        $normalizedText -notmatch 'window\.hermesDesktop\?\.localWorkstation'
     ) {
         return $Text
     }

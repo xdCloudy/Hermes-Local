@@ -215,7 +215,10 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
             "expected one source match or one applied match",
             "$sourceCount -eq 0 -and $appliedCount -eq 1",
             "$Description -eq 'Hermes Local update poller bypass'",
-            "$Text -notmatch 'window\\.hermesDesktop\\?\\.localWorkstation'",
+            "$normalizedText -notmatch 'window\\.hermesDesktop\\?\\.localWorkstation'",
+            "$usesCrlf = $Text.Contains(\"`r`n\")",
+            "$normalizedText = $Text.Replace(\"`r`n\", \"`n\")",
+            "$updated.Replace(\"`n\", \"`r`n\")",
         ):
             self.assertIn(required, wrapper)
         text = self.read_embedded("Apply-Hermes-LauncherOverlay.ps1")
