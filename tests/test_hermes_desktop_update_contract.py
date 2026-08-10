@@ -159,6 +159,32 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
             stack_drain.split("function Wait-HermesDesktopLauncherExit", 1)[1],
         )
 
+    def test_candidate_checkout_supports_windows_long_paths_and_recovery(self) -> None:
+        for relative in (
+            "Setup-Hermes-Local.Impl.ps1",
+            "Setup-Hermes-Local.Prebuilt.ps1",
+        ):
+            text = self.read(relative)
+            with self.subTest(relative=relative):
+                self.assertIn("'-c', 'core.longpaths=true'", text)
+                self.assertIn(
+                    "'-C', $Path, 'config', 'core.longpaths', 'true'",
+                    text,
+                )
+
+        reliability = self.read(
+            "scripts/desktop-update/DesktopUpdate-Reliability.ps1"
+        )
+        self.assertIn(
+            "'candidate-source\\source\\hermes-agent'",
+            reliability,
+        )
+        self.assertIn("$sourceIsUpdaterOwned -or", reliability)
+        self.assertIn(
+            "-not (Get-HermesDesktopNestedSourceChanges -Repository $source)",
+            reliability,
+        )
+
     def test_launcher_builder_supports_an_isolated_destination(self) -> None:
         text = self.read("Build-Hermes-Launcher.ps1")
         for required in (

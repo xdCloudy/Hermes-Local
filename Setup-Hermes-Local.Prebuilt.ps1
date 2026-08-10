@@ -70,9 +70,18 @@ function Initialize-SourceCheckout {
     if (-not (Test-Path -LiteralPath (Join-Path $Path '.git'))) {
         [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($Path)) | Out-Null
         Invoke-HermesProcess -FilePath git -ArgumentList @(
+            '-c', 'core.longpaths=true',
             'clone', '--filter=blob:none', '--branch', $Branch, $Repository, $Path
         ) -LogComponent setup
     }
+
+    # Candidate checkouts live below the Desktop updater's staging directory.
+    # Hermes Agent contains tracked paths that exceed the legacy Windows
+    # MAX_PATH limit at that depth, so both clone checkout and every subsequent
+    # Git operation must opt into Git for Windows long-path handling.
+    Invoke-HermesProcess -FilePath git -ArgumentList @(
+        '-C', $Path, 'config', 'core.longpaths', 'true'
+    ) -LogComponent setup
 
     $currentCommit = (@(& git -C $Path rev-parse HEAD) -join [Environment]::NewLine).Trim()
     $currentTree = (@(& git -C $Path rev-parse 'HEAD^{tree}') -join [Environment]::NewLine).Trim()
