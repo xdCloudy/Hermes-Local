@@ -205,6 +205,8 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
             "$idempotentRequiredReplacers",
             "expected one source match or one applied match",
             "$sourceCount -eq 0 -and $appliedCount -eq 1",
+            "$Description -eq 'Hermes Local update poller bypass'",
+            "$Text -notmatch 'window\\.hermesDesktop\\?\\.localWorkstation'",
         ):
             self.assertIn(required, wrapper)
         text = self.read_embedded("Apply-Hermes-LauncherOverlay.ps1")
