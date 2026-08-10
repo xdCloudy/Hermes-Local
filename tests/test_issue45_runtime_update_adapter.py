@@ -11,6 +11,7 @@ class RuntimeUpdateAdapterTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.adapter = (ROOT / "scripts/Hermes-RuntimeUpdateAdapter.psm1").read_text(encoding="utf-8")
+        cls.catalog_impl = (ROOT / "scripts/runtime/Hermes-RuntimeCatalog.ps1").read_text(encoding="utf-8")
         cls.install = (ROOT / "scripts/runtime/Hermes-RuntimeInstall.ps1").read_text(encoding="utf-8")
         cls.recovery = (ROOT / "scripts/runtime/Hermes-RuntimeRecovery.ps1").read_text(encoding="utf-8")
         cls.update_local = (ROOT / "Update-Hermes-Local.ps1").read_text(encoding="utf-8")
@@ -58,7 +59,8 @@ class RuntimeUpdateAdapterTests(unittest.TestCase):
         self.assertLess(payload_smoke, manifest_validation)
         self.assertLess(manifest_validation, retain_active)
         self.assertLess(retain_active, promote)
-        self.assertIn("Published digest", self.install)
+        self.assertIn("does not publish a SHA-256 digest", self.catalog_impl)
+        self.assertIn("does not match the pinned catalog digest", self.catalog_impl)
         self.assertIn("runtime-manifest.json", self.install)
         self.assertIn("provenance = [ordered]@{", self.install)
 
