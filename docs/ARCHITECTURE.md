@@ -165,6 +165,6 @@ The official Agent checkout retains `upstream` and pins upstream commit
 `91937a6dc3ffbbe2f3be91a500f0ecf962c4cf53`. Runtime-only harness commits live
 on `hermes-local-harness`; the 26 ordered mail patches under
 `source\hermes-launcher\patches` reconstruct harness tree
-`456412520ba89bb1711f7a644c1350718b34fab9`. Setup verifies that tree even when
+`557925025d999637c616ee39defe8eacfe135a0a`. Setup verifies that tree even when
 local committer metadata produces a different commit ID. CI rejects any patch
 that touches `apps/desktop`.

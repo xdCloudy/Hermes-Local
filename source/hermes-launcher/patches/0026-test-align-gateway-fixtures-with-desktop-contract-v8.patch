@@ -1,36 +1,47 @@
-From 67ade6a6a9faab4b3b43db00ff376b7fbb2e4f37 Mon Sep 17 00:00:00 2001
+From 2dc860c2cf4754e521fa409fc4882ba6f242e7b8 Mon Sep 17 00:00:00 2001
 From: Cloudy <52116030+xdCloudy@users.noreply.github.com>
 Date: Tue, 11 Aug 2026 00:30:29 +0100
 Subject: [PATCH] test: align gateway fixtures with desktop contract v8
 
 ---
- tests/test_tui_gateway_server.py | 36 ++++++++++++++++++--------------
- 1 file changed, 20 insertions(+), 16 deletions(-)
+ tests/test_tui_gateway_server.py | 37 ++++++++++++++++----------------
+ 1 file changed, 18 insertions(+), 19 deletions(-)
 
 diff --git a/tests/test_tui_gateway_server.py b/tests/test_tui_gateway_server.py
-index 22ed91faf..200c438f1 100644
+index 22ed91faf..2dd4a55fd 100644
 --- a/tests/test_tui_gateway_server.py
 +++ b/tests/test_tui_gateway_server.py
-@@ -911,10 +911,15 @@ def test_write_json_serializes_concurrent_writes(monkeypatch):
+@@ -896,12 +896,12 @@ class _BrokenStdout:
+         return None
+ 
+ 
+-def test_write_json_serializes_concurrent_writes(monkeypatch):
++def test_write_json_serializes_concurrent_writes():
+     out = _ChunkyStdout()
+-    monkeypatch.setattr(server, "_real_stdout", out)
++    transport = server.StdioTransport(lambda: out, threading.Lock())
+ 
+     threads = [
+-        threading.Thread(target=server.write_json, args=({"seq": i, "text": "x" * 24},))
++        threading.Thread(target=transport.write, args=({"seq": i, "text": "x" * 24},))
+         for i in range(8)
+     ]
+ 
+@@ -911,10 +911,10 @@ def test_write_json_serializes_concurrent_writes(monkeypatch):
      for t in threads:
          t.join()
  
 -    lines = "".join(out.parts).splitlines()
-+    payloads = [json.loads(line) for line in "".join(out.parts).splitlines()]
-+    writes = [payload for payload in payloads if "seq" in payload]
++    writes = [json.loads(line) for line in "".join(out.parts).splitlines()]
  
 -    assert len(lines) == 8
 -    assert {json.loads(line)["seq"] for line in lines} == set(range(8))
-+    # A prior asynchronous session event can still reach the module-level
-+    # stdout sink after monkeypatching it.  Every line must remain valid JSON,
-+    # while this assertion is specifically about the eight writes launched by
-+    # this test.
 +    assert len(writes) == 8
 +    assert {payload["seq"] for payload in writes} == set(range(8))
  
  
  def test_write_json_returns_false_on_broken_pipe(monkeypatch):
-@@ -2422,7 +2427,7 @@ def test_session_resume_uses_parent_lineage_for_display(monkeypatch, omit_messag
+@@ -2422,7 +2422,7 @@ def test_session_resume_uses_parent_lineage_for_display(monkeypatch, omit_messag
  
      class FakeDB:
          def get_session(self, target):
@@ -39,7 +50,7 @@ index 22ed91faf..200c438f1 100644
  
          def reopen_session(self, target):
              captured["reopened"] = target
-@@ -2801,6 +2806,7 @@ def test_session_resume_passes_stored_runtime_to_agent(monkeypatch):
+@@ -2801,6 +2801,7 @@ def test_session_resume_passes_stored_runtime_to_agent(monkeypatch):
          def get_session(self, target):
              return {
                  "id": target,
@@ -47,7 +58,7 @@ index 22ed91faf..200c438f1 100644
                  "model": "gpt-5.4",
                  "billing_provider": "openai-codex",
                  "model_config": '{"reasoning_config":{"enabled":true,"effort":"high"},"service_tier":"priority","base_url":"https://custom.example/v1","api_mode":"chat_completions"}',
-@@ -2870,7 +2876,7 @@ def test_session_resume_profile_uses_profile_db_cwd(monkeypatch, tmp_path):
+@@ -2870,7 +2871,7 @@ def test_session_resume_profile_uses_profile_db_cwd(monkeypatch, tmp_path):
  
      class ProfileDB:
          def get_session(self, _target):
@@ -56,7 +67,7 @@ index 22ed91faf..200c438f1 100644
  
          def get_session_by_title(self, _target):
              return None
-@@ -3039,7 +3045,7 @@ def test_session_cwd_set_empty_detaches_profile_session(monkeypatch, tmp_path):
+@@ -3039,7 +3040,7 @@ def test_session_cwd_set_empty_detaches_profile_session(monkeypatch, tmp_path):
          assert resp["result"]["cwd"] == ""
          assert resp["result"]["branch"] == ""
          assert resp["result"]["project"] is None
@@ -65,7 +76,7 @@ index 22ed91faf..200c438f1 100644
          assert session["explicit_cwd"] is False
          assert session["cwd"] == str(Path.home())
          assert captured["cleared"] == "stored-profile-session"
-@@ -5259,11 +5265,8 @@ def test_session_create_reports_an_explicit_desktop_workspace(monkeypatch, tmp_p
+@@ -5259,11 +5260,8 @@ def test_session_create_reports_an_explicit_desktop_workspace(monkeypatch, tmp_p
      monkeypatch.setattr(server, "_schedule_agent_build", lambda *a, **k: None)
      monkeypatch.setattr(server, "_schedule_session_cap_enforcement", lambda: None)
      monkeypatch.setattr(server, "_git_branch_for_cwd", lambda cwd: "feature" if cwd else "")
@@ -79,7 +90,7 @@ index 22ed91faf..200c438f1 100644
  
      resp = server.handle_request(
          {
-@@ -5272,6 +5275,7 @@ def test_session_create_reports_an_explicit_desktop_workspace(monkeypatch, tmp_p
+@@ -5272,6 +5270,7 @@ def test_session_create_reports_an_explicit_desktop_workspace(monkeypatch, tmp_p
              "params": {
                  "cols": 80,
                  "cwd": str(workspace),
@@ -87,7 +98,7 @@ index 22ed91faf..200c438f1 100644
                  "source": "desktop",
              },
          }
-@@ -5282,7 +5286,7 @@ def test_session_create_reports_an_explicit_desktop_workspace(monkeypatch, tmp_p
+@@ -5282,7 +5281,7 @@ def test_session_create_reports_an_explicit_desktop_workspace(monkeypatch, tmp_p
          assert server._sessions[sid]["explicit_cwd"] is True
          assert resp["result"]["info"]["cwd"] == str(workspace)
          assert resp["result"]["info"]["branch"] == "feature"
@@ -96,7 +107,7 @@ index 22ed91faf..200c438f1 100644
      finally:
          server._sessions.pop(sid, None)
  
-@@ -12450,7 +12454,7 @@ def test_session_activate_returns_inflight_stream_before_completion(monkeypatch)
+@@ -12450,7 +12449,7 @@ def test_session_activate_returns_inflight_stream_before_completion(monkeypatch)
      monkeypatch.setattr(server, "make_stream_renderer", lambda cols: None)
      monkeypatch.setattr(server, "render_message", lambda raw, cols: None)
      monkeypatch.setattr(server, "_get_db", lambda: None)
@@ -105,7 +116,7 @@ index 22ed91faf..200c438f1 100644
  
      def _emit(event, sid, payload=None):
          if event == "message.complete":
-@@ -12513,7 +12517,7 @@ def test_session_activate_returns_prompt_queued_during_busy_turn(monkeypatch):
+@@ -12513,7 +12512,7 @@ def test_session_activate_returns_prompt_queued_during_busy_turn(monkeypatch):
      that copy without leaking the transport object.
      """
      monkeypatch.setattr(server, "_load_busy_input_mode", lambda: "queue")
@@ -114,7 +125,7 @@ index 22ed91faf..200c438f1 100644
      agent = types.SimpleNamespace(model="model-live")
      session = _session(
          agent=agent,
-@@ -12546,7 +12550,7 @@ def test_session_activate_returns_prompt_queued_during_busy_turn(monkeypatch):
+@@ -12546,7 +12545,7 @@ def test_session_activate_returns_prompt_queued_during_busy_turn(monkeypatch):
  
  
  def test_session_activate_switches_live_session_without_closing_siblings(monkeypatch):
@@ -123,7 +134,7 @@ index 22ed91faf..200c438f1 100644
      server._sessions["sid-a"] = _session(
          agent=types.SimpleNamespace(model="model-a"),
          history=[{"role": "user", "content": "old"}],
-@@ -12583,7 +12587,7 @@ def test_session_activate_switches_live_session_without_closing_siblings(monkeyp
+@@ -12583,7 +12582,7 @@ def test_session_activate_switches_live_session_without_closing_siblings(monkeyp
  
  
  def test_session_activate_can_omit_duplicate_desktop_transcript(monkeypatch):
