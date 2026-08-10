@@ -6,6 +6,75 @@ Import-Module (Join-Path $PSScriptRoot 'Hermes-Configuration.psm1')
 Import-Module (Join-Path $PSScriptRoot 'Hermes-UpdateOrchestrator.psm1')
 Import-Module (Join-Path $PSScriptRoot 'Hermes-RuntimeManager.psm1')
 
+function Write-HermesRuntimeUpdateStage {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('check', 'compatibility', 'prepare', 'verify', 'backup', 'promote', 'validate', 'rollback')]
+        [string] $Stage,
+        [Parameter(Mandatory)][string] $Message
+    )
+
+    $safeMessage = ([string]$Message).Replace("`r", ' ').Replace("`n", ' ').Trim()
+    Write-Host ("::hermes-update-stage::{0}::{1}" -f $Stage, $safeMessage)
+}
+
+function Get-HermesRuntimeUserProfileSnapshot {
+    [CmdletBinding()]
+    param()
+
+    $path = Resolve-HermesPath 'config\launcher\user-settings.json'
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        return [pscustomobject]@{
+            Path = $path
+            Existed = $true
+            Bytes = [System.IO.File]::ReadAllBytes($path)
+        }
+    }
+
+    [pscustomobject]@{
+        Path = $path
+        Existed = $false
+        Bytes = $null
+    }
+}
+
+function Restore-HermesRuntimeUserProfileSnapshot {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][pscustomobject] $Snapshot)
+
+    $path = [System.IO.Path]::GetFullPath([string]$Snapshot.Path)
+    if ([bool]$Snapshot.Existed) {
+        [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($path)) | Out-Null
+        $temporary = "$path.$PID.$([guid]::NewGuid().ToString('N')).tmp"
+        try {
+            [System.IO.File]::WriteAllBytes($temporary, [byte[]]$Snapshot.Bytes)
+            [System.IO.File]::Move($temporary, $path, $true)
+        } finally {
+            if (Test-Path -LiteralPath $temporary -PathType Leaf) {
+                Remove-Item -LiteralPath $temporary -Force
+            }
+        }
+        return
+    }
+
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        Remove-Item -LiteralPath $path -Force
+    }
+}
+
+function Invoke-HermesRuntimeProfilePreservingAction {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][scriptblock] $Action)
+
+    $profileSnapshot = Get-HermesRuntimeUserProfileSnapshot
+    try {
+        & $Action
+    } finally {
+        Restore-HermesRuntimeUserProfileSnapshot -Snapshot $profileSnapshot
+    }
+}
+
 function Get-HermesRuntimeUpdateDecision {
     [CmdletBinding()]
     param()
@@ -25,6 +94,7 @@ function New-HermesLlamaRuntimeUpdateAdapter {
 
         check = {
             param($Context)
+            Write-HermesRuntimeUpdateStage -Stage check -Message 'Resolving installed and candidate inference-runtime identities.'
             $decision = Get-HermesRuntimeUpdateDecision
             $Context.Working.RuntimeDecision = $decision
             $snapshot = Get-HermesLlamaRuntimeUpdateSnapshot -Decision $decision
@@ -34,6 +104,7 @@ function New-HermesLlamaRuntimeUpdateAdapter {
 
         compatibility = {
             param($Context)
+            Write-HermesRuntimeUpdateStage -Stage compatibility -Message 'Validating hardware, model-format and runtime package compatibility.'
             if ($Context.Mode -eq 'Rollback') {
                 return [ordered]@{
                     compatible = $true
@@ -56,6 +127,7 @@ function New-HermesLlamaRuntimeUpdateAdapter {
 
         prepare = {
             param($Context)
+            Write-HermesRuntimeUpdateStage -Stage prepare -Message 'Preparing isolated staging and retained-runtime locations.'
             $lifecycle = Get-HermesRuntimeLifecyclePaths
             $Context.Working.RuntimeLifecycle = $lifecycle
             [ordered]@{
@@ -67,6 +139,7 @@ function New-HermesLlamaRuntimeUpdateAdapter {
 
         verify = {
             param($Context)
+            Write-HermesRuntimeUpdateStage -Stage verify -Message 'Verifying the currently active runtime before mutation.'
             $lifecycle = if ($Context.Working.ContainsKey('RuntimeLifecycle')) {
                 $Context.Working.RuntimeLifecycle
             } else {
@@ -89,6 +162,7 @@ function New-HermesLlamaRuntimeUpdateAdapter {
 
         backup = {
             param($Context)
+            Write-HermesRuntimeUpdateStage -Stage backup -Message 'Recording the active runtime identity for transactional retention.'
             $snapshot = $Context.Working.RuntimeSnapshot
             [ordered]@{
                 installedIdentity = $snapshot.installedIdentity
@@ -99,9 +173,12 @@ function New-HermesLlamaRuntimeUpdateAdapter {
 
         promote = {
             param($Context)
+            Write-HermesRuntimeUpdateStage -Stage promote -Message 'Verifying, smoke-testing and promoting the staged runtime package.'
             $decision = $Context.Working.RuntimeDecision
             $force = $Context.Input.ContainsKey('Force') -and [bool]$Context.Input.Force
-            $manifest = Install-HermesLlamaRuntime -Decision $decision -Force:$force
+            $manifest = Invoke-HermesRuntimeProfilePreservingAction -Action {
+                Install-HermesLlamaRuntime -Decision $decision -Force:$force
+            }
             $Context.Working.RuntimePromoted = $true
             $Context.Working.PromotedIdentity = Get-HermesRuntimeManifestIdentity -Manifest $manifest
             $lifecycle = $Context.Working.RuntimeLifecycle
@@ -115,11 +192,13 @@ function New-HermesLlamaRuntimeUpdateAdapter {
                 identity = $Context.Working.PromotedIdentity
                 previousIdentity = $(if ($state) { $state.previousIdentity } else { $null })
                 previousPath = $(if ($state) { [string]$state.previousPath } else { $null })
+                userProfilePreserved = $true
             }
         }
 
         validate = {
             param($Context)
+            Write-HermesRuntimeUpdateStage -Stage validate -Message 'Running post-promotion runtime integrity and backend smoke validation.'
             $validation = Test-HermesManagedLlamaRuntime -SmokeTest
             if ($Context.Mode -eq 'Rollback') {
                 # Restore-HermesLlamaRuntime already smoke-tests and validates the retained
@@ -134,6 +213,7 @@ function New-HermesLlamaRuntimeUpdateAdapter {
                     managed = [bool]$validation.Managed
                     identity = $validation.Identity
                     integrity = $(if ($validation.Managed) { 'verified' } else { 'legacy-source-build' })
+                    userProfilePreserved = $true
                 }
             }
             if (-not $validation.Valid) {
@@ -147,26 +227,32 @@ function New-HermesLlamaRuntimeUpdateAdapter {
                 validated = $true
                 identity = $validation.Identity
                 integrity = 'verified'
+                userProfilePreserved = $true
             }
         }
 
         rollback = {
             param($Context)
+            Write-HermesRuntimeUpdateStage -Stage rollback -Message 'Restoring the retained runtime after compatibility and integrity revalidation.'
             if ($Context.Mode -ne 'Rollback' -and
                 (-not $Context.Working.ContainsKey('RuntimePromoted') -or -not [bool]$Context.Working.RuntimePromoted)) {
                 return [ordered]@{
                     performed = $false
                     activePreserved = $true
+                    userProfilePreserved = $true
                     reason = 'Package promotion had not completed; the active runtime was not mutated.'
                 }
             }
-            $restored = Restore-HermesLlamaRuntime
+            $restored = Invoke-HermesRuntimeProfilePreservingAction -Action {
+                Restore-HermesLlamaRuntime
+            }
             $Context.Working.RuntimePromoted = $false
             [ordered]@{
                 performed = $true
                 restoredIdentity = $restored.installedIdentity
                 displacedPath = $restored.previousPath
                 integrityState = $restored.integrityState
+                userProfilePreserved = $true
             }
         }
     }
