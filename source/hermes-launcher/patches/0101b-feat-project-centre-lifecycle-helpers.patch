@@ -1,0 +1,200 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Hermes Local Integration <hermes-local-ci@localhost>
+Date: Mon, 10 Aug 2026 21:11:00 +0100
+Subject: [PATCH] feat(projects): add safe project lifecycle helpers
+
+Keep clone and destructive filesystem behaviour behind backend helpers that
+operate only on stable registry state.
+
+diff --git a/hermes_cli/project_lifecycle.py b/hermes_cli/project_lifecycle.py
+new file mode 100644
+--- /dev/null
++++ b/hermes_cli/project_lifecycle.py
+@@ -0,0 +1,187 @@
++"""Safe Project Centre lifecycle helpers.
++
++Filesystem-destructive operations live here so renderer RPCs can only act on
++paths already registered to a stable Project. Registration removal is handled
++separately by the caller and never implies file deletion.
++"""
++
++from __future__ import annotations
++
++import os
++import shutil
++import subprocess
++from pathlib import Path
++
++from hermes_cli import projects_db as pdb
++from hermes_cli.sqlite_util import write_txn
++
++_PIN_META_PREFIX = "project.pinned."
++
++
++def _pin_key(project_id: str) -> str:
++    return f"{_PIN_META_PREFIX}{project_id}"
++
++
++def list_pinned_project_ids(conn) -> list[str]:
++    """Return pinned ids that still resolve to registered Projects."""
++    rows = conn.execute(
++        "SELECT key FROM project_meta WHERE key LIKE ? ORDER BY key ASC",
++        (f"{_PIN_META_PREFIX}%",),
++    ).fetchall()
++    pinned: list[str] = []
++    for row in rows:
++        project_id = str(row["key"])[len(_PIN_META_PREFIX) :]
++        if project_id and pdb.get_project(conn, project_id) is not None:
++            pinned.append(project_id)
++    return pinned
++
++
++def set_project_pinned(conn, project_id: str, pinned: bool) -> None:
++    if pdb.get_project(conn, project_id) is None:
++        raise ValueError(f"no such project: {project_id}")
++    key = _pin_key(project_id)
++    with write_txn(conn):
++        if pinned:
++            conn.execute(
++                "INSERT INTO project_meta (key, value) VALUES (?, '1') "
++                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
++                (key,),
++            )
++        else:
++            conn.execute("DELETE FROM project_meta WHERE key = ?", (key,))
++
++
++def clear_project_pin(conn, project_id: str) -> None:
++    with write_txn(conn):
++        conn.execute("DELETE FROM project_meta WHERE key = ?", (_pin_key(project_id),))
++
++
++def _clone_directory_name(repository_url: str) -> str:
++    candidate = repository_url.rstrip("/\\").rsplit("/", 1)[-1]
++    if ":" in candidate and "/" not in repository_url.rstrip("/\\"):
++        candidate = candidate.rsplit(":", 1)[-1]
++    if candidate.lower().endswith(".git"):
++        candidate = candidate[:-4]
++    candidate = candidate.strip()
++    if not candidate:
++        raise ValueError("repository URL does not contain a usable directory name")
++    return candidate
++
++
++def _safe_child_name(value: str) -> str:
++    name = str(value or "").strip()
++    if not name or name in {".", ".."} or Path(name).name != name or "/" in name or "\\" in name:
++        raise ValueError("clone directory must be a single directory name")
++    return name
++
++
++def clone_project(
++    conn,
++    *,
++    repository_url: str,
++    parent_path: str,
++    name: str,
++    directory_name: str | None = None,
++):
++    """Clone a repository and register it as one stable Project.
++
++    If registration fails after Git succeeds, only the freshly-created clone is
++    rolled back; pre-existing user paths are never touched.
++    """
++    url = str(repository_url or "").strip()
++    project_name = str(name or "").strip()
++    if not url:
++        raise ValueError("repository URL must not be empty")
++    if not project_name:
++        raise ValueError("project name must not be empty")
++
++    parent = Path(str(parent_path or "").strip()).expanduser().absolute()
++    if not parent.is_dir():
++        raise ValueError(f"clone destination parent does not exist: {parent}")
++
++    child = _safe_child_name(directory_name or _clone_directory_name(url))
++    target = parent / child
++    if target.exists() or target.is_symlink():
++        raise ValueError(f"clone destination already exists: {target}")
++
++    subprocess.run(
++        ["git", "clone", "--", url, str(target)],
++        cwd=str(parent),
++        check=True,
++        capture_output=True,
++        text=True,
++    )
++
++    try:
++        project_id = pdb.create_project(
++            conn,
++            name=project_name,
++            folders=[str(target)],
++            primary_path=str(target),
++            repository_id=url,
++        )
++    except Exception:
++        if target.is_symlink():
++            target.unlink()
++        elif target.is_dir():
++            shutil.rmtree(target)
++        elif target.exists():
++            target.unlink()
++        raise
++
++    project = pdb.get_project(conn, project_id)
++    if project is None:
++        raise RuntimeError("cloned project registration disappeared")
++    return project
++
++
++def delete_confirmation(project) -> str:
++    return f"DELETE {project.name}"
++
++
++def _registered_delete_targets(project) -> list[Path]:
++    """Normalize and validate only paths persisted on this Project."""
++    home = Path.home().expanduser().absolute()
++    result: list[Path] = []
++    seen: set[str] = set()
++
++    for folder in project.folders:
++        raw = str(folder.path or "").strip()
++        if not raw:
++            continue
++        path = Path(raw).expanduser().absolute()
++        key = os.path.normcase(os.path.normpath(str(path)))
++        if key in seen:
++            continue
++        seen.add(key)
++
++        anchor = Path(path.anchor).absolute() if path.anchor else None
++        if anchor is not None and os.path.normcase(str(path)) == os.path.normcase(str(anchor)):
++            raise ValueError(f"refusing to delete a filesystem root: {path}")
++        if os.path.normcase(str(path)) == os.path.normcase(str(home)):
++            raise ValueError(f"refusing to delete the user home directory: {path}")
++        result.append(path)
++
++    if not result:
++        raise ValueError("project has no registered folders to delete")
++    return result
++
++
++def delete_registered_files(project, confirmation: str) -> list[str]:
++    """Delete registered project folders only after exact typed confirmation."""
++    expected = delete_confirmation(project)
++    if confirmation != expected:
++        raise ValueError(f"confirmation must exactly match: {expected}")
++
++    deleted: list[str] = []
++    for path in _registered_delete_targets(project):
++        if path.is_symlink():
++            path.unlink()
++            deleted.append(str(path))
++        elif path.is_dir():
++            shutil.rmtree(path)
++            deleted.append(str(path))
++        elif path.exists():
++            path.unlink()
++            deleted.append(str(path))
++    return deleted

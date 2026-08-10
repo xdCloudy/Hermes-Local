@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Hermes Local Integration <hermes-local-ci@localhost>
+Date: Mon, 10 Aug 2026 21:10:10 +0100
+Subject: [PATCH] feat(projects): add Project Centre payload helper
+
+diff --git a/tui_gateway/server.py b/tui_gateway/server.py
+--- a/tui_gateway/server.py
++++ b/tui_gateway/server.py
+@@ -11181,6 +11181,14 @@ def _projects_payload(conn) -> dict:
+         "active_id": pdb.get_active_id(conn),
+     }
+ 
++
++def _project_centre_payload(conn) -> dict:
++    from hermes_cli import project_lifecycle
++
++    payload = _projects_payload(conn)
++    payload["pinned_ids"] = project_lifecycle.list_pinned_project_ids(conn)
++    return payload
++
+ 
+ def _projects_method(name: str):
+     """Register a projects RPC, injecting (pdb, conn) and unifying error mapping.

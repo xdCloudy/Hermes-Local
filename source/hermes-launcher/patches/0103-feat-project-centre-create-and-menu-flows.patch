@@ -1,0 +1,111 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Hermes Local Integration <hermes-local-ci@localhost>
+Date: Mon, 10 Aug 2026 21:14:00 +0100
+Subject: [PATCH] feat(desktop): wire Project Centre lifecycle menu
+
+Expose Project Centre and non-destructive lifecycle actions from the existing
+project controls without coupling the Centre to the legacy create dialog.
+
+diff --git a/apps/desktop/src/app/chat/sidebar/projects/project-menu.tsx b/apps/desktop/src/app/chat/sidebar/projects/project-menu.tsx
+--- a/apps/desktop/src/app/chat/sidebar/projects/project-menu.tsx
++++ b/apps/desktop/src/app/chat/sidebar/projects/project-menu.tsx
+@@ -24,9 +24,13 @@
+ import {
++  $pinnedProjectIds,
+   copyPath,
+-  deleteProject,
+   openProjectAddFolder,
++  openProjectCentre,
+   openProjectRename,
++  removeProjectRegistration,
+   revealPath,
+   setActiveProject,
+-  setProjectAppearance
++  setProjectAppearance,
++  setProjectArchived,
++  setProjectPinned
+ } from '@/store/projects'
+@@ -55,3 +55,5 @@
+   const { t } = useI18n()
+   const p = t.sidebar.projects
++  const pinnedProjectIds = useStore($pinnedProjectIds)
++  const pinned = pinnedProjectIds.has(project.id)
+   const target = { id: project.id, name: project.label }
+@@ -72,7 +72,7 @@
+   const confirmDelete = async () => {
+-    await deleteProject(project.id)
++    await removeProjectRegistration(project.id)
+ 
+     if (scoped) {
+       onExitScope?.()
+     }
+   }
+@@ -85,18 +85,42 @@
+   const identityItems: ActionItemSpec[] = project.isAuto
+     ? []
+     : [
+         { icon: 'edit', key: 'rename', label: p.menuRename, onSelect: () => openProjectRename(target) },
++        {
++          icon: 'pin',
++          key: 'pin',
++          label: pinned ? 'Unpin project' : 'Pin project',
++          onSelect: () => void setProjectPinned(project.id, !pinned)
++        },
+         {
+           icon: 'new-folder',
+           key: 'add-folder',
+           label: p.menuAddFolder,
+           onSelect: () => openProjectAddFolder(target)
+         },
+         {
+           disabled: isActive,
+           icon: 'target',
+           key: 'set-active',
+           label: p.menuSetActive,
+           onSelect: () => void setActiveProject(project.id)
++        },
++        {
++          icon: 'archive',
++          key: 'archive',
++          label: 'Archive project',
++          onSelect: () => {
++            void setProjectArchived(project.id, true).then(() => {
++              if (scoped) {
++                onExitScope?.()
++              }
++            })
++          }
++        },
++        {
++          icon: 'folder',
++          key: 'project-centre',
++          label: 'Open Project Centre',
++          onSelect: openProjectCentre
+         }
+       ]
+@@ -130,19 +130,19 @@
+     : {
+-        icon: 'trash',
+-        key: 'delete',
+-        label: `${p.menuDelete}…`,
++        icon: 'remove-close',
++        key: 'remove-registration',
++        label: 'Remove project…',
+         onSelect: () => setConfirmDeleteOpen(true),
+         variant: 'destructive'
+       }
+ 
+   const confirmDialog = (
+     <ConfirmDialog
+-      confirmLabel={p.menuDelete}
+-      description={p.deleteConfirm}
++      confirmLabel="Remove registration"
++      description="This removes the Project Centre registration only. Files and Git repositories remain on disk."
+       destructive
+       onClose={() => setConfirmDeleteOpen(false)}
+       onConfirm={confirmDelete}
+       open={confirmDeleteOpen}
+-      title={`${p.menuDelete} "${project.label}"?`}
++      title={`Remove "${project.label}" from Project Centre?`}
+     />
+   )

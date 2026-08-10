@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Hermes Local Integration <hermes-local-ci@localhost>
+Date: Mon, 10 Aug 2026 21:19:00 +0100
+Subject: [PATCH] feat(desktop): wire Project Centre create dialog
+
+Keep creation inside Project Centre so the legacy project dialog remains
+untouched while empty, attach, and clone flows share the Centre registry.
+
+diff --git a/apps/desktop/src/app/chat/sidebar/project-centre-dialog.tsx b/apps/desktop/src/app/chat/sidebar/project-centre-dialog.tsx
+--- a/apps/desktop/src/app/chat/sidebar/project-centre-dialog.tsx
++++ b/apps/desktop/src/app/chat/sidebar/project-centre-dialog.tsx
+@@ -21,7 +21,6 @@ import {
+   $projects,
+   closeProjectCentre,
+   deleteProjectFiles,
+-  openProjectCreate,
+   pickProjectFolder,
+   recoverProjectPath,
+   refreshProjectCentre,
+@@ -32,6 +31,8 @@ import {
+ } from '@/store/projects'
+ import type { ProjectInfo } from '@/types/hermes'
+ 
++import { ProjectCentreCreateDialog } from './project-centre-create-dialog'
++
+ type ProjectFilter = 'active' | 'all' | 'archived' | 'pinned'
+ 
+ const FILTERS: Array<{ id: ProjectFilter; label: string }> = [
+@@ -70,6 +71,7 @@ export function ProjectCentreDialog() {
+   const [query, setQuery] = useState('')
+   const [filter, setFilter] = useState<ProjectFilter>('all')
+   const [busyId, setBusyId] = useState<null | string>(null)
++  const [createOpen, setCreateOpen] = useState(false)
+   const [removeTarget, setRemoveTarget] = useState<null | ProjectInfo>(null)
+   const [deleteTarget, setDeleteTarget] = useState<null | ProjectInfo>(null)
+   const [deleteConfirmation, setDeleteConfirmation] = useState('')
+@@ -176,8 +178,7 @@ export function ProjectCentreDialog() {
+   }
+ 
+   const startCreate = () => {
+-    closeProjectCentre()
+-    openProjectCreate()
++    setCreateOpen(true)
+   }
+ 
+   return (
+@@ -337,6 +338,8 @@ export function ProjectCentreDialog() {
+         title={`Remove "${removeTarget?.name ?? 'project'}"?`}
+       />
+ 
++      <ProjectCentreCreateDialog onOpenChange={setCreateOpen} open={createOpen} />
++
+       <Dialog
+         onOpenChange={next => {
+           if (!next) {
