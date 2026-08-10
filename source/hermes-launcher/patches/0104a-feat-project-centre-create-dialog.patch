@@ -10,7 +10,7 @@ diff --git a/apps/desktop/src/app/chat/sidebar/project-centre-create-dialog.tsx 
 new file mode 100644
 --- /dev/null
 +++ b/apps/desktop/src/app/chat/sidebar/project-centre-create-dialog.tsx
-@@ -0,0 +1,207 @@
+@@ -0,0 +1,209 @@
 +import { useEffect, useMemo, useState } from 'react'
 +
 +import { Button } from '@/components/ui/button'
