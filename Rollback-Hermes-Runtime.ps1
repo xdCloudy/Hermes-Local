@@ -12,11 +12,21 @@ try {
     Initialize-HermesLayout
     Set-HermesProcessEnvironment
 
+    $options = @{}
+    $desktopTaskId = [Environment]::GetEnvironmentVariable('HERMES_LOCAL_TASK_ID')
+    if ($desktopTaskId) {
+        if ($desktopTaskId -notmatch '^[0-9a-fA-F-]{16,64}$') {
+            throw 'HERMES_LOCAL_TASK_ID contains an invalid task identity.'
+        }
+        $options.TaskId = $desktopTaskId
+    }
+    $caller = if ($desktopTaskId) { 'Desktop' } else { 'Recovery' }
+
     $result = Invoke-HermesUpdateOperation `
         -Mode Rollback `
         -Component LlamaCpp `
-        -Caller Recovery `
-        -Input @{}
+        -Caller $caller `
+        -Input $options
     if ($result.status -ne 'succeeded') {
         throw "Hermes runtime rollback failed. State: $($result.statePath)"
     }
