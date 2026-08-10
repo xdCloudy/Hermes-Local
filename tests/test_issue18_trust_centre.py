@@ -7,29 +7,40 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PATCH_ROOT = ROOT / "source" / "hermes-launcher" / "patches"
-PATCH_NAMES = [
-    "0079-feat-agent-enforce-managed-MCP-trust-policy.patch",
-    "0080-fix-agent-align-trust-records-with-shared-schema.patch",
-    "0081-feat-agent-sync-MCP-trust-identities.patch",
-    "0081b-feat-agent-gate-MCP-startup-and-invocation.patch",
-    "0081c-test-agent-cover-managed-MCP-trust-policy.patch",
-    "0082-feat-desktop-add-native-Trust-Centre-bridge.patch",
-    "0083-test-desktop-cover-native-Trust-Centre-bridge.patch",
-    "0084-feat-desktop-model-Trust-Centre-view-types.patch",
-    "0085-feat-desktop-wire-native-Trust-Centre-IPC.patch",
-    "0086-feat-desktop-build-Skills-and-MCP-Trust-Centre.patch",
-    "0087-feat-desktop-route-Trust-Centre.patch",
-    "0088-fix-trust-harden-identities-and-manage-skill-access.patch",
-    "0089-test-trust-cover-source-bound-skills-and-agent-scopes.patch",
-    "0090-fix-trust-complete-user-scope-and-local-confirmation.patch",
-    "0091-fix-trust-respect-injected-skill-discovery-roots.patch",
-    "0092-style-desktop-satisfy-Trust-Centre-lint-rules.patch",
+HARNESS_PATCH_NAMES = [
+    "0007-feat-agent-enforce-managed-MCP-trust-policy.patch",
+    "0008-fix-agent-align-trust-records-with-shared-schema.patch",
+    "0009-feat-agent-sync-MCP-trust-identities.patch",
+    "0010-feat-agent-gate-MCP-startup-and-invocation.patch",
+    "0011-test-agent-cover-managed-MCP-trust-policy.patch",
+    "0012-fix-trust-harden-identities-and-manage-skill-access.patch",
+    "0013-test-trust-cover-source-bound-skills-and-agent-scopes.patch",
+    "0014-fix-trust-complete-user-scope-and-local-confirmation.patch",
+    "0015-fix-trust-respect-injected-skill-discovery-roots.patch",
 ]
+CLIENT_BRIDGE = ROOT / "apps" / "desktop" / "electron" / "hermes-local-trust-centre.ts"
+CLIENT_BRIDGE_TEST = ROOT / "apps" / "desktop" / "electron" / "hermes-local-trust-centre.test.ts"
+CLIENT_TRUST_UI = ROOT / "apps" / "desktop" / "src" / "app" / "local-workstation" / "trust-centre.tsx"
+CLIENT_WORKSTATION = ROOT / "apps" / "desktop" / "src" / "app" / "local-workstation" / "index.tsx"
+CLIENT_PRELOAD = ROOT / "apps" / "desktop" / "electron" / "preload.ts"
 HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
 
-def patch_text() -> str:
-    return "\n".join((PATCH_ROOT / name).read_text(encoding="utf-8") for name in PATCH_NAMES)
+def harness_patch_text() -> str:
+    return "\n".join((PATCH_ROOT / name).read_text(encoding="utf-8") for name in HARNESS_PATCH_NAMES)
+
+
+def client_trust_text() -> str:
+    return "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (
+            CLIENT_BRIDGE,
+            CLIENT_BRIDGE_TEST,
+            CLIENT_TRUST_UI,
+            CLIENT_WORKSTATION,
+            CLIENT_PRELOAD,
+        )
+    )
 
 
 def hunk_count_errors(text: str) -> list[str]:
@@ -73,8 +84,8 @@ def hunk_count_errors(text: str) -> list[str]:
 
 
 class TrustCentreContractTests(unittest.TestCase):
-    def test_patch_series_is_present_and_mail_boundaries_are_not_embedded(self) -> None:
-        for name in PATCH_NAMES:
+    def test_harness_trust_patch_series_is_present_and_mail_boundaries_are_not_embedded(self) -> None:
+        for name in HARNESS_PATCH_NAMES:
             with self.subTest(name=name):
                 path = PATCH_ROOT / name
                 self.assertTrue(path.is_file())
@@ -83,14 +94,14 @@ class TrustCentreContractTests(unittest.TestCase):
                 self.assertNotIn("\n+diff --git ", text)
                 self.assertNotIn("\n diff --git ", text)
 
-    def test_patch_hunk_counts_are_internally_consistent(self) -> None:
-        for name in PATCH_NAMES:
+    def test_harness_trust_patch_hunk_counts_are_internally_consistent(self) -> None:
+        for name in HARNESS_PATCH_NAMES:
             with self.subTest(name=name):
                 errors = hunk_count_errors((PATCH_ROOT / name).read_text(encoding="utf-8"))
                 self.assertEqual([], errors, "\n".join(errors))
 
     def test_native_authority_is_default_deny_and_source_bound(self) -> None:
-        text = patch_text()
+        text = harness_patch_text()
         for marker in (
             "integration identity is missing",
             "capability is unknown or undeclared",
@@ -108,7 +119,7 @@ class TrustCentreContractTests(unittest.TestCase):
                 self.assertIn(marker, text)
 
     def test_renderer_cannot_submit_principal_or_manifest_authority(self) -> None:
-        bridge = (PATCH_ROOT / PATCH_NAMES[5]).read_text(encoding="utf-8")
+        bridge = CLIENT_BRIDGE.read_text(encoding="utf-8")
         policy_shape = bridge.split("export interface TrustPolicyInput", 1)[1].split("function localRoot", 1)[0]
         self.assertIn("integrationId", policy_shape)
         self.assertIn("capabilities", policy_shape)
@@ -120,12 +131,7 @@ class TrustCentreContractTests(unittest.TestCase):
                 self.assertNotIn(forbidden, policy_shape)
 
     def test_delegation_revocation_and_health_invariants_are_covered(self) -> None:
-        tests = (
-            (PATCH_ROOT / PATCH_NAMES[4]).read_text(encoding="utf-8")
-            + (PATCH_ROOT / PATCH_NAMES[12]).read_text(encoding="utf-8")
-            + (PATCH_ROOT / PATCH_NAMES[13]).read_text(encoding="utf-8")
-            + (PATCH_ROOT / PATCH_NAMES[14]).read_text(encoding="utf-8")
-        )
+        tests = harness_patch_text()
         for marker in (
             "test_delegated_child_does_not_inherit_main_agent_grant",
             "test_source_change_and_capability_expansion_suspend_old_grants",
@@ -145,7 +151,7 @@ class TrustCentreContractTests(unittest.TestCase):
                 self.assertIn(marker, tests)
 
     def test_skills_are_native_managed_and_fail_closed(self) -> None:
-        text = patch_text()
+        text = harness_patch_text()
         for marker in (
             "sync_skill_identity",
             "authorize_skill_load",
@@ -160,19 +166,19 @@ class TrustCentreContractTests(unittest.TestCase):
                 self.assertIn(marker, text)
 
     def test_native_bridge_uses_minimal_child_environment(self) -> None:
-        bridge = (PATCH_ROOT / PATCH_NAMES[5]).read_text(encoding="utf-8")
+        bridge = CLIENT_BRIDGE.read_text(encoding="utf-8")
         self.assertIn("trustCliEnvironment", bridge)
         self.assertIn("HERMES_LOCAL_ROOT", bridge)
         self.assertIn("HERMES_HOME", bridge)
         self.assertNotIn("...process.env", bridge)
-        test_patch = (PATCH_ROOT / PATCH_NAMES[6]).read_text(encoding="utf-8")
-        self.assertIn("OPENAI_API_KEY", test_patch)
-        self.assertIn("toBeUndefined", test_patch)
+        test_source = CLIENT_BRIDGE_TEST.read_text(encoding="utf-8")
+        self.assertIn("OPENAI_API_KEY", test_source)
+        self.assertIn("toBeUndefined", test_source)
 
-    def test_trust_centre_route_and_controls_are_wired(self) -> None:
-        text = patch_text()
+    def test_trust_centre_route_and_controls_are_wired_from_root_client(self) -> None:
+        text = client_trust_text()
         for marker in (
-            "TRUST_ROUTE = '/trust'",
+            "section === 'trust'",
             "Skills and MCP Trust Centre",
             "Declared capabilities",
             "Save policy",
