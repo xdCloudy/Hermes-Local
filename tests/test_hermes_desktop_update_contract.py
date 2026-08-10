@@ -200,6 +200,13 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
     def test_overlay_replaces_dead_end_and_restores_source(self) -> None:
         wrapper = self.read("Apply-Hermes-LauncherOverlay.ps1")
         self.assertIn("GzipStream", wrapper)
+        for required in (
+            "$strictRequiredReplacers",
+            "$idempotentRequiredReplacers",
+            "expected one source match or one applied match",
+            "$sourceCount -eq 0 -and $appliedCount -eq 1",
+        ):
+            self.assertIn(required, wrapper)
         text = self.read_embedded("Apply-Hermes-LauncherOverlay.ps1")
         for required in (
             "checkHermesLocalDesktopUpdates",
