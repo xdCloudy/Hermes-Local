@@ -69,6 +69,7 @@ function Remove-HermesDesktopCandidateWorktree {
     }
 
     $remove = Invoke-HermesDesktopGit -Arguments @(
+        '-c', 'core.longpaths=true',
         'worktree', 'remove', '--force', [IO.Path]::GetFullPath($CandidateRoot)
     ) -AllowFailure
     if ($remove.ExitCode -eq 0) {

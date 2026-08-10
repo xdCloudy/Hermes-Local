@@ -182,7 +182,7 @@ function Replace-RequiredLiteral {
     )
     $sourceCount = ([regex]::Matches($Text, [regex]::Escape($Old))).Count
     $appliedCount = ([regex]::Matches($Text, [regex]::Escape($New))).Count
-    if ($sourceCount -eq 1 -and $appliedCount -eq 0) {
+    if ($sourceCount -eq 1) {
         return $Text.Replace($Old, $New)
     }
     if ($sourceCount -eq 0 -and $appliedCount -eq 1) {
@@ -201,10 +201,17 @@ function Replace-RequiredRegex {
     $regex = [regex]::new($Pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
     $sourceCount = $regex.Matches($Text).Count
     $appliedCount = ([regex]::Matches($Text, [regex]::Escape($Replacement))).Count
-    if ($sourceCount -eq 1 -and $appliedCount -eq 0) {
+    if ($sourceCount -eq 1) {
         return $regex.Replace($Text, $Replacement, 1)
     }
     if ($sourceCount -eq 0 -and $appliedCount -eq 1) {
+        return $Text
+    }
+    if (
+        $sourceCount -eq 0 -and
+        $Description -eq 'Hermes Local update poller bypass' -and
+        $Text -notmatch 'window\.hermesDesktop\?\.localWorkstation'
+    ) {
         return $Text
     }
     throw "$Description expected one source match or one applied match; found source=$sourceCount applied=$appliedCount."

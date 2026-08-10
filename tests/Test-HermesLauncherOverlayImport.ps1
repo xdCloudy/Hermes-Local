@@ -255,6 +255,36 @@ if ((Replace-RequiredRegex -Text $literalSource -Pattern '^before$' -Replacement
 if ((Replace-RequiredRegex -Text $literalApplied -Pattern '^before$' -Replacement 'after' -Description 'regex probe') -ne 'after') {
     throw 'Idempotent regex replacement rejected the already-applied form.'
 }
+$newlineSource = "before`none`ntwo"
+$newlineApplied = Replace-RequiredRegex `
+    -Text $newlineSource `
+    -Pattern '^before' `
+    -Replacement "`n" `
+    -Description 'newline source probe'
+if ($newlineApplied -ne "`n`none`ntwo") {
+    throw 'Regex replacement rejected a valid source match because its replacement was non-unique.'
+}
+$pollerApplied = 'export function startUpdatePoller() { return }'
+if ((Replace-RequiredRegex `
+    -Text $pollerApplied `
+    -Pattern 'window\.hermesDesktop\?\.localWorkstation' `
+    -Replacement "`n" `
+    -Description 'Hermes Local update poller bypass') -ne $pollerApplied) {
+    throw 'Poller bypass replacement rejected the semantically already-applied form.'
+}
+$pollerDivergenceRejected = $false
+try {
+    $null = Replace-RequiredRegex `
+        -Text 'if (window.hermesDesktop?.localWorkstation) { changedUpstreamCode() }' `
+        -Pattern 'original pattern that no longer matches' `
+        -Replacement "`n" `
+        -Description 'Hermes Local update poller bypass'
+} catch {
+    $pollerDivergenceRejected = $true
+}
+if (-not $pollerDivergenceRejected) {
+    throw 'Poller bypass replacement accepted a divergent local-workstation block.'
+}
 $divergenceRejected = $false
 try {
     $null = Replace-RequiredLiteral -Text 'different' -Old 'before' -New 'after' -Description 'literal probe'

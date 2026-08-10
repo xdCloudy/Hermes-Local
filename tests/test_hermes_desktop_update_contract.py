@@ -185,6 +185,15 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
             reliability,
         )
 
+        updater_git = self.read(
+            "scripts/desktop-update/DesktopUpdate-Git.ps1"
+        )
+        candidate_removal = updater_git.split(
+            "function Remove-HermesDesktopCandidateWorktree", 1
+        )[1]
+        self.assertIn("'-c', 'core.longpaths=true'", candidate_removal)
+        self.assertIn("'worktree', 'remove', '--force'", candidate_removal)
+
     def test_launcher_builder_supports_an_isolated_destination(self) -> None:
         text = self.read("Build-Hermes-Launcher.ps1")
         for required in (
@@ -205,6 +214,8 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
             "$idempotentRequiredReplacers",
             "expected one source match or one applied match",
             "$sourceCount -eq 0 -and $appliedCount -eq 1",
+            "$Description -eq 'Hermes Local update poller bypass'",
+            "$Text -notmatch 'window\\.hermesDesktop\\?\\.localWorkstation'",
         ):
             self.assertIn(required, wrapper)
         text = self.read_embedded("Apply-Hermes-LauncherOverlay.ps1")
