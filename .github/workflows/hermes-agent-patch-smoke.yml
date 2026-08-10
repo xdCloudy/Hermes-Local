@@ -127,7 +127,7 @@ jobs:
 
             Push-Location $source
             try {
-              & uv run pytest tests/hermes_cli/test_hermes_local_trust.py -q
+              & uv run pytest tests/hermes_cli/test_hermes_local_trust.py tests/hermes_cli/test_project_centre_flows.py -q
               $focusedTestExit = $LASTEXITCODE
             } finally {
               Pop-Location
