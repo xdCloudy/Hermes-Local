@@ -482,10 +482,27 @@ function Invoke-HermesDesktopSetup {
             $firstError = $null
         } catch {
             $secondError = $_
+            $candidateSource = if ($plan) {
+                Join-Path ([string]$plan.stagingRoot) 'candidate-source\source\hermes-agent'
+            } else {
+                $null
+            }
+            # This exact path belongs solely to the isolated update candidate.
+            # A failed Windows checkout can leave it dirty or incomplete; it
+            # contains no user-authored files and is safe to replace with a
+            # fresh clone. Active Hermes Agent checkouts retain the stricter
+            # clean-tree requirement below.
+            $sourceIsUpdaterOwned = (
+                $candidateSource -and
+                [IO.Path]::GetFullPath($source) -eq [IO.Path]::GetFullPath($candidateSource)
+            )
             $canReclone = (
                 $plan -and
                 (Test-Path -LiteralPath $source -PathType Container) -and
-                -not (Get-HermesDesktopNestedSourceChanges -Repository $source)
+                (
+                    $sourceIsUpdaterOwned -or
+                    -not (Get-HermesDesktopNestedSourceChanges -Repository $source)
+                )
             )
             if (-not $canReclone) {
                 throw $secondError
