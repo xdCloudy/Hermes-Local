@@ -249,11 +249,35 @@ if ((Replace-RequiredLiteral -Text $literalSource -Old 'before' -New 'after' -De
 if ((Replace-RequiredLiteral -Text $literalApplied -Old 'before' -New 'after' -Description 'literal probe') -ne 'after') {
     throw 'Idempotent literal replacement rejected the already-applied form.'
 }
+$crlfLiteralSource = "before`r`nmiddle"
+$crlfLiteralApplied = "after`r`nmiddle"
+if ((Replace-RequiredLiteral `
+    -Text $crlfLiteralSource `
+    -Old "before`nmiddle" `
+    -New "after`nmiddle" `
+    -Description 'CRLF literal probe') -ne $crlfLiteralApplied) {
+    throw 'Literal replacement did not match or preserve CRLF source style.'
+}
+if ((Replace-RequiredLiteral `
+    -Text $crlfLiteralApplied `
+    -Old "before`nmiddle" `
+    -New "after`nmiddle" `
+    -Description 'CRLF literal probe') -ne $crlfLiteralApplied) {
+    throw 'Literal replacement rejected the already-applied CRLF form.'
+}
 if ((Replace-RequiredRegex -Text $literalSource -Pattern '^before$' -Replacement 'after' -Description 'regex probe') -ne 'after') {
     throw 'Idempotent regex replacement did not apply the source form.'
 }
 if ((Replace-RequiredRegex -Text $literalApplied -Pattern '^before$' -Replacement 'after' -Description 'regex probe') -ne 'after') {
     throw 'Idempotent regex replacement rejected the already-applied form.'
+}
+$crlfRegexApplied = Replace-RequiredRegex `
+    -Text "before`r`nmiddle" `
+    -Pattern '^before' `
+    -Replacement "after`nvalue" `
+    -Description 'CRLF regex probe'
+if ($crlfRegexApplied -ne "after`r`nvalue`r`nmiddle") {
+    throw 'Regex replacement did not preserve CRLF source style.'
 }
 $newlineSource = "before`none`ntwo"
 $newlineApplied = Replace-RequiredRegex `
