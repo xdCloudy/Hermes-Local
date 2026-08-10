@@ -185,6 +185,15 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
             reliability,
         )
 
+        updater_git = self.read(
+            "scripts/desktop-update/DesktopUpdate-Git.ps1"
+        )
+        candidate_removal = updater_git.split(
+            "function Remove-HermesDesktopCandidateWorktree", 1
+        )[1]
+        self.assertIn("'-c', 'core.longpaths=true'", candidate_removal)
+        self.assertIn("'worktree', 'remove', '--force'", candidate_removal)
+
     def test_launcher_builder_supports_an_isolated_destination(self) -> None:
         text = self.read("Build-Hermes-Launcher.ps1")
         for required in (
