@@ -204,23 +204,11 @@ function Invoke-HermesDesktopUpdateStage {
     param([Parameter(Mandatory)][object] $Plan)
 
     try {
-        Write-HermesDesktopUpdateProgress `
-            -Plan $Plan `
-            -Stage stopping-services `
-            -Status running `
-            -Message 'Stopping Hermes-owned processes before updating source and launcher files.' `
-            -Percent 3 `
-            -Failure $null `
-            -Result $null | Out-Null
-    } catch {
-    }
-
-    Stop-HermesDesktopOwnedProcesses `
-        -Plan $Plan `
-        -Reason 'source and dependency synchronisation' `
-        -GraceSeconds 10
-
-    try {
+        # Staging is deliberately isolated from the live checkout and launcher.
+        # The full process drain belongs exclusively to deferred activation,
+        # after the candidate is built, validated and recorded as pending. A
+        # pre-stage drain kills both the Launcher parent and its updater child,
+        # leaving no helper or pending state for the next launch to recover.
         & $script:hermesDesktopOriginalInvokeUpdateStage -Plan $Plan
     } catch {
         $evidence = Get-HermesDesktopFailureEvidence -Plan $Plan

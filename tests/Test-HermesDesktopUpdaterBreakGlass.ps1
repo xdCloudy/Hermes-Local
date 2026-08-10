@@ -42,8 +42,8 @@ foreach ($required in @(
     'Get-HermesDesktopProtectedProcessIds',
     'Get-HermesDesktopOwnedProcesses',
     'Stop-HermesDesktopOwnedProcesses',
-    'source and dependency synchronisation',
-    'stopping-services',
+    'Wait-HermesDesktopLauncherExit',
+    'Staging is deliberately isolated',
     "Desktop update failed during stage",
     'Write-Output -NoEnumerate',
     'CommandLine',
@@ -103,6 +103,29 @@ $tempRoot = Join-Path ([IO.Path]::GetTempPath()) (
 $script:root = $tempRoot
 . $stackDrainPath
 . $stackSafetyPath
+
+# Regression: clicking Update must leave both the Launcher parent and updater
+# child alive until isolated staging has produced the pending activation. The
+# stack drain is reserved for Wait-HermesDesktopLauncherExit.
+$script:stageInvocations = 0
+$script:hermesDesktopOriginalInvokeUpdateStage = {
+    param([object] $Plan)
+    $script:stageInvocations += 1
+    [pscustomobject]@{ status = 'ready-to-restart' }
+}
+$stageResult = Invoke-HermesDesktopUpdateStage -Plan ([pscustomobject]@{})
+Assert-Contract ($script:stageInvocations -eq 1) 'The isolated staging implementation was not invoked exactly once.'
+Assert-Contract ($stageResult.status -eq 'ready-to-restart') 'The staging wrapper did not preserve the isolated result.'
+
+$stageFunctionText = ${function:Invoke-HermesDesktopUpdateStage}.ToString()
+Assert-Contract `
+    ($stageFunctionText -notmatch 'Stop-HermesDesktopOwnedProcesses') `
+    'The staging wrapper still drains live Hermes processes before handoff.'
+
+$activationWaitText = ${function:Wait-HermesDesktopLauncherExit}.ToString()
+Assert-Contract `
+    ($activationWaitText -match 'Stop-HermesDesktopOwnedProcesses') `
+    'Deferred activation no longer drains Hermes-owned processes.'
 
 $childScript = Join-Path $tempRoot 'linger.ps1'
 @'
