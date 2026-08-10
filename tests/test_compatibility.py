@@ -147,8 +147,9 @@ class CompatibilityReportTests(unittest.TestCase):
                 log=log,
             )
         commands = [call.args[0] for call in run_mock.call_args_list]
-        self.assertEqual(commands[0][:3], ["git", "clone", "--no-checkout"])
+        self.assertEqual(commands[0][:5], ["git", "-c", "core.longpaths=true", "clone", "--no-checkout"])
         self.assertNotIn("--filter=blob:none", commands[0])
+        self.assertIn(["git", "config", "core.longpaths", "true"], commands)
         self.assertIn(["git", "fetch", "origin", base], commands)
         self.assertIn(["git", "fetch", "origin", candidate], commands)
         self.assertEqual(commands[-1], ["git", "checkout", "--detach", base])

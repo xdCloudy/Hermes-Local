@@ -181,7 +181,8 @@ def prepare_hermes_agent_checkout(
     log: Path,
 ) -> None:
     """Clone and fetch every upstream revision needed by compatibility checks."""
-    run(["git", "clone", "--no-checkout", repository, source], cwd=work, log=log, timeout=1800)
+    run(["git", "-c", "core.longpaths=true", "clone", "--no-checkout", repository, source], cwd=work, log=log, timeout=1800)
+    run(["git", "config", "core.longpaths", "true"], cwd=source, log=log)
     for revision in dict.fromkeys((base, candidate)):
         run(["git", "fetch", "origin", revision], cwd=source, log=log, timeout=1800)
     run(["git", "checkout", "--detach", base], cwd=source, log=log)
