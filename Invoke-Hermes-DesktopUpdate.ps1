@@ -273,8 +273,13 @@ try {
     $result = [ordered]@{
         ok = $true
         updated = $true
+        handedOff = $activationDeferred
         pendingActivation = $activationDeferred
-        message = 'Update ready. Close and reopen Hermes Launcher when convenient to activate it.'
+        message = if ($activationDeferred) {
+            'The verified update is ready. Hermes Local will restart automatically to activate it.'
+        } else {
+            'Hermes Local is up to date.'
+        }
     }
     foreach ($property in $stageResult.PSObject.Properties) {
         $result[$property.Name] = $property.Value

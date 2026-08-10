@@ -91,8 +91,9 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
             "Get-HermesDesktopObjectValue",
             "-Name activationDeferred",
             "-Default $false",
+            "handedOff = $activationDeferred",
             "pendingActivation = $activationDeferred",
-            "Update ready. Close and reopen Hermes Launcher when convenient to activate it.",
+            "Hermes Local will restart automatically to activate it.",
             "foreach ($property in $stageResult.PSObject.Properties)",
         ):
             self.assertIn(required, text)
@@ -140,6 +141,22 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
                 r"Remove-Item[^\n]+(?:models|data\\hermes|config\\launcher)",
                 re.I,
             ),
+        )
+
+        stack_drain = self.read(
+            "scripts/desktop-update/DesktopUpdate-StackDrain.ps1"
+        )
+        stage_wrapper = stack_drain.split(
+            "function Invoke-HermesDesktopUpdateStage", 1
+        )[1]
+        self.assertNotIn("-Stage stopping-services", stage_wrapper)
+        self.assertNotIn(
+            "-Reason 'source and dependency synchronisation'",
+            stage_wrapper,
+        )
+        self.assertIn(
+            "Stop-HermesDesktopOwnedProcesses",
+            stack_drain.split("function Wait-HermesDesktopLauncherExit", 1)[1],
         )
 
     def test_launcher_builder_supports_an_isolated_destination(self) -> None:
