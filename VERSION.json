@@ -18,8 +18,8 @@
       "branch": "main",
       "commit": "91937a6dc3ffbbe2f3be91a500f0ecf962c4cf53",
       "harnessBranch": "hermes-local-harness",
-      "harnessCommit": "1682a7a190feeca809f5dd76979c941402b06116",
-      "harnessTree": "42c5e971d41a45f7ebf56a6bcc7570371742986a",
+      "harnessCommit": "30bbc93d4f9b2c4a967cbadb2ff53fcf05751167",
+      "harnessTree": "456412520ba89bb1711f7a644c1350718b34fab9",
       "patchSeries": "source/hermes-launcher/patches",
       "patchScope": "harness-only"
     },

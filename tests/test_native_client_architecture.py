@@ -17,9 +17,8 @@ class NativeClientArchitectureTests(unittest.TestCase):
         result = MODULE.validate(ROOT)
         self.assertEqual(result["clientSource"], "apps/desktop")
         self.assertGreater(result["trackedClientFiles"], 1_000)
-        self.assertEqual(result["harnessPatchCount"], 25)
+        self.assertEqual(result["harnessPatchCount"], 26)
 
 
 if __name__ == "__main__":
     unittest.main()
-
