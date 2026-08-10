@@ -12,6 +12,7 @@ on:
       - 'scripts/ci/check_native_client_architecture.py'
       - 'scripts/ci/compatibility.py'
       - 'tests/test_native_client_architecture.py'
+      - 'tests/test_issue18_trust_centre.py'
       - 'VERSION.json'
       - 'source/hermes-launcher/patches/**'
       - 'Build-Hermes-Launcher.ps1'
