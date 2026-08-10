@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Reworked Desktop self-update to build and validate an immutable detached
+  worktree before source promotion, preserve staged, unstaged, untracked and
+  nested-source edits in place, and abort conflicting fast-forwards without
+  stashing or hard-resetting the installed checkout.
 - Added a versioned 49-scenario Windows install, upgrade, repair, rollback,
   uninstall and adverse-condition matrix with deterministic preservation
   fixtures, retained machine-readable evidence, disposable and trusted physical

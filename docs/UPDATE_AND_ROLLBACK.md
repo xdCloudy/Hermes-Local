@@ -20,6 +20,35 @@ source comparisons where available. Valid component names are `All`,
 `HermesAgent`, `Launcher`, `LlamaCpp`, `Model`, `PythonLock`, `NodeLock`,
 `BrowserBinaries` and `OptionalTools`.
 
+## Update Hermes Local Desktop
+
+The Desktop update channel advances the Hermes Local repository and prepares a
+new launcher without building from, stashing, or hard-resetting the installed
+working tree:
+
+```powershell
+& '.\Invoke-Hermes-DesktopUpdate.ps1' -Mode Check -Channel development
+& '.\Invoke-Hermes-DesktopUpdate.ps1' -Mode Apply -Channel development -NonInteractive
+```
+
+The updater fetches the immutable target commit, creates a detached Git
+worktree under the operation staging directory, and runs setup plus the launcher
+build there. Only after that candidate succeeds does Git fast-forward the
+installed checkout. Git leaves unrelated staged, unstaged and untracked files
+in place. If a target path overlaps a local edit or untracked file, promotion
+stops without changing `HEAD` or that file and reports the conflicting path.
+
+The active launcher remains untouched until the validated payload is ready.
+Activation waits for the launcher process tree to exit, retains the prior
+distribution until the new executable is in place, and restores it if activation
+fails. A locally modified `source/hermes-agent` checkout is not moved; its
+synchronisation is deferred until those edits are reconciled.
+
+This path intentionally does not use `git stash`, `git clean`, or
+`git reset --hard`. Failed candidate work is replaceable staging state; user
+data, local source edits, model files, configuration and workspaces remain in
+their installed locations.
+
 ## Update Hermes Agent
 
 Do not run Hermes Agent's in-chat `/update` command inside a Hermes Local TUI or

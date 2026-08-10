@@ -30,6 +30,8 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
                 "scripts/desktop-update/DesktopUpdate-State.ps1",
                 "scripts/desktop-update/DesktopUpdate-Promotion.ps1",
                 "scripts/desktop-update/DesktopUpdate-Stage.ps1",
+                "scripts/desktop-update/DesktopUpdate-NestedSource.ps1",
+                "scripts/desktop-update/DesktopUpdate-SafeActivation.ps1",
                 "scripts/desktop-update/DesktopUpdate-Reliability.ps1",
                 "scripts/desktop-update/DesktopUpdate-Reliability-Platform.ps1",
                 "scripts/desktop-update/DesktopUpdate-Activation.ps1",
@@ -100,23 +102,37 @@ class HermesDesktopUpdateContractTests(unittest.TestCase):
             text,
         )
 
-    def test_staging_is_data_preserving_and_rolls_back_source_only(self) -> None:
+    def test_staging_is_isolated_and_never_moves_local_changes(self) -> None:
         text = self.read_updater()
         for required in (
             "Test-HermesDesktopUpdateOrigin",
             "Assert-HermesDesktopUpdateDiskSpace",
             "Enter-HermesDesktopUpdateLock",
             "Setup-Hermes-Local.ps1",
-            "Save-HermesDesktopWorkingTree",
-            "Restore-HermesDesktopWorkingTree",
-            "'stash', 'push', '--include-untracked'",
-            "'stash', 'apply', '--index'",
-            "autoStash = $true",
+            "New-HermesDesktopCandidateWorktree",
+            "Remove-HermesDesktopCandidateWorktree",
+            "Set-HermesDesktopSourceRevision",
+            "'worktree', 'add', '--detach'",
+            "'fetch', '--atomic', '--no-tags'",
+            "'merge', '--ff-only', '--no-edit'",
+            "'reset', '--keep'",
+            "pendingSource",
+            "active-source-at-activation",
+            "prepared Hermes Agent source promotion",
+            "Hermes Agent source rollback",
+            "preservesLocalChanges = $true",
             "SkipModel",
             "activeLauncherUntouched = $true",
         ):
             self.assertIn(required, text)
-        self.assertNotIn("Commit or stash them before updating", text)
+        for forbidden in (
+            "Save-HermesDesktopWorkingTree",
+            "Restore-HermesDesktopWorkingTree",
+            "'stash', 'push', '--include-untracked'",
+            "'stash', 'apply', '--index'",
+            "'reset', '--hard'",
+        ):
+            self.assertNotIn(forbidden, text)
         self.assertNotRegex(text, re.compile(r"\bgit\s+clean\b", re.I))
         self.assertNotRegex(
             text,
