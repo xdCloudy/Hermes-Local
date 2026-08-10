@@ -9,19 +9,19 @@ explicit file-deletion RPCs into the stable Project registry.
 diff --git a/tui_gateway/server.py b/tui_gateway/server.py
 --- a/tui_gateway/server.py
 +++ b/tui_gateway/server.py
-@@ -180,5 +180,7 @@
+@@ -252,6 +252,8 @@ _LONG_HANDLERS = frozenset(
          "projects.discover_repos",
          "projects.record_repos",
          "projects.for_cwd",
+         "projects.registry_refresh",
 +        "projects.clone",
 +        "projects.delete_files",
          "projects.tree",
          "projects.project_sessions",
-@@ -3000,3 +3000,11 @@
-         "projects": [p.to_dict() for p in pdb.list_projects(conn, include_archived=True)],
+@@ -11181,6 +11183,14 @@ def _projects_payload(conn) -> dict:
          "active_id": pdb.get_active_id(conn),
      }
-+
+ 
 +
 +def _project_centre_payload(conn) -> dict:
 +    from hermes_cli import project_lifecycle
@@ -29,7 +29,11 @@ diff --git a/tui_gateway/server.py b/tui_gateway/server.py
 +    payload = _projects_payload(conn)
 +    payload["pinned_ids"] = project_lifecycle.list_pinned_project_ids(conn)
 +    return payload
-@@ -3150,8 +3150,68 @@
++
+ 
+ def _projects_method(name: str):
+     """Register a projects RPC, injecting (pdb, conn) and unifying error mapping.
+@@ -11342,8 +11352,68 @@ def _(rid, params, pdb, conn) -> dict:
      return _ok(rid, _projects_payload(conn))
  
  
