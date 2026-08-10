@@ -19,10 +19,19 @@ try {
     if ($Force) {
         $options.Force = $true
     }
+    $desktopTaskId = [Environment]::GetEnvironmentVariable('HERMES_LOCAL_TASK_ID')
+    if ($desktopTaskId) {
+        if ($desktopTaskId -notmatch '^[0-9a-fA-F-]{16,64}$') {
+            throw 'HERMES_LOCAL_TASK_ID contains an invalid task identity.'
+        }
+        $options.TaskId = $desktopTaskId
+    }
+    $caller = if ($desktopTaskId) { 'Desktop' } else { 'Cli' }
+
     $result = Invoke-HermesUpdateOperation `
         -Mode Apply `
         -Component LlamaCpp `
-        -Caller Cli `
+        -Caller $caller `
         -Input $options
 
     if ($result.status -eq 'succeeded') {

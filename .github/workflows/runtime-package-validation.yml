@@ -16,6 +16,7 @@ on:
       - 'config/schemas/llama-runtime-catalog.schema.json'
       - 'tests/test_issue6_prebuilt_runtime.py'
       - 'tests/test_issue42_runtime_identity.py'
+      - 'tests/test_issue45_runtime_update_adapter.py'
       - 'tests/Test-HermesRuntimeIdentity.ps1'
       - '.github/workflows/runtime-package-validation.yml'
   workflow_dispatch:
@@ -34,7 +35,7 @@ jobs:
       - name: Install schema validator
         run: python -m pip install jsonschema
       - name: Run runtime package contract tests
-        run: python -m unittest tests.test_issue6_prebuilt_runtime tests.test_issue42_runtime_identity
+        run: python -m unittest tests.test_issue6_prebuilt_runtime tests.test_issue42_runtime_identity tests.test_issue45_runtime_update_adapter
       - name: Exercise runtime identity and lifecycle guards
         shell: pwsh
         run: ./tests/Test-HermesRuntimeIdentity.ps1
