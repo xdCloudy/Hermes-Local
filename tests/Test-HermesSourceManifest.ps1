@@ -14,7 +14,7 @@ if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
 $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json -Depth 32
 $agent = $manifest.sources.hermesAgent
 
-foreach ($name in @('commit', 'integrationCommit', 'integrationTree')) {
+foreach ($name in @('commit', 'harnessCommit', 'harnessTree')) {
     $value = [string]$agent.$name
     if ($value -notmatch '^[0-9a-fA-F]{40}$') {
         throw "VERSION.json Hermes Agent field '$name' must be a 40-character Git identity."
@@ -23,7 +23,10 @@ foreach ($name in @('commit', 'integrationCommit', 'integrationTree')) {
 
 $patchSeries = [string]$agent.patchSeries
 if ([string]::IsNullOrWhiteSpace($patchSeries)) {
-    throw 'VERSION.json must declare the Hermes Agent integration patch series.'
+    throw 'VERSION.json must declare the Hermes Agent harness patch series.'
+}
+if ([string]$agent.patchScope -ne 'harness-only') {
+    throw 'VERSION.json must declare the Hermes Agent patch scope as harness-only.'
 }
 
 $patchDirectory = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot $patchSeries))
@@ -40,7 +43,14 @@ if ($patches.Count -eq 0) {
     throw "Hermes Agent patch series is empty: $patchDirectory"
 }
 
+foreach ($patch in $patches) {
+    $content = Get-Content -Raw -LiteralPath $patch.FullName
+    if ($content -match '(?m)^(?:---|\+\+\+) [ab]/apps/desktop(?:/|$)') {
+        throw "Harness patch touches forbidden Desktop source: $($patch.Name)"
+    }
+}
+
 Write-Host (
     'Hermes Agent source manifest tests passed: ' +
-    "$($patches.Count) patches pinned to tree $([string]$agent.integrationTree)."
+    "$($patches.Count) patches pinned to tree $([string]$agent.harnessTree)."
 )

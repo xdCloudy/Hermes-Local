@@ -1,0 +1,402 @@
+import { useStore } from '@nanostores/react'
+import { useEffect, useMemo, useState } from 'react'
+
+import { Button } from '@/components/ui/button'
+import { Codicon } from '@/components/ui/codicon'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { notifyError } from '@/store/notifications'
+import {
+  $pinnedProjectIds,
+  $projectCentreOpen,
+  $projects,
+  closeProjectCentre,
+  deleteProjectFiles,
+  pickProjectFolder,
+  recoverProjectPath,
+  refreshProjectCentre,
+  removeProjectRegistration,
+  setProjectArchived,
+  setProjectPinned
+} from '@/store/projects'
+import type { ProjectInfo } from '@/types/hermes'
+
+import { ProjectCentreCreateDialog } from './project-centre-create-dialog'
+
+type ProjectFilter = 'active' | 'all' | 'archived' | 'pinned'
+
+const FILTERS: Array<{ id: ProjectFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'active', label: 'Active' },
+  { id: 'archived', label: 'Archived' },
+  { id: 'pinned', label: 'Pinned' }
+]
+
+const projectTimestamp = (project: ProjectInfo): number =>
+  project.last_active_at ?? project.last_opened_at ?? project.created_at ?? 0
+
+const projectPath = (project: ProjectInfo): string =>
+  project.primary_path?.trim() ||
+  project.folders.find(folder => folder.is_primary)?.path?.trim() ||
+  project.folders[0]?.path?.trim() ||
+  ''
+
+const repairFolder = (project: ProjectInfo) =>
+  project.folders.find(folder => folder.path_state && folder.path_state !== 'available') ??
+  project.folders.find(folder => folder.is_primary) ??
+  project.folders[0]
+
+const hasBrokenPath = (project: ProjectInfo): boolean =>
+  project.folders.length > 0 &&
+  (project.path_state === 'missing' ||
+    project.path_state === 'inaccessible' ||
+    project.folders.some(folder => folder.path_state === 'missing' || folder.path_state === 'inaccessible'))
+
+export function ProjectCentreDialog() {
+  const open = useStore($projectCentreOpen)
+  const projects = useStore($projects)
+  const pinnedIds = useStore($pinnedProjectIds)
+
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState<ProjectFilter>('all')
+  const [busyId, setBusyId] = useState<null | string>(null)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [removeTarget, setRemoveTarget] = useState<null | ProjectInfo>(null)
+  const [deleteTarget, setDeleteTarget] = useState<null | ProjectInfo>(null)
+  const [deleteConfirmation, setDeleteConfirmation] = useState('')
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    setQuery('')
+    setFilter('all')
+    setRemoveTarget(null)
+    setDeleteTarget(null)
+    setDeleteConfirmation('')
+    void refreshProjectCentre().catch(err => notifyError(err, 'Could not load Project Centre'))
+  }, [open])
+
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+
+    return [...projects]
+      .filter(project => {
+        if (filter === 'active' && project.archived) {
+          return false
+        }
+        if (filter === 'archived' && !project.archived) {
+          return false
+        }
+        if (filter === 'pinned' && !pinnedIds.has(project.id)) {
+          return false
+        }
+        if (!needle) {
+          return true
+        }
+
+        return [
+          project.name,
+          project.slug,
+          project.description ?? '',
+          projectPath(project),
+          ...project.folders.map(folder => folder.path)
+        ]
+          .join('\n')
+          .toLowerCase()
+          .includes(needle)
+      })
+      .sort((a, b) => {
+        const pinRank = Number(pinnedIds.has(b.id)) - Number(pinnedIds.has(a.id))
+        return pinRank || projectTimestamp(b) - projectTimestamp(a) || a.name.localeCompare(b.name)
+      })
+  }, [filter, pinnedIds, projects, query])
+
+  const run = async (projectId: string, action: () => Promise<unknown>) => {
+    if (busyId) {
+      return
+    }
+
+    setBusyId(projectId)
+    try {
+      await action()
+      await refreshProjectCentre()
+    } catch (err) {
+      notifyError(err, 'Project action failed')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const repair = async (project: ProjectInfo) => {
+    const folder = repairFolder(project)
+    if (!folder) {
+      return
+    }
+
+    const replacement = await pickProjectFolder()
+    if (!replacement) {
+      return
+    }
+
+    await run(project.id, () =>
+      recoverProjectPath(project.id, folder.path, replacement, folder.repository_id ?? undefined)
+    )
+  }
+
+  const removeRegistration = async () => {
+    const project = removeTarget
+    setRemoveTarget(null)
+    if (!project) {
+      return
+    }
+
+    await run(project.id, () => removeProjectRegistration(project.id))
+  }
+
+  const confirmDeleteFiles = async () => {
+    const project = deleteTarget
+    if (!project || deleteConfirmation !== `DELETE ${project.name}`) {
+      return
+    }
+
+    await run(project.id, () => deleteProjectFiles(project.id, deleteConfirmation))
+    setDeleteTarget(null)
+    setDeleteConfirmation('')
+  }
+
+  const startCreate = () => {
+    setCreateOpen(true)
+  }
+
+  return (
+    <>
+      <Dialog onOpenChange={next => !next && closeProjectCentre()} open={open}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Project Centre</DialogTitle>
+            <DialogDescription>
+              Find and maintain stable projects. Removing a registration keeps files on disk; deleting files is a
+              separate confirmed action.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              className="min-w-48 flex-1"
+              onChange={event => setQuery(event.target.value)}
+              placeholder="Search projects or paths"
+              value={query}
+            />
+            <Button onClick={startCreate} size="sm" type="button">
+              <Codicon name="add" size="0.75rem" />
+              New project
+            </Button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1">
+            {FILTERS.map(item => (
+              <Button
+                key={item.id}
+                onClick={() => setFilter(item.id)}
+                size="sm"
+                type="button"
+                variant={filter === item.id ? 'default' : 'ghost'}
+              >
+                {item.label}
+              </Button>
+            ))}
+          </div>
+
+          <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+            {visible.map(project => {
+              const pinned = pinnedIds.has(project.id)
+              const path = projectPath(project)
+              const timestamp = projectTimestamp(project)
+              const broken = hasBrokenPath(project)
+              const disabled = busyId === project.id
+
+              return (
+                <div className="rounded-lg border border-(--ui-stroke-tertiary) p-3" key={project.id}>
+                  <div className="flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="truncate font-medium">{project.name}</span>
+                        {pinned && (
+                          <span className="rounded bg-(--ui-control-hover-background) px-1.5 py-0.5 text-[0.625rem] uppercase text-(--ui-text-tertiary)">
+                            Pinned
+                          </span>
+                        )}
+                        {project.archived && (
+                          <span className="rounded bg-(--ui-control-hover-background) px-1.5 py-0.5 text-[0.625rem] uppercase text-(--ui-text-tertiary)">
+                            Archived
+                          </span>
+                        )}
+                        {broken && (
+                          <span className="rounded bg-(--ui-control-hover-background) px-1.5 py-0.5 text-[0.625rem] uppercase text-(--ui-text-tertiary)">
+                            Path needs repair
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        className="mt-1 truncate text-xs text-(--ui-text-tertiary)"
+                        title={path || 'No folder attached'}
+                      >
+                        {path || 'No folder attached'}
+                      </div>
+                      <div className="mt-1 text-[0.6875rem] text-(--ui-text-quaternary)">
+                        {timestamp ? `Last activity ${new Date(timestamp * 1000).toLocaleString()}` : 'No activity yet'}
+                      </div>
+                    </div>
+
+                    <Button
+                      aria-label={pinned ? 'Unpin project' : 'Pin project'}
+                      disabled={disabled}
+                      onClick={() => void run(project.id, () => setProjectPinned(project.id, !pinned))}
+                      size="icon-xs"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <Codicon name="pin" size="0.8rem" />
+                    </Button>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    <Button
+                      disabled={disabled}
+                      onClick={() => void run(project.id, () => setProjectArchived(project.id, !project.archived))}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      {project.archived ? 'Restore' : 'Archive'}
+                    </Button>
+                    {broken && (
+                      <Button
+                        disabled={disabled}
+                        onClick={() => void repair(project)}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        Repair path
+                      </Button>
+                    )}
+                    <Button
+                      disabled={disabled}
+                      onClick={() => setRemoveTarget(project)}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      Remove registration
+                    </Button>
+                    <Button
+                      className="text-destructive"
+                      disabled={disabled || project.folders.length === 0}
+                      onClick={() => {
+                        setDeleteTarget(project)
+                        setDeleteConfirmation('')
+                      }}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      Delete files…
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+
+            {visible.length === 0 && (
+              <div className="rounded-lg border border-dashed border-(--ui-stroke-tertiary) px-4 py-10 text-center text-sm text-(--ui-text-tertiary)">
+                No projects match this view.
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button onClick={closeProjectCentre} type="button" variant="ghost">
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        confirmLabel="Remove registration"
+        description="This removes the Project Centre registration only. Files and Git repositories remain on disk."
+        destructive
+        onClose={() => setRemoveTarget(null)}
+        onConfirm={removeRegistration}
+        open={Boolean(removeTarget)}
+        title={`Remove "${removeTarget?.name ?? 'project'}"?`}
+      />
+
+      <ProjectCentreCreateDialog onOpenChange={setCreateOpen} open={createOpen} />
+
+      <Dialog
+        onOpenChange={next => {
+          if (!next) {
+            setDeleteTarget(null)
+            setDeleteConfirmation('')
+          }
+        }}
+        open={Boolean(deleteTarget)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete project files?</DialogTitle>
+            <DialogDescription>
+              This permanently deletes every folder registered to this project, then removes its registration. This
+              cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <p className="text-sm">
+              Type <strong>{deleteTarget ? `DELETE ${deleteTarget.name}` : ''}</strong> to confirm.
+            </p>
+            <Input
+              autoFocus
+              onChange={event => setDeleteConfirmation(event.target.value)}
+              placeholder={deleteTarget ? `DELETE ${deleteTarget.name}` : ''}
+              value={deleteConfirmation}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                setDeleteTarget(null)
+                setDeleteConfirmation('')
+              }}
+              type="button"
+              variant="ghost"
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!deleteTarget || deleteConfirmation !== `DELETE ${deleteTarget.name}` || busyId !== null}
+              onClick={() => void confirmDeleteFiles()}
+              type="button"
+              variant="destructive"
+            >
+              Delete files permanently
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}

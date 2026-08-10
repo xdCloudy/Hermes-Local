@@ -80,14 +80,14 @@ const directScriptEvidence = new Map([
   ['scripts/qa/finalize-qa-inventories.mjs', [rootQaReport]]
 ])
 const directNpmEvidence = new Map([
-  ['source/hermes-agent/apps/desktop/package.json#scripts.build', [evidence('desktop-build.stdout.txt')]],
-  ['source/hermes-agent/apps/desktop/package.json#scripts.lint', [evidence('desktop-lint.stdout.txt')]],
+  ['apps/desktop/package.json#scripts.build', [evidence('desktop-build.stdout.txt')]],
+  ['apps/desktop/package.json#scripts.lint', [evidence('desktop-lint.stdout.txt')]],
   [
-    'source/hermes-agent/apps/desktop/package.json#scripts.test:desktop:platforms',
+    'apps/desktop/package.json#scripts.test:desktop:platforms',
     [evidence('electron-full.stdout.txt')]
   ],
-  ['source/hermes-agent/apps/desktop/package.json#scripts.test:ui', [evidence('ui-full.stdout.txt')]],
-  ['source/hermes-agent/apps/desktop/package.json#scripts.typecheck', [evidence('desktop-typecheck.stdout.txt')]]
+  ['apps/desktop/package.json#scripts.test:ui', [evidence('ui-full.stdout.txt')]],
+  ['apps/desktop/package.json#scripts.typecheck', [evidence('desktop-typecheck.stdout.txt')]]
 ])
 
 for (const entry of scripts.entries) {
@@ -159,10 +159,10 @@ scripts.summary.finalDisposition = Object.fromEntries(
 )
 
 const workflows = readJson('workflow-test-inventory.json')
-const packagedE2e = 'source/hermes-agent/apps/desktop/e2e/hermes-local-functional.spec.ts'
+const packagedE2e = 'apps/desktop/e2e/hermes-local-functional.spec.ts'
 const localControlTests = [
-  'source/hermes-agent/apps/desktop/electron/hermes-local-control.test.ts',
-  'source/hermes-agent/apps/desktop/electron/hermes-local-settings.test.ts'
+  'apps/desktop/electron/hermes-local-control.test.ts',
+  'apps/desktop/electron/hermes-local-settings.test.ts'
 ]
 const workflowGroups = {
   endToEnd: new Set([

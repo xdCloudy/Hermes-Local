@@ -1,0 +1,419 @@
+From 38d17ad6e9a4ce16541ac63b0a1d2dc98e6cbcd5 Mon Sep 17 00:00:00 2001
+From: xdCloudy <connerabery@gmail.com>
+Date: Sat, 8 Aug 2026 13:50:21 +0000
+Subject: [PATCH] feat(projects): associate chats with stable project ids
+
+---
+ hermes_state.py                        |  17 +++-
+ hermes_state_common.py                 |   1 +
+ tests/tui_gateway/test_project_tree.py |  29 +++++++
+ tui_gateway/methods_session.py         |  24 +++++-
+ tui_gateway/project_tree.py            |  20 ++++-
+ tui_gateway/server.py                  | 112 +++++++++++++++++++++----
+ 6 files changed, 183 insertions(+), 20 deletions(-)
+
+diff --git a/hermes_state.py b/hermes_state.py
+index 9f1d4148e..e932eb3ec 100644
+--- a/hermes_state.py
++++ b/hermes_state.py
+@@ -3610,12 +3610,27 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
+ 
+         def _do(conn):
+             conn.execute(
+-                "UPDATE sessions SET cwd = NULL, git_branch = NULL, git_repo_root = NULL WHERE id = ?",
++                "UPDATE sessions SET cwd = NULL, git_branch = NULL, git_repo_root = NULL, "
++                "project_id = NULL WHERE id = ?",
+                 (session_id,),
+             )
+ 
+         self._execute_write(_do)
+ 
++    def update_session_project(self, session_id: str, project_id: Optional[str]) -> None:
++        """Persist the stable Project owning a session, or detach it."""
++        if not session_id:
++            return
++        value = str(project_id or "").strip() or None
++
++        def _do(conn):
++            conn.execute(
++                "UPDATE sessions SET project_id = ? WHERE id = ?",
++                (value, session_id),
++            )
++
++        self._execute_write(_do)
++
+     def backfill_repo_roots(self, cwd_to_root: Dict[str, str]) -> None:
+         """Persist resolved git repo roots for cwds that don't have one yet.
+ 
+diff --git a/hermes_state_common.py b/hermes_state_common.py
+index c520f1c51..a676cb1dd 100644
+--- a/hermes_state_common.py
++++ b/hermes_state_common.py
+@@ -221,6 +221,7 @@ CREATE TABLE IF NOT EXISTS sessions (
+     cwd TEXT,
+     git_branch TEXT,
+     git_repo_root TEXT,
++    project_id TEXT,
+     billing_provider TEXT,
+     billing_base_url TEXT,
+     billing_mode TEXT,
+diff --git a/tests/tui_gateway/test_project_tree.py b/tests/tui_gateway/test_project_tree.py
+index 8ac24ab38..405f09b6f 100644
+--- a/tests/tui_gateway/test_project_tree.py
++++ b/tests/tui_gateway/test_project_tree.py
+@@ -543,3 +543,32 @@ def test_explicit_project_path_alias_keeps_moved_session_association():
+         for group in repo["groups"]
+         for row in group["sessions"]
+     ] == ["legacy-chat"]
++
++
++
++def test_stable_project_id_beats_cwd_heuristics():
++    projects = [
++        {"id": "p_one", "name": "One", "folders": [{"path": "/one"}]},
++        {"id": "p_two", "name": "Two", "folders": [{"path": "/two"}]},
++    ]
++    session = {
++        "id": "chat", "project_id": "p_two", "cwd": "/one/src",
++        "git_repo_root": "", "git_branch": "", "started_at": 1, "last_active": 2,
++    }
++    tree = pt.build_tree(projects, [session], [], resolve=lambda _cwd: None, hydrate=True)
++    one_project = next(node for node in tree["projects"] if node["id"] == "p_one")
++    two_project = next(node for node in tree["projects"] if node["id"] == "p_two")
++    assert one_project["sessionCount"] == 0
++    assert two_project["sessionCount"] == 1
++
++
++def test_stale_stable_project_id_does_not_path_fallback():
++    projects = [{"id": "p_one", "name": "One", "folders": [{"path": "/one"}]}]
++    session = {
++        "id": "chat", "project_id": "deleted-project", "cwd": "/one/src",
++        "git_repo_root": "", "git_branch": "", "started_at": 1, "last_active": 2,
++    }
++    tree = pt.build_tree(projects, [session], [], resolve=lambda _cwd: None, hydrate=True)
++    one_project = next(node for node in tree["projects"] if node["id"] == "p_one")
++    assert one_project["sessionCount"] == 0
++    assert "chat" not in tree["scoped_session_ids"]
+diff --git a/tui_gateway/methods_session.py b/tui_gateway/methods_session.py
+index e94ba932d..b37f2bd46 100644
+--- a/tui_gateway/methods_session.py
++++ b/tui_gateway/methods_session.py
+@@ -125,6 +125,9 @@ def _(rid, params: dict) -> dict:
+     _schedule_session_cap_enforcement()  # trim detached idle sessions over the cap
+ 
+     display_cwd = _display_session_cwd(_sessions[sid])
++    display_project = _project_info_for_cwd(display_cwd, _sessions[sid]) if display_cwd else None
++    display_project_id = str((display_project or {}).get("id") or "").strip() or None
++    _sessions[sid]["project_id"] = display_project_id
+ 
+     return _ok(
+         rid,
+@@ -152,7 +155,8 @@ def _(rid, params: dict) -> dict:
+                 "skills": {},
+                 "cwd": display_cwd,
+                 "branch": _git_branch_for_cwd(display_cwd),
+-                "project": _project_info_for_cwd(display_cwd),
++                "project_id": display_project_id,
++                "project": display_project,
+                 "lazy": True,
+                 "desktop_contract": DESKTOP_BACKEND_CONTRACT,
+                 "profile_name": _response_profile_name(profile),
+@@ -376,6 +380,18 @@ def _(rid, params: dict) -> dict:
+             found = db.get_session(target) or found
+ 
+     stored_cwd = str(found.get("cwd") or "").strip()
++    stored_project_id = str(found.get("project_id") or "").strip() or None
++    if stored_cwd and not stored_project_id:
++        migration_session = {
++            "cwd": stored_cwd,
++            "explicit_cwd": True,
++            "profile_home": str(profile_home) if profile_home is not None else None,
++            "session_key": target,
++            "source": found.get("source") or "desktop",
++        }
++        stored_project_id, _ = _session_project_identity(migration_session, stored_cwd)
++        if stored_project_id:
++            found["project_id"] = stored_project_id
+     profile_resume_cwd = stored_cwd or _profile_configured_cwd(
+         profile_home
+     )
+@@ -441,6 +457,7 @@ def _(rid, params: dict) -> dict:
+             lazy=True,
+             explicit_cwd=bool(stored_cwd),
+         )
++        record["project_id"] = stored_project_id
+         if (live := _claim_or_reuse_live(sid, target, record, lease)) is not None:
+             return _ok(rid, _reuse_live_payload(*live))
+         # A delegated child mid-run emits no session events of its own — report
+@@ -542,6 +559,7 @@ def _(rid, params: dict) -> dict:
+             model_override=overrides.get("model_override"),
+             resume_runtime_overrides=overrides or None,
+         )
++        record["project_id"] = stored_project_id
+         if (live := _claim_or_reuse_live(sid, target, record, lease)) is not None:
+             return _ok(rid, _reuse_live_payload(*live))
+ 
+@@ -746,6 +764,7 @@ def _(rid, params: dict) -> dict:
+             cwd = _set_session_cwd(session, raw)
+         except ValueError as e:
+             return _err(rid, 4017, str(e))
++    project_id, project = _session_project_identity(session, cwd)
+     agent = session.get("agent")
+     info = (
+         _session_info(agent, session)
+@@ -753,7 +772,8 @@ def _(rid, params: dict) -> dict:
+         else {
+             "cwd": cwd,
+             "branch": _git_branch_for_cwd(cwd),
+-            "project": _project_info_for_cwd(cwd),
++            "project_id": project_id,
++            "project": project,
+             "lazy": True,
+             "desktop_contract": DESKTOP_BACKEND_CONTRACT,
+         }
+diff --git a/tui_gateway/project_tree.py b/tui_gateway/project_tree.py
+index 38e74aabc..e425c2c42 100644
+--- a/tui_gateway/project_tree.py
++++ b/tui_gateway/project_tree.py
+@@ -572,13 +572,26 @@ def build_tree(
+     _junk_cwd = is_junk_cwd or (lambda _cwd: False)
+     _exists = exists or (lambda _path: True)
+     folder_index = _FolderIndex(active_projects)
++    project_by_id = {
++        str(project.get("id")): project
++        for project in active_projects
++        if str(project.get("id") or "").strip()
++    }
+ 
+     by_project: dict[str, list[dict]] = {}
+     unowned: list[dict] = []
++    identity_orphans: list[dict] = []
+     for session in sessions:
+-        owner = _project_for_session(session, folder_index, resolve)
++        selected_project_id = str(session.get("project_id") or "").strip()
++        owner = (
++            project_by_id.get(selected_project_id)
++            if selected_project_id
++            else _project_for_session(session, folder_index, resolve)
++        )
+         if owner:
+             by_project.setdefault(owner["id"], []).append(session)
++        elif selected_project_id:
++            identity_orphans.append(session)
+         else:
+             unowned.append(session)
+ 
+@@ -621,8 +634,9 @@ def build_tree(
+     # The pre-Projects desktop grouped every non-empty cwd; keeping that fallback
+     # prevents upgrades from flattening those sessions into Recents.
+     by_auto_root: dict[str, dict] = {}
+-    # Every session no tier could place. These are the Home bucket's rows.
+-    homeless: list[dict] = []
++    # Explicit-but-missing project ids never fall back to cwd/repo heuristics.
++    # Keep those rows visible under Home until the user reattaches them.
++    homeless: list[dict] = list(identity_orphans)
+ 
+     def _add_auto(root: str, session: dict) -> None:
+         key = _path_key(root)
+diff --git a/tui_gateway/server.py b/tui_gateway/server.py
+index 5b256af10..e9f52d67b 100644
+--- a/tui_gateway/server.py
++++ b/tui_gateway/server.py
+@@ -2722,6 +2722,9 @@ def _ensure_session_db_row(session: dict) -> None:
+             # means the launch/default profile (matches run_agent's convention).
+             profile_name=Path(profile_home).name if profile_home else None,
+         )
++        project_id = str(session.get("project_id") or "").strip()
++        if project_id:
++            db.update_session_project(key, project_id)
+     except Exception as exc:
+         # Disk-full is not a soft failure: if we swallow it here, prompt.submit
+         # returns {"status":"streaming"} and the user's message vanishes with
+@@ -2867,6 +2870,7 @@ def _set_session_cwd(session: dict, cwd: str) -> str:
+     # A user's choice supersedes any earlier settle-adopted cwd: from here on
+     # the terminal wandering must not move the workspace again.
+     session["cwd_from_settle"] = False
++    session.pop("project_id", None)
+     _register_session_cwd(session)
+     with _session_db(session) as db:
+         if db is not None:
+@@ -2893,6 +2897,7 @@ def _clear_session_cwd(session: dict) -> None:
+ 
+     session["cwd"] = neutral
+     session["explicit_cwd"] = False
++    session["project_id"] = None
+     _register_session_cwd(session)
+     with _session_db(session) as db:
+         if db is not None:
+@@ -2908,6 +2913,86 @@ def _clear_session_cwd(session: dict) -> None:
+         pass
+ 
+ 
++
++def _projects_db_path_for_session(session: dict | None) -> Path | None:
++    profile_home = str((session or {}).get("profile_home") or "").strip()
++    return Path(profile_home) / "projects.db" if profile_home else None
++
++
++def _project_payload(project) -> dict | None:
++    if project is None:
++        return None
++    return {
++        "id": project.id,
++        "slug": project.slug,
++        "name": project.name,
++        "primary_path": project.primary_path,
++    }
++
++
++def _project_info_for_id(project_id: str | None, session: dict | None = None) -> dict | None:
++    selected = str(project_id or "").strip()
++    if not selected:
++        return None
++    try:
++        from hermes_cli import projects_db as pdb
++
++        with pdb.connect_closing(_projects_db_path_for_session(session)) as conn:
++            project = pdb.get_project(conn, selected)
++        if project is None or getattr(project, "archived", False):
++            return None
++        return _project_payload(project)
++    except Exception:
++        logger.debug("failed to resolve project id", exc_info=True)
++        return None
++
++
++def _session_project_identity(
++    session: dict | None, cwd: str | None = None
++) -> tuple[str | None, dict | None]:
++    """Return/backfill the authoritative stable Project id for a session."""
++    if not isinstance(session, dict):
++        return None, None
++
++    if "project_id" in session:
++        selected = str(session.get("project_id") or "").strip() or None
++        return selected, _project_info_for_id(selected, session) if selected else None
++
++    key = str(session.get("session_key") or "").strip()
++    if key:
++        try:
++            with _session_db(session) as db:
++                row = db.get_session(key) if db is not None else None
++            selected = str((row or {}).get("project_id") or "").strip() or None
++            if selected:
++                session["project_id"] = selected
++                return selected, _project_info_for_id(selected, session)
++        except Exception:
++            logger.debug("failed to read persisted session project", exc_info=True)
++
++    display_cwd = _display_session_cwd(session) if cwd is None else str(cwd or "")
++    if display_cwd:
++        project = (
++            _project_info_for_cwd(display_cwd, session)
++            if session.get("profile_home")
++            else _project_info_for_cwd(display_cwd)
++        )
++        selected = str((project or {}).get("id") or "").strip() or None
++        if selected:
++            session["project_id"] = selected
++            if key:
++                try:
++                    with _session_db(session) as db:
++                        if db is not None:
++                            db.update_session_project(key, selected)
++                except Exception:
++                    logger.debug("failed to backfill session project", exc_info=True)
++            return selected, project
++
++    session["project_id"] = None
++    return None, None
++
++
+ # ── Config I/O ────────────────────────────────────────────────────────
+ 
+ 
+@@ -4995,7 +5080,8 @@ def _current_profile_name() -> str:
+ # v5: uvicorn ws_max_size raised for one-shot base64 file.attach frames (>16 MiB).
+ # v6: implicit desktop execution cwd is never reported as an attached workspace.
+ # v7: session.cwd.set accepts an empty cwd to explicitly detach a chat.
+-DESKTOP_BACKEND_CONTRACT = 7
++# v8: sessions persist and report an authoritative stable Project id.
++DESKTOP_BACKEND_CONTRACT = 8
+ 
+ 
+ def _session_usage_snapshot(session: dict | None) -> dict:
+@@ -5008,7 +5094,7 @@ def _session_usage_snapshot(session: dict | None) -> dict:
+     return dict(mirror_usage) if isinstance(mirror_usage, dict) else {}
+ 
+ 
+-def _project_info_for_cwd(cwd: str) -> dict | None:
++def _project_info_for_cwd(cwd: str, session: dict | None = None) -> dict | None:
+     """Return the first-class Project owning ``cwd`` for UI status surfaces.
+ 
+     Backed by the per-profile projects.db (the same store the desktop's project
+@@ -5022,16 +5108,9 @@ def _project_info_for_cwd(cwd: str) -> dict | None:
+     try:
+         from hermes_cli import projects_db as pdb
+ 
+-        with pdb.connect_closing() as conn:
++        with pdb.connect_closing(_projects_db_path_for_session(session)) as conn:
+             project = pdb.project_for_path(conn, cwd)
+-        if project is None:
+-            return None
+-        return {
+-            "id": project.id,
+-            "slug": project.slug,
+-            "name": project.name,
+-            "primary_path": project.primary_path,
+-        }
++        return _project_payload(project)
+     except Exception:
+         logger.debug("failed to resolve project for cwd", exc_info=True)
+         return None
+@@ -5045,6 +5124,7 @@ def _session_info(agent, session: dict | None = None) -> dict:
+                 break
+     mirror = _metadata_mirror(session)
+     cwd = _display_session_cwd(session)
++    project_id, project = _session_project_identity(session, cwd)
+     session_key = str(
+         (session or {}).get("session_key") or getattr(agent, "session_id", "") or ""
+     )
+@@ -5101,7 +5181,8 @@ def _session_info(agent, session: dict | None = None) -> dict:
+         "skills": dict(mirror.get("skills") or {}) if isinstance(mirror.get("skills"), dict) else {},
+         "cwd": cwd,
+         "branch": _git_branch_for_cwd(cwd),
+-        "project": _project_info_for_cwd(cwd),
++        "project_id": project_id,
++        "project": project,
+         "personality": str(personality or ""),
+         "running": bool((session or {}).get("running")),
+         "title": _session_live_title(session or {}, session_key) if session_key else "",
+@@ -5760,6 +5841,7 @@ def _apply_project_workspace(task_id: str, path: str, _name: str = "") -> None:
+     session["explicit_cwd"] = True
+     # An explicit project switch supersedes any earlier settle-adopted cwd.
+     session["cwd_from_settle"] = False
++    session.pop("project_id", None)
+     _register_session_cwd(session)
+ 
+     with _session_db(session) as db:
+@@ -7875,13 +7957,15 @@ def _find_live_session_by_key(session_key: str) -> tuple[str, dict] | None:
+ def _fallback_session_info(session: dict) -> dict:
+     agent = session.get("agent")
+     if agent is not None:
+-        return _session_info(agent)
++        return _session_info(agent, session)
+     cwd = _display_session_cwd(session)
++    project_id, project = _session_project_identity(session, cwd)
+     return {
+         "branch": _git_branch_for_cwd(cwd),
+         "cwd": cwd,
+         "desktop_contract": DESKTOP_BACKEND_CONTRACT,
+-        "project": _project_info_for_cwd(cwd),
++        "project_id": project_id,
++        "project": project,
+         "lazy": True,
+         "model": _resolve_model(),
+         "skills": {},
+-- 
+2.55.0.windows.3
+

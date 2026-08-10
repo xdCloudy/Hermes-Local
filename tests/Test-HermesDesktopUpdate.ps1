@@ -9,35 +9,13 @@ $modulePath = Join-Path $root 'scripts\Hermes-DesktopUpdate.psm1'
 $scriptPath = Join-Path $root 'Invoke-Hermes-DesktopUpdate.ps1'
 $buildPath = Join-Path $root 'Build-Hermes-Launcher.ps1'
 $partsRoot = Join-Path $root 'scripts\desktop-update'
-$overlayPath = Join-Path $root 'Apply-Hermes-LauncherOverlay.ps1'
 
 function Assert-Contract {
     param([Parameter(Mandatory)][bool] $Condition, [Parameter(Mandatory)][string] $Message)
     if (-not $Condition) { throw $Message }
 }
 
-function Get-EmbeddedPowerShellSource {
-    param([Parameter(Mandatory)][string] $Path)
-
-    $wrapper = Get-Content -Raw -LiteralPath $Path
-    $match = [regex]::Match($wrapper, '(?s)\$payload\s*=\s*@\((.*?)\)\s*-join')
-    if (-not $match.Success) { throw "Embedded PowerShell payload is missing: $Path" }
-    $payload = (([regex]::Matches(
-        $match.Groups[1].Value,
-        "'([A-Za-z0-9+/=]+)'"
-    ) | ForEach-Object { $_.Groups[1].Value }) -join '')
-    $bytes = [Convert]::FromBase64String($payload)
-    $input = [IO.MemoryStream]::new($bytes, $false)
-    $gzip = [IO.Compression.GzipStream]::new(
-        $input,
-        [IO.Compression.CompressionMode]::Decompress
-    )
-    $output = [IO.MemoryStream]::new()
-    try { $gzip.CopyTo($output) } finally { $gzip.Dispose(); $input.Dispose() }
-    try { [Text.UTF8Encoding]::new($false).GetString($output.ToArray()) } finally { $output.Dispose() }
-}
-
-foreach ($path in @($modulePath, $scriptPath, $buildPath, $overlayPath)) {
+foreach ($path in @($modulePath, $scriptPath, $buildPath)) {
     Assert-Contract (Test-Path -LiteralPath $path -PathType Leaf) "Missing Desktop update file: $path"
 }
 Assert-Contract (Test-Path -LiteralPath $partsRoot -PathType Container) "Missing Desktop update directory: $partsRoot"
@@ -184,23 +162,13 @@ foreach ($required in @(
     Assert-Contract ($buildText -match $required) "Launcher builder is missing contract: $required"
 }
 
-$overlayWrapper = Get-Content -Raw -LiteralPath $overlayPath
-Assert-Contract ($overlayWrapper -match 'GzipStream') 'Overlay wrapper is not validated/compressed.'
-$overlayText = Get-EmbeddedPowerShellSource -Path $overlayPath
-foreach ($required in @(
-    'checkHermesLocalDesktopUpdates',
-    'applyHermesLocalDesktopUpdate',
-    'waitForDesktopUpdateTask',
-    'Restore-State',
-    'Hermes Local update check handler'
-)) {
-    Assert-Contract ($overlayText -match $required) "Overlay is missing contract: $required"
-}
-
 foreach ($buildScript in @('Build-Hermes-Launcher.ps1', 'Package-Hermes-Launcher.ps1')) {
     $content = Get-Content -Raw -LiteralPath (Join-Path $root $buildScript)
-    Assert-Contract ($content -match 'Apply-Hermes-LauncherOverlay\.ps1') "$buildScript omits the overlay."
-    Assert-Contract ($content -match '-Mode Restore') "$buildScript does not restore source."
+    Assert-Contract (
+        $content -match 'apps[\\/]desktop|product\.client\.sourcePath'
+    ) "$buildScript does not build the tracked client."
+    Assert-Contract ($content -match 'check_native_client_architecture\.py') "$buildScript omits the ownership guard."
+    Assert-Contract ($content -notmatch 'Apply-Hermes-LauncherOverlay\.ps1') "$buildScript still applies the removed overlay."
 }
 
 Write-Host 'Hermes native Desktop update contract tests passed.'

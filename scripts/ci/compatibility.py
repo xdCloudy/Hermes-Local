@@ -386,7 +386,7 @@ def hermes_agent(args: argparse.Namespace) -> int:
             seed_tree = seed_patch_preimages(
                 source,
                 patches,
-                expected_tree=str(meta.get("integrationTree") or "") or None,
+                expected_tree=str(meta.get("harnessTree") or "") or None,
                 log=logs / "patches.log",
             )
         except Exception as exc:
@@ -402,10 +402,10 @@ def hermes_agent(args: argparse.Namespace) -> int:
 
         try:
             run(["git", "checkout", "--detach", candidate], cwd=source, log=logs / "patches.log")
-            run(["git", "switch", "-c", str(meta.get("integrationBranch", "hermes-local-integration"))], cwd=source, log=logs / "patches.log")
+            run(["git", "switch", "-c", str(meta.get("harnessBranch", "hermes-local-harness"))], cwd=source, log=logs / "patches.log")
             report["metadata"]["preimageSeedTree"] = seed_tree
         except Exception as exc:
-            fail_report(report, stage="patches", message="Unable to prepare the candidate integration branch.", error=exc, infrastructure=True)
+            fail_report(report, stage="patches", message="Unable to prepare the candidate harness branch.", error=exc, infrastructure=True)
             return finish(report, output, 1)
 
         applied: list[dict[str, Any]] = []
@@ -451,18 +451,18 @@ def hermes_agent(args: argparse.Namespace) -> int:
             if dirty:
                 raise RuntimeError(f"Integrated tree is dirty: {dirty}")
             stage_pass(report, "patches", patchCount=len(patches), patches=applied,
-                       integrationCommit=run(["git", "rev-parse", "HEAD"], cwd=source, log=logs / "patches.log"),
-                       integrationTree=run(["git", "rev-parse", "HEAD^{tree}"], cwd=source, log=logs / "patches.log"))
+                       harnessCommit=run(["git", "rev-parse", "HEAD"], cwd=source, log=logs / "patches.log"),
+                       harnessTree=run(["git", "rev-parse", "HEAD^{tree}"], cwd=source, log=logs / "patches.log"))
         except Exception as exc:
             fail_report(report, stage="patches", message="Integrated Hermes Agent tree validation failed.", error=exc)
             return finish(report, output, 1)
 
-        desktop = (source / "apps/desktop/package.json").exists()
+        desktop = (root / "apps/desktop/package.json").exists()
         python = (source / "pyproject.toml").exists()
         try:
             done = []
             if args.run_desktop_checks and desktop:
-                run(npm_command("ci", "--no-audit", "--fund=false"), cwd=source, log=logs / "dependencies.log", timeout=3600); done.append("node")
+                run(npm_command("ci", "--no-audit", "--fund=false"), cwd=root, log=logs / "dependencies.log", timeout=3600); done.append("node:hermes-local-client")
             if args.run_python_checks and python:
                 uv_executable = ensure_uv(cwd=source, log=logs / "dependencies.log")
                 cmd = uv_sync_command(uv_executable, source)
@@ -491,15 +491,15 @@ def hermes_agent(args: argparse.Namespace) -> int:
                 run([uv(), "run", "python", "-m", "pytest", *selected, "-q"], cwd=source, log=logs / "tests.log", timeout=3600)
                 done.append(f"python:{len(selected)} files")
             if args.run_desktop_checks and desktop:
-                run(npm_command("run", "typecheck", "--workspace", "apps/desktop"), cwd=source, log=logs / "tests.log")
-                run(npm_command("run", "lint", "--workspace", "apps/desktop"), cwd=source, log=logs / "tests.log")
-                vitest = source / "node_modules/.bin" / ("vitest.cmd" if os.name == "nt" else "vitest")
+                run(npm_command("run", "typecheck"), cwd=root, log=logs / "tests.log")
+                run(npm_command("run", "lint"), cwd=root, log=logs / "tests.log")
+                vitest = root / "node_modules/.bin" / ("vitest.cmd" if os.name == "nt" else "vitest")
                 if vitest.exists():
-                    run([vitest, "run", "--project", "electron", "electron/hermes-local-control.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")
-                    run([vitest, "run", "--project", "electron", "electron/hermes-local-update.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")
-                    run([vitest, "run", "--project", "electron", "electron/hermes-local-security-progress.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")
-                    run([vitest, "run", "src/app/local-workstation/task-centre.test.tsx", "src/app/local-workstation/security-task-view.test.tsx"], cwd=source / "apps/desktop", log=logs / "tests.log")
-                    run([vitest, "run", "src/store/projects.test.ts"], cwd=source / "apps/desktop", log=logs / "tests.log")
+                    run([vitest, "run", "--project", "electron", "electron/hermes-local-control.test.ts"], cwd=root / "apps/desktop", log=logs / "tests.log")
+                    run([vitest, "run", "--project", "electron", "electron/hermes-local-update.test.ts"], cwd=root / "apps/desktop", log=logs / "tests.log")
+                    run([vitest, "run", "--project", "electron", "electron/hermes-local-security-progress.test.ts"], cwd=root / "apps/desktop", log=logs / "tests.log")
+                    run([vitest, "run", "src/app/local-workstation/task-centre.test.tsx", "src/app/local-workstation/security-task-view.test.tsx"], cwd=root / "apps/desktop", log=logs / "tests.log")
+                    run([vitest, "run", "src/store/projects.test.ts"], cwd=root / "apps/desktop", log=logs / "tests.log")
                 done.append("desktop:typecheck,lint,focused-electron,security-task-ui,project-registry")
             stage_pass(report, "tests", checks=done) if done else stage_warning(report, "tests", "No test suites requested.")
         except Exception as exc:
@@ -509,7 +509,7 @@ def hermes_agent(args: argparse.Namespace) -> int:
         try:
             done = []
             if args.run_desktop_checks and desktop:
-                run(npm_command("run", "build", "--workspace", "apps/desktop"), cwd=source, log=logs / "build.log", timeout=3600); done.append("desktop")
+                run(npm_command("run", "build"), cwd=root, log=logs / "build.log", timeout=3600); done.append("desktop:hermes-local-client")
             if args.run_python_checks and python and (source / "hermes_cli").exists():
                 run([uv(), "run", "python", "-m", "compileall", "-q", "hermes_cli"], cwd=source, log=logs / "build.log"); done.append("python-bytecode")
             stage_pass(report, "build", checks=done) if done else stage_warning(report, "build", "No candidate build requested.")
@@ -517,10 +517,10 @@ def hermes_agent(args: argparse.Namespace) -> int:
             fail_report(report, stage="build", message="Candidate build failed.", error=exc)
             return finish(report, output, 1)
 
-        script = package_script(source / "apps/desktop/package.json") if desktop else None
+        script = package_script(root / "apps/desktop/package.json") if desktop else None
         if args.run_package_checks and script:
             try:
-                run(npm_command("run", script, "--workspace", "apps/desktop"), cwd=source, log=logs / "package.log", timeout=5400)
+                run(npm_command("run", script, "--workspace", "apps/desktop"), cwd=root, log=logs / "package.log", timeout=5400)
                 stage_pass(report, "package", script=script)
             except Exception as exc:
                 fail_report(report, stage="package", message=f"Desktop packaging script {script!r} failed.", error=exc)

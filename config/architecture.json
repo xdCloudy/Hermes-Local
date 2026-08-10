@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "client": {
+    "source": "apps/desktop",
+    "agentClientPackage": "packages/hermes-agent-client"
+  },
+  "agentHarness": {
+    "source": "source/hermes-agent",
+    "patchScope": "harness-only"
+  },
+  "inference": {
+    "boundary": "OpenAI-compatible endpoint",
+    "currentProvider": "llama.cpp"
+  }
+}

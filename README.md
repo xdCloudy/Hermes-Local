@@ -169,7 +169,7 @@ flowchart TB
     Security[("Local Trust Boundary<br/>DPAPI token · trust contracts")]
     Security --> Gateway
 
-    Assurance --> Delivery["Desktop Delivery<br/>overlay · updater · Windows package"]
+    Assurance --> Delivery["Desktop Delivery<br/>tracked source · updater · Windows package"]
     Delivery -.->|"integrates"| Lifecycle
     Assurance -.->|"tests"| Supervisor
 
@@ -196,11 +196,13 @@ flowchart TB
     click Gateway "https://github.com/xdcloudy/hermes-local/blob/main/scripts/Hermes-Gateway.psm1"
     click Security "https://github.com/xdcloudy/hermes-local/blob/main/config/schemas/trust-contracts.schema.json"
     click Assurance "https://github.com/xdcloudy/hermes-local/blob/main/scripts/Hermes-UpdateOrchestrator.psm1"
-    click Delivery "https://github.com/xdcloudy/hermes-local/blob/main/Apply-Hermes-LauncherOverlay.ps1"
+    click Delivery "https://github.com/xdcloudy/hermes-local/tree/main/apps/desktop"
 ```
 
-The launcher and supervisor are the Windows-native product layer. Hermes Agent
-remains the agent core. The current managed inference backend is llama.cpp;
+The tracked `apps/desktop` tree is the Windows-native product client; it talks
+to a pinned, separately reconstructed Hermes Agent harness in
+`source/hermes-agent`. Hermes Agent remains the agent core. The current managed
+inference backend is llama.cpp;
 future adapters are planned behind typed capability and lifecycle contracts.
 
 [Explore the architecture and trust boundaries →](docs/ARCHITECTURE.md)

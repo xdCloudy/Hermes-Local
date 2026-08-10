@@ -105,7 +105,7 @@ jobs:
       - name: Generate launcher CycloneDX SBOM
         uses: anchore/sbom-action@v0.16.0
         with:
-          path: source/hermes-agent/apps/desktop
+          path: apps/desktop
           format: cyclonedx-json
           output-file: dist/sbom/launcher.cdx.json
           upload-artifact: false
@@ -247,7 +247,7 @@ jobs:
             '--toolchain', "npm=$(& npm --version 2>&1)"
           )
           foreach ($lock in @(
-            @{ Name = 'node'; Path = '.\source\hermes-agent\package-lock.json' },
+            @{ Name = 'node'; Path = '.\package-lock.json' },
             @{ Name = 'python'; Path = '.\source\hermes-agent\uv.lock' }
           )) {
             if (Test-Path -LiteralPath $lock.Path -PathType Leaf) {

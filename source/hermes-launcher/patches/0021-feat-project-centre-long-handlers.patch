@@ -1,0 +1,25 @@
+From 6c0f2e3f61b1134ef523daaaef6b930a94248a1c Mon Sep 17 00:00:00 2001
+From: Hermes Local Integration <hermes-local-ci@localhost>
+Date: Mon, 10 Aug 2026 21:10:00 +0100
+Subject: [PATCH] feat(projects): register Project Centre long handlers
+
+---
+ tui_gateway/server.py | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/tui_gateway/server.py b/tui_gateway/server.py
+index 8898adcbd..5f2799916 100644
+--- a/tui_gateway/server.py
++++ b/tui_gateway/server.py
+@@ -253,6 +253,8 @@ _LONG_HANDLERS = frozenset(
+         "projects.record_repos",
+         "projects.for_cwd",
+         "projects.registry_refresh",
++        "projects.clone",
++        "projects.delete_files",
+         "projects.tree",
+         "projects.project_sessions",
+         # Setup readiness RPCs are polled by the Desktop frontend on connect
+-- 
+2.55.0.windows.3
+

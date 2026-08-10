@@ -1,0 +1,254 @@
+import {
+  IconAlertTriangle,
+  IconCheck,
+  IconDownload,
+  IconExternalLink,
+  IconLoader2,
+  IconPlayerPause,
+  IconPlayerPlay,
+  IconX
+} from '@tabler/icons-react'
+import { useMemo, useState } from 'react'
+
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+
+import type { LocalActionTask } from './types'
+
+interface ModelDownloadCardProps {
+  onNavigate: (path: string) => void
+  onRefresh: () => void
+  onTaskError: (message: string) => void
+  tasks: LocalActionTask[]
+}
+
+function latestModelDownload(tasks: LocalActionTask[]): LocalActionTask | null {
+  return [...tasks]
+    .filter(task => task.action === 'model-download')
+    .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0] || null
+}
+
+function bytes(value: null | number | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {return '—'}
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
+  let amount = value
+  let unit = 0
+  while (amount >= 1024 && unit < units.length - 1) {
+    amount /= 1024
+    unit += 1
+  }
+  const precision = amount >= 10 || unit === 0 || Number.isInteger(amount) ? 0 : 1
+  return `${amount.toFixed(precision)} ${units[unit]}`
+}
+
+export function ModelDownloadCard({ onNavigate, onRefresh, onTaskError, tasks }: ModelDownloadCardProps) {
+  const active = useMemo(() => latestModelDownload(tasks), [tasks])
+  const [sourceUrl, setSourceUrl] = useState('')
+  const [repository, setRepository] = useState('')
+  const [revision, setRevision] = useState('main')
+  const [modelId, setModelId] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [alias, setAlias] = useState('')
+  const [filename, setFilename] = useState('')
+  const [sha256, setSha256] = useState('')
+  const [sizeBytes, setSizeBytes] = useState('')
+  const [license, setLicense] = useState('')
+  const [auxiliaryFilesJson, setAuxiliaryFilesJson] = useState('[]')
+  const [consentConfirmed, setConsentConfirmed] = useState(false)
+  const [partialRetention, setPartialRetention] = useState<'discard' | 'keep'>('keep')
+  const [submitting, setSubmitting] = useState(false)
+
+  const targetRelativePath = filename ? `models\\downloads\\${modelId || 'model'}\\${filename}` : ''
+  const progress = active?.progress
+  const percent = progress?.mode === 'determinate' && progress.percent !== null ? progress.percent : null
+  const isActive = Boolean(active && ['cancelling', 'paused', 'queued', 'running'].includes(active.status))
+
+  const invoke = async (operation: () => Promise<unknown>) => {
+    try {
+      await operation()
+      onRefresh()
+    } catch (error) {
+      onTaskError(error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  const start = async () => {
+    setSubmitting(true)
+    try {
+      JSON.parse(auxiliaryFilesJson)
+      await window.hermesDesktop.localWorkstation.startAction('model-download', {
+        alias,
+        auxiliaryFilesJson,
+        consentConfirmed,
+        displayName,
+        filename,
+        license,
+        modelId,
+        partialRetention,
+        repository,
+        requiresConsent: Boolean(license),
+        revision,
+        sha256,
+        sizeBytes: sizeBytes ? Number(sizeBytes) : undefined,
+        sourceUrl,
+        targetRelativePath
+      })
+      onRefresh()
+    } catch (error) {
+      onTaskError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-panel-surface-background)">
+      <header className="flex flex-wrap items-center gap-3 border-b border-(--ui-stroke-secondary) px-4 py-3">
+        <div className="grid size-8 place-items-center rounded-lg bg-(--ui-accent)/10 text-(--ui-accent)">
+          <IconDownload className="size-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-semibold">Managed model download</h3>
+          <p className="text-[0.6875rem] text-(--ui-text-tertiary)">
+            Resumable, verified and registered through the same durable Task Centre record.
+          </p>
+        </div>
+        <Button className="h-8 gap-1.5 text-xs" onClick={() => onNavigate('/tasks')} size="sm" variant="outline">
+          <IconExternalLink className="size-3.5" /> Task Centre
+        </Button>
+      </header>
+
+      {active && (
+        <div className="border-b border-(--ui-stroke-secondary) p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            {active.status === 'succeeded' ? (
+              <IconCheck className="size-4 text-emerald-500" />
+            ) : active.status === 'failed' || active.status === 'interrupted' ? (
+              <IconAlertTriangle className="size-4 text-red-500" />
+            ) : (
+              <IconLoader2 className={cn('size-4 text-(--ui-accent)', active.status !== 'paused' && 'animate-spin')} />
+            )}
+            <span className="text-xs font-semibold">{active.context?.displayName || 'Model download'}</span>
+            <span className="font-mono text-[0.6875rem] text-(--ui-text-tertiary)">Task {active.id}</span>
+            <span className="ml-auto text-[0.6875rem] font-medium capitalize text-(--ui-text-secondary)">{active.status}</span>
+          </div>
+          <div
+            aria-label={percent === null ? 'Model download progress is indeterminate' : `Model download progress ${percent}%`}
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={percent ?? undefined}
+            className="mt-3 h-1.5 overflow-hidden rounded-full bg-(--ui-stroke-secondary)"
+            role="progressbar"
+          >
+            <div
+              className={cn(
+                'h-full rounded-full bg-(--ui-accent) transition-[width]',
+                isActive && percent === null && active.status !== 'paused' && 'w-1/3 animate-pulse motion-reduce:animate-none',
+                active.status === 'succeeded' && 'w-full bg-emerald-500',
+                (active.status === 'failed' || active.status === 'interrupted') && 'w-full bg-red-500',
+                (active.status === 'cancelled' || active.status === 'paused') && 'bg-amber-500'
+              )}
+              style={percent === null ? undefined : { width: `${Math.min(100, Math.max(0, percent))}%` }}
+            />
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[0.6875rem] text-(--ui-text-tertiary)">
+            <span>{active.stage || 'waiting'}</span>
+            <span>{bytes(progress?.bytesCompleted)} / {bytes(progress?.bytesTotal)}</span>
+            {progress?.rateBytesPerSecond ? <span>{bytes(progress.rateBytesPerSecond)}/s</span> : null}
+            {progress?.etaSeconds ? <span>ETA {Math.ceil(progress.etaSeconds)}s</span> : null}
+          </div>
+          {progress?.message && <p className="mt-2 text-xs text-(--ui-text-secondary)">{progress.message}</p>}
+          {active.failure && <p className="mt-2 text-xs text-red-500">{active.failure.message}</p>}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              className="h-8 gap-1.5 text-xs"
+              disabled={!active.capabilities.pause}
+              onClick={() => void invoke(() => window.hermesDesktop.localWorkstation.pauseAction(active.id))}
+              size="sm"
+              variant="outline"
+            >
+              <IconPlayerPause className="size-3.5" /> Pause
+            </Button>
+            <Button
+              className="h-8 gap-1.5 text-xs"
+              disabled={!active.capabilities.resume}
+              onClick={() => void invoke(() => window.hermesDesktop.localWorkstation.resumeAction(active.id))}
+              size="sm"
+              variant="outline"
+            >
+              <IconPlayerPlay className="size-3.5" /> Resume
+            </Button>
+            <Button
+              className="h-8 gap-1.5 text-xs"
+              disabled={!active.capabilities.cancel}
+              onClick={() => void invoke(() => window.hermesDesktop.localWorkstation.cancelAction(active.id))}
+              size="sm"
+              variant="outline"
+            >
+              <IconX className="size-3.5" /> Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-3 p-4 md:grid-cols-2">
+        {[
+          ['Source URL', sourceUrl, setSourceUrl, 'https://huggingface.co/.../resolve/.../model.gguf'],
+          ['Repository', repository, setRepository, 'owner/model'],
+          ['Revision', revision, setRevision, 'commit or tag'],
+          ['Model ID', modelId, setModelId, 'model-id'],
+          ['Display name', displayName, setDisplayName, 'Model display name'],
+          ['API alias', alias, setAlias, 'model-alias'],
+          ['Filename', filename, setFilename, 'model.gguf'],
+          ['SHA-256', sha256, setSha256, 'optional 64-character digest'],
+          ['Size bytes', sizeBytes, setSizeBytes, 'optional exact size'],
+          ['Licence', license, setLicense, 'optional licence/access label']
+        ].map(([label, value, setter, placeholder]) => (
+          <label className="space-y-1.5 text-xs" key={String(label)}>
+            <span className="font-medium text-(--ui-text-secondary)">{String(label)}</span>
+            <input
+              className="h-8 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 outline-none focus:border-(--ui-accent)"
+              onChange={event => (setter as (value: string) => void)(event.currentTarget.value)}
+              placeholder={String(placeholder)}
+              value={String(value)}
+            />
+          </label>
+        ))}
+        <label className="space-y-1.5 text-xs md:col-span-2">
+          <span className="font-medium text-(--ui-text-secondary)">Auxiliary files JSON</span>
+          <textarea
+            className="min-h-24 w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) p-2 font-mono text-[0.6875rem] outline-none focus:border-(--ui-accent)"
+            onChange={event => setAuxiliaryFilesJson(event.currentTarget.value)}
+            value={auxiliaryFilesJson}
+          />
+        </label>
+        <div className="rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-control-background) p-3 text-[0.6875rem] text-(--ui-text-tertiary) md:col-span-2">
+          Target: <span className="font-mono">{targetRelativePath || 'models\\downloads\\<model-id>\\<filename>'}</span>
+        </div>
+      </div>
+      <footer className="flex flex-wrap items-center gap-3 border-t border-(--ui-stroke-secondary) px-4 py-3">
+        <label className="flex items-center gap-2 text-xs">
+          <input checked={consentConfirmed} onChange={event => setConsentConfirmed(event.currentTarget.checked)} type="checkbox" />
+          I have reviewed the source, licence and access requirements.
+        </label>
+        <select
+          className="h-8 rounded-md border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2 text-xs"
+          onChange={event => setPartialRetention(event.currentTarget.value as 'discard' | 'keep')}
+          value={partialRetention}
+        >
+          <option value="keep">Keep partial on cancel</option>
+          <option value="discard">Discard partial on cancel</option>
+        </select>
+        <Button
+          className="ml-auto h-8 gap-1.5 text-xs"
+          disabled={submitting || !sourceUrl || !repository || !revision || !modelId || !displayName || !alias || !filename || !consentConfirmed}
+          onClick={() => void start()}
+          size="sm"
+        >
+          {submitting ? <IconLoader2 className="size-3.5 animate-spin" /> : <IconDownload className="size-3.5" />}
+          Start download
+        </Button>
+      </footer>
+    </section>
+  )
+}

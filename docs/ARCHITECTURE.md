@@ -156,12 +156,15 @@ option.
 
 ## Source and update architecture
 
-The official checkout retains `upstream` and pins upstream commit
-`85148f79f78af6c5dafdf0fa4e7545ec7f7a1731`. Local integration commits live
-on `hermes-local-integration`; the ordered mail patch series is under
-`source\hermes-launcher\patches`. Setup can reconstruct the exact recorded
-tree from the pinned upstream commit and verifies the tree hash even when
-local Git committer metadata produces different commit IDs.
+Hermes Local owns and directly tracks the complete native client at
+`apps/desktop` and the wire-contract package at `packages/hermes-agent-client`.
+Client changes use normal root-repository review, history and CI; there is no
+generated overlay and no Desktop source hidden in the Agent checkout.
 
-The current series contains patches 0001–0029 and reconstructs tree
-`db1a225a1844bd07514a196211a4f91c8942f149`.
+The official Agent checkout retains `upstream` and pins upstream commit
+`91937a6dc3ffbbe2f3be91a500f0ecf962c4cf53`. Runtime-only harness commits live
+on `hermes-local-harness`; the 25 ordered mail patches under
+`source\hermes-launcher\patches` reconstruct harness tree
+`42c5e971d41a45f7ebf56a6bcc7570371742986a`. Setup verifies that tree even when
+local committer metadata produces a different commit ID. CI rejects any patch
+that touches `apps/desktop`.

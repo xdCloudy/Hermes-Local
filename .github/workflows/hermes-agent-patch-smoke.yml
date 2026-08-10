@@ -1,26 +1,33 @@
-name: Hermes Agent patch smoke
+name: Hermes Agent harness and native client
 
 on:
   pull_request:
     paths:
       - '.github/workflows/hermes-agent-patch-smoke.yml'
-      - '.github/workflows/upstream-compatibility.yml'
+      - 'apps/desktop/**'
+      - 'packages/hermes-agent-client/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'config/architecture.json'
+      - 'scripts/ci/check_native_client_architecture.py'
       - 'scripts/ci/compatibility.py'
-      - 'tests/test_compatibility.py'
-      - 'tests/test_issue18_trust_centre.py'
+      - 'tests/test_native_client_architecture.py'
       - 'VERSION.json'
       - 'source/hermes-launcher/patches/**'
+      - 'Build-Hermes-Launcher.ps1'
+      - 'Package-Hermes-Launcher.ps1'
+      - 'Update-Hermes-Agent.ps1'
 
 permissions:
   contents: read
 
 concurrency:
-  group: hermes-agent-patch-smoke-${{ github.event.pull_request.number }}
+  group: hermes-agent-harness-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  patch-series:
-    name: Produce Hermes Agent patch evidence
+  boundary:
+    name: Validate native client and harness boundary
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
@@ -29,163 +36,74 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate Trust Centre repository contract
+      - name: Validate repository ownership contract
         shell: pwsh
-        run: python -m unittest tests.test_issue18_trust_centre
+        run: |
+          python .\scripts\ci\check_native_client_architecture.py
+          python -m unittest tests.test_native_client_architecture tests.test_issue18_trust_centre
 
-      - name: Reconstruct and validate pinned release integration
+      - name: Reconstruct harness and validate both components
         shell: pwsh
         env:
           HERMES_LOCAL_ROOT: ${{ github.workspace }}
         run: |
-          $manifestPath = Join-Path $env:HERMES_LOCAL_ROOT 'VERSION.json'
-          if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
-            throw "Hermes Local version manifest is missing: $manifestPath"
-          }
-          $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+          $manifest = Get-Content -Raw '.\VERSION.json' | ConvertFrom-Json
           $candidate = [string]$manifest.sources.hermesAgent.commit
-          $expectedIntegrationTree = [string]$manifest.sources.hermesAgent.integrationTree
-          if ($expectedIntegrationTree -notmatch '^[0-9a-fA-F]{40}$') {
-            throw 'VERSION.json must pin a 40-character Hermes Agent integration tree whenever the patch series is declared.'
+          $expectedHarnessTree = ([string]$manifest.sources.hermesAgent.harnessTree).ToLowerInvariant()
+          if ($expectedHarnessTree -notmatch '^[0-9a-f]{40}$') {
+            throw 'VERSION.json must pin a 40-character Hermes Agent harness tree.'
           }
-          $expectedIntegrationTree = $expectedIntegrationTree.ToLowerInvariant()
 
-          $reportPath = '.\artifacts\compatibility\hermes-agent-patch-smoke\hermes-agent-report.json'
-          $workRoot = '.\temp\compatibility\hermes-agent-patch-smoke'
-          $stdoutPath = Join-Path $env:RUNNER_TEMP 'hermes-agent-patch-smoke.stdout.log'
-          $stderrPath = Join-Path $env:RUNNER_TEMP 'hermes-agent-patch-smoke.stderr.log'
+          $reportPath = '.\artifacts\compatibility\hermes-agent-harness\report.json'
           $arguments = @(
-            '.\scripts\ci\compatibility.py',
-            'hermes-agent',
+            '.\scripts\ci\compatibility.py', 'hermes-agent',
             '--repository-root', '.',
             '--candidate-ref', $candidate,
-            '--work-dir', $workRoot,
-            '--log-dir', '.\artifacts\compatibility\hermes-agent-patch-smoke\logs',
+            '--work-dir', '.\temp\compatibility\hermes-agent-harness',
+            '--log-dir', '.\artifacts\compatibility\hermes-agent-harness\logs',
             '--report', $reportPath,
-            '--keep-workspace',
             '--run-desktop-checks',
             '--run-python-checks',
             '--run-package-checks'
           )
-
-          $process = Start-Process `
-            -FilePath 'python' `
-            -ArgumentList $arguments `
-            -NoNewWindow `
-            -Wait `
-            -PassThru `
-            -RedirectStandardOutput $stdoutPath `
-            -RedirectStandardError $stderrPath
-          $checkerExit = $process.ExitCode
-
-          if (Test-Path -LiteralPath $stdoutPath -PathType Leaf) {
-            Get-Content -LiteralPath $stdoutPath
-          }
-          if (Test-Path -LiteralPath $stderrPath -PathType Leaf) {
-            Get-Content -LiteralPath $stderrPath | ForEach-Object { Write-Host $_ }
-          }
-
+          & python @arguments
+          $checkerExit = $LASTEXITCODE
           if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
             throw 'Compatibility checker did not produce a report.'
           }
 
-          $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
-          if ($report.status -eq 'infrastructure-failure') {
-            throw 'Compatibility checker failed because of CI or source infrastructure.'
-          }
-          if (-not $report.metadata.preimageSeedTree) {
-            throw 'Compatibility checker did not reconstruct the pinned integration tree.'
-          }
-          if (@($report.failures | Where-Object { $_.phase -eq 'preimage-seed' }).Count -gt 0) {
-            throw 'Pinned patch reconstruction failed.'
-          }
-
-          $preimageTree = ([string]$report.metadata.preimageSeedTree).ToLowerInvariant()
-          if ($preimageTree -ne $expectedIntegrationTree) {
-            throw "Pinned patch reconstruction produced tree $preimageTree; VERSION.json expects $expectedIntegrationTree."
-          }
-
-          $candidateIntegrationTree = ([string]$report.stages.patches.integrationTree).ToLowerInvariant()
-          if ($candidateIntegrationTree -ne $expectedIntegrationTree) {
-            throw "Candidate patch reconstruction produced tree $candidateIntegrationTree; VERSION.json expects $expectedIntegrationTree."
-          }
-
+          $report = Get-Content -Raw $reportPath | ConvertFrom-Json
+          $actualHarnessTree = ([string]$report.stages.patches.harnessTree).ToLowerInvariant()
           $requiredStages = @('patches', 'dependencies', 'tests', 'build', 'package')
           $failedStages = @(
             foreach ($stage in $requiredStages) {
-              $status = [string]$report.stages.$stage.status
-              if ($status -ne 'passed') {
-                "$stage=$status"
+              if ([string]$report.stages.$stage.status -ne 'passed') {
+                "$stage=$([string]$report.stages.$stage.status)"
               }
             }
           )
 
-          $focusedTestExit = -1
-          if ($checkerExit -eq 0 -and $failedStages.Count -eq 0) {
-            $source = Resolve-Path (Join-Path $workRoot 'hermes-agent')
-            $desktop = Join-Path $source 'apps\desktop'
-
-            Push-Location $source
-            try {
-              & uv run pytest tests/hermes_cli/test_hermes_local_trust.py tests/hermes_cli/test_project_centre_flows.py -q
-              $focusedTestExit = $LASTEXITCODE
-            } finally {
-              Pop-Location
-            }
-
-            if ($focusedTestExit -eq 0) {
-              Push-Location $desktop
-              try {
-                & npm.cmd --prefix $source exec -- vitest run `
-                  --project electron `
-                  electron/hermes-local-control.test.ts `
-                  electron/hermes-local-task-model.test.ts `
-                  electron/hermes-local-model-download.test.ts `
-                  electron/hermes-local-restore.test.ts `
-                  electron/hermes-local-update.test.ts `
-                  electron/hermes-local-security-progress.test.ts `
-                  electron/hermes-local-benchmark-progress.test.ts `
-                  electron/hermes-local-trust-centre.test.ts
-                $focusedTestExit = $LASTEXITCODE
-                if ($focusedTestExit -eq 0) {
-                  & npm.cmd --prefix $source exec -- vitest run `
-                    src/app/local-workstation/task-centre.test.tsx `
-                    src/app/local-workstation/model-download-card.test.tsx `
-                    src/app/local-workstation/security-task-view.test.tsx
-                  $focusedTestExit = $LASTEXITCODE
-                }
-              } finally {
-                Pop-Location
-              }
-            }
-          }
-
           @(
-            '# Hermes Agent patch smoke',
-            '',
-            "**Pinned candidate:** ``$candidate``",
+            '# Hermes Agent harness and native client', '',
+            "**Agent base:** ``$candidate``",
+            "**Expected harness tree:** ``$expectedHarnessTree``",
+            "**Actual harness tree:** ``$actualHarnessTree``",
             "**Checker exit:** ``$checkerExit``",
-            "**Candidate status:** ``$($report.status)``",
-            "**Expected integration tree:** ``$expectedIntegrationTree``",
-            "**Pinned preimage tree:** ``$preimageTree``",
-            "**Candidate integration tree:** ``$candidateIntegrationTree``",
-            "**Required stages:** ``$($requiredStages -join ', ')``",
-            "**Focused regression exit:** ``$focusedTestExit``"
+            "**Stages:** ``$($requiredStages -join ', ')``"
           ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
 
-          foreach ($failure in @($report.failures)) {
-            "- **$($failure.stage):** $($failure.message)" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          if ($actualHarnessTree -ne $expectedHarnessTree) {
+            throw "Harness reconstruction produced $actualHarnessTree; expected $expectedHarnessTree."
+          }
+          if ($checkerExit -ne 0 -or $failedStages.Count -gt 0) {
+            throw "Compatibility validation failed: $($failedStages -join ', '); exit $checkerExit."
           }
 
-          if ($checkerExit -ne 0 -or $failedStages.Count -gt 0 -or $focusedTestExit -ne 0) {
-            throw "Hermes Agent Desktop validation failed: $($failedStages -join ', '); checker exit $checkerExit; focused regression exit $focusedTestExit."
-          }
-
-      - name: Upload patch application evidence
+      - name: Upload validation evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: compatibility-hermes-agent-patch-smoke
-          path: artifacts/compatibility/hermes-agent-patch-smoke
+          name: compatibility-hermes-agent-harness
+          path: artifacts/compatibility/hermes-agent-harness
           if-no-files-found: error
           retention-days: 14

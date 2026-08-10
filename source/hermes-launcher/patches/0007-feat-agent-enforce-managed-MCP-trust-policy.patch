@@ -1,0 +1,597 @@
+From 3099560236f9869b5d30a2d4b178c1a37988064b Mon Sep 17 00:00:00 2001
+From: OpenAI <openai@localhost>
+Date: Sat, 8 Aug 2026 02:07:00 +0100
+Subject: [PATCH] feat(agent): add Hermes Local managed trust authority
+
+---
+ hermes_cli/hermes_local_trust.py | 578 +++++++++++++++++++++++++++++++
+ 1 file changed, 578 insertions(+)
+ create mode 100644 hermes_cli/hermes_local_trust.py
+
+diff --git a/hermes_cli/hermes_local_trust.py b/hermes_cli/hermes_local_trust.py
+new file mode 100644
+index 000000000..fe3aeda31
+--- /dev/null
++++ b/hermes_cli/hermes_local_trust.py
+@@ -0,0 +1,578 @@
++"""Hermes Local managed integration trust policy.
++
++Native authority for MCP identity, capability grants, scoped authorization,
++revocation, and redacted audit. Renderer/server supplied trust fields are ignored.
++"""
++from __future__ import annotations
++
++import argparse
++import hashlib
++import json
++import os
++import re
++import sys
++import threading
++import uuid
++from dataclasses import dataclass
++from datetime import datetime, timezone
++from pathlib import Path
++from typing import Any, Iterable
++from urllib.parse import urlsplit, urlunsplit
++
++CAPABILITIES = frozenset({
++    "filesystem.read", "filesystem.write", "filesystem.delete", "process.execute",
++    "network.outbound", "network.listen", "browser.control", "clipboard.read",
++    "clipboard.write", "media.microphone", "media.camera", "credentials.use",
++    "credentials.manage", "communications.read", "communications.send",
++    "calendar.read", "calendar.write", "external.side-effect", "runtime.read",
++    "runtime.manage", "project.read", "project.write", "index.read", "index.write",
++    "audit.read", "remote.connect", "remote.admin", "embedded.render",
++    "embedded.navigate",
++})
++TRUST_STATES = frozenset({
++    "built-in-verified", "reviewed-managed", "user-trusted", "restricted",
++    "quarantined", "disabled", "unknown",
++})
++ACTIVE_STATES = frozenset({"built-in-verified", "reviewed-managed", "user-trusted", "restricted"})
++CONFIRMATIONS = frozenset({"never", "always", "writes-or-side-effects", "local-only"})
++RISKY = frozenset({
++    "filesystem.write", "filesystem.delete", "process.execute", "network.listen",
++    "credentials.manage", "communications.send", "calendar.write",
++    "external.side-effect", "runtime.manage", "project.write", "index.write",
++    "remote.admin",
++})
++_ID = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,127}$")
++_LOCK = threading.RLock()
++
++
++@dataclass(frozen=True)
++class AuthorizationDecision:
++    allowed: bool
++    reason: str
++    integration_id: str
++    capability: str
++    requires_confirmation: bool = False
++    confirmation: str = "never"
++
++    def as_dict(self) -> dict[str, Any]:
++        return {
++            "allowed": self.allowed,
++            "reason": self.reason,
++            "integrationId": self.integration_id,
++            "capability": self.capability,
++            "requiresConfirmation": self.requires_confirmation,
++            "confirmation": self.confirmation,
++        }
++
++
++def _now() -> str:
++    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
++
++
++def _safe_id(value: Any, prefix: str) -> str:
++    text = re.sub(r"[^a-z0-9._:-]+", "-", str(value or "").strip().lower()).strip("-._:")
++    candidate = f"{prefix}:{text[:110] or prefix}"
++    if _ID.fullmatch(candidate):
++        return candidate
++    return f"{prefix}:{hashlib.sha256(str(value).encode()).hexdigest()[:24]}"
++
++
++def _rid(prefix: str) -> str:
++    return f"{prefix}:{uuid.uuid4().hex}"
++
++
++def _root() -> Path:
++    local = os.getenv("HERMES_LOCAL_ROOT", "").strip()
++    if local:
++        root = Path(local).expanduser().resolve() / "data" / "trust"
++    else:
++        try:
++            from hermes_constants import get_hermes_home
++            root = Path(get_hermes_home()) / "trust"
++        except Exception:
++            root = Path.home() / ".hermes" / "trust"
++    root.mkdir(parents=True, exist_ok=True)
++    return root
++
++
++def _read(name: str, default: Any) -> Any:
++    path = _root() / name
++    try:
++        value = json.loads(path.read_text(encoding="utf-8"))
++        return value
++    except (OSError, json.JSONDecodeError):
++        return default
++
++
++def _write(name: str, value: Any) -> None:
++    path = _root() / name
++    tmp = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
++    tmp.write_text(json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8")
++    os.replace(tmp, path)
++
++
++def _integrations() -> dict[str, Any]:
++    value = _read("integrations.json", {"schemaVersion": 1, "integrations": []})
++    return value if isinstance(value, dict) and isinstance(value.get("integrations"), list) else {"schemaVersion": 1, "integrations": []}
++
++
++def _grants() -> dict[str, Any]:
++    value = _read("grants.json", {"schemaVersion": 1, "grants": []})
++    return value if isinstance(value, dict) and isinstance(value.get("grants"), list) else {"schemaVersion": 1, "grants": []}
++
++
++def _endpoint(value: Any) -> str | None:
++    try:
++        parsed = urlsplit(str(value or "").strip())
++    except ValueError:
++        return None
++    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
++        return None
++    port = f":{parsed.port}" if parsed.port else ""
++    return urlunsplit((parsed.scheme.lower(), parsed.hostname.lower() + port, parsed.path or "/", "", ""))
++
++
++def _identity_material(config: dict[str, Any]) -> dict[str, Any]:
++    trust = config.get("hermes_trust") if isinstance(config.get("hermes_trust"), dict) else {}
++    source = trust.get("source") if isinstance(trust.get("source"), dict) else {}
++    return {
++        "transport": "remote" if config.get("url") else "stdio",
++        "endpoint": _endpoint(config.get("url")),
++        "command": Path(str(config.get("command") or "")).name or None,
++        "argumentCount": len(config.get("args") or []) if isinstance(config.get("args"), list) else 0,
++        "environmentKeys": sorted(str(k) for k in (config.get("env") or {}) if isinstance(config.get("env"), dict)),
++        "headerKeys": sorted(str(k).lower() for k in (config.get("headers") or {}) if isinstance(config.get("headers"), dict)),
++        "authConfigured": bool(config.get("auth")),
++        "requestedCapabilities": sorted(str(v) for v in trust.get("capabilities", []) if isinstance(v, str)),
++        "sourceUri": _endpoint(source.get("uri")),
++        "sourceRevision": str(source.get("revision") or ""),
++    }
++
++
++def _sha(value: Any) -> str:
++    raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
++    return hashlib.sha256(raw).hexdigest()
++
++
++def _capabilities(config: dict[str, Any]) -> tuple[list[str], list[str]]:
++    caps = {"external.side-effect"}
++    if config.get("url"):
++        caps.update({"network.outbound", "remote.connect"})
++    else:
++        caps.add("process.execute")
++    if config.get("env") or config.get("headers") or config.get("auth"):
++        caps.add("credentials.use")
++    trust = config.get("hermes_trust") if isinstance(config.get("hermes_trust"), dict) else {}
++    unknown: list[str] = []
++    for item in trust.get("capabilities", []) if isinstance(trust.get("capabilities"), list) else []:
++        capability = str(item)
++        if capability in CAPABILITIES:
++            caps.add(capability)
++        else:
++            unknown.append(capability)
++    return sorted(caps), sorted(set(unknown))
++
++
++def _principal() -> dict[str, str]:
++    delegated = bool(os.getenv("HERMES_DELEGATED_CHILD_CONTEXT"))
++    try:
++        from agent.delegation_context import is_delegated_child_context
++        delegated = delegated or bool(is_delegated_child_context())
++    except Exception:
++        pass
++    explicit = os.getenv("HERMES_LOCAL_AGENT_ID", "").strip()
++    return {"kind": "agent", "id": _safe_id(explicit or ("delegated" if delegated else "main"), "agent")}
++
++
++def _scope_candidates() -> list[dict[str, str]]:
++    result: list[dict[str, str]] = []
++    project = os.getenv("HERMES_PROJECT_ID", "").strip()
++    if project:
++        result.append({"kind": "project", "id": _safe_id(project, "project")})
++    try:
++        from gateway.session_context import get_session_env
++        session = get_session_env("HERMES_SESSION_ID", "")
++        profile = get_session_env("HERMES_SESSION_PROFILE", "")
++    except Exception:
++        session = os.getenv("HERMES_SESSION_ID", "")
++        profile = os.getenv("HERMES_SESSION_PROFILE", "")
++    if session:
++        result.append({"kind": "session", "id": _safe_id(session, "session")})
++    if profile:
++        result.append({"kind": "profile", "id": _safe_id(profile, "profile")})
++    result.append({"kind": "global"})
++    return result
++
++
++def _audit(event_type: str, outcome: str, integration_id: str, capability: str = "", reason: str = "", **details: Any) -> None:
++    safe: dict[str, Any] = {"integrationId": integration_id}
++    if capability:
++        safe["capability"] = capability
++    if reason:
++        safe["reason"] = reason[:512]
++    forbidden = re.compile(r"authorization|cookie|credential|password|prompt|secret|token|body|content", re.I)
++    for key, value in details.items():
++        if forbidden.search(key):
++            continue
++        if isinstance(value, (str, int, float, bool)):
++            safe[key] = value[:512] if isinstance(value, str) else value
++        elif isinstance(value, list):
++            safe[key] = [str(item)[:256] for item in value[:32]]
++    event = {
++        "kind": "auditEvent", "schemaVersion": 1, "id": _rid("audit"),
++        "eventType": event_type, "timestamp": _now(), "actor": _principal(),
++        "scope": _scope_candidates()[0], "outcome": outcome,
++        "correlationId": _rid("corr"), "details": safe,
++        "redaction": {"applied": True, "fields": ["arguments", "environment", "headers", "payload"]},
++    }
++    with (_root() / "audit.jsonl").open("a", encoding="utf-8") as handle:
++        handle.write(json.dumps(event, separators=(",", ":"), ensure_ascii=False) + "\n")
++
++
++def _revoke(integration_id: str, reason: str) -> None:
++    store = _grants()
++    changed = False
++    for grant in store["grants"]:
++        ids = (grant.get("constraints") or {}).get("integrationIds", []) if isinstance(grant, dict) else []
++        if integration_id in ids and not grant.get("revokedAt"):
++            grant["revokedAt"] = _now()
++            grant["revision"] = int(grant.get("revision", 1)) + 1
++            changed = True
++    if changed:
++        _write("grants.json", store)
++        _audit("grant.revoked", "success", integration_id, reason=reason)
++
++
++def sync_mcp_server_identity(name: str, config: dict[str, Any]) -> dict[str, Any]:
++    if not isinstance(config, dict):
++        raise TypeError("MCP server configuration must be an object")
++    with _LOCK:
++        store = _integrations()
++        integration_id = _safe_id(name, "mcp")
++        previous = next((r for r in store["integrations"] if r.get("identity", {}).get("id") == integration_id), None)
++        material = _identity_material(config)
++        digest = _sha(material)
++        caps, unknown = _capabilities(config)
++        prior_identity = previous.get("identity", {}) if previous else {}
++        changed = bool(previous and previous.get("configurationSha256") != digest)
++        state = str(prior_identity.get("trustState", "restricted"))
++        if unknown:
++            state = "unknown"
++        elif changed:
++            state = "restricted"
++        source = config.get("hermes_trust", {}).get("source", {}) if isinstance(config.get("hermes_trust"), dict) else {}
++        revision = str(source.get("revision") or digest) if isinstance(source, dict) else digest
++        remote = bool(config.get("url"))
++        identity = {
++            "kind": "integrationIdentity", "schemaVersion": 1, "id": integration_id,
++            "displayName": str(name)[:160], "integrationType": "mcp-remote" if remote else "mcp-local",
++            "provenance": {
++                "sourceType": "remote-endpoint" if remote else "local-command",
++                "provenanceId": integration_id, "revision": revision[:256], "sha256": digest,
++                **({"uri": _endpoint(config.get("url"))} if remote and _endpoint(config.get("url")) else {}),
++            },
++            "declaredCapabilities": caps, "trustState": state if state in TRUST_STATES else "unknown",
++            "healthState": str(prior_identity.get("healthState", "unknown")),
++            "manifestRevision": max(1, int(prior_identity.get("manifestRevision", 0)) + (1 if changed else 0)),
++            **({"approvedManifestSha256": prior_identity["approvedManifestSha256"]}
++               if prior_identity.get("approvedManifestSha256") and not changed else {}),
++        }
++        record = {
++            "identity": identity, "serverName": str(name), "configurationSha256": digest,
++            "transport": "remote" if remote else "stdio", "unknownCapabilities": unknown,
++            "lastSeenAt": _now(),
++        }
++        if previous:
++            store["integrations"][store["integrations"].index(previous)] = record
++        else:
++            store["integrations"].append(record)
++        _write("integrations.json", store)
++        if changed:
++            _revoke(integration_id, "manifest-changed")
++            _audit("integration.updated", "success", integration_id, manifestRevision=identity["manifestRevision"])
++        elif not previous:
++            _audit("integration.installed", "success", integration_id)
++        return record
++
++
++def sync_mcp_inventory(servers: dict[str, Any]) -> list[dict[str, Any]]:
++    records = [sync_mcp_server_identity(str(name), cfg) for name, cfg in servers.items() if isinstance(cfg, dict)]
++    names = {str(name) for name in servers}
++    store = _integrations()
++    changed = False
++    for record in store["integrations"]:
++        identity = record.get("identity", {})
++        if str(identity.get("integrationType", "")).startswith("mcp-") and record.get("serverName") not in names:
++            if identity.get("trustState") != "disabled":
++                identity["trustState"] = "disabled"
++                _revoke(str(identity.get("id")), "integration-removed")
++                changed = True
++    if changed:
++        _write("integrations.json", store)
++    return records
++
++
++def mark_mcp_server_removed(name: str) -> None:
++    integration_id = _safe_id(name, "mcp")
++    store = _integrations()
++    for record in store["integrations"]:
++        if record.get("identity", {}).get("id") == integration_id:
++            record["identity"]["trustState"] = "disabled"
++            record["removedAt"] = _now()
++    _write("integrations.json", store)
++    _revoke(integration_id, "integration-removed")
++    _audit("integration.removed", "success", integration_id)
++
++
++def _grant_matches(grant: dict[str, Any], integration_id: str, capability: str) -> bool:
++    if grant.get("revokedAt") or grant.get("capability") != capability or grant.get("principal") != _principal():
++        return False
++    if grant.get("scope") not in _scope_candidates():
++        return False
++    ids = (grant.get("constraints") or {}).get("integrationIds", [])
++    return isinstance(ids, list) and integration_id in ids
++
++
++def authorize_mcp_operation(server_name: str, operation: str, *, interactive: bool = True) -> AuthorizationDecision:
++    capability = {
++        "transport.local": "process.execute",
++        "transport.remote": "network.outbound",
++        "credential.use": "credentials.use",
++    }.get(operation, "external.side-effect")
++    integration_id = _safe_id(server_name, "mcp")
++    record = next((r for r in _integrations()["integrations"] if r.get("identity", {}).get("id") == integration_id), None)
++    if not record:
++        decision = AuthorizationDecision(False, "integration identity is missing", integration_id, capability)
++    else:
++        identity = record.get("identity", {})
++        if capability not in identity.get("declaredCapabilities", []):
++            decision = AuthorizationDecision(False, "capability is unknown or undeclared", integration_id, capability)
++        elif identity.get("trustState") not in ACTIVE_STATES:
++            decision = AuthorizationDecision(False, f"trust state is {identity.get('trustState', 'unknown')}", integration_id, capability)
++        else:
++            matching = [g for g in _grants()["grants"] if isinstance(g, dict) and _grant_matches(g, integration_id, capability)]
++            if any(g.get("effect") == "deny" for g in matching):
++                decision = AuthorizationDecision(False, "explicit deny grant matched", integration_id, capability)
++            else:
++                allows = [g for g in matching if g.get("effect") == "allow"]
++                if not allows:
++                    decision = AuthorizationDecision(False, "no matching allow grant", integration_id, capability)
++                else:
++                    order = {"never": 0, "local-only": 1, "writes-or-side-effects": 2, "always": 3}
++                    confirmation = max((str(g.get("confirmation", "always")) for g in allows), key=lambda v: order.get(v, 3))
++                    requires = interactive and (confirmation == "always" or (confirmation == "writes-or-side-effects" and capability in RISKY))
++                    decision = AuthorizationDecision(True, "matching grant", integration_id, capability, requires, confirmation)
++    _audit(
++        "authorization.allowed" if decision.allowed else "authorization.denied",
++        "allowed" if decision.allowed else "denied",
++        integration_id, capability, decision.reason,
++        operation=operation, confirmationRequired=decision.requires_confirmation,
++    )
++    return decision
++
++
++def filter_authorized_mcp_servers(servers: dict[str, Any]) -> dict[str, Any]:
++    sync_mcp_inventory(servers)
++    allowed: dict[str, Any] = {}
++    for name, config in servers.items():
++        if not isinstance(config, dict):
++            continue
++        operations = ["transport.remote"] if config.get("url") else ["transport.local"]
++        if config.get("env") or config.get("headers") or config.get("auth"):
++            operations.append("credential.use")
++        if all(authorize_mcp_operation(str(name), op, interactive=False).allowed for op in operations):
++            allowed[str(name)] = config
++    return allowed
++
++
++def set_integration_policy(
++    integration_id: str,
++    trust_state: str,
++    capabilities: Iterable[str],
++    confirmation: str = "writes-or-side-effects",
++    scope: dict[str, Any] | None = None,
++) -> dict[str, Any]:
++    if not _ID.fullmatch(str(integration_id)):
++        raise ValueError("invalid integration id")
++    if trust_state not in TRUST_STATES - {"built-in-verified"}:
++        raise ValueError("unsupported mutable trust state")
++    if confirmation not in CONFIRMATIONS:
++        raise ValueError("unsupported confirmation policy")
++    requested = list(dict.fromkeys(str(v) for v in capabilities))
++    if any(value not in CAPABILITIES for value in requested):
++        raise ValueError("unknown capability")
++    scope = dict(scope or {"kind": "global"})
++    if scope.get("kind") not in {"global", "project", "session", "profile", "agent", "user"}:
++        raise ValueError("unsupported scope")
++    if scope.get("kind") != "global":
++        scope = {"kind": str(scope["kind"]), "id": _safe_id(scope.get("id"), str(scope["kind"]))}
++    with _LOCK:
++        store = _integrations()
++        record = next((r for r in store["integrations"] if r.get("identity", {}).get("id") == integration_id), None)
++        if not record:
++            raise KeyError("integration not found")
++        identity = record["identity"]
++        if not set(requested).issubset(set(identity.get("declaredCapabilities", []))):
++            raise ValueError("grant includes an undeclared capability")
++        _revoke(integration_id, "policy-replaced")
++        identity["trustState"] = trust_state
++        identity["manifestRevision"] = int(identity.get("manifestRevision", 1)) + 1
++        if trust_state in ACTIVE_STATES:
++            identity["approvedManifestSha256"] = record["configurationSha256"]
++        else:
++            identity.pop("approvedManifestSha256", None)
++        _write("integrations.json", store)
++        grants = _grants()
++        if trust_state in ACTIVE_STATES:
++            for capability in requested:
++                grants["grants"].append({
++                    "kind": "capabilityGrant", "schemaVersion": 1, "id": _rid("grant"),
++                    "principal": {"kind": "agent", "id": _safe_id("main", "agent")},
++                    "scope": scope, "capability": capability, "effect": "allow",
++                    "confirmation": confirmation, "constraints": {"integrationIds": [integration_id]},
++                    "issuedAt": _now(), "revision": 1,
++                    "source": {"kind": "user-approval", "id": _rid("approval")},
++                })
++        _write("grants.json", grants)
++        _audit("grant.changed", "success", integration_id, capabilities=requested, trustState=trust_state, scopeKind=scope["kind"])
++        return record
++
++
++def _skill_inventory() -> list[dict[str, Any]]:
++    roots: list[tuple[Path, str, str]] = []
++    try:
++        from hermes_constants import get_hermes_home
++        roots.append((Path(get_hermes_home()) / "skills", "user-installed", "restricted"))
++    except Exception:
++        pass
++    repo = Path(__file__).resolve().parents[1]
++    roots.extend([(repo / "skills", "bundled", "built-in-verified"), (repo / "optional-skills", "bundled", "built-in-verified")])
++    output: list[dict[str, Any]] = []
++    seen: set[Path] = set()
++    for root, source_type, state in roots:
++        if not root.is_dir():
++            continue
++        for skill_file in root.rglob("SKILL.md"):
++            try:
++                resolved = skill_file.resolve()
++                if resolved in seen or skill_file.stat().st_size > 2 * 1024 * 1024:
++                    continue
++                seen.add(resolved)
++                digest = hashlib.sha256(skill_file.read_bytes()).hexdigest()
++                name = skill_file.parent.name
++                output.append({"identity": {
++                    "kind": "integrationIdentity", "schemaVersion": 1,
++                    "id": _safe_id(f"{source_type}-{name}-{digest[:12]}", "skill"),
++                    "displayName": name[:160], "integrationType": "skill",
++                    "provenance": {
++                        "sourceType": source_type,
++                        "provenanceId": _safe_id(str(skill_file.parent), "skill-source"),
++                        "revision": digest, "sha256": digest,
++                    },
++                    "declaredCapabilities": [], "trustState": state,
++                    "healthState": "healthy", "manifestRevision": 1,
++                    **({"approvedManifestSha256": digest} if state == "built-in-verified" else {}),
++                }, "source": source_type, "lastSeenAt": _now()})
++            except OSError:
++                continue
++    return output
++
++
++def _audit_tail(limit: int = 100) -> list[dict[str, Any]]:
++    path = _root() / "audit.jsonl"
++    if not path.is_file():
++        return []
++    output = []
++    try:
++        for line in path.read_text(encoding="utf-8", errors="replace").splitlines()[-max(1, min(limit, 500)):]:
++            try:
++                value = json.loads(line)
++                if isinstance(value, dict):
++                    output.append(value)
++            except json.JSONDecodeError:
++                pass
++    except OSError:
++        pass
++    return output
++
++
++def trust_snapshot() -> dict[str, Any]:
++    try:
++        from hermes_cli.config import load_config
++        servers = load_config().get("mcp_servers", {})
++        if isinstance(servers, dict):
++            sync_mcp_inventory(servers)
++    except Exception:
++        pass
++    integrations = _integrations()["integrations"] + _skill_inventory()
++    grants = [grant for grant in _grants()["grants"] if not grant.get("revokedAt")]
++    audit = _audit_tail()
++    counts: dict[str, int] = {}
++    for event in audit:
++        key = str(event.get("eventType", "unknown"))
++        counts[key] = counts.get(key, 0) + 1
++    alerts = []
++    for record in integrations:
++        identity = record.get("identity", {})
++        state = identity.get("trustState")
++        if state in {"unknown", "quarantined"} or record.get("unknownCapabilities"):
++            alerts.append({"integrationId": identity.get("id"), "severity": "high", "reason": "review-required"})
++        elif state in {"restricted", "disabled"}:
++            alerts.append({"integrationId": identity.get("id"), "severity": "info", "reason": state})
++    return {
++        "schemaVersion": 1, "generatedAt": _now(), "integrations": integrations,
++        "activeGrants": grants, "alerts": alerts,
++        "auditSummary": {"counts": counts, "recent": audit[-25:]},
++    }
++
++
++def export_diagnostics() -> Path:
++    snapshot = trust_snapshot()
++    report = {
++        "schemaVersion": 1, "generatedAt": snapshot["generatedAt"],
++        "integrations": [{
++            "identity": record.get("identity"),
++            "transport": record.get("transport"),
++            "unknownCapabilities": record.get("unknownCapabilities", []),
++        } for record in snapshot["integrations"]],
++        "activeGrantCount": len(snapshot["activeGrants"]),
++        "alerts": snapshot["alerts"],
++        "auditSummary": {"counts": snapshot["auditSummary"]["counts"]},
++        "redaction": {
++            "applied": True,
++            "omitted": ["arguments", "environment values", "headers", "prompts", "payloads", "credential values"],
++        },
++    }
++    path = _root() / "TRUST-DIAGNOSTICS.json"
++    path.write_text(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8")
++    return path
++
++
++def main(argv: list[str] | None = None) -> int:
++    parser = argparse.ArgumentParser(prog="python -m hermes_cli.hermes_local_trust")
++    sub = parser.add_subparsers(dest="command", required=True)
++    sub.add_parser("snapshot")
++    sub.add_parser("diagnostics")
++    policy = sub.add_parser("policy")
++    policy.add_argument("--integration", required=True)
++    policy.add_argument("--state", required=True, choices=sorted(TRUST_STATES - {"built-in-verified"}))
++    policy.add_argument("--capability", action="append", default=[])
++    policy.add_argument("--confirmation", default="writes-or-side-effects", choices=sorted(CONFIRMATIONS))
++    policy.add_argument("--scope-kind", default="global", choices=["global", "project", "session", "profile", "agent", "user"])
++    policy.add_argument("--scope-id", default="")
++    args = parser.parse_args(argv)
++    if args.command == "snapshot":
++        result: Any = trust_snapshot()
++    elif args.command == "diagnostics":
++        result = {"path": str(export_diagnostics())}
++    else:
++        scope = {"kind": args.scope_kind}
++        if args.scope_kind != "global":
++            scope["id"] = args.scope_id
++        result = set_integration_policy(args.integration, args.state, args.capability, args.confirmation, scope)
++    sys.stdout.write(json.dumps(result, separators=(",", ":"), ensure_ascii=False) + "\n")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+-- 
+2.55.0.windows.3
+

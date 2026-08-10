@@ -1,8 +1,9 @@
 # Hermes Local Engineering Rules
 
 This repository is the Windows-native integration and product layer for the
-Hermes Local workstation. The authoritative upstream Hermes checkout lives at
-`source/hermes-agent` on branch `hermes-local-integration`; keep its `upstream`
+Hermes Local workstation. The product-owned native client lives in
+`apps/desktop`. The authoritative Hermes Agent harness checkout lives at
+`source/hermes-agent` on branch `hermes-local-harness`; keep its `upstream`
 remote pointed at `https://github.com/NousResearch/hermes-agent.git`.
 
 ## Non-negotiable boundaries
@@ -28,23 +29,24 @@ remote pointed at `https://github.com/NousResearch/hermes-agent.git`.
 
 ## Repository strategy
 
-- Root Git tracks integration scripts, configuration schemas, documentation,
-  benchmarks, security artifacts, and the launcher patch series.
+- Root Git tracks the complete product client, its shared Agent client package,
+  integration scripts, configuration, documentation, tests, and harness patches.
 - `source/hermes-agent` is a separate official upstream clone and is intentionally
   ignored by the root repository.
-- Prefer extending `apps/desktop` and `apps/shared` in the upstream checkout.
-  Never replace the Hermes agent core with a custom chat backend.
-- Keep upstream changes as focused commits on `hermes-local-integration` and
-  export a documented patch series under `security/patches` or
-  `source/hermes-launcher/patches` as appropriate.
+- Make product UI and Electron changes directly in root `apps/desktop` and
+  protocol changes in `packages/hermes-agent-client`.
+- Keep Agent runtime changes focused on `hermes-local-harness`; the ordered
+  series in `source/hermes-launcher/patches` must never contain Desktop paths.
+- Never replace the Hermes agent core with a custom chat backend.
 - Record every source, model, and runtime revision in `VERSION.json`.
 
 ## Verification
 
-- Follow `source/hermes-agent/AGENTS.md` and scoped `AGENTS.md` files.
+- Follow `apps/desktop/AGENTS.md` for client work and the scoped Agent rules for
+  harness work.
 - Run Hermes Python tests through `scripts/run_tests.sh`, not direct `pytest`.
 - Run Desktop typecheck, lint, unit, Electron, and Playwright tests from the
-  official workspace.
+  root npm workspace.
 - Test runtime behavior on native Windows, including paths with spaces.
 - A build is not complete until the packaged executable, installer, local model
   endpoint, real Hermes tool call, security report, SBOM, benchmarks, update

@@ -57,10 +57,10 @@ function Get-HermesVersionManifest {
     }
 
     $override = Get-Content -Raw -LiteralPath $overridePath | ConvertFrom-Json -Depth 16
-    if ([int]$override.schemaVersion -ne 1 -or -not $override.sources.hermesAgent) {
+    if ([int]$override.schemaVersion -notin @(1, 2) -or -not $override.sources.hermesAgent) {
         throw "Hermes source override is invalid: $overridePath"
     }
-    foreach ($name in @('commit', 'integrationCommit', 'integrationTree')) {
+    foreach ($name in @('commit', 'harnessCommit', 'harnessTree')) {
         $value = [string]$override.sources.hermesAgent.$name
         if ($value -notmatch '^[0-9a-fA-F]{40}$') {
             throw "Hermes source override field '$name' is not a 40-character Git identity: $overridePath"

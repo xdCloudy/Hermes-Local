@@ -537,7 +537,7 @@ function Get-HermesUpdateInventory {
     $hermesRoot = Resolve-HermesPath 'source\hermes-agent'
     $llamaRoot = Resolve-HermesPath 'runtimes\llama.cpp\source'
     $desktopPackage = Get-Content -Raw -LiteralPath (
-        Join-Path $hermesRoot 'apps\desktop\package.json'
+        Resolve-HermesPath 'apps\desktop\package.json'
     ) | ConvertFrom-Json
     $modelValid = Test-HermesSelectedModel `
         -Model $selectedModel `
@@ -578,7 +578,7 @@ function Get-HermesUpdateInventory {
                 current = [string]$desktopPackage.version
                 candidate = [string]$desktopPackage.version
                 updateAvailable = $false
-                sourceBranch = [string]$manifest.sources.hermesAgent.integrationBranch
+                sourceBranch = [string]$manifest.sources.hermesAgent.harnessBranch
                 releaseNotes = 'CHANGELOG-LOCAL.md'
             }
             LlamaCpp = Get-HermesRepositoryUpdate `
@@ -668,7 +668,7 @@ function New-HermesLauncherUpdateAdapter {
 
         check = {
             param($Context)
-            $packagePath = Resolve-HermesPath 'source\hermes-agent\apps\desktop\package.json'
+            $packagePath = Resolve-HermesPath 'apps\desktop\package.json'
             if (-not (Test-Path -LiteralPath $packagePath -PathType Leaf)) {
                 throw "Hermes Launcher package metadata is missing: $packagePath"
             }

@@ -85,7 +85,7 @@ A specific reviewed upstream commit or branch can be selected:
 
 The updater:
 
-1. requires PowerShell 7 and a clean, recorded Hermes Agent integration tree;
+1. requires PowerShell 7 and a clean, recorded Hermes Agent harness tree;
 2. resolves the selected upstream branch or commit;
 3. clones the candidate under `build\updates\staging` without touching the
    active checkout;
@@ -95,7 +95,7 @@ The updater:
 6. stops the supervised stack and creates a normal user-data backup;
 7. moves the current source checkout and Python environment into a timestamped
    known-good directory;
-8. records the candidate base commit, integration commit and integration tree
+8. records the candidate base commit, harness commit and harness tree
    in the ignored `config\launcher\source-overrides.json` file;
 9. recreates dependencies through `Setup-Hermes-Local.ps1`;
 10. rebuilds Hermes Launcher, starts the selected profile and runs the quick
@@ -183,7 +183,7 @@ restarts the previous profile.
   their known-good rollback paths.
 - `CHANGELOG-LOCAL.md` records local product changes.
 - `dist\package-manifest.json` records final package sizes and hashes.
-- `security\reports\latest-scan.json` records the scanned integration commit.
+- `security\reports\latest-scan.json` records the scanned harness commit.
 
 `Get-HermesVersionManifest` merges the ignored source override over the tracked
 default manifest. Setup, repair, diagnostics and future update checks therefore

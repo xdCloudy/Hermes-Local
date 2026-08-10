@@ -1,0 +1,51 @@
+{
+  "name": "hermes-local",
+  "version": "0.18.62",
+  "private": true,
+  "description": "Hermes Local application and Desktop client workspace.",
+  "workspaces": [
+    "apps/desktop",
+    "packages/hermes-agent-client"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace apps/desktop",
+    "dev:mock": "npm run dev:mock --workspace apps/desktop",
+    "typecheck": "npm run typecheck --workspace packages/hermes-agent-client && npm run typecheck --workspace apps/desktop",
+    "lint": "npm run lint --workspace packages/hermes-agent-client && npm run lint --workspace apps/desktop",
+    "test": "npm run test --workspace apps/desktop",
+    "test:desktop": "npm run test:desktop:all --workspace apps/desktop",
+    "test:e2e": "npm run test:e2e --workspace apps/desktop",
+    "build": "npm run build --workspace apps/desktop",
+    "pack": "npm run pack --workspace apps/desktop",
+    "dist:win": "npm run dist:win --workspace apps/desktop",
+    "check": "npm run typecheck && npm run lint && npm run test"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "eslint-plugin-perfectionist": "5.10.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-unused-imports": "4.4.1",
+    "globals": "17.7.0",
+    "typescript-eslint": "8.64.0"
+  },
+  "overrides": {
+    "lodash": "4.18.1",
+    "postcss": "8.5.18",
+    "yauzl": "^3.3.1",
+    "protobufjs": "^8.7.1",
+    "brace-expansion": "5.0.8"
+  },
+  "engines": {
+    "node": ">=22.22.0",
+    "npm": "<11.10.0 || >=11.17.0"
+  },
+  "allowScripts": {
+    "unicode-animations": false,
+    "esbuild@0.28.1": true,
+    "node-pty@1.1.0": true,
+    "electron-winstaller@5.4.0": true,
+    "electron@40.10.2": true,
+    "fsevents@2.3.2": true,
+    "fsevents@2.3.3": true
+  }
+}
