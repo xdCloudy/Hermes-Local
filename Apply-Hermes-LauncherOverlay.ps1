@@ -146,6 +146,74 @@ if ($source.Contains($legacyBridgeTransformer)) {
 } elseif (-not $source.Contains("Desktop update bridge expected one './hermes-local-control' import")) {
     throw 'The embedded launcher overlay transformer no longer contains the expected Desktop update bridge implementation.'
 }
+$strictRequiredReplacers = @'
+function Replace-RequiredLiteral {
+    param(
+        [Parameter(Mandatory)][string] $Text,
+        [Parameter(Mandatory)][string] $Old,
+        [Parameter(Mandatory)][string] $New,
+        [Parameter(Mandatory)][string] $Description
+    )
+    $count = ([regex]::Matches($Text, [regex]::Escape($Old))).Count
+    if ($count -ne 1) { throw "$Description expected one match; found $count." }
+    $Text.Replace($Old, $New)
+}
+
+function Replace-RequiredRegex {
+    param(
+        [Parameter(Mandatory)][string] $Text,
+        [Parameter(Mandatory)][string] $Pattern,
+        [Parameter(Mandatory)][string] $Replacement,
+        [Parameter(Mandatory)][string] $Description
+    )
+    $regex = [regex]::new($Pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    $matches = $regex.Matches($Text)
+    if ($matches.Count -ne 1) { throw "$Description expected one match; found $($matches.Count)." }
+    $regex.Replace($Text, $Replacement, 1)
+}
+'@
+$idempotentRequiredReplacers = @'
+function Replace-RequiredLiteral {
+    param(
+        [Parameter(Mandatory)][string] $Text,
+        [Parameter(Mandatory)][string] $Old,
+        [Parameter(Mandatory)][string] $New,
+        [Parameter(Mandatory)][string] $Description
+    )
+    $sourceCount = ([regex]::Matches($Text, [regex]::Escape($Old))).Count
+    $appliedCount = ([regex]::Matches($Text, [regex]::Escape($New))).Count
+    if ($sourceCount -eq 1 -and $appliedCount -eq 0) {
+        return $Text.Replace($Old, $New)
+    }
+    if ($sourceCount -eq 0 -and $appliedCount -eq 1) {
+        return $Text
+    }
+    throw "$Description expected one source match or one applied match; found source=$sourceCount applied=$appliedCount."
+}
+
+function Replace-RequiredRegex {
+    param(
+        [Parameter(Mandatory)][string] $Text,
+        [Parameter(Mandatory)][string] $Pattern,
+        [Parameter(Mandatory)][string] $Replacement,
+        [Parameter(Mandatory)][string] $Description
+    )
+    $regex = [regex]::new($Pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    $sourceCount = $regex.Matches($Text).Count
+    $appliedCount = ([regex]::Matches($Text, [regex]::Escape($Replacement))).Count
+    if ($sourceCount -eq 1 -and $appliedCount -eq 0) {
+        return $regex.Replace($Text, $Replacement, 1)
+    }
+    if ($sourceCount -eq 0 -and $appliedCount -eq 1) {
+        return $Text
+    }
+    throw "$Description expected one source match or one applied match; found source=$sourceCount applied=$appliedCount."
+}
+'@
+if (-not $source.Contains($strictRequiredReplacers)) {
+    throw 'The embedded launcher overlay no longer contains the expected required-replacement helpers.'
+}
+$source = $source.Replace($strictRequiredReplacers, $idempotentRequiredReplacers)
 $output.Dispose()
 $transformer = [scriptblock]::Create($source)
 & $transformer -Mode $Mode -StatePath $StatePath -RepositoryRoot $RepositoryRoot

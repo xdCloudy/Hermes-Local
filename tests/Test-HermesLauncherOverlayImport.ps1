@@ -125,6 +125,8 @@ $output.Dispose()
 
 $legacyTransformer = Get-EmbeddedHereString -VariableName 'legacyBridgeTransformer'
 $sourceAwareTransformer = Get-EmbeddedHereString -VariableName 'sourceAwareBridgeTransformer'
+$strictRequiredReplacers = Get-EmbeddedHereString -VariableName 'strictRequiredReplacers'
+$idempotentRequiredReplacers = Get-EmbeddedHereString -VariableName 'idempotentRequiredReplacers'
 
 $legacyCount = ([regex]::Matches($embeddedTransformer, [regex]::Escape($legacyTransformer))).Count
 if ($legacyCount -ne 1) {
@@ -132,6 +134,17 @@ if ($legacyCount -ne 1) {
 }
 
 $patchedTransformer = $embeddedTransformer.Replace($legacyTransformer, $sourceAwareTransformer)
+$strictReplacerCount = ([regex]::Matches(
+    $patchedTransformer,
+    [regex]::Escape($strictRequiredReplacers)
+)).Count
+if ($strictReplacerCount -ne 1) {
+    throw "Embedded overlay must contain exactly one strict required-replacement helper block; found $strictReplacerCount."
+}
+$patchedTransformer = $patchedTransformer.Replace(
+    $strictRequiredReplacers,
+    $idempotentRequiredReplacers
+)
 if ($patchedTransformer.Contains('Desktop update bridge import expected one match')) {
     throw 'Patched transformer retained the brittle literal import assertion.'
 }
@@ -222,6 +235,37 @@ try {
 }
 if (-not $duplicateRejected) {
     throw 'Bridge import transform accepted duplicate control-module imports.'
+}
+
+# Every overlay edit must accept either the untouched source form or exactly
+# one already-applied form. This lets a pinned integration tree contain a
+# previously promoted overlay without making the next launcher build fail.
+. ([scriptblock]::Create($idempotentRequiredReplacers))
+$literalSource = 'before'
+$literalApplied = 'after'
+if ((Replace-RequiredLiteral -Text $literalSource -Old 'before' -New 'after' -Description 'literal probe') -ne 'after') {
+    throw 'Idempotent literal replacement did not apply the source form.'
+}
+if ((Replace-RequiredLiteral -Text $literalApplied -Old 'before' -New 'after' -Description 'literal probe') -ne 'after') {
+    throw 'Idempotent literal replacement rejected the already-applied form.'
+}
+if ((Replace-RequiredRegex -Text $literalSource -Pattern '^before$' -Replacement 'after' -Description 'regex probe') -ne 'after') {
+    throw 'Idempotent regex replacement did not apply the source form.'
+}
+if ((Replace-RequiredRegex -Text $literalApplied -Pattern '^before$' -Replacement 'after' -Description 'regex probe') -ne 'after') {
+    throw 'Idempotent regex replacement rejected the already-applied form.'
+}
+$divergenceRejected = $false
+try {
+    $null = Replace-RequiredLiteral -Text 'different' -Old 'before' -New 'after' -Description 'literal probe'
+} catch {
+    if ($_.Exception.Message -notmatch 'source=0 applied=0') {
+        throw
+    }
+    $divergenceRejected = $true
+}
+if (-not $divergenceRejected) {
+    throw 'Idempotent replacement accepted an unknown divergent source form.'
 }
 
 Write-Host 'Hermes Launcher overlay import-boundary and checkout EOL tests passed.'
