@@ -234,8 +234,11 @@ exit 9
         ($reliabilityText -notmatch '(?im)\bgit\s+clean\b') `
         'The updater reliability layer may delete untracked source files.'
     Assert-ReliabilityContract `
-        ($reliabilityText.Contains('hermes-agent-working-tree-stash.json')) `
-        'Fresh-clone recovery is not gated by nested-source stash preservation.'
+        ($reliabilityText.Contains('Get-HermesDesktopNestedSourceChanges')) `
+        'Fresh-clone recovery is not gated by an unchanged nested-source checkout.'
+    Assert-ReliabilityContract `
+        (-not $reliabilityText.Contains('hermes-agent-working-tree-stash.json')) `
+        'The reliability layer still depends on moving nested-source changes into a stash.'
 
     Write-Host 'Hermes Desktop updater reliability tests passed.'
 } finally {

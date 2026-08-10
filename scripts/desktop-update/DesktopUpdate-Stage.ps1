@@ -22,7 +22,10 @@ function Invoke-HermesDesktopUpdateStage {
 
     $lockPath = $null
     $failure = $null
-    $stash = $null
+    $candidateRoot = $null
+    $localChanges = $null
+    $nestedSourceChanges = Get-HermesDesktopNestedSourceChanges `
+        -Repository (Join-Path $root 'source\hermes-agent')
     $sourceChanged = $false
 
     try {
@@ -49,17 +52,16 @@ function Invoke-HermesDesktopUpdateStage {
                 -Destination ([string]$Plan.previousDist)
         }
 
-        $changes = Get-HermesDesktopWorkingTreeChanges
-        if ($changes) {
+        $localChanges = Get-HermesDesktopWorkingTreeChanges
+        if ($localChanges) {
             Write-HermesDesktopUpdateProgress `
                 -Plan $Plan `
                 -Stage preserving-local-changes `
-                -Status running `
-                -Message 'Preserving local source changes before updating.' `
+                -Status succeeded `
+                -Message 'Local source changes were detected and will remain in place.' `
                 -Percent 12 `
                 -Failure $null `
                 -Result $null | Out-Null
-            $stash = Save-HermesDesktopWorkingTree -Plan $Plan
         }
 
         Write-HermesDesktopUpdateProgress `
@@ -72,7 +74,7 @@ function Invoke-HermesDesktopUpdateStage {
             -Result $null | Out-Null
 
         Invoke-HermesDesktopGit -Arguments @(
-            'fetch', '--no-tags', 'origin', [string]$Plan.targetCommit
+            'fetch', '--atomic', '--no-tags', 'origin', [string]$Plan.targetCommit
         ) | Out-Null
 
         if (-not [bool]$Plan.rollbackOnly) {
@@ -89,20 +91,22 @@ function Invoke-HermesDesktopUpdateStage {
             }
         }
 
-        Invoke-HermesDesktopGit -Arguments @(
-            'reset', '--hard', [string]$Plan.targetCommit
-        ) | Out-Null
-        $sourceChanged = $true
+        $candidateRoot = New-HermesDesktopCandidateWorktree `
+            -Plan $Plan `
+            -Revision ([string]$Plan.targetCommit)
 
         Write-HermesDesktopUpdateProgress `
             -Plan $Plan `
             -Stage preparing `
             -Status running `
-            -Message 'Synchronising the pinned Hermes Agent integration.' `
+            -Message 'Synchronising the candidate in an isolated worktree.' `
             -Percent 35 `
             -Failure $null `
             -Result $null | Out-Null
-        Invoke-HermesDesktopSetup -Description 'Hermes Local source synchronisation'
+        Invoke-HermesDesktopSetup `
+            -Description 'Hermes Local isolated candidate synchronisation' `
+            -WorkingRoot $candidateRoot `
+            -SharedCacheRoot (Join-Path $root 'cache')
 
         if ([bool]$Plan.rollbackOnly) {
             Write-HermesDesktopUpdateProgress `
@@ -125,12 +129,18 @@ function Invoke-HermesDesktopUpdateStage {
                 -Percent 55 `
                 -Failure $null `
                 -Result $null | Out-Null
+            $candidateDist = Join-Path $candidateRoot 'build\desktop-update-candidate'
             Invoke-HermesDesktopProcess -FilePath 'pwsh.exe' -Arguments @(
                 '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-                '-File', (Join-Path $root 'Build-Hermes-Launcher.ps1'),
-                '-DestinationDirectory', [string]$Plan.pendingDist,
+                '-File', (Join-Path $candidateRoot 'Build-Hermes-Launcher.ps1'),
+                '-DestinationDirectory', $candidateDist,
                 '-NonInteractive'
-            ) -Description 'Hermes Local staged launcher build'
+            ) -Description 'Hermes Local isolated staged launcher build' `
+              -WorkingDirectory $candidateRoot
+
+            Copy-HermesDesktopDirectory `
+                -Source $candidateDist `
+                -Destination ([string]$Plan.pendingDist)
         }
 
         $pendingLauncher = Join-Path ([string]$Plan.pendingDist) 'Hermes Launcher.exe'
@@ -138,16 +148,53 @@ function Invoke-HermesDesktopUpdateStage {
             throw 'The staged launcher was not produced.'
         }
 
+        $candidateSource = Join-Path $candidateRoot 'source\hermes-agent'
+        if (-not $nestedSourceChanges) {
+            if (-not (Test-Path -LiteralPath (Join-Path $candidateSource '.git'))) {
+                throw 'The isolated candidate did not produce a Hermes Agent source checkout.'
+            }
+            Move-Item `
+                -LiteralPath $candidateSource `
+                -Destination ([string]$Plan.pendingSource)
+        }
+        Set-HermesDesktopObjectValue `
+            -InputObject $Plan `
+            -Name preserveNestedSource `
+            -Value ([bool]$nestedSourceChanges)
+        Write-HermesDesktopUpdateJson -Path ([string]$Plan.planPath) -Value $Plan
+
+        Write-HermesDesktopUpdateProgress `
+            -Plan $Plan `
+            -Stage installing `
+            -Status running `
+            -Message 'Promoting the validated source without moving local files.' `
+            -Percent 82 `
+            -Failure $null `
+            -Result $null | Out-Null
+
+        $sourcePromotion = Set-HermesDesktopSourceRevision `
+            -Revision ([string]$Plan.targetCommit) `
+            -Rollback:([bool]$Plan.rollbackOnly)
+        $sourceChanged = [bool]$sourcePromotion.Changed
+
+        # The prepared nested source is activated after services stop. A locally
+        # modified checkout stays exactly where it is and is never swapped.
+        if ($nestedSourceChanges) {
+            Write-HermesDesktopUpdateProgress `
+                -Plan $Plan `
+                -Stage preserving-local-changes `
+                -Status succeeded `
+                -Message 'The modified Hermes Agent checkout was left unchanged.' `
+                -Percent 86 `
+                -Failure $null `
+                -Result $null | Out-Null
+        }
+
         $null = Set-HermesDesktopPlanParent `
             -Plan $Plan `
             -ProcessId ([int]$Plan.parentPid)
         $pendingRecord = New-HermesDesktopPendingUpdateRecord -Plan $Plan
         Write-HermesDesktopPendingUpdate -Value $pendingRecord
-
-        $restore = Restore-HermesDesktopWorkingTree `
-            -Stash $stash `
-            -Revision ([string]$Plan.targetCommit) `
-            -Plan $Plan
 
         $promotionError = $null
         try {
@@ -169,15 +216,9 @@ function Invoke-HermesDesktopUpdateStage {
             previousCommit = [string]$Plan.previousCommit
             currentCommit = [string]$Plan.targetCommit
             pendingLauncherPath = $pendingLauncher
-            localChangesPreserved = [bool]$stash
-            localChangesRestored = [bool]$restore.Restored
-            retainedStashCommit = if (
-                $restore.Retained -and -not $restore.Restored
-            ) {
-                [string]$restore.Commit
-            } else {
-                $null
-            }
+            localChangesPreserved = [bool]$localChanges
+            localChangesRestored = [bool]$localChanges
+            retainedStashCommit = $null
             activationDeferred = $true
             launcherStayedOpen = Test-HermesDesktopProcessIdentity `
                 -ProcessId ([int]$Plan.parentPid) `
@@ -188,11 +229,7 @@ function Invoke-HermesDesktopUpdateStage {
             relaunched = $false
         }
 
-        $message = if ($restore.Restored) {
-            'Update ready. Hermes Launcher will stay open; close and reopen it when convenient to activate the update.'
-        } else {
-            ([string]$restore.Message) + ' The launcher update is ready and will activate after you close Hermes Launcher.'
-        }
+        $message = 'Update ready. Hermes Launcher will stay open; close and reopen it when convenient to activate the update.'
 
         try {
             Write-HermesDesktopUpdateJson `
@@ -208,14 +245,6 @@ function Invoke-HermesDesktopUpdateStage {
                 -Result $result | Out-Null
         } catch {
             $result['persistenceWarning'] = $_.Exception.Message
-        }
-
-        if ($stash -and $restore.Restored) {
-            try {
-                $null = Remove-HermesDesktopWorkingTreeStash -Stash $stash
-            } catch {
-                $result['stashCleanupWarning'] = $_.Exception.Message
-            }
         }
 
         [pscustomobject]$result
@@ -234,11 +263,9 @@ function Invoke-HermesDesktopUpdateStage {
                 -Result $null | Out-Null
 
             if ($sourceChanged) {
-                Invoke-HermesDesktopGit -Arguments @(
-                    'reset', '--hard', [string]$Plan.previousCommit
-                ) | Out-Null
-                Invoke-HermesDesktopSetup `
-                    -Description 'Hermes Local rollback source synchronisation'
+                Set-HermesDesktopSourceRevision `
+                    -Revision ([string]$Plan.previousCommit) `
+                    -Rollback | Out-Null
             }
 
             if (Test-Path -LiteralPath ([string]$Plan.pendingDist)) {
@@ -252,25 +279,14 @@ function Invoke-HermesDesktopUpdateStage {
                 Remove-Item -LiteralPath $pendingStatePath -Force
             }
 
-            $restore = Restore-HermesDesktopWorkingTree `
-                -Stash $stash `
-                -Revision ([string]$Plan.previousCommit) `
-                -Plan $Plan
-
             $result = [ordered]@{
                 status = if ($sourceChanged) { 'rolled-back' } else { 'failed' }
                 failedStage = 'desktop-self-update'
                 previousCommit = [string]$Plan.previousCommit
                 activeLauncherUntouched = $true
-                localChangesPreserved = [bool]$stash
-                localChangesRestored = [bool]$restore.Restored
-                retainedStashCommit = if (
-                    $restore.Retained -and -not $restore.Restored
-                ) {
-                    [string]$restore.Commit
-                } else {
-                    $null
-                }
+                localChangesPreserved = [bool]$localChanges
+                localChangesRestored = [bool]$localChanges
+                retainedStashCommit = $null
                 relaunched = $false
             }
 
@@ -283,10 +299,6 @@ function Invoke-HermesDesktopUpdateStage {
             } else {
                 'The update stopped before changing the installed source. The running launcher was not replaced.'
             }
-            if (-not $restore.Restored) {
-                $rollbackMessage += " Local changes remain safe in Git stash $($restore.Commit)."
-            }
-
             Write-HermesDesktopUpdateProgress `
                 -Plan $Plan `
                 -Stage rolled-back `
@@ -299,9 +311,6 @@ function Invoke-HermesDesktopUpdateStage {
                 }) `
                 -Result $result | Out-Null
 
-            if ($stash -and $restore.Restored) {
-                $null = Remove-HermesDesktopWorkingTreeStash -Stash $stash
-            }
         } catch {
             $rollbackFailure = $_
         }
@@ -318,11 +327,7 @@ function Invoke-HermesDesktopUpdateStage {
                         code = 'desktop-update-and-rollback-failed'
                         message = $failure.Exception.Message
                         rollback = $rollbackFailure.Exception.Message
-                        retainedStashCommit = if ($stash) {
-                            [string]$stash.commit
-                        } else {
-                            $null
-                        }
+                        retainedStashCommit = $null
                     }) `
                     -Result $null | Out-Null
             } catch {
@@ -331,6 +336,10 @@ function Invoke-HermesDesktopUpdateStage {
 
         throw $failure
     } finally {
+        if ($candidateRoot) {
+            $null = Remove-HermesDesktopCandidateWorktree `
+                -CandidateRoot $candidateRoot
+        }
         Exit-HermesDesktopUpdateLock -LockPath $lockPath
     }
 }
@@ -360,6 +369,8 @@ function New-HermesDesktopPreparedPlan {
 
     $plan['planPath'] = Join-Path ([string]$plan.stagingRoot) 'plan.json'
     $plan['pendingDist'] = Join-Path ([string]$plan.stagingRoot) 'pending-dist'
+    $plan['pendingSource'] = Join-Path ([string]$plan.stagingRoot) 'pending-source'
+    $plan['preserveNestedSource'] = $false
     $plan['pendingStatePath'] = Get-HermesDesktopPendingUpdatePath
     $plan['parentStartedAt'] = Get-HermesDesktopProcessStartTime `
         -ProcessId ([int]$plan.parentPid)

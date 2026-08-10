@@ -1,29 +1,41 @@
 function Invoke-HermesDesktopSetup {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string] $Description)
+    param(
+        [Parameter(Mandatory)][string] $Description,
+        [string] $WorkingRoot = $root,
+        [string] $SharedCacheRoot
+    )
+
+    $setupRoot = [IO.Path]::GetFullPath($WorkingRoot)
+    $cacheRoot = if ($SharedCacheRoot) {
+        [IO.Path]::GetFullPath($SharedCacheRoot)
+    } else {
+        Join-Path $setupRoot 'cache'
+    }
 
     # Source and launcher dependencies may be synchronized while the Launcher
     # remains open, but the active Python environment is immutable until
     # deferred activation after every Launcher process has exited.
     Invoke-HermesDesktopProcess -FilePath 'pwsh.exe' -Arguments @(
         '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-        '-File', (Join-Path $root 'Setup-Hermes-Local.ps1'),
+        '-File', (Join-Path $setupRoot 'Setup-Hermes-Local.ps1'),
         '-SkipModel',
         '-SkipLlamaBuild',
         '-SkipHermesDependencies',
         '-SkipLauncherBuild',
         '-NonInteractive'
-    ) -Description $Description
+    ) -Description $Description -WorkingDirectory $setupRoot
 
-    $source = Join-Path $root 'source\hermes-agent'
+    $source = Join-Path $setupRoot 'source\hermes-agent'
     $packageLock = Join-Path $source 'package-lock.json'
     if (Test-Path -LiteralPath $packageLock -PathType Leaf) {
         Invoke-HermesDesktopProcess -FilePath 'npm.cmd' -Arguments @(
             '--prefix', $source,
             'ci',
-            '--cache', (Join-Path $root 'cache\npm'),
+            '--cache', (Join-Path $cacheRoot 'npm'),
             '--no-audit'
-        ) -Description "$Description Node dependency synchronisation"
+        ) -Description "$Description Node dependency synchronisation" `
+          -WorkingDirectory $setupRoot
     }
 }
 
@@ -275,6 +287,20 @@ function Promote-HermesDesktopPendingLauncher {
             -Description 'Pending launcher'
         $dist = Join-Path $root 'dist'
         $activationBackup = Join-Path ([string]$Plan.stagingRoot) 'active-dist-at-activation'
+        $activeSource = Join-Path $root 'source\hermes-agent'
+        $pendingSource = [string](Get-HermesDesktopObjectValue `
+            -InputObject $Plan `
+            -Name pendingSource `
+            -Default '')
+        $sourceActivationBackup = Join-Path `
+            ([string]$Plan.stagingRoot) `
+            'active-source-at-activation'
+        $preserveNestedSource = [bool](Get-HermesDesktopObjectValue `
+            -InputObject $Plan `
+            -Name preserveNestedSource `
+            -Default $false)
+        $sourceReserved = $false
+        $sourcePromoted = $false
 
         if (
             -not (Test-Path -LiteralPath (Join-Path $pendingDist 'Hermes Launcher.exe') -PathType Leaf)
@@ -323,6 +349,30 @@ function Promote-HermesDesktopPendingLauncher {
                 '-NonInteractive'
             ) -Description 'Hermes Local service shutdown before update activation'
 
+            # Plans created before isolated-source staging did not carry a
+            # pendingSource field; retain their already-synchronised checkout.
+            if (-not $preserveNestedSource -and $pendingSource) {
+                $null = Assert-HermesDesktopUpdatePath `
+                    -Root $root `
+                    -Path $pendingSource `
+                    -Description 'Prepared Hermes Agent source'
+                if (-not (Test-Path -LiteralPath (Join-Path $pendingSource '.git'))) {
+                    throw 'The prepared Hermes Agent source checkout is missing or incomplete.'
+                }
+                if (Test-Path -LiteralPath $activeSource -PathType Container) {
+                    Move-HermesDesktopActivationDirectory `
+                        -Source $activeSource `
+                        -Destination $sourceActivationBackup `
+                        -Description 'active Hermes Agent source backup reservation'
+                    $sourceReserved = $true
+                }
+                Move-HermesDesktopActivationDirectory `
+                    -Source $pendingSource `
+                    -Destination $activeSource `
+                    -Description 'prepared Hermes Agent source promotion'
+                $sourcePromoted = $true
+            }
+
             Invoke-HermesDesktopRuntimeSync
 
             if (Test-HermesDesktopLauncherRunning) {
@@ -353,6 +403,11 @@ function Promote-HermesDesktopPendingLauncher {
                     -Path $activationBackup `
                     -Description 'completed activation backup'
             }
+            if (Test-Path -LiteralPath $sourceActivationBackup) {
+                Remove-HermesDesktopActivationDirectory `
+                    -Path $sourceActivationBackup `
+                    -Description 'completed Hermes Agent source activation backup'
+            }
 
             $pendingState = Get-HermesDesktopPendingUpdatePath
             if (Test-Path -LiteralPath $pendingState -PathType Leaf) {
@@ -377,6 +432,8 @@ function Promote-HermesDesktopPendingLauncher {
                 launcherPath = $launcher
                 activationDeferred = $true
                 runtimeSynchronizedAfterExit = $true
+                nestedSourcePromoted = $sourcePromoted
+                nestedSourcePreserved = $preserveNestedSource
                 activatedAt = (Get-Date).ToUniversalTime().ToString('o')
                 relaunched = $relaunched
                 relaunchWarning = $relaunchWarning
@@ -401,6 +458,20 @@ function Promote-HermesDesktopPendingLauncher {
 
             [pscustomobject]$result
         } catch {
+            try {
+                if ($sourcePromoted -and (Test-Path -LiteralPath $activeSource)) {
+                    Remove-HermesDesktopActivationDirectory `
+                        -Path $activeSource `
+                        -Description 'failed prepared Hermes Agent source'
+                }
+                if ($sourceReserved -and (Test-Path -LiteralPath $sourceActivationBackup)) {
+                    Move-HermesDesktopActivationDirectory `
+                        -Source $sourceActivationBackup `
+                        -Destination $activeSource `
+                        -Description 'Hermes Agent source rollback'
+                }
+            } catch {
+            }
             try {
                 Restore-HermesDesktopActivationBackup `
                     -Dist $dist `

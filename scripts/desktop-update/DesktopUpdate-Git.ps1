@@ -33,175 +33,112 @@ function Get-HermesDesktopWorkingTreeChanges {
     ) -AllowFailure).Text
 }
 
-function Write-HermesDesktopWorkingTreeStashState {
+function New-HermesDesktopCandidateWorktree {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][object] $Plan,
-        [Parameter(Mandatory)][object] $Value
+        [Parameter(Mandatory)][string] $Revision
     )
 
-    $path = Join-Path ([string]$Plan.stagingRoot) 'working-tree-stash.json'
-    try {
-        Write-HermesDesktopUpdateJson -Path $path -Value $Value
-    } catch {
-        # The Git stash remains the source of truth if diagnostic persistence fails.
+    $candidateRoot = Join-Path ([string]$Plan.stagingRoot) 'candidate-source'
+    if (Test-Path -LiteralPath $candidateRoot) {
+        throw "The isolated candidate path already exists: $candidateRoot"
     }
+    Invoke-HermesDesktopGit -Arguments @(
+        'worktree', 'add', '--detach', $candidateRoot, $Revision
+    ) | Out-Null
+
+    $candidateState = Invoke-HermesDesktopNestedSourceGit `
+        -Repository $candidateRoot `
+        -Arguments @('rev-parse', 'HEAD') `
+        -AllowFailure
+    $candidateCommit = ([string]$candidateState.Text).Trim().ToLowerInvariant()
+    if ($candidateState.ExitCode -ne 0 -or $candidateCommit -ne $Revision.ToLowerInvariant()) {
+        throw 'The isolated Desktop update worktree did not resolve to the requested revision.'
+    }
+
+    [IO.Path]::GetFullPath($candidateRoot)
 }
 
-function Save-HermesDesktopWorkingTree {
+function Remove-HermesDesktopCandidateWorktree {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][object] $Plan)
+    param([AllowNull()][string] $CandidateRoot)
 
-    $changes = Get-HermesDesktopWorkingTreeChanges
-    if (-not $changes) {
-        return $null
-    }
-
-    $message = "hermes-desktop-update:$($Plan.operationId)"
-    $before = Invoke-HermesDesktopGit -Arguments @(
-        'rev-parse', '--verify', 'refs/stash'
-    ) -AllowFailure
-    $stash = Invoke-HermesDesktopGit -Arguments @(
-        'stash', 'push', '--include-untracked', '--message', $message
-    ) -AllowFailure
-    if ($stash.ExitCode -ne 0) {
-        throw "Could not preserve local working-tree changes before updating. $($stash.Text)"
-    }
-
-    $after = Invoke-HermesDesktopGit -Arguments @(
-        'rev-parse', '--verify', 'refs/stash'
-    ) -AllowFailure
-    if ($after.ExitCode -ne 0 -or $after.Text -notmatch '^[0-9a-fA-F]{40}$') {
-        throw 'Git reported a successful stash, but the updater could not identify the preserved changes.'
-    }
-    if ($before.ExitCode -eq 0 -and $before.Text -eq $after.Text) {
-        throw 'Git did not create a new stash for the local working-tree changes.'
-    }
-
-    $remaining = Get-HermesDesktopWorkingTreeChanges
-    if ($remaining) {
-        throw "Automatic stashing left source changes in the working tree.`n$remaining"
-    }
-
-    $record = [ordered]@{
-        schemaVersion = 1
-        operationId = [string]$Plan.operationId
-        commit = $after.Text.ToLowerInvariant()
-        message = $message
-        createdAt = (Get-Date).ToUniversalTime().ToString('o')
-        includesTracked = $true
-        includesStaged = $true
-        includesUntracked = $true
-        ignoredFilesUntouched = $true
-        restored = $false
-        retained = $true
-    }
-    Write-HermesDesktopWorkingTreeStashState -Plan $Plan -Value $record
-    [pscustomobject]$record
-}
-
-function Restore-HermesDesktopWorkingTree {
-    [CmdletBinding()]
-    param(
-        [AllowNull()][object] $Stash,
-        [Parameter(Mandatory)][string] $Revision,
-        [Parameter(Mandatory)][object] $Plan
-    )
-
-    if (-not $Stash) {
-        return [pscustomobject]@{
-            Restored = $true
-            Retained = $false
-            Commit = $null
-            Message = $null
-        }
-    }
-
-    $apply = Invoke-HermesDesktopGit -Arguments @(
-        'stash', 'apply', '--index', [string]$Stash.commit
-    ) -AllowFailure
-    if ($apply.ExitCode -eq 0) {
-        $record = [ordered]@{
-            schemaVersion = 1
-            operationId = [string]$Plan.operationId
-            commit = [string]$Stash.commit
-            message = [string]$Stash.message
-            createdAt = [string]$Stash.createdAt
-            includesTracked = $true
-            includesStaged = $true
-            includesUntracked = $true
-            ignoredFilesUntouched = $true
-            restored = $true
-            restoredAt = (Get-Date).ToUniversalTime().ToString('o')
-            retained = $true
-        }
-        Write-HermesDesktopWorkingTreeStashState -Plan $Plan -Value $record
-        return [pscustomobject]@{
-            Restored = $true
-            Retained = $true
-            Commit = [string]$Stash.commit
-            Message = $null
-        }
-    }
-
-    Invoke-HermesDesktopGit -Arguments @('reset', '--hard', $Revision) | Out-Null
-    $message = "Hermes Local was updated, but the preserved local changes conflicted with the new source. They remain safe in Git stash $($Stash.commit)."
-    $record = [ordered]@{
-        schemaVersion = 1
-        operationId = [string]$Plan.operationId
-        commit = [string]$Stash.commit
-        message = [string]$Stash.message
-        createdAt = [string]$Stash.createdAt
-        includesTracked = $true
-        includesStaged = $true
-        includesUntracked = $true
-        ignoredFilesUntouched = $true
-        restored = $false
-        retained = $true
-        restoreAttemptedAt = (Get-Date).ToUniversalTime().ToString('o')
-        restoreError = $apply.Text
-    }
-    Write-HermesDesktopWorkingTreeStashState -Plan $Plan -Value $record
-
-    [pscustomobject]@{
-        Restored = $false
-        Retained = $true
-        Commit = [string]$Stash.commit
-        Message = $message
-    }
-}
-
-function Remove-HermesDesktopWorkingTreeStash {
-    [CmdletBinding()]
-    param([AllowNull()][object] $Stash)
-
-    if (-not $Stash) {
+    if (-not $CandidateRoot) {
         return $true
     }
 
-    $lines = (Invoke-HermesDesktopGit -Arguments @(
-        'stash', 'list', '--format=%H%x09%gd'
-    ) -AllowFailure).Text -split '\r?\n'
-    $reference = $null
+    $remove = Invoke-HermesDesktopGit -Arguments @(
+        'worktree', 'remove', '--force', [IO.Path]::GetFullPath($CandidateRoot)
+    ) -AllowFailure
+    if ($remove.ExitCode -eq 0) {
+        return $true
+    }
 
-    foreach ($line in $lines) {
-        if (
-            $line -match '^([0-9a-fA-F]{40})\t(.+)$' -and
-            $Matches[1] -eq [string]$Stash.commit
-        ) {
-            $reference = $Matches[2]
-            break
+    # A terminated build may leave a file handle behind. Prune only detached
+    # worktree metadata; never delete or reset the installed checkout.
+    Invoke-HermesDesktopGit -Arguments @('worktree', 'prune') -AllowFailure | Out-Null
+    $false
+}
+
+function Set-HermesDesktopSourceRevision {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string] $Revision,
+        [switch] $Rollback
+    )
+
+    $beforeCommit = (Invoke-HermesDesktopGit -Arguments @(
+        'rev-parse', 'HEAD'
+    )).Text.ToLowerInvariant()
+    $beforeChanges = Get-HermesDesktopWorkingTreeChanges
+    if ($beforeCommit -eq $Revision.ToLowerInvariant()) {
+        return [pscustomobject]@{
+            PreviousCommit = $beforeCommit
+            CurrentCommit = $beforeCommit
+            LocalChanges = $beforeChanges
+            Changed = $false
         }
     }
 
-    if (-not $reference) {
-        return $false
+    $arguments = if ($Rollback) {
+        # --keep moves the source revision only when Git can retain every local
+        # tracked and untracked file. It aborts instead of overwriting a conflict.
+        @('reset', '--keep', $Revision)
+    } else {
+        # A fast-forward merge is Git's native non-destructive checkout update:
+        # unrelated staged, unstaged and untracked work remains in place, while
+        # a path collision aborts before that work can be overwritten.
+        @('merge', '--ff-only', '--no-edit', $Revision)
+    }
+    $promotion = Invoke-HermesDesktopGit -Arguments $arguments -AllowFailure
+    if ($promotion.ExitCode -ne 0) {
+        $afterFailure = (Invoke-HermesDesktopGit -Arguments @(
+            'rev-parse', 'HEAD'
+        )).Text.ToLowerInvariant()
+        if ($afterFailure -ne $beforeCommit) {
+            throw 'Git could not promote the source revision and did not leave HEAD unchanged.'
+        }
+        throw (
+            'The validated update is ready, but Git would overwrite a local path. ' +
+            'No local file was changed; move or commit the conflicting work and retry. ' +
+            $promotion.Text
+        )
     }
 
-    $drop = Invoke-HermesDesktopGit -Arguments @(
-        'stash', 'drop', $reference
-    ) -AllowFailure
-    $drop.ExitCode -eq 0
+    $afterCommit = (Invoke-HermesDesktopGit -Arguments @(
+        'rev-parse', 'HEAD'
+    )).Text.ToLowerInvariant()
+    if ($afterCommit -ne $Revision.ToLowerInvariant()) {
+        throw "Git completed source promotion at unexpected revision $afterCommit."
+    }
+
+    [pscustomobject]@{
+        PreviousCommit = $beforeCommit
+        CurrentCommit = $afterCommit
+        LocalChanges = Get-HermesDesktopWorkingTreeChanges
+        Changed = $true
+    }
 }
 
 function Get-HermesDesktopSemverTarget {

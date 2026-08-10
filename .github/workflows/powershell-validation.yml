@@ -81,6 +81,9 @@ jobs:
             Write-Host $_.ScriptStackTrace
             throw
           }
+          & '.\tests\Test-HermesDesktopUpdateIsolation.ps1'
+          & '.\tests\Test-DesktopUpdateNestedSourcePreservation.ps1'
+          & '.\tests\Test-DesktopUpdateSourceActivation.ps1'
           & '.\tests\Test-HermesDesktopUpdaterBreakGlass.ps1'
           pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
             -File '.\tests\Test-HermesModuleImportScope.ps1'

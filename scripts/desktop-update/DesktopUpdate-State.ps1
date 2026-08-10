@@ -401,7 +401,8 @@ function Get-HermesDesktopUpdateStatus {
             behind = 0
             updateAvailable = $false
             dirty = [bool](Get-HermesDesktopWorkingTreeChanges)
-            autoStash = $true
+            autoStash = $false
+            preservesLocalChanges = $true
             restartRequired = $true
             pendingActivation = $true
             launcherStaysOpen = $true
@@ -425,7 +426,7 @@ function Get-HermesDesktopUpdateStatus {
         -RequestedCommit $RequestedCommit
 
     $fetch = Invoke-HermesDesktopGit -Arguments @(
-        'fetch', '--no-tags', 'origin', $target.Commit
+        'fetch', '--atomic', '--no-tags', 'origin', $target.Commit
     ) -AllowFailure
     if ($fetch.ExitCode -ne 0) {
         throw "Could not download update metadata for $($target.Commit). $($fetch.Text)"
@@ -466,7 +467,8 @@ function Get-HermesDesktopUpdateStatus {
         behind = $behind
         updateAvailable = $current -ne $target.Commit
         dirty = [bool]$workingTreeChanges
-        autoStash = $true
+        autoStash = $false
+        preservesLocalChanges = $true
         restartRequired = $current -ne $target.Commit
         pendingActivation = $false
         launcherStaysOpen = $true
@@ -479,7 +481,7 @@ function Get-HermesDesktopUpdateStatus {
         message = if ($current -eq $target.Commit) {
             'Hermes Local is up to date.'
         } elseif ($workingTreeChanges) {
-            'An update is available. Local source changes will be stashed automatically and restored afterwards.'
+            'An update is available. Local source changes will stay in place; a conflicting path will stop promotion safely.'
         } else {
             'An update is available and can be prepared without closing Hermes Launcher.'
         }

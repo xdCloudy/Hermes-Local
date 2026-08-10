@@ -423,29 +423,46 @@ function Repair-HermesDesktopGitOperationState {
 
 function Invoke-HermesDesktopSourceSetupProcess {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string] $Description)
+    param(
+        [Parameter(Mandatory)][string] $Description,
+        [Parameter(Mandatory)][string] $WorkingRoot,
+        [AllowNull()][object] $Plan
+    )
 
     Invoke-HermesDesktopProcess -FilePath 'pwsh.exe' -Arguments @(
         '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-        '-File', (Join-Path $root 'Setup-Hermes-Local.ps1'),
+        '-File', (Join-Path $WorkingRoot 'Setup-Hermes-Local.ps1'),
         '-SkipModel',
         '-SkipLlamaBuild',
         '-SkipHermesDependencies',
         '-SkipLauncherBuild',
         '-NonInteractive'
-    ) -Description $Description -Plan $null
+    ) -Description $Description -Plan $Plan -WorkingDirectory $WorkingRoot
 }
 
 function Invoke-HermesDesktopSetup {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string] $Description)
+    param(
+        [Parameter(Mandatory)][string] $Description,
+        [string] $WorkingRoot = $root,
+        [string] $SharedCacheRoot
+    )
 
     $plan = Get-HermesDesktopUpdateActivePlan -Plan $null
-    $source = Join-Path $root 'source\hermes-agent'
+    $setupRoot = [IO.Path]::GetFullPath($WorkingRoot)
+    $cacheRoot = if ($SharedCacheRoot) {
+        [IO.Path]::GetFullPath($SharedCacheRoot)
+    } else {
+        Join-Path $setupRoot 'cache'
+    }
+    $source = Join-Path $setupRoot 'source\hermes-agent'
     $firstError = $null
 
     try {
-        $null = Invoke-HermesDesktopSourceSetupProcess -Description $Description
+        $null = Invoke-HermesDesktopSourceSetupProcess `
+            -Description $Description `
+            -WorkingRoot $setupRoot `
+            -Plan $plan
     } catch {
         $firstError = $_
         if (Test-Path -LiteralPath (Join-Path $source '.git')) {
@@ -458,19 +475,17 @@ function Invoke-HermesDesktopSetup {
             $firstError.Exception.Message
         )
         try {
-            $null = Invoke-HermesDesktopSourceSetupProcess -Description $Description
+            $null = Invoke-HermesDesktopSourceSetupProcess `
+                -Description $Description `
+                -WorkingRoot $setupRoot `
+                -Plan $plan
             $firstError = $null
         } catch {
             $secondError = $_
-            $stashState = if ($plan) {
-                Join-Path ([string]$plan.stagingRoot) 'hermes-agent-working-tree-stash.json'
-            } else {
-                $null
-            }
             $canReclone = (
                 $plan -and
                 (Test-Path -LiteralPath $source -PathType Container) -and
-                -not ($stashState -and (Test-Path -LiteralPath $stashState -PathType Leaf))
+                -not (Get-HermesDesktopNestedSourceChanges -Repository $source)
             )
             if (-not $canReclone) {
                 throw $secondError
@@ -484,7 +499,10 @@ function Invoke-HermesDesktopSetup {
             )
             Move-Item -LiteralPath $source -Destination $backup
             try {
-                $null = Invoke-HermesDesktopSourceSetupProcess -Description $Description
+                $null = Invoke-HermesDesktopSourceSetupProcess `
+                    -Description $Description `
+                    -WorkingRoot $setupRoot `
+                    -Plan $plan
                 Set-HermesDesktopObjectValue `
                     -InputObject $plan `
                     -Name recoveredNestedSourceBackup `
@@ -514,7 +532,7 @@ function Invoke-HermesDesktopSetup {
         $null = Invoke-HermesDesktopProcess -FilePath 'npm.cmd' -Arguments @(
             '--prefix', $source,
             'ci',
-            '--cache', (Join-Path $root 'cache\npm'),
+            '--cache', (Join-Path $cacheRoot 'npm'),
             '--prefer-offline',
             '--no-audit',
             '--fund=false'
