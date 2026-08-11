@@ -171,8 +171,8 @@ fn platform_available() -> bool {
 
 #[cfg(windows)]
 fn powershell_executable() -> Result<PathBuf, String> {
-    let root = std::env::var_os("SystemRoot")
-        .map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+    let root =
+        std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
     let executable = root
         .join("System32")
         .join("WindowsPowerShell")
