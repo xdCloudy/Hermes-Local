@@ -7,9 +7,7 @@ use std::{
     time::Duration,
 };
 
-use hermes_core::{
-    AppServices, ConnectionService, ServiceError, ServiceFuture, ServiceResult,
-};
+use hermes_core::{AppServices, ConnectionService, ServiceError, ServiceFuture, ServiceResult};
 use hermes_protocol::{
     ConnectionConfig, ConnectionConfigInput, ConnectionMode, ConnectionOauthLoginResult,
     ConnectionOauthLogoutResult, ConnectionProbeResult, ConnectionState, ConnectionTestResult,
