@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "bundle", windows_subsystem = "windows")]
+
 mod startup;
 
 use std::path::PathBuf;
