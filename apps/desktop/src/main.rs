@@ -1,5 +1,6 @@
 #![cfg_attr(feature = "bundle", windows_subsystem = "windows")]
 
+mod base64;
 mod ssh;
 mod ssh_service;
 mod startup;
