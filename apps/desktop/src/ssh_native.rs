@@ -36,7 +36,7 @@ pub fn random_hex(bytes: usize) -> ServiceResult<String> {
     {
         let count = bytes.div_ceil(16);
         let script = format!(
-            "1..{count}|ForEach-Object{{[Guid]::NewGuid().ToString('N')}}|Join-String -Separator ''"
+            "-join (1..{count}|ForEach-Object{{[Guid]::NewGuid().ToString('N')}})"
         );
         let output = Command::new("powershell.exe")
             .args(["-NoProfile", "-NonInteractive", "-Command", &script])
@@ -60,7 +60,7 @@ pub fn random_hex(bytes: usize) -> ServiceResult<String> {
                 "Windows random source returned too little entropy".into(),
             ));
         }
-        return Ok(value[..bytes * 2].to_owned());
+        Ok(value[..bytes * 2].to_owned())
     }
     #[cfg(not(windows))]
     {
@@ -89,10 +89,10 @@ pub fn new_uuid_v4() -> ServiceResult<String> {
         if output.status.success() && is_uuid_v4(&value) {
             return Ok(value);
         }
-        return Err(ServiceError::Platform(format!(
+        Err(ServiceError::Platform(format!(
             "could not create desktop installation id: {}",
             sanitize(&String::from_utf8_lossy(&output.stderr))
-        )));
+        )))
     }
     #[cfg(not(windows))]
     {
@@ -172,9 +172,9 @@ pub fn load_protected_secret(
                 "protected SSH secret decrypted to an invalid value".into(),
             ));
         }
-        return String::from_utf8(clear)
+        String::from_utf8(clear)
             .map(Some)
-            .map_err(|_| ServiceError::PermissionDenied("protected SSH secret is not UTF-8".into()));
+            .map_err(|_| ServiceError::PermissionDenied("protected SSH secret is not UTF-8".into()))
     }
     #[cfg(not(windows))]
     {
@@ -203,6 +203,13 @@ pub fn store_protected_secret(
             ServiceError::Platform("protected SSH secret path has no parent".into())
         })?;
         fs::create_dir_all(parent).map_err(platform)?;
+        if let Ok(metadata) = fs::symlink_metadata(&path)
+            && (!metadata.file_type().is_file() || metadata.file_type().is_symlink())
+        {
+            return Err(ServiceError::PermissionDenied(
+                "refusing to replace a non-regular protected SSH secret path".into(),
+            ));
+        }
         let encrypted = run_dpapi(true, secret.as_bytes())?;
         let temporary = path.with_extension(format!("{}.tmp", random_hex(8)?));
         let mut file = OpenOptions::new()
@@ -213,11 +220,27 @@ pub fn store_protected_secret(
         file.write_all(&encrypted).map_err(platform)?;
         file.flush().map_err(platform)?;
         drop(file);
-        match fs::rename(&temporary, &path) {
-            Ok(()) => Ok(()),
-            Err(error) => {
-                let _ = fs::remove_file(&temporary);
-                Err(platform(error))
+        if path.exists() {
+            // Windows std::fs::rename does not replace an existing destination.
+            // The destination has already been verified as a regular file; a
+            // short truncate/write window is preferable to deleting it first.
+            let replace = OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .open(&path)
+                .and_then(|mut target| {
+                    target.write_all(&encrypted)?;
+                    target.flush()
+                });
+            let _ = fs::remove_file(&temporary);
+            replace.map_err(platform)
+        } else {
+            match fs::rename(&temporary, &path) {
+                Ok(()) => Ok(()),
+                Err(error) => {
+                    let _ = fs::remove_file(&temporary);
+                    Err(platform(error))
+                }
             }
         }
     }
@@ -246,13 +269,16 @@ fn loopback_get_blocking(
     path: &str,
     token: Option<&str>,
 ) -> ServiceResult<HttpResponse> {
-    if !path.starts_with('/') || path.contains(['\r', '\n']) {
+    if !path.starts_with('/') || path.contains('\r') || path.contains('\n') {
         return Err(ServiceError::InvalidInput(
             "invalid loopback HTTP path".into(),
         ));
     }
     let url = Url::parse(base_url).map_err(invalid)?;
-    if url.scheme() != "http" || url.path() != "/" || url.query().is_some() || url.fragment().is_some()
+    if url.scheme() != "http"
+        || url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
     {
         return Err(ServiceError::InvalidInput(
             "SSH loopback base URL must be a plain HTTP origin".into(),
@@ -262,8 +288,12 @@ fn loopback_get_blocking(
         .port_or_known_default()
         .ok_or_else(|| ServiceError::InvalidInput("loopback URL is missing a port".into()))?;
     let address = match url.host() {
-        Some(Host::Ipv4(ip)) if ip == Ipv4Addr::LOCALHOST => SocketAddr::new(IpAddr::V4(ip), port),
-        Some(Host::Domain("localhost")) => SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port),
+        Some(Host::Ipv4(ip)) if ip == Ipv4Addr::LOCALHOST => {
+            SocketAddr::new(IpAddr::V4(ip), port)
+        }
+        Some(Host::Domain("localhost")) => {
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port)
+        }
         _ => {
             return Err(ServiceError::PermissionDenied(
                 "SSH lifecycle HTTP is restricted to loopback".into(),
@@ -271,15 +301,22 @@ fn loopback_get_blocking(
         }
     };
     if let Some(token) = token
-        && (token.is_empty() || token.len() > MAX_SECRET_BYTES || token.contains(['\r', '\n']))
+        && (token.is_empty()
+            || token.len() > MAX_SECRET_BYTES
+            || token.contains('\r')
+            || token.contains('\n'))
     {
         return Err(ServiceError::InvalidInput(
             "invalid loopback session token".into(),
         ));
     }
     let mut stream = TcpStream::connect_timeout(&address, HTTP_TIMEOUT).map_err(transport)?;
-    stream.set_read_timeout(Some(HTTP_TIMEOUT)).map_err(platform)?;
-    stream.set_write_timeout(Some(HTTP_TIMEOUT)).map_err(platform)?;
+    stream
+        .set_read_timeout(Some(HTTP_TIMEOUT))
+        .map_err(platform)?;
+    stream
+        .set_write_timeout(Some(HTTP_TIMEOUT))
+        .map_err(platform)?;
     let mut request = format!(
         "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\nAccept-Encoding: identity\r\n"
     );
@@ -321,7 +358,9 @@ fn parse_http_response(response: &[u8]) -> ServiceResult<HttpResponse> {
         .ok_or_else(|| ServiceError::Transport("invalid loopback HTTP status".into()))?;
     let chunked = lines.any(|line| {
         let mut parts = line.splitn(2, ':');
-        parts.next().is_some_and(|name| name.eq_ignore_ascii_case("transfer-encoding"))
+        parts
+            .next()
+            .is_some_and(|name| name.eq_ignore_ascii_case("transfer-encoding"))
             && parts
                 .next()
                 .is_some_and(|value| value.to_ascii_lowercase().contains("chunked"))
@@ -342,20 +381,29 @@ fn decode_chunked(mut input: &[u8]) -> ServiceResult<Vec<u8>> {
     let mut output = Vec::new();
     loop {
         let Some(end) = input.windows(2).position(|window| window == b"\r\n") else {
-            return Err(ServiceError::Transport("invalid chunked HTTP response".into()));
+            return Err(ServiceError::Transport(
+                "invalid chunked HTTP response".into(),
+            ));
         };
         let size_text = String::from_utf8_lossy(&input[..end]);
-        let size = usize::from_str_radix(size_text.split(';').next().unwrap_or_default().trim(), 16)
-            .map_err(|_| ServiceError::Transport("invalid HTTP chunk size".into()))?;
+        let size = usize::from_str_radix(
+            size_text.split(';').next().unwrap_or_default().trim(),
+            16,
+        )
+        .map_err(|_| ServiceError::Transport("invalid HTTP chunk size".into()))?;
         input = &input[end + 2..];
         if size == 0 {
             return Ok(output);
         }
         if input.len() < size + 2 || &input[size..size + 2] != b"\r\n" {
-            return Err(ServiceError::Transport("truncated chunked HTTP response".into()));
+            return Err(ServiceError::Transport(
+                "truncated chunked HTTP response".into(),
+            ));
         }
         if output.len().saturating_add(size) > MAX_HTTP_BYTES {
-            return Err(ServiceError::Transport("chunked HTTP body exceeded the safety limit".into()));
+            return Err(ServiceError::Transport(
+                "chunked HTTP body exceeded the safety limit".into(),
+            ));
         }
         output.extend_from_slice(&input[..size]);
         input = &input[size + 2..];
