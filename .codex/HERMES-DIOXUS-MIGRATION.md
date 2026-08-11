@@ -533,3 +533,29 @@ backlog.
 Exact next action: audit and port the OG Workspace settings section in official
 source order, beginning with default directory and repository discovery fields,
 then continue into Safety.
+
+## Workspace settings checkpoint (2026-08-11)
+
+The first remaining official config section is connected in source order.
+Workspace renders Working Directory, Automatic Repository Discovery,
+Repository Discovery Roots, Excluded Repository Paths, Code Execution Mode,
+Persistent Shell, Environment Passthrough, and File Read Limit. Fields appear
+only when the Agent schema or current record declares them, preserving the OG
+client's backend-capability behavior rather than fabricating unsupported knobs.
+
+Boolean, numeric, ordered option, list, and free-text controls are selected from
+the typed schema. List values retain the source comma-separated editing shape;
+select writes preserve the schema's underlying JSON option; nested edits use
+whole-record replacement while retaining unrelated current and future keys.
+Focused unit coverage proves both nested preservation and list presentation.
+
+Maximized native QA at 1296x809 covers all eight populated rows and their OG
+compact divider rhythm. A real WebView interaction saved Automatic Repository
+Discovery `true → false`, navigated away, remounted the pane, reloaded config
+from the fixture, and retained `false`. The workspace passes 31 unit tests plus
+doc-tests; Clippy output remains the existing pedantic documentation/style
+backlog only.
+
+Exact next action: port the OG Safety config section with the same schema-aware
+whole-record guarantees, including approval modes, URL policy, command allowlist,
+and checkpoints.

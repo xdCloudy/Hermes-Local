@@ -1814,6 +1814,8 @@ fn SettingsOverlay(initial: &'static str) -> Element {
                         AgentConfigPanel { section: "model", icon: "hubot", label: "Model" }
                     } else if active() == "chat" {
                         AgentConfigPanel { section: "chat", icon: "comment-discussion", label: "Chat" }
+                    } else if active() == "workspace" {
+                        AgentConfigPanel { section: "workspace", icon: "desktop-download", label: "Workspace" }
                     } else {
                         section { class: "settings-placeholder",
                             div { class: "settings-section-title", Codicon { name: active_icon } h1 { "{active_label}" } }
@@ -1895,6 +1897,8 @@ fn AgentConfigPanel(section: &'static str, icon: &'static str, label: &'static s
             p { class: "settings-intro",
                 if section == "model" {
                     "Configure the context window and the fallback models Hermes tries when the default model is unavailable."
+                } else if section == "workspace" {
+                    "Choose the default tool workspace, repository discovery policy, and execution boundaries for new sessions."
                 } else {
                     "Choose how new chats behave and how model output is presented."
                 }
@@ -1920,12 +1924,22 @@ fn AgentConfigPanel(section: &'static str, icon: &'static str, label: &'static s
                         error,
                     }
                 } else {
-                    ChatConfigFields {
-                        snapshot,
-                        loaded,
-                        profile: profile.clone(),
-                        saving,
-                        error,
+                    if section == "chat" {
+                        ChatConfigFields {
+                            snapshot,
+                            loaded,
+                            profile: profile.clone(),
+                            saving,
+                            error,
+                        }
+                    } else {
+                        WorkspaceConfigFields {
+                            snapshot,
+                            loaded,
+                            profile: profile.clone(),
+                            saving,
+                            error,
+                        }
                     }
                 }
                 if saving() { p { class: "settings-save-state", "Saving…" } }
@@ -2963,6 +2977,209 @@ fn ChatConfigFields(
     }
 }
 
+const WORKSPACE_FIELDS: &[(&str, &str, &str)] = &[
+    (
+        "terminal.cwd",
+        "Working Directory",
+        "Default project folder for tool and terminal work.",
+    ),
+    (
+        "desktop.repo_scan_enabled",
+        "Automatic Repository Discovery",
+        "Scan local folders for Git repositories to show in Projects.",
+    ),
+    (
+        "desktop.repo_scan_roots",
+        "Repository Discovery Roots",
+        "Folders to scan. Leave empty to scan your home directory.",
+    ),
+    (
+        "desktop.repo_scan_exclude_paths",
+        "Excluded Repository Paths",
+        "Folders and their descendants to skip during repository discovery.",
+    ),
+    (
+        "code_execution.mode",
+        "Code Execution Mode",
+        "How strictly code execution is scoped to the current project.",
+    ),
+    (
+        "terminal.persistent_shell",
+        "Persistent Shell",
+        "Keep shell state between commands when the backend supports it.",
+    ),
+    (
+        "terminal.env_passthrough",
+        "Environment Passthrough",
+        "Environment variables to pass into tool execution.",
+    ),
+    (
+        "file_read_max_chars",
+        "File Read Limit",
+        "Maximum characters Hermes can read from one file request.",
+    ),
+];
+
+#[component]
+fn WorkspaceConfigFields(
+    snapshot: Signal<Option<AgentConfigSnapshot>>,
+    loaded: AgentConfigSnapshot,
+    profile: Option<String>,
+    saving: Signal<bool>,
+    error: Signal<Option<String>>,
+) -> Element {
+    rsx! {
+        for (path, title, description) in WORKSPACE_FIELDS {
+            CuratedConfigField {
+                key: "{path}",
+                snapshot,
+                loaded: loaded.clone(),
+                profile: profile.clone(),
+                saving,
+                error,
+                path,
+                title,
+                description,
+            }
+        }
+    }
+}
+
+#[component]
+fn CuratedConfigField(
+    snapshot: Signal<Option<AgentConfigSnapshot>>,
+    loaded: AgentConfigSnapshot,
+    profile: Option<String>,
+    saving: Signal<bool>,
+    error: Signal<Option<String>>,
+    path: &'static str,
+    title: &'static str,
+    description: &'static str,
+) -> Element {
+    let service = use_context::<AppServices>().agent_config.clone();
+    let schema = loaded.schema.fields.get(path).cloned();
+    let value = config_value(&loaded.config, path)
+        .cloned()
+        .unwrap_or(Value::Null);
+    if schema.is_none() && value.is_null() {
+        return rsx! {};
+    }
+    let field_type = schema
+        .as_ref()
+        .and_then(|field| field.field_type.clone())
+        .unwrap_or_else(|| {
+            match value {
+                Value::Bool(_) => "boolean",
+                Value::Number(_) => "number",
+                Value::Array(_) => "list",
+                _ => "string",
+            }
+            .to_owned()
+        });
+    let options = schema
+        .as_ref()
+        .map(|field| field.options.clone())
+        .unwrap_or_default();
+    let current_text = config_display_value(&value);
+    let mut draft = use_signal(|| current_text.clone());
+
+    rsx! {
+        section { class: "settings-list-row",
+            div { class: "settings-row-copy", strong { "{title}" } p { "{description}" } }
+            div { class: "settings-row-action",
+                if field_type == "boolean" {
+                    label { class: "settings-switch",
+                        input {
+                            r#type: "checkbox",
+                            checked: value.as_bool().unwrap_or_default(),
+                            disabled: saving(),
+                            onchange: {
+                                let config = loaded.config.clone();
+                                let profile = profile.clone();
+                                let service = service.clone();
+                                move |event| commit_agent_config(snapshot, saving, error, service.clone(), profile.clone(), set_config_value(&config, path, json!(event.checked())))
+                            }
+                        }
+                        span {}
+                    }
+                } else if !options.is_empty() {
+                    select {
+                        class: "settings-select",
+                        disabled: saving(),
+                        value: "{current_text}",
+                        onchange: {
+                            let config = loaded.config.clone();
+                            let profile = profile.clone();
+                            let service = service.clone();
+                            let options = options.clone();
+                            move |event| {
+                                let selected = event.value();
+                                let next = options
+                                    .iter()
+                                    .find(|option| config_display_value(option) == selected)
+                                    .cloned()
+                                    .unwrap_or_else(|| json!(selected));
+                                commit_agent_config(snapshot, saving, error, service.clone(), profile.clone(), set_config_value(&config, path, next));
+                            }
+                        },
+                        for option in &options {
+                            {
+                                let label = config_display_value(option);
+                                rsx! { option { value: "{label}", selected: label == current_text, "{label}" } }
+                            }
+                        }
+                    }
+                } else {
+                    input {
+                        class: if field_type == "number" { "settings-input number" } else { "settings-input" },
+                        r#type: if field_type == "number" { "number" } else { "text" },
+                        disabled: saving(),
+                        value: "{draft}",
+                        placeholder: if field_type == "list" { "Comma separated" } else { "Not set" },
+                        oninput: move |event| draft.set(event.value()),
+                        onblur: {
+                            let config = loaded.config.clone();
+                            let profile = profile.clone();
+                            let service = service.clone();
+                            let field_type = field_type.clone();
+                            move |_| {
+                                let text = draft();
+                                let next = if field_type == "number" {
+                                    match text.parse::<i64>() {
+                                        Ok(value) => json!(value),
+                                        Err(_) => return,
+                                    }
+                                } else if field_type == "list" {
+                                    Value::Array(text.split(',').map(str::trim).filter(|part| !part.is_empty()).map(|part| json!(part)).collect())
+                                } else {
+                                    json!(text)
+                                };
+                                if config_value(&config, path) != Some(&next) {
+                                    commit_agent_config(snapshot, saving, error, service.clone(), profile.clone(), set_config_value(&config, path, next));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn config_display_value(value: &Value) -> String {
+    match value {
+        Value::Null => String::new(),
+        Value::String(value) => value.clone(),
+        Value::Array(values) => values
+            .iter()
+            .map(config_display_value)
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>()
+            .join(", "),
+        _ => value.to_string(),
+    }
+}
+
 #[component]
 fn SettingsRow(title: &'static str, description: &'static str, children: Element) -> Element {
     rsx! {
@@ -3399,8 +3616,41 @@ fn ErrorState(error: String) -> Element {
 #[cfg(test)]
 mod tests {
     use hermes_protocol::{MoaConfig, MoaModelSlot, MoaPreset};
+    use serde_json::json;
 
-    use super::moa_complete;
+    use super::{config_display_value, config_value, moa_complete, set_config_value};
+
+    #[test]
+    fn workspace_config_edits_preserve_unrelated_nested_keys() {
+        let config = serde_json::from_value(json!({
+            "desktop": { "repo_scan_enabled": false, "future": "keep" },
+            "terminal": { "cwd": "C:\\Code", "timeout": 90 },
+            "unrelated": { "enabled": true }
+        }))
+        .expect("config record");
+        let updated = set_config_value(&config, "desktop.repo_scan_enabled", json!(true));
+        assert_eq!(
+            config_value(&updated, "desktop.repo_scan_enabled"),
+            Some(&json!(true))
+        );
+        assert_eq!(
+            config_value(&updated, "desktop.future"),
+            Some(&json!("keep"))
+        );
+        assert_eq!(config_value(&updated, "terminal.timeout"), Some(&json!(90)));
+        assert_eq!(
+            config_value(&updated, "unrelated.enabled"),
+            Some(&json!(true))
+        );
+    }
+
+    #[test]
+    fn workspace_list_fields_use_the_source_comma_separated_shape() {
+        assert_eq!(
+            config_display_value(&json!(["C:\\Code", "D:\\Projects"])),
+            r"C:\Code, D:\Projects"
+        );
+    }
 
     #[test]
     fn holds_moa_saves_while_a_slot_is_incomplete() {

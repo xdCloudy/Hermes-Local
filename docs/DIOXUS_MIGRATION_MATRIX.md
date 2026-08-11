@@ -126,6 +126,7 @@ updater work itself.
 | --- | --- | --- | --- | --- |
 | Settings and per-scope persistence | `SettingsService` | settings overlay | schema/scope/migration tests | Ported |
 | Agent config record, defaults and schema | `AgentConfigService` | Model/Chat settings | profile-aware REST replacement contract + rendered save E2E | Validated |
+| Workspace Agent configuration | `AgentConfigService` | Workspace settings | nested-key preservation + schema controls + rendered save/reload | Validated |
 | Main and auxiliary model configuration | `ModelService` | Model settings | provider/catalog/assignment fixtures + interaction E2E | Ported |
 | Mixture-of-Agents model configuration | `ModelService` | Model settings | preset/slot round-trip + interaction E2E | Ported |
 | Local/remote/cloud connection profiles | `ConnectionService` | settings/profiles | soft/hard/live re-home tests | Designed |
