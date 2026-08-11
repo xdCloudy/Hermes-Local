@@ -59,7 +59,9 @@ impl SshLease {
         url.set_scheme("ws")
             .map_err(|()| ServiceError::Platform("could not build SSH WebSocket URL".into()))?;
         url.set_path("/api/ws");
-        url.query_pairs_mut().clear().append_pair("token", &self.token);
+        url.query_pairs_mut()
+            .clear()
+            .append_pair("token", &self.token);
         Ok(url.to_string())
     }
 }
@@ -117,6 +119,17 @@ struct SshExecError {
     message: String,
 }
 
+impl SshExecError {
+    fn into_service(self) -> ServiceError {
+        match self.kind {
+            SshErrorKind::AuthFailed | SshErrorKind::HostKeyChanged => {
+                ServiceError::PermissionDenied(self.message)
+            }
+            _ => ServiceError::Transport(self.message),
+        }
+    }
+}
+
 pub async fn connect(config: &SshLifecycleConfig) -> ServiceResult<SshLease> {
     validate_profile(&config.profile_scope)?;
     validate_profile(&config.remote_profile)?;
@@ -146,9 +159,9 @@ async fn runtime_probe(config: &SshConfig) -> ServiceResult<RuntimeProbe> {
                 .unwrap_or_else(|| "SSH remote probe failed".into()),
         ));
     }
-    let platform = result
-        .remote_platform
-        .ok_or_else(|| ServiceError::Transport("SSH probe did not report a remote platform".into()))?;
+    let platform = result.remote_platform.ok_or_else(|| {
+        ServiceError::Transport("SSH probe did not report a remote platform".into())
+    })?;
     let (os, arch) = platform.split_once('/').unwrap_or((&platform, ""));
     let hermes_path = result
         .remote_hermes_path
@@ -167,23 +180,22 @@ async fn connect_unix(
     runtime: &RuntimeProbe,
     ownership_id: &str,
 ) -> ServiceResult<SshLease> {
-    let hermes_home = run_ssh(&config.ssh, "printf '%s' \"${HERMES_HOME:-$HOME/.hermes}\"", None)
-        .await?
-        .trim()
-        .to_owned();
+    let hermes_home = run_ssh(
+        &config.ssh,
+        "printf '%s' \"${HERMES_HOME:-$HOME/.hermes}\"",
+        None,
+    )
+    .await?
+    .trim()
+    .to_owned();
     validate_unix_remote_path(&hermes_home)?;
     let reuse_token = load_reuse_token(ownership_id).unwrap_or_default();
 
     if let Some(lock) = read_unix_lock(&config.ssh, ownership_id).await? {
         let alive = remote_pid_alive(&config.ssh, lock.pid).await?;
         let owned = alive
-            && pid_is_our_dashboard(
-                &config.ssh,
-                lock.pid,
-                &lock.spawn_nonce,
-                &lock.hermes_path,
-            )
-            .await?;
+            && pid_is_our_dashboard(&config.ssh, lock.pid, &lock.spawn_nonce, &lock.hermes_path)
+                .await?;
         let reusable = alive
             && owned
             && lock.port > 0
@@ -199,13 +211,8 @@ async fn connect_unix(
             let base_url = format!("http://127.0.0.1:{local_port}");
             match probe_reuse_proof(&base_url, &reuse_token, &lock.spawn_nonce).await {
                 Ok(true) => {
-                    let token = adopt_served_token(
-                        &config.ssh,
-                        &base_url,
-                        &reuse_token,
-                        lock.pid,
-                    )
-                    .await?;
+                    let token =
+                        adopt_served_token(&config.ssh, &base_url, &reuse_token, lock.pid).await?;
                     store_reuse_token(ownership_id, &token)?;
                     return Ok(SshLease {
                         base_url,
@@ -261,7 +268,7 @@ async fn connect_unix(
     let result = async {
         write_unix_lock(&config.ssh, ownership_id, &owned).await?;
         let remote_port = wait_unix_ready(&config.ssh, &spawned.log_path, spawned.pid).await?;
-        let mut forward = open_forward(&config.ssh, remote_port).await?;
+        let forward = open_forward(&config.ssh, remote_port).await?;
         let local_port = forward.local_port;
         let base_url = format!("http://127.0.0.1:{local_port}");
         wait_for_dashboard(&base_url, &spawn_token).await?;
@@ -297,7 +304,10 @@ async fn connect_unix(
     result
 }
 
-async fn read_unix_lock(config: &SshConfig, ownership_id: &str) -> ServiceResult<Option<UnixLock>> {
+async fn read_unix_lock(
+    config: &SshConfig,
+    ownership_id: &str,
+) -> ServiceResult<Option<UnixLock>> {
     validate_ownership_id(ownership_id)?;
     let path = lockfile_path(ownership_id)?;
     let expanded = expand_unix_path(&path)?;
@@ -321,10 +331,16 @@ async fn read_unix_lock(config: &SshConfig, ownership_id: &str) -> ServiceResult
     }
 }
 
-async fn write_unix_lock(config: &SshConfig, ownership_id: &str, lock: &UnixLock) -> ServiceResult<()> {
+async fn write_unix_lock(
+    config: &SshConfig,
+    ownership_id: &str,
+    lock: &UnixLock,
+) -> ServiceResult<()> {
     validate_ownership_id(ownership_id)?;
     if !valid_unix_lock(lock, ownership_id) {
-        return Err(ServiceError::InvalidInput("refusing to write an invalid SSH ownership lock".into()));
+        return Err(ServiceError::InvalidInput(
+            "refusing to write an invalid SSH ownership lock".into(),
+        ));
     }
     let directory = ownership_directory(ownership_id)?;
     let path = lockfile_path(ownership_id)?;
@@ -348,7 +364,6 @@ fn valid_unix_lock(lock: &UnixLock, ownership_id: &str) -> bool {
         && is_lower_hex(&lock.spawn_nonce, 16)
         && lock.pid > 0
         && lock.pid <= 4_194_304
-        && lock.port <= u16::MAX
         && is_lower_hex(&lock.token_fingerprint, 32)
         && lock.log_path == spawn_log_path(ownership_id, &lock.spawn_nonce).unwrap_or_default()
         && lock.profile.len() <= 1_024
@@ -440,13 +455,9 @@ async fn cleanup_unix_stale(
 
 async fn remove_unix_lock(config: &SshConfig, ownership_id: &str) -> ServiceResult<()> {
     let path = lockfile_path(ownership_id)?;
-    run_ssh(
-        config,
-        &format!("rm -f {}", expand_unix_path(&path)?),
-        None,
-    )
-    .await
-    .map(|_| ())
+    run_ssh(config, &format!("rm -f {}", expand_unix_path(&path)?), None)
+        .await
+        .map(|_| ())
 }
 
 async fn spawn_unix_dashboard(
@@ -502,7 +513,9 @@ async fn spawn_unix_dashboard(
         .rev()
         .find_map(|line| line.trim().parse::<u32>().ok())
         .filter(|pid| *pid > 0)
-        .ok_or_else(|| ServiceError::Transport("remote Hermes dashboard did not return a pid".into()))?;
+        .ok_or_else(|| {
+            ServiceError::Transport("remote Hermes dashboard did not return a pid".into())
+        })?;
     Ok(SpawnedUnix {
         pid,
         spawn_nonce,
@@ -511,7 +524,11 @@ async fn spawn_unix_dashboard(
     })
 }
 
-async fn upload_unix_token(config: &SshConfig, token_file_path: &str, token: &str) -> ServiceResult<()> {
+async fn upload_unix_token(
+    config: &SshConfig,
+    token_file_path: &str,
+    token: &str,
+) -> ServiceResult<()> {
     let script = format!(
         "import os,sys,stat,time\n\
          p=os.path.expanduser({path})\n\
@@ -606,7 +623,11 @@ async fn open_forward(config: &SshConfig, remote_port: u16) -> ServiceResult<For
     Err(last_error.unwrap_or_else(|| ServiceError::Transport("could not open SSH forward".into())))
 }
 
-async fn spawn_forward(config: &SshConfig, local_port: u16, remote_port: u16) -> ServiceResult<Child> {
+async fn spawn_forward(
+    config: &SshConfig,
+    local_port: u16,
+    remote_port: u16,
+) -> ServiceResult<Child> {
     let executable = resolve_ssh_executable()?;
     let mut args = common_ssh_args(config);
     args.extend([
@@ -640,7 +661,10 @@ async fn spawn_forward(config: &SshConfig, local_port: u16, remote_port: u16) ->
 
 fn pick_local_port() -> ServiceResult<u16> {
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(platform)?;
-    listener.local_addr().map(|addr| addr.port()).map_err(platform)
+    listener
+        .local_addr()
+        .map(|addr| addr.port())
+        .map_err(platform)
 }
 
 async fn wait_for_dashboard(base_url: &str, token: &str) -> ServiceResult<()> {
@@ -654,7 +678,12 @@ async fn wait_for_dashboard(base_url: &str, token: &str) -> ServiceResult<()> {
             .await
         {
             Ok(response) if response.status().is_success() => return Ok(()),
-            Ok(response) if matches!(response.status(), StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) => {
+            Ok(response)
+                if matches!(
+                    response.status(),
+                    StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
+                ) =>
+            {
                 return Err(ServiceError::PermissionDenied(
                     "remote Hermes dashboard rejected its spawn session token".into(),
                 ));
@@ -667,7 +696,11 @@ async fn wait_for_dashboard(base_url: &str, token: &str) -> ServiceResult<()> {
     ))
 }
 
-async fn probe_reuse_proof(base_url: &str, token: &str, spawn_nonce: &str) -> ServiceResult<bool> {
+async fn probe_reuse_proof(
+    base_url: &str,
+    token: &str,
+    spawn_nonce: &str,
+) -> ServiceResult<bool> {
     validate_spawn_nonce(spawn_nonce)?;
     let response = loopback_client()?
         .get(format!("{base_url}/api/ssh/ownership"))
@@ -690,7 +723,8 @@ async fn probe_reuse_proof(base_url: &str, token: &str, spawn_nonce: &str) -> Se
     let proof: Value = response.json().await.map_err(transport)?;
     Ok(proof.get("ok").and_then(Value::as_bool) == Some(true)
         && proof.get("sshOwnerNonce").and_then(Value::as_str) == Some(spawn_nonce)
-        && proof.get("protocolVersion").and_then(Value::as_u64) == Some(u64::from(PROTOCOL_VERSION)))
+        && proof.get("protocolVersion").and_then(Value::as_u64)
+            == Some(u64::from(PROTOCOL_VERSION)))
 }
 
 async fn adopt_served_token(
@@ -699,11 +733,7 @@ async fn adopt_served_token(
     expected_token: &str,
     pid: u32,
 ) -> ServiceResult<String> {
-    let served = match loopback_client()?
-        .get(format!("{base_url}/"))
-        .send()
-        .await
-    {
+    let served = match loopback_client()?.get(format!("{base_url}/")).send().await {
         Ok(response) if response.status().is_success() => response
             .text()
             .await
@@ -753,10 +783,14 @@ fn loopback_client() -> ServiceResult<reqwest::Client> {
         .map_err(platform)
 }
 
-async fn run_ssh(config: &SshConfig, remote_command: &str, stdin: Option<&[u8]>) -> ServiceResult<String> {
+async fn run_ssh(
+    config: &SshConfig,
+    remote_command: &str,
+    stdin: Option<&[u8]>,
+) -> ServiceResult<String> {
     run_ssh_inner(config, remote_command, stdin)
         .await
-        .map_err(|error| ServiceError::Transport(error.message))
+        .map_err(SshExecError::into_service)
 }
 
 async fn run_ssh_inner(
@@ -773,7 +807,11 @@ async fn run_ssh_inner(
     let mut child = Command::new(executable)
         .args(args)
         .kill_on_drop(true)
-        .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
+        .stdin(if stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -875,7 +913,9 @@ fn resolve_ssh_executable() -> ServiceResult<PathBuf> {
             }
         }
     }
-    Err(ServiceError::Unavailable("OpenSSH client was not found".into()))
+    Err(ServiceError::Unavailable(
+        "OpenSSH client was not found".into(),
+    ))
 }
 
 fn classify_ssh_error(stderr: &str) -> SshErrorKind {
@@ -934,12 +974,19 @@ fn ownership_directory(ownership_id: &str) -> ServiceResult<String> {
 }
 
 fn lockfile_path(ownership_id: &str) -> ServiceResult<String> {
-    Ok(format!("{}/backend.lock.json", ownership_directory(ownership_id)?))
+    Ok(format!(
+        "{}/backend.lock.json",
+        ownership_directory(ownership_id)?
+    ))
 }
 
 fn spawn_log_path(ownership_id: &str, spawn_nonce: &str) -> ServiceResult<String> {
     validate_spawn_nonce(spawn_nonce)?;
-    Ok(format!("{}/{}.log", ownership_directory(ownership_id)?, spawn_nonce))
+    Ok(format!(
+        "{}/{}.log",
+        ownership_directory(ownership_id)?,
+        spawn_nonce
+    ))
 }
 
 fn expand_unix_path(path: &str) -> ServiceResult<String> {
@@ -955,7 +1002,9 @@ fn expand_unix_path(path: &str) -> ServiceResult<String> {
 
 fn validate_unix_remote_path(path: &str) -> ServiceResult<()> {
     if path.is_empty()
-        || path.chars().any(|character| matches!(character, '\0' | '\n' | '\r'))
+        || path
+            .chars()
+            .any(|character| matches!(character, '\0' | '\n' | '\r'))
         || !(path == "~" || path.starts_with("~/") || path.starts_with('/'))
     {
         return Err(ServiceError::InvalidInput(
@@ -971,14 +1020,18 @@ fn shell_quote(value: &str) -> String {
 
 fn validate_profile(value: &str) -> ServiceResult<()> {
     if value.len() > 256 || value.chars().any(char::is_control) {
-        return Err(ServiceError::InvalidInput("invalid SSH profile name".into()));
+        return Err(ServiceError::InvalidInput(
+            "invalid SSH profile name".into(),
+        ));
     }
     Ok(())
 }
 
 fn validate_ownership_id(value: &str) -> ServiceResult<()> {
     if !is_lower_hex(value, 32) {
-        return Err(ServiceError::InvalidInput("invalid SSH ownership id".into()));
+        return Err(ServiceError::InvalidInput(
+            "invalid SSH ownership id".into(),
+        ));
     }
     Ok(())
 }
@@ -1022,7 +1075,8 @@ fn ownership_id(installation_id: &str, scope: &str) -> ServiceResult<String> {
             "desktop installation id is not a UUIDv4".into(),
         ));
     }
-    let digest = Sha256::digest(format!("{}\0{scope}", installation_id.to_ascii_lowercase()).as_bytes());
+    let digest =
+        Sha256::digest(format!("{}\0{scope}", installation_id.to_ascii_lowercase()).as_bytes());
     Ok(format!("{digest:x}")[..32].to_owned())
 }
 
@@ -1030,9 +1084,14 @@ fn load_or_create_installation_id(path: &Path) -> ServiceResult<String> {
     if let Some(id) = read_installation_id(path)? {
         return Ok(id);
     }
-    let parent = path.parent().ok_or_else(|| ServiceError::Platform("installation id path has no parent".into()))?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| ServiceError::Platform("installation id path has no parent".into()))?;
     fs::create_dir_all(parent).map_err(platform)?;
-    let id = Uuid::new_v4().hyphenated().to_string().to_ascii_lowercase();
+    let id = Uuid::new_v4()
+        .hyphenated()
+        .to_string()
+        .to_ascii_lowercase();
     let temporary = path.with_extension(format!("json.{}.tmp", random_hex(8)));
     let payload = serde_json::json!({ "installationId": id });
     let mut file = OpenOptions::new()
@@ -1065,7 +1124,8 @@ fn read_installation_id(path: &Path) -> ServiceResult<Option<String>> {
     if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
         return Ok(None);
     }
-    let value: Value = serde_json::from_slice(&fs::read(path).map_err(platform)?).map_err(platform)?;
+    let value: Value =
+        serde_json::from_slice(&fs::read(path).map_err(platform)?).map_err(platform)?;
     let Some(id) = value.get("installationId").and_then(Value::as_str) else {
         return Ok(None);
     };
@@ -1073,7 +1133,9 @@ fn read_installation_id(path: &Path) -> ServiceResult<Option<String>> {
         Ok(parsed) if parsed.get_version_num() == 4 => parsed,
         _ => return Ok(None),
     };
-    Ok(Some(parsed.hyphenated().to_string().to_ascii_lowercase()))
+    Ok(Some(
+        parsed.hyphenated().to_string().to_ascii_lowercase(),
+    ))
 }
 
 #[cfg(windows)]
@@ -1096,7 +1158,9 @@ fn load_reuse_token(_ownership_id: &str) -> ServiceResult<Option<String>> {
 fn store_reuse_token(ownership_id: &str, token: &str) -> ServiceResult<()> {
     validate_ownership_id(ownership_id)?;
     if token.is_empty() || token.len() > 4_096 {
-        return Err(ServiceError::InvalidInput("invalid SSH reuse token".into()));
+        return Err(ServiceError::InvalidInput(
+            "invalid SSH reuse token".into(),
+        ));
     }
     keyring::Entry::new("Hermes Local SSH", ownership_id)
         .map_err(platform)?
@@ -1107,10 +1171,6 @@ fn store_reuse_token(ownership_id: &str, token: &str) -> ServiceResult<()> {
 #[cfg(not(windows))]
 fn store_reuse_token(_ownership_id: &str, _token: &str) -> ServiceResult<()> {
     Ok(())
-}
-
-fn extract_json_string(value: &str) -> Option<String> {
-    serde_json::from_str(value).ok()
 }
 
 fn sanitize_remote_text(value: &str) -> String {
@@ -1168,8 +1228,14 @@ mod tests {
 
     #[test]
     fn ready_port_accepts_only_known_readiness_markers() {
-        assert_eq!(parse_ready_port("HERMES_DASHBOARD_READY port=9119"), Some(9119));
-        assert_eq!(parse_ready_port("HERMES_BACKEND_READY port=1234"), Some(1234));
+        assert_eq!(
+            parse_ready_port("HERMES_DASHBOARD_READY port=9119"),
+            Some(9119)
+        );
+        assert_eq!(
+            parse_ready_port("HERMES_BACKEND_READY port=1234"),
+            Some(1234)
+        );
         assert_eq!(parse_ready_port("READY port=9119"), None);
         assert_eq!(parse_ready_port("HERMES_DASHBOARD_READY port=0"), None);
     }
@@ -1178,7 +1244,10 @@ mod tests {
     fn served_token_parser_requires_json_string_literal() {
         let html = r#"<script>window.__HERMES_SESSION_TOKEN__ = \"abc\\\"def\";</script>"#;
         assert_eq!(extract_served_token(html).as_deref(), Some("abc\"def"));
-        assert_eq!(extract_served_token("window.__HERMES_SESSION_TOKEN__ = token"), None);
+        assert_eq!(
+            extract_served_token("window.__HERMES_SESSION_TOKEN__ = token"),
+            None
+        );
     }
 
     #[test]
