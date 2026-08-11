@@ -6,6 +6,7 @@ pub use base64_impl::{Engine, engine};
 extern crate self as base64;
 
 mod ssh;
+mod ssh_lifecycle;
 mod ssh_service;
 mod startup;
 
@@ -78,9 +79,9 @@ fn main() {
     let data_dir = std::env::var_os("APPDATA")
         .map_or_else(std::env::temp_dir, PathBuf::from)
         .join("Hermes Local");
-    let mut native = NativeApp::new(data_dir);
+    let mut native = NativeApp::new(data_dir.clone());
     startup::install_local_bootstrap(&mut native.services);
-    ssh_service::install_ssh_probe(&mut native.services);
+    ssh_service::install_ssh_probe(&mut native.services, data_dir);
     let window = WindowBuilder::new()
         .with_title("Hermes Local")
         .with_inner_size(LogicalSize::new(1_280.0, 800.0))
