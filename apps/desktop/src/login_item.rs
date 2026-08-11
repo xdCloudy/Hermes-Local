@@ -193,7 +193,7 @@ mod tests {
         );
         assert!(registration_matches(&output, executable).expect("comparison"));
 
-        let unexpected = format!("{output} --unexpected");
+        let unexpected = output.replace(&expected, &format!("{expected} --unexpected"));
         assert!(!registration_matches(&unexpected, executable).expect("comparison"));
     }
 
