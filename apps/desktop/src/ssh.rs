@@ -286,7 +286,10 @@ fn map_windows_probe_error(mut error: SshFailure) -> SshFailure {
     if error.message.contains("UPDATE_REQUIRED") {
         error.kind = SshErrorKind::UpdateRequired;
         error.message = "The remote Hermes install does not support Desktop SSH ownership tokens. Update Hermes on the remote host before connecting.".into();
-    } else if error.message.to_ascii_lowercase().contains("hermes is not installed")
+    } else if error
+        .message
+        .to_ascii_lowercase()
+        .contains("hermes is not installed")
         || error
             .message
             .to_ascii_lowercase()
@@ -578,9 +581,7 @@ mod tests {
         assert!(SshConfig::new("host\nProxyCommand evil", None, None, None, None).is_err());
         assert!(SshConfig::new("host", Some("-F"), None, None, None).is_err());
         assert!(SshConfig::new("host", None, None, Some("-bad"), None).is_err());
-        assert!(
-            SshConfig::new("host", None, None, None, Some("relative/hermes")).is_err()
-        );
+        assert!(SshConfig::new("host", None, None, None, Some("relative/hermes")).is_err());
     }
 
     #[test]
