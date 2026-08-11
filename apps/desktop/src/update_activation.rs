@@ -255,7 +255,7 @@ fn promote_offline(pending: &PendingUpdate) -> Result<(), String> {
 
         match fs::rename(&replacement, &pending.current_exe) {
             Ok(()) => break,
-            Err(error) if Instant::now() < deadline => {
+            Err(_) if Instant::now() < deadline => {
                 thread::sleep(Duration::from_millis(250));
             }
             Err(error) => {
@@ -389,7 +389,7 @@ fn copy_synced(source: &Path, destination: &Path) -> Result<(), String> {
     fs::copy(source, &temporary)
         .map_err(|error| format!("Could not copy update binary: {error}"))?;
     fs::OpenOptions::new()
-        .read(true)
+        .write(true)
         .open(&temporary)
         .and_then(|file| file.sync_all())
         .map_err(|error| format!("Could not flush update binary: {error}"))?;
