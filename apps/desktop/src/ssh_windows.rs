@@ -140,7 +140,14 @@ pub async fn connect(
         .to_owned();
 
     let reuse_token = load_reuse_token(&ownership_id)?.unwrap_or_default();
-    let lock_value = helper(config, &runtime, "read-lock", &[ownership_id.clone()], None).await?;
+    let lock_value = helper(
+        config,
+        &runtime,
+        "read-lock",
+        std::slice::from_ref(&ownership_id),
+        None,
+    )
+    .await?;
     let parsed_lock = serde_json::from_value::<WindowsLock>(lock_value.clone()).ok();
 
     if let Some(lock) = parsed_lock.filter(|lock| valid_lock(lock, &ownership_id)) {
@@ -194,7 +201,7 @@ pub async fn connect(
             config,
             &runtime,
             "remove-lock",
-            &[ownership_id.clone()],
+            std::slice::from_ref(&ownership_id),
             None,
         )
         .await?;
@@ -421,14 +428,14 @@ async fn helper(
             "unsupported Windows SSH helper operation".into(),
         ));
     }
-    let mut argv = vec![
+    let mut helper_argv = vec![
         runtime.python.clone(),
         "-m".into(),
         "hermes_cli.windows_ssh_runtime".into(),
         operation.to_owned(),
     ];
-    argv.extend(args.iter().cloned());
-    let invocation = argv
+    helper_argv.extend(args.iter().cloned());
+    let invocation = helper_argv
         .iter()
         .map(|value| ps_literal(value))
         .collect::<Vec<_>>()
@@ -441,8 +448,7 @@ async fn helper(
         .trim_start_matches('\u{feff}')
         .lines()
         .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .next_back()
+        .rfind(|line| !line.is_empty())
         .unwrap_or("null");
     let value: Value = serde_json::from_str(line).map_err(|error| {
         ServiceError::Transport(format!("Windows SSH helper returned invalid JSON: {error}"))
