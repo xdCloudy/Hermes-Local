@@ -19,7 +19,7 @@ impl Engine for Standard {
 
 pub mod engine {
     pub mod general_purpose {
-        use crate::base64::Standard;
+        use super::super::Standard;
 
         pub const STANDARD: Standard = Standard;
     }
@@ -67,7 +67,7 @@ mod tests {
             ("fooba", "Zm9vYmE="),
             ("foobar", "Zm9vYmFy"),
         ] {
-            assert_eq!(STANDARD.encode(plain), encoded);
+            assert_eq!(engine::general_purpose::STANDARD.encode(plain), encoded);
         }
     }
 }
