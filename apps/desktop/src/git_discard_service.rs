@@ -48,10 +48,7 @@ impl GitDiscardService {
 
         // Match the OG `git clean -fd -- <path>` behavior. Do not use `-x` or
         // `-X`: ignored files are user data/config and must survive discard.
-        run_git(
-            &repository,
-            &["clean", "-fd", "--", pathspec.as_str()],
-        )?;
+        run_git(&repository, &["clean", "-fd", "--", pathspec.as_str()])?;
 
         let remaining = run_git(
             &repository,
@@ -227,8 +224,11 @@ mod tests {
 
         fs::write(repository.join("scope/tracked.txt"), "staged\n").expect("staged edit");
         git_ok(&repository, &["add", "scope/tracked.txt"]);
-        fs::write(repository.join("scope/tracked.txt"), "unstaged-after-stage\n")
-            .expect("unstaged edit");
+        fs::write(
+            repository.join("scope/tracked.txt"),
+            "unstaged-after-stage\n",
+        )
+        .expect("unstaged edit");
         fs::write(repository.join("scope/untracked.txt"), "delete-me\n").expect("untracked");
         fs::write(repository.join("scope/ignored.log"), "preserve-me\n").expect("ignored");
         fs::write(repository.join("other.txt"), "must-remain-dirty\n").expect("other edit");
@@ -321,13 +321,14 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        let repository = std::env::temp_dir().join(format!(
-            "hermes-{label}-{}-{suffix}",
-            std::process::id()
-        ));
+        let repository =
+            std::env::temp_dir().join(format!("hermes-{label}-{}-{suffix}", std::process::id()));
         fs::create_dir_all(&repository).expect("repository directory");
         git_ok(&repository, &["init", "--quiet"]);
-        git_ok(&repository, &["config", "user.email", "hermes-tests@example.invalid"]);
+        git_ok(
+            &repository,
+            &["config", "user.email", "hermes-tests@example.invalid"],
+        );
         git_ok(&repository, &["config", "user.name", "Hermes Tests"]);
         repository
             .canonicalize()
