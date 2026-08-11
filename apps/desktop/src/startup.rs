@@ -3,11 +3,17 @@ use std::{
     net::IpAddr,
     path::{Path, PathBuf},
     process::Stdio,
+    sync::Arc,
     time::Duration,
 };
 
-use hermes_core::AppServices;
-use hermes_protocol::ConnectionMode;
+use hermes_core::{
+    AppServices, ConnectionService, ServiceError, ServiceFuture, ServiceResult,
+};
+use hermes_protocol::{
+    ConnectionConfig, ConnectionConfigInput, ConnectionMode, ConnectionOauthLoginResult,
+    ConnectionOauthLogoutResult, ConnectionProbeResult, ConnectionState, ConnectionTestResult,
+};
 use serde_json::Value;
 use tokio::process::Command;
 use url::Url;
@@ -17,11 +23,18 @@ const TOKEN_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_DIAGNOSTIC_BYTES: usize = 2_048;
 const ROOT_SEARCH_DEPTH: usize = 8;
 
-/// Prepare the native local Hermes runtime before the shared Dioxus UI mounts.
-///
-/// Remote, Cloud, SSH and explicit development overrides remain owned by the
-/// existing connection resolver. Local mode reuses the canonical PowerShell
-/// supervisor instead of duplicating its model/runtime lifecycle in Rust.
+/// Decorate the native connection service with the one missing migration seam:
+/// starting the canonical local Hermes runtime before dialing its Agent socket.
+/// Remote, Cloud, SSH and OAuth behavior stays owned by the existing native
+/// connection implementation.
+pub fn install_local_bootstrap(services: &mut AppServices) {
+    let inner = services.connection.clone();
+    services.connection = Arc::new(LocalBootstrapConnection { inner });
+}
+
+/// Prepare local mode before the shared Dioxus UI mounts. The installed
+/// connection decorator makes the same behavior available later for a live
+/// Remote/Cloud/SSH -> Local re-home, so initial boot and settings do not drift.
 pub async fn prepare_local_agent(services: &AppServices) -> Result<(), String> {
     if environment_connection_override() {
         return Ok(());
@@ -36,22 +49,112 @@ pub async fn prepare_local_agent(services: &AppServices) -> Result<(), String> {
         return Ok(());
     }
 
-    let root = resolve_project_root()?;
-    let powershell = resolve_powershell()?;
-    start_local_stack(&powershell, &root).await?;
-
-    let token = read_local_token(&powershell, &root).await?;
-    let (host, port) = read_local_endpoint(&root)?;
-    let websocket = local_websocket_url(&host, port, &token)?;
-
     services
         .connection
-        .connect(websocket.as_str())
+        .initialize()
         .await
-        .map_err(|error| {
-            format!("Hermes Agent started but the Desktop connection failed: {error}")
-        })?;
-    Ok(())
+        .map(|_| ())
+        .map_err(|error| format!("Could not start the local Hermes Agent: {error}"))
+}
+
+struct LocalBootstrapConnection {
+    inner: Arc<dyn ConnectionService>,
+}
+
+impl LocalBootstrapConnection {
+    fn connect_local(&self) -> ServiceFuture<'_, ConnectionState> {
+        Box::pin(async move {
+            let root = resolve_project_root().map_err(bootstrap_error)?;
+            let powershell = resolve_powershell().map_err(bootstrap_error)?;
+            start_local_stack(&powershell, &root)
+                .await
+                .map_err(bootstrap_error)?;
+
+            let token = read_local_token(&powershell, &root)
+                .await
+                .map_err(bootstrap_error)?;
+            let (host, port) = read_local_endpoint(&root).map_err(bootstrap_error)?;
+            let websocket = local_websocket_url(&host, port, &token).map_err(bootstrap_error)?;
+            self.inner.connect(websocket.as_str()).await
+        })
+    }
+}
+
+impl ConnectionService for LocalBootstrapConnection {
+    fn initialize(&self) -> ServiceFuture<'_, ConnectionState> {
+        Box::pin(async move {
+            if self.inner.state()? == ConnectionState::Open {
+                return Ok(ConnectionState::Open);
+            }
+            if environment_connection_override() {
+                return self.inner.initialize().await;
+            }
+
+            let config = self.inner.config(None).await?;
+            if config.env_override || config.mode != ConnectionMode::Local {
+                self.inner.initialize().await
+            } else {
+                self.connect_local().await
+            }
+        })
+    }
+
+    fn connect(&self, websocket_url: &str) -> ServiceFuture<'_, ConnectionState> {
+        self.inner.connect(websocket_url)
+    }
+
+    fn disconnect(&self) -> ServiceFuture<'_, ()> {
+        self.inner.disconnect()
+    }
+
+    fn state(&self) -> ServiceResult<ConnectionState> {
+        self.inner.state()
+    }
+
+    fn config(&self, profile: Option<&str>) -> ServiceFuture<'_, ConnectionConfig> {
+        self.inner.config(profile)
+    }
+
+    fn save_config(&self, input: &ConnectionConfigInput) -> ServiceFuture<'_, ConnectionConfig> {
+        self.inner.save_config(input)
+    }
+
+    fn apply_config(&self, input: &ConnectionConfigInput) -> ServiceFuture<'_, ConnectionConfig> {
+        let input = input.clone();
+        Box::pin(async move {
+            if input.mode != ConnectionMode::Local {
+                return self.inner.apply_config(&input).await;
+            }
+
+            let config = self.inner.save_config(&input).await?;
+            self.inner.disconnect().await?;
+            self.connect_local().await?;
+            Ok(config)
+        })
+    }
+
+    fn test_config(
+        &self,
+        input: &ConnectionConfigInput,
+    ) -> ServiceFuture<'_, ConnectionTestResult> {
+        self.inner.test_config(input)
+    }
+
+    fn probe_config(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionProbeResult> {
+        self.inner.probe_config(remote_url)
+    }
+
+    fn oauth_login(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionOauthLoginResult> {
+        self.inner.oauth_login(remote_url)
+    }
+
+    fn oauth_logout(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionOauthLogoutResult> {
+        self.inner.oauth_logout(remote_url)
+    }
+}
+
+fn bootstrap_error(error: String) -> ServiceError {
+    ServiceError::Platform(error)
 }
 
 fn environment_connection_override() -> bool {
