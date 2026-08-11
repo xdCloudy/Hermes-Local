@@ -32,7 +32,7 @@ jobs:
   rust:
     name: Rust workspace
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -58,3 +58,23 @@ jobs:
 
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets --locked
+
+      - name: Build optimized Windows client
+        run: cargo build -p hermes-local --release --locked --features bundle
+
+      - name: Record optimized client size
+        shell: pwsh
+        run: |
+          $binary = Get-Item "target/release/hermes-local.exe"
+          $mib = [math]::Round($binary.Length / 1MB, 2)
+          "### Optimized Rust client" >> $env:GITHUB_STEP_SUMMARY
+          "- Binary: ``target/release/hermes-local.exe``" >> $env:GITHUB_STEP_SUMMARY
+          "- Size: $($binary.Length) bytes ($mib MiB)" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload optimized client
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-local-rust-windows-x64
+          path: target/release/hermes-local.exe
+          if-no-files-found: error
+          retention-days: 7
