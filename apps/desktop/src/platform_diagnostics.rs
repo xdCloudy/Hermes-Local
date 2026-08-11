@@ -160,4 +160,15 @@ mod tests {
         let entries = normalized_path_entries(Some(&OsString::from(value)));
         assert_eq!(entries, vec![PathBuf::from("alpha"), PathBuf::from("beta")]);
     }
+
+    #[test]
+    fn path_deduplication_preserves_first_normalized_entry() {
+        let separator = if cfg!(windows) { ";" } else { ":" };
+        let value = format!(
+            "alpha{separator}alpha{separator}beta{separator}alpha{}.",
+            std::path::MAIN_SEPARATOR
+        );
+        let entries = normalized_path_entries(Some(&OsString::from(value)));
+        assert_eq!(entries, vec![PathBuf::from("alpha"), PathBuf::from("beta")]);
+    }
 }
