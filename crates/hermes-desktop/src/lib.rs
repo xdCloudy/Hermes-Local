@@ -11,15 +11,15 @@ use std::{
 
 use hermes_agent_client::GatewayClient;
 use hermes_core::{
-    AppServices, ConnectionService, EventStream, FileService, GitService, PlatformService,
-    ProjectService, RuntimeService, ServiceError, ServiceFuture, ServiceResult, SessionService,
-    SettingsService, TerminalService, TrustService, UpdateService, validate_identifier,
-    validate_relative_path,
+    AgentConfigService, AppServices, ConnectionService, EventStream, FileService, GitService,
+    PlatformService, ProjectService, RuntimeService, ServiceError, ServiceFuture, ServiceResult,
+    SessionService, SettingsService, TerminalService, TrustService, UpdateService,
+    validate_identifier, validate_relative_path,
 };
 use hermes_protocol::{
-    AppSettings, ConnectionState, FileEntry, GitStatus, ProjectSummary, ProjectsSnapshot,
-    RuntimeStatus, SessionCreateRequest, SessionCreateResponse, SessionResumeResponse,
-    SessionSummary, TaskSummary, TrustSnapshot,
+    AgentConfigSnapshot, AppSettings, ConfigSchemaResponse, ConnectionState, FileEntry, GitStatus,
+    ProjectSummary, ProjectsSnapshot, RuntimeStatus, SessionCreateRequest, SessionCreateResponse,
+    SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use reqwest::Method;
@@ -80,6 +80,7 @@ impl NativeApp {
                 sessions: remote.clone(),
                 projects: remote.clone(),
                 settings,
+                agent_config: remote.clone(),
                 runtime: remote.clone(),
                 trust: remote,
                 files: Arc::new(DesktopFiles),
@@ -473,6 +474,66 @@ impl ProjectService for GatewayServices {
                 .request("projects.remove", json!({ "id": id }))
                 .await
                 .map_err(transport)?;
+            Ok(())
+        })
+    }
+}
+
+impl AgentConfigService for GatewayServices {
+    fn load(&self, profile: Option<&str>) -> ServiceFuture<'_, AgentConfigSnapshot> {
+        let profile = profile.map(str::to_owned);
+        Box::pin(async move {
+            let rest = self.rest()?;
+            let config = rest
+                .request(
+                    Method::GET,
+                    &profiled_path("/api/config", profile.as_deref()),
+                    None,
+                )
+                .await?;
+            let defaults = rest
+                .request(
+                    Method::GET,
+                    &profiled_path("/api/config/defaults", profile.as_deref()),
+                    None,
+                )
+                .await?;
+            let schema = rest
+                .request(
+                    Method::GET,
+                    &profiled_path("/api/config/schema", profile.as_deref()),
+                    None,
+                )
+                .await?;
+            Ok(AgentConfigSnapshot {
+                config: serde_json::from_value(config).map_err(protocol)?,
+                defaults: serde_json::from_value(defaults).map_err(protocol)?,
+                schema: serde_json::from_value::<ConfigSchemaResponse>(schema).map_err(protocol)?,
+            })
+        })
+    }
+
+    fn save(
+        &self,
+        profile: Option<&str>,
+        config: &std::collections::BTreeMap<String, Value>,
+    ) -> ServiceFuture<'_, ()> {
+        let profile = profile.map(str::to_owned);
+        let config = config.clone();
+        Box::pin(async move {
+            let response = self
+                .rest()?
+                .request(
+                    Method::PUT,
+                    &profiled_path("/api/config", profile.as_deref()),
+                    Some(json!({ "config": config })),
+                )
+                .await?;
+            if response.get("ok").and_then(Value::as_bool) != Some(true) {
+                return Err(ServiceError::Transport(
+                    "Hermes Agent did not confirm the config save".into(),
+                ));
+            }
             Ok(())
         })
     }
@@ -1076,6 +1137,16 @@ fn rest_from_websocket_url(websocket_url: &str) -> ServiceResult<GatewayRest> {
     })
 }
 
+fn profiled_path(path: &str, profile: Option<&str>) -> String {
+    let Some(profile) = profile.filter(|profile| !profile.is_empty()) else {
+        return path.to_owned();
+    };
+    let query = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("profile", profile)
+        .finish();
+    format!("{path}?{query}")
+}
+
 fn contained_root(root: &Path) -> ServiceResult<PathBuf> {
     root.canonicalize().map_err(platform)
 }
@@ -1292,6 +1363,108 @@ mod tests {
         assert!(request.starts_with("PATCH /hermes/api/sessions/session-1 HTTP/1.1"));
         assert!(request.contains("x-hermes-session-token: secret-token"));
         assert!(request.ends_with("{\"pinned\":true}"));
+    }
+
+    #[tokio::test]
+    async fn agent_config_uses_the_official_profile_scoped_rest_contracts() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let address = listener.local_addr().expect("address");
+        let server = tokio::spawn(async move {
+            let responses = [
+                json!({
+                    "display": { "personality": "helpful" },
+                    "model_context_length": 0
+                }),
+                json!({ "model_context_length": 0 }),
+                json!({
+                    "fields": {
+                        "timezone": {
+                            "type": "select",
+                            "options": ["UTC"],
+                            "searchable": true
+                        }
+                    }
+                }),
+                json!({ "ok": true }),
+            ];
+            let mut requests = Vec::new();
+            for body in responses {
+                let (mut stream, _) = listener.accept().await.expect("connection");
+                let mut request = Vec::new();
+                let mut chunk = [0_u8; 2048];
+                loop {
+                    let count = stream.read(&mut chunk).await.expect("request bytes");
+                    if count == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&chunk[..count]);
+                    let text = String::from_utf8_lossy(&request);
+                    if let Some(headers_end) = text.find("\r\n\r\n") {
+                        let content_length = text[..headers_end]
+                            .lines()
+                            .find_map(|line| line.strip_prefix("content-length: "))
+                            .and_then(|value| value.parse::<usize>().ok())
+                            .unwrap_or_default();
+                        if request.len() >= headers_end + 4 + content_length {
+                            break;
+                        }
+                    }
+                }
+                let body = body.to_string();
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("response");
+                requests.push(String::from_utf8(request).expect("UTF-8 request"));
+            }
+            requests
+        });
+        let services = GatewayServices {
+            client: Arc::new(RwLock::new(None)),
+            rest: Arc::new(RwLock::new(Some(GatewayRest {
+                client: reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .build()
+                    .expect("client"),
+                base_url: url::Url::parse(&format!("http://{address}/hermes/")).expect("URL"),
+                session_token: Some("config-token".into()),
+            }))),
+        };
+        let loaded = AgentConfigService::load(&services, Some("work profile"))
+            .await
+            .expect("load config");
+        assert_eq!(loaded.config["model_context_length"], json!(0));
+        assert!(loaded.schema.fields["timezone"].searchable);
+        AgentConfigService::save(&services, Some("work profile"), &loaded.config)
+            .await
+            .expect("save config");
+
+        let requests = server.await.expect("server");
+        for (request, endpoint) in requests.iter().zip([
+            "/hermes/api/config?profile=work+profile",
+            "/hermes/api/config/defaults?profile=work+profile",
+            "/hermes/api/config/schema?profile=work+profile",
+            "/hermes/api/config?profile=work+profile",
+        ]) {
+            assert!(request.contains(endpoint));
+            assert!(request.contains("x-hermes-session-token: config-token"));
+        }
+        assert!(requests[0].starts_with("GET "));
+        assert!(requests[1].starts_with("GET "));
+        assert!(requests[2].starts_with("GET "));
+        assert!(requests[3].starts_with("PUT "));
+        let saved_body = requests[3]
+            .split_once("\r\n\r\n")
+            .map(|(_, body)| body)
+            .expect("request body");
+        let saved: Value = serde_json::from_str(saved_body).expect("saved JSON");
+        assert_eq!(saved, json!({ "config": loaded.config }));
     }
 
     #[tokio::test]

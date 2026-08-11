@@ -9,9 +9,9 @@ use std::{
 
 use futures_core::Stream;
 use hermes_protocol::{
-    AppSettings, ChatMessage, ConnectionState, FileEntry, GatewayEvent, GitStatus, MessageRole,
-    ProjectSummary, ProjectsSnapshot, RuntimeStatus, SessionCreateRequest, SessionResumeResponse,
-    SessionSummary, TaskSummary, TrustSnapshot,
+    AgentConfigSnapshot, AppSettings, ChatMessage, ConnectionState, FileEntry, GatewayEvent,
+    GitStatus, MessageRole, ProjectSummary, ProjectsSnapshot, RuntimeStatus, SessionCreateRequest,
+    SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -334,6 +334,17 @@ pub trait SettingsService: Send + Sync {
     fn save(&self, settings: &AppSettings) -> ServiceFuture<'_, ()>;
 }
 
+/// Profile-scoped Hermes Agent configuration. This intentionally exposes only
+/// the official config endpoints instead of a generic REST or RPC escape hatch.
+pub trait AgentConfigService: Send + Sync {
+    fn load(&self, profile: Option<&str>) -> ServiceFuture<'_, AgentConfigSnapshot>;
+    fn save(
+        &self,
+        profile: Option<&str>,
+        config: &std::collections::BTreeMap<String, Value>,
+    ) -> ServiceFuture<'_, ()>;
+}
+
 pub trait RuntimeService: Send + Sync {
     fn status(&self) -> ServiceFuture<'_, RuntimeStatus>;
     fn actions(&self) -> ServiceFuture<'_, Vec<TaskSummary>>;
@@ -390,6 +401,7 @@ pub struct AppServices {
     pub sessions: Arc<dyn SessionService>,
     pub projects: Arc<dyn ProjectService>,
     pub settings: Arc<dyn SettingsService>,
+    pub agent_config: Arc<dyn AgentConfigService>,
     pub runtime: Arc<dyn RuntimeService>,
     pub trust: Arc<dyn TrustService>,
     pub files: Arc<dyn FileService>,

@@ -410,3 +410,37 @@ the dialog was cancelled after QA without selecting or changing any folder.
 Exact next action: connect the Model and Chat settings sections and OG config
 contracts, then implement repair and separately confirmed delete-files Project
 Centre flows.
+
+## Agent config settings checkpoint (2026-08-11)
+
+Model and Chat are no longer placeholder routes. A scoped `AgentConfigService`
+implements the OG desktop's official profile-aware REST sequence exactly:
+`GET /api/config`, `GET /api/config/defaults`, `GET /api/config/schema`, and a
+whole-record `PUT /api/config` body shaped as `{ config }`. Config, defaults and
+forward-compatible schema metadata have typed protocol owners; Dioxus receives
+no generic HTTP or RPC authority. Whole-record saves optimistically update the
+surface, preserve unrelated keys, and roll back visibly when the Agent rejects
+an edit.
+
+The Chat pane now renders and persists the source-curated Personality,
+Timezone, Reasoning Blocks and Image Attachments rows. The Model pane renders
+Context Window plus the structured ordered fallback-provider/model editor;
+incomplete fallback rows remain local and only complete pairs are persisted,
+matching the OG save rule. Loading, disconnected/retry, saving and error states
+use the same compact settings geometry rather than a generic routed page.
+
+An in-process HTTP compatibility test proves all four endpoint paths, profile
+encoding, legacy token header, methods, schema decoding and exact replacement
+body. Native 1296x809 light-mode captures cover populated Model and Chat panes.
+Rendered QA caught and fixed a native select-state bug, then an end-to-end
+Reasoning toggle proved `false → true` through the real WebView and REST
+fixture without clobbering context or fallback keys. The workspace passes 26
+unit tests plus doc-tests.
+
+This checkpoint does not claim the complete OG Model page: the main provider
+and model chooser, reasoning/service-tier defaults, auxiliary assignments and
+Mixture-of-Agents editor still require their official typed model services.
+
+Exact next action: port those OG Model settings services and controls into this
+pane, then implement Project Centre repair and separately confirmed file
+deletion.

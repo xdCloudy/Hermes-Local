@@ -311,6 +311,47 @@ pub struct AppSettings {
     pub extra: BTreeMap<String, Value>,
 }
 
+/// A single field from the Agent's declared `/api/config/schema` response.
+/// Unknown schema metadata is retained so newer Agent versions remain
+/// forwards-compatible with this desktop client.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct ConfigFieldSchema {
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub options: Vec<Value>,
+    #[serde(default)]
+    pub searchable: bool,
+    #[serde(default)]
+    pub clearable: bool,
+    #[serde(default, rename = "type")]
+    pub field_type: Option<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct ConfigSchemaResponse {
+    #[serde(default)]
+    pub category_order: Vec<String>,
+    #[serde(default)]
+    pub fields: BTreeMap<String, ConfigFieldSchema>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+/// The exact whole-record config surface used by the OG desktop client.
+/// Saves replace the Agent record through `PUT /api/config`; callers must
+/// preserve keys they do not edit.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AgentConfigSnapshot {
+    pub config: BTreeMap<String, Value>,
+    pub defaults: BTreeMap<String, Value>,
+    pub schema: ConfigSchemaResponse,
+}
+
 const fn default_true() -> bool {
     true
 }

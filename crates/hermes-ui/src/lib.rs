@@ -1,11 +1,15 @@
 //! Dioxus presentation layer. This crate has no filesystem, process, or OS authority.
 
+use std::{collections::BTreeMap, sync::Arc};
+
 use dioxus::prelude::*;
 use futures_util::StreamExt;
-use hermes_core::{AppServices, SessionTranscript};
+use hermes_core::{AgentConfigService, AppServices, SessionTranscript};
 use hermes_protocol::{
-    AppSettings, MessageRole, ProjectsSnapshot, SessionCreateRequest, SessionSummary, ThemeMode,
+    AgentConfigSnapshot, AppSettings, MessageRole, ProjectsSnapshot, SessionCreateRequest,
+    SessionSummary, ThemeMode,
 };
+use serde_json::{Map, Value, json};
 
 const APP_CSS: &str = include_str!("../assets/app.css");
 const CODICON_SPRITE: &str = include_str!("../assets/codicon-sprite.svg");
@@ -1639,6 +1643,10 @@ fn SettingsOverlay(initial: &'static str) -> Element {
                 main { class: "settings-main",
                     if active() == "appearance" {
                         AppearanceSettingsPanel {}
+                    } else if active() == "model" {
+                        AgentConfigPanel { section: "model", icon: "hubot", label: "Model" }
+                    } else if active() == "chat" {
+                        AgentConfigPanel { section: "chat", icon: "comment-discussion", label: "Chat" }
                     } else {
                         section { class: "settings-placeholder",
                             div { class: "settings-section-title", Codicon { name: active_icon } h1 { "{active_label}" } }
@@ -1649,6 +1657,468 @@ fn SettingsOverlay(initial: &'static str) -> Element {
             }
         }
     }
+}
+
+const PERSONALITIES: &[&str] = &[
+    "helpful",
+    "concise",
+    "technical",
+    "creative",
+    "teacher",
+    "kawaii",
+    "catgirl",
+    "pirate",
+    "shakespeare",
+    "surfer",
+    "noir",
+    "uwu",
+    "philosopher",
+    "hype",
+];
+
+#[component]
+fn AgentConfigPanel(section: &'static str, icon: &'static str, label: &'static str) -> Element {
+    let services = use_context::<AppServices>();
+    let settings = use_context::<SettingsUiState>();
+    let load_service = services.agent_config.clone();
+    let profile = (settings.settings)().profile;
+    let load_profile = profile.clone();
+    let mut snapshot = use_signal(|| None::<AgentConfigSnapshot>);
+    let mut loading = use_signal(|| true);
+    let saving = use_signal(|| false);
+    let mut error = use_signal(|| None::<String>);
+    let mut refresh = use_signal(|| 0_u64);
+    let _load = use_resource(move || {
+        let service = load_service.clone();
+        let profile = load_profile.clone();
+        let _revision = refresh();
+        async move {
+            loading.set(true);
+            match service.load(profile.as_deref()).await {
+                Ok(loaded) => {
+                    snapshot.set(Some(loaded));
+                    error.set(None);
+                }
+                Err(load_error) => error.set(Some(load_error.to_string())),
+            }
+            loading.set(false);
+        }
+    });
+    let load_error_text =
+        error().unwrap_or_else(|| "The Agent config service is unavailable.".to_owned());
+
+    rsx! {
+        section { class: "agent-config-settings",
+            div { class: "settings-section-title", Codicon { name: icon } h1 { "{label}" } }
+            p { class: "settings-intro",
+                if section == "model" {
+                    "Configure the context window and the fallback models Hermes tries when the default model is unavailable."
+                } else {
+                    "Choose how new chats behave and how model output is presented."
+                }
+            }
+            if loading() && snapshot().is_none() {
+                div { class: "settings-skeleton", aria_label: "Loading settings",
+                    for _ in 0..4 { div { class: "settings-skeleton-row", i {} span {} } }
+                }
+            } else if snapshot().is_none() {
+                div { class: "settings-load-error", role: "alert",
+                    Codicon { name: "error" }
+                    strong { "Could not load Hermes settings" }
+                    p { "{load_error_text}" }
+                    button { class: "button", onclick: move |_| refresh += 1, "Retry" }
+                }
+            } else if let Some(loaded) = snapshot() {
+                if section == "model" {
+                    ModelConfigFields {
+                        snapshot,
+                        loaded,
+                        profile: profile.clone(),
+                        saving,
+                        error,
+                    }
+                } else {
+                    ChatConfigFields {
+                        snapshot,
+                        loaded,
+                        profile: profile.clone(),
+                        saving,
+                        error,
+                    }
+                }
+                if saving() { p { class: "settings-save-state", "Saving…" } }
+                if let Some(save_error) = error() { p { class: "inline-error", role: "alert", "{save_error}" } }
+            }
+        }
+    }
+}
+
+#[component]
+fn ModelConfigFields(
+    snapshot: Signal<Option<AgentConfigSnapshot>>,
+    loaded: AgentConfigSnapshot,
+    profile: Option<String>,
+    saving: Signal<bool>,
+    error: Signal<Option<String>>,
+) -> Element {
+    let service = use_context::<AppServices>().agent_config.clone();
+    let context_length = config_value(&loaded.config, "model_context_length")
+        .and_then(Value::as_i64)
+        .unwrap_or_default();
+    let fallback_entries = fallback_entries(config_value(&loaded.config, "fallback_providers"));
+    let mut context_draft = use_signal(|| context_length.to_string());
+    let mut fallback_draft = use_signal(|| fallback_entries);
+    rsx! {
+        SettingsRow {
+            title: "Context Window",
+            description: "Leave at 0 to use the selected model's detected context window.",
+            input {
+                class: "settings-input number",
+                r#type: "number",
+                min: "0",
+                disabled: saving(),
+                value: "{context_draft}",
+                oninput: move |event| context_draft.set(event.value()),
+                onblur: {
+                    let loaded = loaded.clone();
+                    let profile = profile.clone();
+                    let service = service.clone();
+                    move |_| {
+                        if let Ok(value) = context_draft().parse::<i64>() {
+                            commit_agent_config(
+                                snapshot,
+                                saving,
+                                error,
+                                service.clone(),
+                                profile.clone(),
+                                set_config_value(&loaded.config, "model_context_length", json!(value)),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        section { class: "settings-list-row wide",
+            div { class: "settings-row-copy",
+                strong { "Fallback Models" }
+                p { "Backup provider:model entries to try if the default model fails." }
+            }
+            div { class: "fallback-list",
+                if fallback_draft().is_empty() { p { class: "fallback-empty", "No fallback models configured." } }
+                for (index, (provider, model)) in fallback_draft().into_iter().enumerate() {
+                    div { class: "fallback-row", key: "fallback-{index}",
+                        span { class: "fallback-index", "{index + 1}" }
+                        input {
+                            class: "settings-input",
+                            disabled: saving(),
+                            value: "{provider}",
+                            placeholder: "Provider",
+                            aria_label: "Fallback provider",
+                            oninput: move |event| {
+                                if let Some(entry) = fallback_draft.write().get_mut(index) {
+                                    entry.0 = event.value();
+                                }
+                            },
+                            onblur: {
+                                let profile = profile.clone();
+                                let service = service.clone();
+                                let config = loaded.config.clone();
+                                move |_| commit_agent_config(
+                                    snapshot,
+                                    saving,
+                                    error,
+                                    service.clone(),
+                                    profile.clone(),
+                                    set_config_value(&config, "fallback_providers", fallback_value(&fallback_draft())),
+                                )
+                            }
+                        }
+                        input {
+                            class: "settings-input grow",
+                            disabled: saving(),
+                            value: "{model}",
+                            placeholder: "Model",
+                            aria_label: "Fallback model",
+                            oninput: move |event| {
+                                if let Some(entry) = fallback_draft.write().get_mut(index) {
+                                    entry.1 = event.value();
+                                }
+                            },
+                            onblur: {
+                                let profile = profile.clone();
+                                let service = service.clone();
+                                let config = loaded.config.clone();
+                                move |_| commit_agent_config(
+                                    snapshot,
+                                    saving,
+                                    error,
+                                    service.clone(),
+                                    profile.clone(),
+                                    set_config_value(&config, "fallback_providers", fallback_value(&fallback_draft())),
+                                )
+                            }
+                        }
+                        button {
+                            class: "icon-button",
+                            aria_label: "Remove fallback model",
+                            title: "Remove",
+                            disabled: saving(),
+                            onclick: {
+                                let profile = profile.clone();
+                                let service = service.clone();
+                                let config = loaded.config.clone();
+                                move |_| {
+                                    let mut next = fallback_draft();
+                                    next.remove(index);
+                                    fallback_draft.set(next.clone());
+                                    commit_agent_config(
+                                        snapshot,
+                                        saving,
+                                        error,
+                                        service.clone(),
+                                        profile.clone(),
+                                        set_config_value(&config, "fallback_providers", fallback_value(&next)),
+                                    );
+                                }
+                            },
+                            Codicon { name: "close" }
+                        }
+                    }
+                }
+                button {
+                    class: "button fallback-add",
+                    disabled: saving(),
+                    onclick: move |_| fallback_draft.write().push((String::new(), String::new())),
+                    Codicon { name: "add" }
+                    "Add fallback"
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ChatConfigFields(
+    snapshot: Signal<Option<AgentConfigSnapshot>>,
+    loaded: AgentConfigSnapshot,
+    profile: Option<String>,
+    saving: Signal<bool>,
+    error: Signal<Option<String>>,
+) -> Element {
+    let service = use_context::<AppServices>().agent_config.clone();
+    let personality = config_value(&loaded.config, "display.personality")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    let timezone = config_value(&loaded.config, "timezone")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    let show_reasoning = config_value(&loaded.config, "display.show_reasoning")
+        .and_then(Value::as_bool)
+        .unwrap_or_default();
+    let image_mode = config_value(&loaded.config, "agent.image_input_mode")
+        .and_then(Value::as_str)
+        .unwrap_or("auto")
+        .to_owned();
+    let timezone_options = loaded
+        .schema
+        .fields
+        .get("timezone")
+        .map(|field| {
+            field
+                .options
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let mut timezone_draft = use_signal(|| timezone);
+    rsx! {
+        SettingsRow { title: "Personality", description: "Default assistant style for new sessions.",
+            select {
+                class: "settings-select",
+                disabled: saving(),
+                value: "{personality}",
+                onchange: {
+                    let config = loaded.config.clone();
+                    let profile = profile.clone();
+                    let service = service.clone();
+                    move |event| commit_agent_config(snapshot, saving, error, service.clone(), profile.clone(), set_config_value(&config, "display.personality", json!(event.value())))
+                },
+                option { value: "", selected: personality.is_empty(), "None" }
+                for option in PERSONALITIES {
+                    option { value: "{option}", selected: personality == *option, "{option}" }
+                }
+            }
+        }
+        SettingsRow { title: "Timezone", description: "IANA timezone identifier. Blank uses the system timezone.",
+            div { class: "timezone-control",
+                input {
+                    class: "settings-input",
+                    list: "hermes-timezones",
+                    placeholder: "System default",
+                    disabled: saving(),
+                    value: "{timezone_draft}",
+                    oninput: move |event| timezone_draft.set(event.value()),
+                    onblur: {
+                        let config = loaded.config.clone();
+                        let profile = profile.clone();
+                        let service = service.clone();
+                        move |_| commit_agent_config(snapshot, saving, error, service.clone(), profile.clone(), set_config_value(&config, "timezone", json!(timezone_draft())))
+                    }
+                }
+                datalist { id: "hermes-timezones",
+                    for timezone in timezone_options { option { value: "{timezone}" } }
+                }
+            }
+        }
+        SettingsRow { title: "Reasoning Blocks", description: "Show reasoning sections when the backend provides them.",
+            label { class: "settings-switch",
+                input {
+                    r#type: "checkbox",
+                    checked: show_reasoning,
+                    disabled: saving(),
+                    onchange: {
+                        let config = loaded.config.clone();
+                        let profile = profile.clone();
+                        let service = service.clone();
+                        move |event| commit_agent_config(snapshot, saving, error, service.clone(), profile.clone(), set_config_value(&config, "display.show_reasoning", json!(event.checked())))
+                    }
+                }
+                span {}
+            }
+        }
+        SettingsRow { title: "Image Attachments", description: "Controls how image attachments are sent to the model.",
+            select {
+                class: "settings-select",
+                disabled: saving(),
+                value: "{image_mode}",
+                onchange: {
+                    let config = loaded.config.clone();
+                    let profile = profile.clone();
+                    let service = service.clone();
+                    move |event| commit_agent_config(snapshot, saving, error, service.clone(), profile.clone(), set_config_value(&config, "agent.image_input_mode", json!(event.value())))
+                },
+                option { value: "auto", selected: image_mode == "auto", "Auto" }
+                option { value: "native", selected: image_mode == "native", "Native" }
+                option { value: "text", selected: image_mode == "text", "Text" }
+            }
+        }
+    }
+}
+
+#[component]
+fn SettingsRow(title: &'static str, description: &'static str, children: Element) -> Element {
+    rsx! {
+        section { class: "settings-list-row",
+            div { class: "settings-row-copy", strong { "{title}" } p { "{description}" } }
+            div { class: "settings-row-action", {children} }
+        }
+    }
+}
+
+fn commit_agent_config(
+    mut snapshot: Signal<Option<AgentConfigSnapshot>>,
+    mut saving: Signal<bool>,
+    mut error: Signal<Option<String>>,
+    service: Arc<dyn AgentConfigService>,
+    profile: Option<String>,
+    config: BTreeMap<String, Value>,
+) {
+    if saving() {
+        return;
+    }
+    let before = snapshot();
+    if let Some(mut optimistic) = before.clone() {
+        optimistic.config.clone_from(&config);
+        snapshot.set(Some(optimistic));
+    }
+    saving.set(true);
+    error.set(None);
+    spawn(async move {
+        if let Err(save_error) = service.save(profile.as_deref(), &config).await {
+            snapshot.set(before);
+            error.set(Some(save_error.to_string()));
+        }
+        saving.set(false);
+    });
+}
+
+fn config_value<'a>(config: &'a BTreeMap<String, Value>, path: &str) -> Option<&'a Value> {
+    let mut parts = path.split('.');
+    let mut value = config.get(parts.next()?)?;
+    for part in parts {
+        value = value.as_object()?.get(part)?;
+    }
+    Some(value)
+}
+
+fn set_config_value(
+    config: &BTreeMap<String, Value>,
+    path: &str,
+    value: Value,
+) -> BTreeMap<String, Value> {
+    fn insert(parts: &[&str], target: &mut Map<String, Value>, value: Value) {
+        if let Some((head, tail)) = parts.split_first() {
+            if tail.is_empty() {
+                target.insert((*head).to_owned(), value);
+            } else {
+                let child = target
+                    .entry((*head).to_owned())
+                    .or_insert_with(|| Value::Object(Map::new()));
+                if !child.is_object() {
+                    *child = Value::Object(Map::new());
+                }
+                insert(
+                    tail,
+                    child.as_object_mut().expect("object created above"),
+                    value,
+                );
+            }
+        }
+    }
+    let mut root: Map<String, Value> = config.clone().into_iter().collect();
+    insert(&path.split('.').collect::<Vec<_>>(), &mut root, value);
+    root.into_iter().collect()
+}
+
+fn fallback_entries(value: Option<&Value>) -> Vec<(String, String)> {
+    value
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            if let Some(entry) = entry.as_object() {
+                return Some((
+                    entry
+                        .get("provider")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned(),
+                    entry
+                        .get("model")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned(),
+                ));
+            }
+            let entry = entry.as_str()?;
+            let (provider, model) = entry.split_once('/').unwrap_or(("", entry));
+            Some((provider.to_owned(), model.to_owned()))
+        })
+        .collect()
+}
+
+fn fallback_value(entries: &[(String, String)]) -> Value {
+    Value::Array(
+        entries
+            .iter()
+            .filter(|(provider, model)| !provider.is_empty() && !model.is_empty())
+            .map(|(provider, model)| json!({ "provider": provider, "model": model }))
+            .collect(),
+    )
 }
 
 #[component]
