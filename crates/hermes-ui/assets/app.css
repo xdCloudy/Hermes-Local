@@ -475,6 +475,8 @@ h1 { margin-top: 4px !important; margin-bottom: 0 !important; font-size: 1.25rem
 .gateway-control.mono { font-family: ui-monospace, "Cascadia Code", monospace; }
 .gateway-token-control { display: grid; justify-items: end; gap: 5px; }
 .gateway-token-control small { color: var(--text-4); font-family: ui-monospace, "Cascadia Code", monospace; font-size: .625rem; }
+.gateway-auth-actions { display: flex; align-items: center; gap: 8px; }
+.gateway-auth-actions .settings-pill { display: inline-flex; align-items: center; gap: 4px; }
 .gateway-probe, .gateway-pending, .gateway-message { display: flex; align-items: center; gap: 6px; margin: 8px 2px; color: var(--text-3); font-size: .6875rem; }
 .gateway-probe.error { color: var(--red); }
 .gateway-probe .codicon, .gateway-message .codicon { width: 12px; height: 12px; }

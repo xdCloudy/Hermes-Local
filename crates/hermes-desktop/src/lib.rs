@@ -9,6 +9,7 @@ use std::{
     sync::{Arc, Mutex, RwLock},
 };
 
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use hermes_agent_client::GatewayClient;
 use hermes_core::{
     AgentConfigService, AppServices, ConnectionService, EventStream, FileService, GitService,
@@ -18,19 +19,20 @@ use hermes_core::{
 };
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, AuthProvider, AuxiliaryModels, ConfigSchemaResponse,
-    ConnectionConfig, ConnectionConfigInput, ConnectionMode, ConnectionProbeResult,
-    ConnectionState, ConnectionTestResult, CustomEndpointUpdate, CustomEndpointValidation,
-    CustomEndpointsResponse, EnvVarInfo, FileEntry, GitStatus, MoaConfig, ModelAssignmentRequest,
-    ModelAssignmentResponse, ModelInfo, ModelOptions, ModelSettingsSnapshot, OAuthPoll,
-    OAuthProvider, OAuthStart, OAuthSubmit, ProbeAuthMode, ProjectFilesDeleteResult,
-    ProjectSummary, ProjectsSnapshot, ProviderActivation, RemoteAuthMode, RuntimeStatus,
-    SessionCreateRequest, SessionCreateResponse, SessionResumeResponse, SessionSummary,
-    TaskSummary, TrustSnapshot,
+    ConnectionConfig, ConnectionConfigInput, ConnectionMode, ConnectionOauthLoginResult,
+    ConnectionOauthLogoutResult, ConnectionProbeResult, ConnectionState, ConnectionTestResult,
+    CustomEndpointUpdate, CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry,
+    GitStatus, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse, ModelInfo, ModelOptions,
+    ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit, ProbeAuthMode,
+    ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation, RemoteAuthMode,
+    RuntimeStatus, SessionCreateRequest, SessionCreateResponse, SessionResumeResponse,
+    SessionSummary, TaskSummary, TrustSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
@@ -48,6 +50,20 @@ struct StoredSecret {
     encoding: String,
     #[serde(default)]
     value: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+struct NativeOauthTokens {
+    access_token: String,
+    #[serde(default)]
+    refresh_token: String,
+    #[serde(default)]
+    expires_at: u64,
+    #[serde(default)]
+    provider: String,
+    #[serde(default)]
+    user_id: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -364,15 +380,19 @@ impl ConnectionConfigStore {
         };
         let account = secret_account(profile.as_deref());
         let token = self.secret(block, &account)?;
+        let remote_url = env_url.unwrap_or_else(|| block.url.clone());
+        let remote_oauth_connected = block.auth_mode == RemoteAuthMode::Oauth
+            && !remote_url.is_empty()
+            && self.oauth_tokens(&remote_url)?.is_some();
         Ok(ConnectionConfig {
             env_override,
             mode,
             profile,
             remote_auth_mode: block.auth_mode,
-            remote_oauth_connected: false,
+            remote_oauth_connected,
             remote_token_preview: token_preview(token.as_deref()),
             remote_token_set: token.is_some(),
-            remote_url: env_url.unwrap_or_else(|| block.url.clone()),
+            remote_url,
             cloud_org: if mode == ConnectionMode::Cloud {
                 block.org.clone()
             } else {
@@ -415,6 +435,31 @@ impl ConnectionConfigStore {
             .unwrap_or(&document.remote);
         self.secret(block, &secret_account(profile.as_deref()))
     }
+
+    fn oauth_tokens(&self, base_url: &str) -> ServiceResult<Option<NativeOauthTokens>> {
+        let Some(encoded) = self.secrets.get(&oauth_account(base_url))? else {
+            return Ok(None);
+        };
+        let tokens = serde_json::from_str(&encoded).map_err(|error| {
+            ServiceError::Platform(format!("invalid stored OAuth session: {error}"))
+        })?;
+        Ok(Some(tokens))
+    }
+
+    fn store_oauth_tokens(&self, base_url: &str, tokens: &NativeOauthTokens) -> ServiceResult<()> {
+        if tokens.access_token.is_empty() {
+            return Err(ServiceError::InvalidInput(
+                "Gateway token response missing access_token".into(),
+            ));
+        }
+        let encoded = serde_json::to_string(tokens)
+            .map_err(|error| ServiceError::Platform(error.to_string()))?;
+        self.secrets.set(&oauth_account(base_url), &encoded)
+    }
+
+    fn clear_oauth_tokens(&self, base_url: &str) -> ServiceResult<()> {
+        self.secrets.delete(&oauth_account(base_url))
+    }
 }
 
 #[derive(Clone)]
@@ -440,6 +485,142 @@ impl GatewayServices {
             .clone()
             .ok_or_else(|| {
                 ServiceError::Unavailable("Hermes Agent REST API is not connected".into())
+            })
+    }
+
+    async fn run_native_oauth_login(&self, base_url: &str) -> ServiceResult<NativeOauthTokens> {
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .await
+            .map_err(platform)?;
+        let port = listener.local_addr().map_err(platform)?.port();
+        let redirect_uri = format!("http://127.0.0.1:{port}/callback");
+        let (verifier, challenge, state) = native_pkce_material()?;
+        let authorize_url = native_oauth_url(
+            base_url,
+            "authorize",
+            &[
+                ("code_challenge", &challenge),
+                ("code_challenge_method", "S256"),
+                ("redirect_uri", &redirect_uri),
+                ("state", &state),
+            ],
+        )?;
+        open::that(&authorize_url).map_err(platform)?;
+        let code = receive_oauth_code(&listener, &state).await?;
+        let token_url = native_oauth_url(base_url, "token", &[])?;
+        let response = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(platform)?
+            .post(token_url)
+            .json(&json!({ "code": code, "code_verifier": verifier }))
+            .send()
+            .await
+            .map_err(|error| ServiceError::Transport(error.to_string()))?;
+        if !response.status().is_success() {
+            return Err(ServiceError::PermissionDenied(format!(
+                "Gateway rejected native token exchange with HTTP {}",
+                response.status()
+            )));
+        }
+        let tokens: NativeOauthTokens = response.json().await.map_err(|error| {
+            ServiceError::Transport(format!("invalid Gateway token response: {error}"))
+        })?;
+        if tokens.access_token.is_empty() {
+            return Err(ServiceError::Transport(
+                "Gateway token response missing access_token".into(),
+            ));
+        }
+        Ok(tokens)
+    }
+
+    async fn ensure_native_access_token(&self, base_url: &str) -> ServiceResult<String> {
+        let mut tokens = self
+            .connection_store
+            .oauth_tokens(base_url)?
+            .ok_or_else(|| ServiceError::PermissionDenied("Gateway sign-in is required".into()))?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(platform)?
+            .as_secs();
+        if tokens.expires_at > now.saturating_add(60) {
+            return Ok(tokens.access_token);
+        }
+        if tokens.refresh_token.is_empty() {
+            self.connection_store.clear_oauth_tokens(base_url)?;
+            return Err(ServiceError::PermissionDenied(
+                "Gateway session expired; sign in again".into(),
+            ));
+        }
+        let refresh_url = native_oauth_url(base_url, "refresh", &[])?;
+        let response = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(platform)?
+            .post(refresh_url)
+            .json(&json!({
+                "refresh_token": tokens.refresh_token,
+                "provider": tokens.provider,
+            }))
+            .send()
+            .await
+            .map_err(|error| ServiceError::Transport(error.to_string()))?;
+        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+            self.connection_store.clear_oauth_tokens(base_url)?;
+            return Err(ServiceError::PermissionDenied(
+                "Gateway session expired; sign in again".into(),
+            ));
+        }
+        if !response.status().is_success() {
+            return Err(ServiceError::Transport(format!(
+                "Gateway token refresh returned HTTP {}",
+                response.status()
+            )));
+        }
+        tokens = response.json().await.map_err(|error| {
+            ServiceError::Transport(format!("invalid Gateway refresh response: {error}"))
+        })?;
+        self.connection_store
+            .store_oauth_tokens(base_url, &tokens)?;
+        Ok(tokens.access_token)
+    }
+
+    async fn mint_gateway_ticket(&self, base_url: &str) -> ServiceResult<String> {
+        let access_token = self.ensure_native_access_token(base_url).await?;
+        let base_url = normalize_remote_url(base_url)?;
+        let response = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(8))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(platform)?
+            .post(format!("{base_url}/api/auth/ws-ticket"))
+            .bearer_auth(access_token)
+            .send()
+            .await
+            .map_err(|error| ServiceError::Transport(error.to_string()))?;
+        if matches!(response.status().as_u16(), 401 | 403) {
+            return Err(ServiceError::PermissionDenied(
+                "Gateway rejected the OAuth session; sign in again".into(),
+            ));
+        }
+        if !response.status().is_success() {
+            return Err(ServiceError::Transport(format!(
+                "Gateway ticket mint returned HTTP {}",
+                response.status()
+            )));
+        }
+        let value: Value = response.json().await.map_err(|error| {
+            ServiceError::Transport(format!("invalid Gateway ticket response: {error}"))
+        })?;
+        value
+            .get("ticket")
+            .and_then(Value::as_str)
+            .filter(|ticket| !ticket.is_empty())
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                ServiceError::Transport("Gateway did not return a WebSocket ticket".into())
             })
     }
 }
@@ -504,18 +685,22 @@ impl ConnectionService for GatewayServices {
                                 "no gateway is configured; local Agent bootstrap is pending".into(),
                             ));
                         }
-                        if config.remote_auth_mode != RemoteAuthMode::Token {
-                            return Err(ServiceError::Unavailable(
-                                "OAuth Gateway session bootstrap is pending".into(),
-                            ));
+                        match config.remote_auth_mode {
+                            RemoteAuthMode::Token => {
+                                let token = self.connection_store.remote_secret(None)?.ok_or_else(
+                                    || {
+                                        ServiceError::Unavailable(
+                                            "the configured Gateway token is unavailable".into(),
+                                        )
+                                    },
+                                )?;
+                                websocket_url(&config.remote_url, &token)?
+                            }
+                            RemoteAuthMode::Oauth => {
+                                let ticket = self.mint_gateway_ticket(&config.remote_url).await?;
+                                websocket_url_with_ticket(&config.remote_url, &ticket)?
+                            }
                         }
-                        let token =
-                            self.connection_store.remote_secret(None)?.ok_or_else(|| {
-                                ServiceError::Unavailable(
-                                    "the configured Gateway token is unavailable".into(),
-                                )
-                            })?;
-                        websocket_url(&config.remote_url, &token)?
                     }
                 },
             };
@@ -605,9 +790,14 @@ impl ConnectionService for GatewayServices {
                     self.connect(&websocket_url(&config.remote_url, &token)?)
                         .await?;
                 }
-                ConnectionMode::Remote | ConnectionMode::Cloud => {
+                ConnectionMode::Remote => {
+                    let ticket = self.mint_gateway_ticket(&config.remote_url).await?;
+                    self.connect(&websocket_url_with_ticket(&config.remote_url, &ticket)?)
+                        .await?;
+                }
+                ConnectionMode::Cloud => {
                     return Err(ServiceError::Unavailable(
-                        "OAuth Gateway session bootstrap is pending".into(),
+                        "Hermes Cloud agent discovery is pending".into(),
                     ));
                 }
                 ConnectionMode::Ssh => {
@@ -663,6 +853,33 @@ impl ConnectionService for GatewayServices {
     fn probe_config(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionProbeResult> {
         let remote_url = remote_url.to_owned();
         Box::pin(async move { probe_remote_gateway(&remote_url).await })
+    }
+
+    fn oauth_login(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionOauthLoginResult> {
+        let remote_url = remote_url.to_owned();
+        Box::pin(async move {
+            let base_url = native_oauth_gateway(&remote_url).await?;
+            let tokens = self.run_native_oauth_login(&base_url).await?;
+            self.connection_store
+                .store_oauth_tokens(&base_url, &tokens)?;
+            Ok(ConnectionOauthLoginResult {
+                ok: true,
+                base_url,
+                connected: true,
+            })
+        })
+    }
+
+    fn oauth_logout(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionOauthLogoutResult> {
+        let remote_url = remote_url.to_owned();
+        Box::pin(async move {
+            let base_url = normalize_remote_url(&remote_url)?;
+            self.connection_store.clear_oauth_tokens(&base_url)?;
+            Ok(ConnectionOauthLogoutResult {
+                ok: true,
+                connected: false,
+            })
+        })
     }
 }
 
@@ -2003,6 +2220,14 @@ fn decode_list<T: serde::de::DeserializeOwned>(value: Value, key: &str) -> Servi
 }
 
 fn websocket_url(base: &str, token: &str) -> ServiceResult<String> {
+    authenticated_websocket_url(base, "token", token)
+}
+
+fn websocket_url_with_ticket(base: &str, ticket: &str) -> ServiceResult<String> {
+    authenticated_websocket_url(base, "ticket", ticket)
+}
+
+fn authenticated_websocket_url(base: &str, key: &str, value: &str) -> ServiceResult<String> {
     let mut url = url::Url::parse(base)
         .map_err(|error| ServiceError::InvalidInput(format!("invalid gateway URL: {error}")))?;
     let websocket_scheme = match url.scheme() {
@@ -2022,8 +2247,9 @@ fn websocket_url(base: &str, token: &str) -> ServiceResult<String> {
         let path = format!("{}/api/ws", url.path().trim_end_matches('/'));
         url.set_path(&path);
     }
-    url.query_pairs_mut().append_pair("token", token);
-    Ok(url.into())
+    url.set_query(None);
+    url.query_pairs_mut().append_pair(key, value);
+    Ok(url.to_string())
 }
 
 fn validated_profile(profile: Option<&str>) -> ServiceResult<Option<String>> {
@@ -2047,6 +2273,129 @@ fn validated_profile(profile: Option<&str>) -> ServiceResult<Option<String>> {
 
 fn secret_account(profile: Option<&str>) -> String {
     profile.map_or_else(|| "global".into(), |profile| format!("profile:{profile}"))
+}
+
+fn oauth_account(base_url: &str) -> String {
+    let digest = Sha256::digest(base_url.as_bytes());
+    format!("oauth:{}", URL_SAFE_NO_PAD.encode(digest))
+}
+
+fn native_pkce_material() -> ServiceResult<(String, String, String)> {
+    let mut verifier_random = [0_u8; 32];
+    let mut state_random = [0_u8; 24];
+    getrandom::fill(&mut verifier_random).map_err(platform)?;
+    getrandom::fill(&mut state_random).map_err(platform)?;
+    let verifier = URL_SAFE_NO_PAD.encode(verifier_random);
+    let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
+    let state = URL_SAFE_NO_PAD.encode(state_random);
+    Ok((verifier, challenge, state))
+}
+
+fn native_oauth_url(
+    base_url: &str,
+    endpoint: &str,
+    query: &[(&str, &str)],
+) -> ServiceResult<String> {
+    let normalized = normalize_remote_url(base_url)?;
+    let mut url = url::Url::parse(&normalized)
+        .map_err(|error| ServiceError::InvalidInput(format!("invalid Gateway URL: {error}")))?;
+    let prefix = url.path().trim_end_matches('/').to_owned();
+    url.set_path(&format!("{prefix}/auth/native/{endpoint}"));
+    url.set_query(None);
+    if !query.is_empty() {
+        let mut pairs = url.query_pairs_mut();
+        for (key, value) in query {
+            pairs.append_pair(key, value);
+        }
+    }
+    Ok(url.to_string())
+}
+
+fn parse_loopback_callback(target: &str, expected_state: &str) -> ServiceResult<String> {
+    let callback = url::Url::parse(&format!("http://127.0.0.1{target}"))
+        .map_err(|error| ServiceError::InvalidInput(format!("invalid OAuth callback: {error}")))?;
+    if callback.path() != "/callback" {
+        return Err(ServiceError::InvalidInput(
+            "OAuth callback used an unexpected path".into(),
+        ));
+    }
+    let parameter = |name: &str| {
+        callback
+            .query_pairs()
+            .find_map(|(key, value)| (key == name).then(|| value.into_owned()))
+    };
+    if let Some(error) = parameter("error") {
+        let description = parameter("error_description").unwrap_or_default();
+        return Err(ServiceError::PermissionDenied(format!(
+            "Gateway rejected native login: {error}{}",
+            if description.is_empty() {
+                String::new()
+            } else {
+                format!(" ({description})")
+            }
+        )));
+    }
+    let state = parameter("state");
+    if expected_state.is_empty() || state.as_deref() != Some(expected_state) {
+        return Err(ServiceError::PermissionDenied(
+            "OAuth callback state mismatch (possible CSRF)".into(),
+        ));
+    }
+    parameter("code")
+        .filter(|code| !code.is_empty())
+        .ok_or_else(|| {
+            ServiceError::InvalidInput("OAuth callback missing authorization code".into())
+        })
+}
+
+async fn receive_oauth_code(
+    listener: &tokio::net::TcpListener,
+    expected_state: &str,
+) -> ServiceResult<String> {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    let receive = async {
+        loop {
+            let (mut stream, peer) = listener.accept().await.map_err(platform)?;
+            if !peer.ip().is_loopback() {
+                continue;
+            }
+            let mut request = Vec::with_capacity(2_048);
+            let mut chunk = [0_u8; 1_024];
+            while request.len() < 16_384 && !request.windows(4).any(|part| part == b"\r\n\r\n") {
+                let read = stream.read(&mut chunk).await.map_err(platform)?;
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&chunk[..read]);
+            }
+            let first_line = String::from_utf8_lossy(&request)
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .to_owned();
+            let mut parts = first_line.split_whitespace();
+            let method = parts.next().unwrap_or_default();
+            let target = parts.next().unwrap_or_default();
+            let body = "<!doctype html><meta charset=\"utf-8\"><title>Signed in</title><body style=\"font:15px system-ui;margin:3rem;text-align:center\"><h2>✓ Signed in to Hermes</h2><p>You can close this window and return to the app.</p><script>setTimeout(()=>window.close(),800)</script>";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n{body}",
+                body.len()
+            );
+            stream
+                .write_all(response.as_bytes())
+                .await
+                .map_err(platform)?;
+            let _ = stream.shutdown().await;
+            if method != "GET" || (!target.contains("?code=") && !target.contains("?error=")) {
+                continue;
+            }
+            return parse_loopback_callback(target, expected_state);
+        }
+    };
+    tokio::time::timeout(std::time::Duration::from_mins(5), receive)
+        .await
+        .map_err(|_| ServiceError::Timeout("native Gateway sign-in timed out".into()))?
 }
 
 fn token_preview(token: Option<&str>) -> Option<String> {
@@ -2163,6 +2512,53 @@ async fn probe_remote_gateway(remote_url: &str) -> ServiceResult<ConnectionProbe
             .map(str::to_owned),
         error: None,
     })
+}
+
+async fn native_oauth_gateway(remote_url: &str) -> ServiceResult<String> {
+    let base_url = normalize_remote_url(remote_url)?;
+    let response = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(platform)?
+        .get(format!("{base_url}/api/status"))
+        .send()
+        .await
+        .map_err(|error| ServiceError::Transport(error.to_string()))?;
+    if !response.status().is_success() {
+        return Err(ServiceError::Transport(format!(
+            "Gateway returned HTTP {}",
+            response.status()
+        )));
+    }
+    let status: Value = response
+        .json()
+        .await
+        .map_err(|error| ServiceError::Transport(format!("invalid Gateway response: {error}")))?;
+    if !status
+        .get("auth_required")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        return Err(ServiceError::InvalidInput(
+            "This Gateway does not advertise OAuth authentication".into(),
+        ));
+    }
+    let supports_native_pkce = status
+        .get("auth_flows")
+        .and_then(Value::as_array)
+        .is_some_and(|flows| {
+            flows
+                .iter()
+                .any(|flow| flow.as_str() == Some("native_pkce"))
+        });
+    if !supports_native_pkce {
+        return Err(ServiceError::Unavailable(
+            "This Gateway only supports legacy embedded sign-in; update Hermes Gateway to use native PKCE"
+                .into(),
+        ));
+    }
+    Ok(base_url)
 }
 
 impl GatewayRest {
@@ -2540,6 +2936,78 @@ mod tests {
     }
 
     #[test]
+    fn builds_one_time_ticket_websocket_url_without_legacy_credentials() {
+        let url = websocket_url_with_ticket(
+            "https://gateway.example/hermes?discard=yes",
+            "one time&ticket",
+        )
+        .expect("URL");
+        assert_eq!(
+            url,
+            "wss://gateway.example/hermes/api/ws?ticket=one+time%26ticket"
+        );
+        assert!(!url.contains("token="));
+    }
+
+    #[test]
+    fn native_oauth_helpers_match_the_og_pkce_contract() {
+        let (verifier, challenge, state) = native_pkce_material().expect("PKCE material");
+        assert_eq!(verifier.len(), 43);
+        assert_eq!(challenge.len(), 43);
+        assert_eq!(
+            challenge,
+            URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+        );
+        assert_eq!(state.len(), 32);
+
+        let url = native_oauth_url(
+            "https://gateway.example/hermes/?discard=yes",
+            "authorize",
+            &[
+                ("code_challenge", &challenge),
+                ("redirect_uri", "http://127.0.0.1:43210/callback"),
+                ("state", &state),
+            ],
+        )
+        .expect("authorize URL");
+        let parsed = url::Url::parse(&url).expect("parsed authorize URL");
+        assert_eq!(parsed.path(), "/hermes/auth/native/authorize");
+        let query = parsed.query_pairs().collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            query.get("code_challenge").map(std::convert::AsRef::as_ref),
+            Some(challenge.as_str())
+        );
+        assert_eq!(
+            query.get("redirect_uri").map(std::convert::AsRef::as_ref),
+            Some("http://127.0.0.1:43210/callback")
+        );
+        assert_eq!(
+            query.get("state").map(std::convert::AsRef::as_ref),
+            Some(state.as_str())
+        );
+    }
+
+    #[test]
+    fn loopback_oauth_callback_rejects_csrf_and_gateway_errors() {
+        assert_eq!(
+            parse_loopback_callback("/callback?code=once%26only&state=expected", "expected")
+                .expect("callback code"),
+            "once&only"
+        );
+        assert!(matches!(
+            parse_loopback_callback("/callback?code=attacker&state=wrong", "expected"),
+            Err(ServiceError::PermissionDenied(message)) if message.contains("CSRF")
+        ));
+        assert!(matches!(
+            parse_loopback_callback(
+                "/callback?error=access_denied&error_description=Nope&state=expected",
+                "expected"
+            ),
+            Err(ServiceError::PermissionDenied(message)) if message.contains("access_denied") && message.contains("Nope")
+        ));
+    }
+
+    #[test]
     fn derives_rest_endpoint_and_legacy_token_from_websocket() {
         let rest = rest_from_websocket_url(
             "wss://gateway.example/hermes/api/ws?token=a+b%26c&ignored=yes",
@@ -2621,6 +3089,162 @@ mod tests {
 
         fs::remove_file(path).expect("remove connection settings");
         fs::remove_dir(directory).expect("remove connection settings directory");
+    }
+
+    #[test]
+    fn native_oauth_session_lives_only_in_the_secret_store() {
+        let directory = std::env::temp_dir().join(format!(
+            "hermes-oauth-connection-test-{}",
+            Uuid::new_v4().simple()
+        ));
+        let path = directory.join("connection.json");
+        let secrets = Arc::new(MemoryGatewaySecrets::default());
+        let store = ConnectionConfigStore::with_secrets(path.clone(), secrets.clone());
+        let base_url = "https://gateway.example/hermes";
+        store
+            .save(&ConnectionConfigInput {
+                mode: ConnectionMode::Remote,
+                remote_auth_mode: Some(RemoteAuthMode::Oauth),
+                remote_url: Some(base_url.into()),
+                ..ConnectionConfigInput::default()
+            })
+            .expect("save OAuth Gateway");
+        let tokens = NativeOauthTokens {
+            access_token: "access-secret".into(),
+            refresh_token: "refresh-secret".into(),
+            expires_at: 4_102_444_800,
+            provider: "portal".into(),
+            user_id: "user-1".into(),
+        };
+        store
+            .store_oauth_tokens(base_url, &tokens)
+            .expect("store OAuth tokens");
+
+        assert!(
+            store
+                .load(None)
+                .expect("load config")
+                .remote_oauth_connected
+        );
+        let on_disk = fs::read_to_string(&path).expect("connection settings");
+        assert!(!on_disk.contains("access-secret"));
+        assert!(!on_disk.contains("refresh-secret"));
+        assert!(
+            secrets
+                .get(&oauth_account(base_url))
+                .expect("OAuth secret")
+                .is_some()
+        );
+
+        store
+            .clear_oauth_tokens(base_url)
+            .expect("clear OAuth tokens");
+        assert!(
+            !store
+                .load(None)
+                .expect("load signed-out config")
+                .remote_oauth_connected
+        );
+
+        fs::remove_file(path).expect("remove connection settings");
+        fs::remove_dir(directory).expect("remove connection settings directory");
+    }
+
+    #[tokio::test]
+    async fn native_oauth_refreshes_then_mints_the_official_ws_ticket() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let address = listener.local_addr().expect("address");
+        let base_url = format!("http://{address}/hermes");
+        let server = tokio::spawn(async move {
+            let bodies = [
+                json!({
+                    "access_token": "rotated-access",
+                    "refresh_token": "rotated-refresh",
+                    "expires_at": 4_102_444_800_u64,
+                    "provider": "portal",
+                    "user_id": "user-1"
+                })
+                .to_string(),
+                json!({ "ticket": "single-use-ticket" }).to_string(),
+            ];
+            let mut requests = Vec::new();
+            for body in bodies {
+                let (mut stream, _) = listener.accept().await.expect("connection");
+                let mut request = Vec::new();
+                let mut chunk = [0_u8; 2_048];
+                loop {
+                    let count = stream.read(&mut chunk).await.expect("request bytes");
+                    if count == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&chunk[..count]);
+                    let text = String::from_utf8_lossy(&request);
+                    if let Some(headers_end) = text.find("\r\n\r\n") {
+                        let content_length = text[..headers_end]
+                            .lines()
+                            .find_map(|line| line.strip_prefix("content-length: "))
+                            .and_then(|value| value.parse::<usize>().ok())
+                            .unwrap_or_default();
+                        if request.len() >= headers_end + 4 + content_length {
+                            break;
+                        }
+                    }
+                }
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("response");
+                requests.push(String::from_utf8(request).expect("UTF-8 request"));
+            }
+            requests
+        });
+        let store = test_connection_store();
+        store
+            .store_oauth_tokens(
+                &base_url,
+                &NativeOauthTokens {
+                    access_token: "expired-access".into(),
+                    refresh_token: "refresh-secret".into(),
+                    expires_at: 0,
+                    provider: "portal".into(),
+                    user_id: "user-1".into(),
+                },
+            )
+            .expect("store expired OAuth tokens");
+        let services = GatewayServices {
+            client: Arc::new(RwLock::new(None)),
+            rest: Arc::new(RwLock::new(None)),
+            connection_store: store.clone(),
+        };
+
+        assert_eq!(
+            services
+                .mint_gateway_ticket(&base_url)
+                .await
+                .expect("mint ticket"),
+            "single-use-ticket"
+        );
+        let requests = server.await.expect("server");
+        assert!(requests[0].starts_with("POST /hermes/auth/native/refresh HTTP/1.1"));
+        assert!(
+            requests[0].ends_with("{\"provider\":\"portal\",\"refresh_token\":\"refresh-secret\"}")
+        );
+        assert!(requests[1].starts_with("POST /hermes/api/auth/ws-ticket HTTP/1.1"));
+        assert!(requests[1].contains("authorization: Bearer rotated-access"));
+        assert_eq!(
+            store
+                .oauth_tokens(&base_url)
+                .expect("stored rotated tokens")
+                .expect("rotated tokens")
+                .refresh_token,
+            "rotated-refresh"
+        );
     }
 
     #[test]

@@ -296,6 +296,25 @@ pub struct ConnectionProbeResult {
     pub error: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionOauthLoginResult {
+    #[serde(default)]
+    pub ok: bool,
+    pub base_url: String,
+    #[serde(default)]
+    pub connected: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionOauthLogoutResult {
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub connected: bool,
+}
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MessageRole {
@@ -1262,5 +1281,18 @@ mod tests {
             serde_json::to_value(cleared).expect("serialize cleared port")["sshPort"],
             Value::Null
         );
+    }
+
+    #[test]
+    fn gateway_oauth_results_keep_the_og_ipc_casing() {
+        let login = serde_json::to_value(ConnectionOauthLoginResult {
+            ok: true,
+            base_url: "https://gateway.example/hermes".into(),
+            connected: true,
+        })
+        .expect("serialize OAuth login result");
+        assert_eq!(login["baseUrl"], "https://gateway.example/hermes");
+        assert_eq!(login["connected"], true);
+        assert!(login.get("base_url").is_none());
     }
 }

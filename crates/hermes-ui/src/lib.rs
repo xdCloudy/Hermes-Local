@@ -1981,6 +1981,7 @@ fn GatewaySettingsPanel() -> Element {
     let mut loading = use_signal(|| true);
     let mut saving = use_signal(|| false);
     let mut testing = use_signal(|| false);
+    let mut signing_in = use_signal(|| false);
     let mut probe = use_signal(|| None::<ConnectionProbeResult>);
     let probing = use_signal(|| false);
     let mut message = use_signal(|| None::<String>);
@@ -2104,12 +2105,56 @@ fn GatewaySettingsPanel() -> Element {
                             if config.remote_oauth_connected {
                                 section { class: "settings-list-row",
                                     div { class: "settings-row-copy", strong { "Authentication" } p { "This gateway uses OAuth. You are signed in; the session refreshes automatically." } }
-                                    div { class: "settings-row-action", button { class: "button primary", disabled: true, Codicon { name: "check" } "Signed in" } }
+                                    div { class: "settings-row-action gateway-auth-actions",
+                                        span { class: "settings-pill", Codicon { name: "check" } "Signed in" }
+                                        button { class: "button ghost", disabled: signing_in(), onclick: {
+                                            let service = services.connection.clone();
+                                            let remote_url = config.remote_url.clone();
+                                            let selected_scope = scope();
+                                            move |_| {
+                                                signing_in.set(true); message.set(None); error.set(None);
+                                                let service = service.clone(); let remote_url = remote_url.clone(); let selected_scope = selected_scope.clone();
+                                                spawn(async move {
+                                                    match service.oauth_logout(&remote_url).await {
+                                                        Ok(_) => match service.config(selected_scope.as_deref()).await {
+                                                            Ok(saved) => { draft.set(Some(saved)); message.set(Some("Signed out from the remote gateway.".into())); }
+                                                            Err(problem) => error.set(Some(problem.to_string())),
+                                                        },
+                                                        Err(problem) => error.set(Some(problem.to_string())),
+                                                    }
+                                                    signing_in.set(false);
+                                                });
+                                            }
+                                        }, if signing_in() { span { class: "spinner" } } "Sign out" }
+                                    }
                                 }
                             } else {
                                 section { class: "settings-list-row",
                                     div { class: "settings-row-copy", strong { "Authentication" } p { "This gateway uses OAuth. Sign in to authorize this desktop app." } }
-                                    div { class: "settings-row-action", button { class: "button primary", disabled: true, Codicon { name: "sign-in" } "Sign in" } }
+                                    div { class: "settings-row-action", button { class: "button primary", disabled: signing_in() || config.remote_url.trim().is_empty(), onclick: {
+                                        let service = services.connection.clone();
+                                        let remote_url = config.remote_url.clone();
+                                        let selected_scope = scope();
+                                        let input = gateway_input(&config, "");
+                                        move |_| {
+                                            signing_in.set(true); message.set(None); error.set(None);
+                                            let service = service.clone(); let remote_url = remote_url.clone(); let selected_scope = selected_scope.clone(); let input = input.clone();
+                                            spawn(async move {
+                                                match service.save_config(&input).await {
+                                                    Ok(_) => match service.oauth_login(&remote_url).await {
+                                                        Ok(result) if result.connected => match service.config(selected_scope.as_deref()).await {
+                                                            Ok(saved) => { draft.set(Some(saved)); message.set(Some("Signed in to the remote gateway.".into())); }
+                                                            Err(problem) => error.set(Some(problem.to_string())),
+                                                        },
+                                                        Ok(_) => error.set(Some("Gateway sign-in did not complete.".into())),
+                                                        Err(problem) => error.set(Some(problem.to_string())),
+                                                    },
+                                                    Err(problem) => error.set(Some(problem.to_string())),
+                                                }
+                                                signing_in.set(false);
+                                            });
+                                        }
+                                    }, if signing_in() { span { class: "spinner" } } else { Codicon { name: "sign-in" } } "Sign in" } }
                                 }
                             }
                         } else {

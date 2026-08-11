@@ -10,12 +10,13 @@ use std::{
 use futures_core::Stream;
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, ChatMessage, ConnectionConfig, ConnectionConfigInput,
-    ConnectionProbeResult, ConnectionState, ConnectionTestResult, CustomEndpointUpdate,
-    CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry, GatewayEvent,
-    GitStatus, MessageRole, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse,
-    ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit,
-    ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation, RuntimeStatus,
-    SessionCreateRequest, SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
+    ConnectionOauthLoginResult, ConnectionOauthLogoutResult, ConnectionProbeResult,
+    ConnectionState, ConnectionTestResult, CustomEndpointUpdate, CustomEndpointValidation,
+    CustomEndpointsResponse, EnvVarInfo, FileEntry, GatewayEvent, GitStatus, MessageRole,
+    MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse, ModelSettingsSnapshot, OAuthPoll,
+    OAuthProvider, OAuthStart, OAuthSubmit, ProjectFilesDeleteResult, ProjectSummary,
+    ProjectsSnapshot, ProviderActivation, RuntimeStatus, SessionCreateRequest,
+    SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -322,6 +323,8 @@ pub trait ConnectionService: Send + Sync {
     fn test_config(&self, input: &ConnectionConfigInput)
     -> ServiceFuture<'_, ConnectionTestResult>;
     fn probe_config(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionProbeResult>;
+    fn oauth_login(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionOauthLoginResult>;
+    fn oauth_logout(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionOauthLogoutResult>;
 }
 
 pub trait ProjectService: Send + Sync {

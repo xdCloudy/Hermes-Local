@@ -143,9 +143,9 @@ updater work itself.
 | Local/remote/cloud/SSH connection profile persistence | `ConnectionService` + Windows Credential Manager | settings/profiles | DTO/persistence/scope/redaction tests | Service validated |
 | Gateway connection-mode settings surface | `ConnectionService` | Settings → Gateway | form/scope/secret-omission tests + rendered mode E2E | Ported |
 | Gateway settings and live re-home behavior | `ConnectionService` | Settings → Gateway | soft/hard/live re-home tests | In progress |
-| OAuth login/logout and callbacks | `AuthService` | settings/recovery | RFC 8252/state/origin/token tests | Designed |
+| Remote Gateway OAuth login/logout and callbacks | `ConnectionService` + Windows Credential Manager | Settings → Gateway | RFC 8252 PKCE/state/callback/ticket/secret-store tests + rendered flow E2E | Ported |
 | Hermes Cloud discovery/sign-in | `AuthService` | settings/profile menu | auth/connectivity separation tests | Designed |
-| Gateway tokens at rest | `ConnectionService` + Windows Credential Manager | no DOM exposure | marker/preview/no-plaintext tests | Service validated |
+| Gateway session-token and OAuth-token storage | `ConnectionService` + Windows Credential Manager | no DOM exposure | marker/preview/no-plaintext/access-refresh-token tests | Service validated |
 | Remaining secrets at rest | `SecretService` (DPAPI/Credential Manager) | no DOM exposure | round-trip/ACL/redaction tests | Designed |
 | Local Workstation snapshot | `RuntimeService` | workstation home | schema/refresh/degraded-state tests | Designed |
 | Runtime actions and Task Centre | `TaskService` | tasks/status | durable lifecycle/cancel/pause/retry tests | Designed |
