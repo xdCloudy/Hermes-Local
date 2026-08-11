@@ -105,7 +105,7 @@ updater work itself.
 | --- | --- | --- | --- | --- |
 | Projects registry and project scope | `ProjectService` | sidebar/Project Centre | persistence/merge/scope tests | Ported |
 | Project Centre create/edit/remove | `ProjectService` | dialogs | validation/rollback/E2E | Ported |
-| Default project directory and pickers | `SettingsService` + `FileService` | settings/dialogs | canonical path/boundary tests | Designed |
+| Default project directory and pickers | `SettingsService` + `PlatformService` | settings/dialogs | canonical path/boundary tests | Ported |
 | File tree, read and text write | `FileService` | tree/editor | root containment/symlink/encoding tests | Designed |
 | Rename, trash, reveal and open | `FileService` | tree/context actions | containment and platform integration tests | Designed |
 | Directory and preview watchers | `FileService` | tree/preview | lifecycle/coalescing/path tests | Designed |

@@ -397,3 +397,16 @@ atomic theme mode/skin persistence round trip.
 Exact next action: connect the Model and Chat settings sections and OG config
 contracts, then return to the typed folder picker and remaining destructive
 Project Centre confirmations.
+
+The Project Centre native folder-picker gap is closed. `PlatformService` owns a
+typed, cancellable `pick_folder` operation and the Windows implementation uses
+pinned `rfd` 0.17.2; shared Dioxus code receives only the selected path. Attach
+folder and Clone Git now reproduce the source's disabled path field plus
+`Choose…` affordance, seed the dialog from the configured default project
+directory when available, and preserve cancellation without mutating form
+state. A native Windows dialog capture confirms the real OS picker and title;
+the dialog was cancelled after QA without selecting or changing any folder.
+
+Exact next action: connect the Model and Chat settings sections and OG config
+contracts, then implement repair and separately confirmed delete-files Project
+Centre flows.

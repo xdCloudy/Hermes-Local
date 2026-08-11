@@ -14,6 +14,7 @@ hermes-protocol = { path = "../hermes-protocol" }
 open.workspace = true
 portable-pty.workspace = true
 reqwest = { workspace = true, features = ["json", "rustls"] }
+rfd.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["sync"] }

@@ -1,6 +1,11 @@
 //! Hermes Local product boundary consumed by the Dioxus UI.
 
-use std::{future::Future, path::Path, pin::Pin, sync::Arc};
+use std::{
+    future::Future,
+    path::{Path, PathBuf},
+    pin::Pin,
+    sync::Arc,
+};
 
 use futures_core::Stream;
 use hermes_protocol::{
@@ -369,6 +374,11 @@ pub trait UpdateService: Send + Sync {
 }
 
 pub trait PlatformService: Send + Sync {
+    fn pick_folder(
+        &self,
+        title: &str,
+        starting_directory: Option<&Path>,
+    ) -> ServiceFuture<'_, Option<PathBuf>>;
     fn open_external(&self, url: &str) -> ServiceFuture<'_, ()>;
     fn notify(&self, title: &str, body: &str) -> ServiceFuture<'_, ()>;
     fn version(&self) -> ServiceFuture<'_, String>;

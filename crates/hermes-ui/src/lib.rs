@@ -1241,6 +1241,7 @@ simple_surface!(
 fn Projects() -> Element {
     let services = use_context::<AppServices>();
     let state = use_context::<ProjectUiState>();
+    let settings_state = use_context::<SettingsUiState>();
     let snapshot = (state.snapshot)();
     let mut query = use_signal(String::new);
     let mut filter = use_signal(|| "all".to_owned());
@@ -1250,6 +1251,7 @@ fn Projects() -> Element {
     let mut project_path = use_signal(String::new);
     let mut repository_url = use_signal(String::new);
     let mut creating = use_signal(|| false);
+    let mut choosing_folder = use_signal(|| false);
     let mut remove_target = use_signal(|| None::<String>);
 
     let needle = query().trim().to_lowercase();
@@ -1457,7 +1459,29 @@ fn Projects() -> Element {
                         }
                         if create_mode() != "empty" {
                             label { class: "dialog-field", span { if create_mode() == "clone" { "Clone destination parent folder" } else { "Folder to attach" } }
-                                input { placeholder: "C:\\path\\to\\folder", value: "{project_path}", oninput: move |event| project_path.set(event.value()) }
+                                div { class: "folder-picker-row",
+                                    input { disabled: true, placeholder: "Choose a local folder", value: "{project_path}" }
+                                    button { class: "button", disabled: choosing_folder() || creating(), onclick: {
+                                        let platform = services.platform.clone();
+                                        move |_| {
+                                            choosing_folder.set(true);
+                                            let platform = platform.clone();
+                                            let starting_directory = (settings_state.settings)().default_project_dir.map(std::path::PathBuf::from);
+                                            let title = if create_mode() == "clone" { "Choose clone destination parent folder" } else { "Choose project folder" };
+                                            spawn(async move {
+                                                match platform.pick_folder(title, starting_directory.as_deref()).await {
+                                                    Ok(Some(path)) => project_path.set(path.to_string_lossy().into_owned()),
+                                                    Ok(None) => {}
+                                                    Err(error) => {
+                                                        let mut error_signal = state.error;
+                                                        error_signal.set(Some(error.to_string()));
+                                                    }
+                                                }
+                                                choosing_folder.set(false);
+                                            });
+                                        }
+                                    }, Codicon { name: "folder" } if choosing_folder() { "Choosing…" } else { "Choose…" } }
+                                }
                             }
                         } else {
                             p { class: "dialog-hint", "This project starts without a filesystem location. You can attach a folder later without changing its project identity." }

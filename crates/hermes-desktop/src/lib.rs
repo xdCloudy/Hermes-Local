@@ -895,6 +895,25 @@ impl UpdateService for DesktopUpdates {
 struct DesktopPlatform;
 
 impl PlatformService for DesktopPlatform {
+    fn pick_folder(
+        &self,
+        title: &str,
+        starting_directory: Option<&Path>,
+    ) -> ServiceFuture<'_, Option<PathBuf>> {
+        let title = title.to_owned();
+        let starting_directory = starting_directory.map(Path::to_owned);
+        Box::pin(async move {
+            let mut dialog = rfd::AsyncFileDialog::new().set_title(title);
+            if let Some(directory) = starting_directory.filter(|path| path.is_dir()) {
+                dialog = dialog.set_directory(directory);
+            }
+            Ok(dialog
+                .pick_folder()
+                .await
+                .map(|folder| folder.path().to_owned()))
+        })
+    }
+
     fn open_external(&self, url: &str) -> ServiceFuture<'_, ()> {
         let url = url.to_owned();
         Box::pin(async move {
