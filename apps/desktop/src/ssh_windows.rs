@@ -107,7 +107,8 @@ pub async fn connect(
 ) -> ServiceResult<WindowsSshLease> {
     validate_profile(profile_scope)?;
     validate_profile(remote_profile)?;
-    let installation_id = load_or_create_installation_id(&data_dir.join("desktop-installation.json"))?;
+    let installation_id =
+        load_or_create_installation_id(&data_dir.join("desktop-installation.json"))?;
     let ownership_id = ownership_id(&installation_id, profile_scope)?;
     let mut runtime = probe_windows_runtime(config).await?;
 
@@ -128,7 +129,9 @@ pub async fn connect(
         .get("path")
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| ServiceError::Transport("Windows SSH inspection returned no Hermes path".into()))?
+        .ok_or_else(|| {
+            ServiceError::Transport("Windows SSH inspection returned no Hermes path".into())
+        })?
         .to_owned();
     runtime.hermes_version = inspection
         .get("version")
@@ -137,14 +140,7 @@ pub async fn connect(
         .to_owned();
 
     let reuse_token = load_reuse_token(&ownership_id)?.unwrap_or_default();
-    let lock_value = helper(
-        config,
-        &runtime,
-        "read-lock",
-        &[ownership_id.clone()],
-        None,
-    )
-    .await?;
+    let lock_value = helper(config, &runtime, "read-lock", &[ownership_id.clone()], None).await?;
     let parsed_lock = serde_json::from_value::<WindowsLock>(lock_value.clone()).ok();
 
     if let Some(lock) = parsed_lock.filter(|lock| valid_lock(lock, &ownership_id)) {
@@ -251,12 +247,16 @@ async fn spawn_owned(
         .and_then(Value::as_u64)
         .and_then(|value| u32::try_from(value).ok())
         .filter(|value| *value > 0)
-        .ok_or_else(|| ServiceError::Transport("Windows SSH runtime returned no valid pid".into()))?;
+        .ok_or_else(|| {
+            ServiceError::Transport("Windows SSH runtime returned no valid pid".into())
+        })?;
     let creation_time_ns = spawned
         .get("creationTimeNs")
         .and_then(Value::as_str)
         .filter(|value| valid_creation_time(value))
-        .ok_or_else(|| ServiceError::Transport("Windows SSH runtime returned no valid creation time".into()))?
+        .ok_or_else(|| {
+            ServiceError::Transport("Windows SSH runtime returned no valid creation time".into())
+        })?
         .to_owned();
 
     let mut lock = WindowsLock {
@@ -329,7 +329,9 @@ async fn probe_windows_runtime(config: &SshConfig) -> ServiceResult<WindowsRunti
     let result = ssh::test_connection(config).await;
     if result.reachable != Some(true) || result.ok != Some(true) {
         return Err(ServiceError::Transport(
-            result.error.unwrap_or_else(|| "SSH remote probe failed".into()),
+            result
+                .error
+                .unwrap_or_else(|| "SSH remote probe failed".into()),
         ));
     }
     let platform = result.remote_platform.ok_or_else(|| {
@@ -798,15 +800,18 @@ async fn run_ssh(
         .spawn()
         .map_err(platform)?;
     if let Some(bytes) = stdin {
-        let mut pipe = child.stdin.take().ok_or_else(|| {
-            ServiceError::Platform("OpenSSH stdin was unavailable".into())
-        })?;
+        let mut pipe = child
+            .stdin
+            .take()
+            .ok_or_else(|| ServiceError::Platform("OpenSSH stdin was unavailable".into()))?;
         pipe.write_all(bytes).await.map_err(platform)?;
         drop(pipe);
     }
     let output = tokio::time::timeout(SSH_TIMEOUT, child.wait_with_output())
         .await
-        .map_err(|_| ServiceError::Timeout(format!("SSH operation to {} timed out", ssh_target(config))))?
+        .map_err(|_| {
+            ServiceError::Timeout(format!("SSH operation to {} timed out", ssh_target(config)))
+        })?
         .map_err(platform)?;
     if output.stdout.len() > MAX_SSH_OUTPUT_BYTES || output.stderr.len() > MAX_SSH_OUTPUT_BYTES {
         return Err(ServiceError::Transport(
@@ -864,14 +869,16 @@ fn resolve_ssh_executable() -> ServiceResult<PathBuf> {
             "HERMES_LOCAL_SSH must point to an absolute OpenSSH executable".into(),
         ));
     }
-    let system_root = std::env::var_os("SystemRoot")
-        .map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+    let system_root =
+        std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
     let native = system_root.join("System32/OpenSSH/ssh.exe");
     if native.is_file() {
         return Ok(native);
     }
     let where_exe = system_root.join("System32/where.exe");
-    if let Ok(output) = std::process::Command::new(where_exe).arg("ssh.exe").output()
+    if let Ok(output) = std::process::Command::new(where_exe)
+        .arg("ssh.exe")
+        .output()
         && output.status.success()
         && let Some(path) = String::from_utf8_lossy(&output.stdout)
             .lines()
@@ -903,13 +910,15 @@ fn encoded_powershell(script: &str) -> String {
 }
 
 fn parse_ready_port(log: &str) -> Option<u16> {
-    log.lines().filter_map(|line| {
-        let line = line.trim();
-        let value = line
-            .strip_prefix("HERMES_BACKEND_READY port=")
-            .or_else(|| line.strip_prefix("HERMES_DASHBOARD_READY port="))?;
-        value.trim().parse::<u16>().ok().filter(|port| *port > 0)
-    }).next_back()
+    log.lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            let value = line
+                .strip_prefix("HERMES_BACKEND_READY port=")
+                .or_else(|| line.strip_prefix("HERMES_DASHBOARD_READY port="))?;
+            value.trim().parse::<u16>().ok().filter(|port| *port > 0)
+        })
+        .next_back()
 }
 
 fn is_bind_collision(error: &ServiceError) -> bool {
@@ -977,8 +986,8 @@ fn read_installation_id(path: &Path) -> ServiceResult<Option<String>> {
     if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
         return Ok(None);
     }
-    let value: Value = serde_json::from_slice(&std::fs::read(path).map_err(platform)?)
-        .map_err(platform_error)?;
+    let value: Value =
+        serde_json::from_slice(&std::fs::read(path).map_err(platform)?).map_err(platform_error)?;
     let Some(id) = value.get("installationId").and_then(Value::as_str) else {
         return Ok(None);
     };
@@ -996,9 +1005,8 @@ fn ownership_id(installation_id: &str, scope: &str) -> ServiceResult<String> {
             "desktop installation id is not a UUIDv4".into(),
         ));
     }
-    let digest = Sha256::digest(
-        format!("{}\0{scope}", installation_id.to_ascii_lowercase()).as_bytes(),
-    );
+    let digest =
+        Sha256::digest(format!("{}\0{scope}", installation_id.to_ascii_lowercase()).as_bytes());
     Ok(hex_prefix(&digest, 16))
 }
 
@@ -1028,14 +1036,18 @@ fn random_hex(bytes: usize) -> String {
 
 fn validate_profile(value: &str) -> ServiceResult<()> {
     if value.len() > 256 || value.chars().any(char::is_control) {
-        return Err(ServiceError::InvalidInput("invalid SSH profile name".into()));
+        return Err(ServiceError::InvalidInput(
+            "invalid SSH profile name".into(),
+        ));
     }
     Ok(())
 }
 
 fn validate_ownership_id(value: &str) -> ServiceResult<()> {
     if !is_lower_hex(value, 32) {
-        return Err(ServiceError::InvalidInput("invalid SSH ownership id".into()));
+        return Err(ServiceError::InvalidInput(
+            "invalid SSH ownership id".into(),
+        ));
     }
     Ok(())
 }
@@ -1144,8 +1156,14 @@ mod tests {
 
     #[test]
     fn readiness_parser_uses_only_owned_dashboard_markers() {
-        assert_eq!(parse_ready_port("HERMES_DASHBOARD_READY port=9119"), Some(9119));
-        assert_eq!(parse_ready_port("HERMES_BACKEND_READY port=1234"), Some(1234));
+        assert_eq!(
+            parse_ready_port("HERMES_DASHBOARD_READY port=9119"),
+            Some(9119)
+        );
+        assert_eq!(
+            parse_ready_port("HERMES_BACKEND_READY port=1234"),
+            Some(1234)
+        );
         assert_eq!(parse_ready_port("READY port=9119"), None);
         assert_eq!(parse_ready_port("HERMES_DASHBOARD_READY port=0"), None);
     }

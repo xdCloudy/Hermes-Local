@@ -108,7 +108,9 @@ impl SshProbeConnection {
         let probe = ssh::test_connection(&ssh).await;
         if probe.ok != Some(true) || probe.reachable != Some(true) {
             return Err(ServiceError::Transport(
-                probe.error.unwrap_or_else(|| "SSH remote probe failed".into()),
+                probe
+                    .error
+                    .unwrap_or_else(|| "SSH remote probe failed".into()),
             ));
         }
         let platform = probe.remote_platform.as_deref().ok_or_else(|| {
