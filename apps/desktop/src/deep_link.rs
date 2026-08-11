@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, ffi::OsStr, path::{Path, PathBuf}};
+use std::{
+    collections::BTreeMap,
+    ffi::OsStr,
+    path::{Path, PathBuf},
+};
 
 use url::Url;
 
@@ -106,13 +110,16 @@ fn parse_default_registry_value(output: &str) -> Option<String> {
 
 #[cfg(windows)]
 fn reg_executable() -> Result<PathBuf, String> {
-    let root = std::env::var_os("SystemRoot")
-        .map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+    let root =
+        std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
     let reg = root.join("System32").join("reg.exe");
     if reg.is_absolute() && reg.is_file() {
         Ok(reg)
     } else {
-        Err(format!("Windows registry helper is unavailable: {}", reg.display()))
+        Err(format!(
+            "Windows registry helper is unavailable: {}",
+            reg.display()
+        ))
     }
 }
 
@@ -136,7 +143,9 @@ fn query_command() -> Result<Option<String>, String> {
     if !output.status.success() {
         return Ok(None);
     }
-    Ok(parse_default_registry_value(&String::from_utf8_lossy(&output.stdout)))
+    Ok(parse_default_registry_value(&String::from_utf8_lossy(
+        &output.stdout,
+    )))
 }
 
 #[cfg(windows)]
@@ -166,9 +175,18 @@ pub fn register() -> Result<ProtocolStatus, String> {
     let command = registered_command(&executable)?;
     let reg = reg_executable()?;
     let writes: [(&str, Vec<&str>); 3] = [
-        (PROTOCOL_KEY, vec!["/ve", "/t", "REG_SZ", "/d", "URL:Hermes Protocol", "/f"]),
-        (PROTOCOL_KEY, vec!["/v", "URL Protocol", "/t", "REG_SZ", "/d", "", "/f"]),
-        (COMMAND_KEY, vec!["/ve", "/t", "REG_SZ", "/d", command.as_str(), "/f"]),
+        (
+            PROTOCOL_KEY,
+            vec!["/ve", "/t", "REG_SZ", "/d", "URL:Hermes Protocol", "/f"],
+        ),
+        (
+            PROTOCOL_KEY,
+            vec!["/v", "URL Protocol", "/t", "REG_SZ", "/d", "", "/f"],
+        ),
+        (
+            COMMAND_KEY,
+            vec!["/ve", "/t", "REG_SZ", "/d", command.as_str(), "/f"],
+        ),
     ];
     for (key, args) in writes {
         let output = std::process::Command::new(&reg)
@@ -187,7 +205,9 @@ pub fn register() -> Result<ProtocolStatus, String> {
 
     let state = status()?;
     if !state.registered {
-        return Err("Hermes protocol registration did not match the current executable.".to_owned());
+        return Err(
+            "Hermes protocol registration did not match the current executable.".to_owned(),
+        );
     }
     Ok(state)
 }
@@ -244,8 +264,9 @@ mod tests {
 
     #[test]
     fn registry_command_is_exact_and_quotes_url_placeholder() {
-        let command = registered_command(Path::new(r"C:\Program Files\Hermes Local\hermes-local.exe"))
-            .expect("valid command");
+        let command =
+            registered_command(Path::new(r"C:\Program Files\Hermes Local\hermes-local.exe"))
+                .expect("valid command");
         assert_eq!(
             command,
             r#""C:\Program Files\Hermes Local\hermes-local.exe" "%1""#
