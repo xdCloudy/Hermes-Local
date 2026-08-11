@@ -1090,6 +1090,10 @@ fn platform(error: impl std::fmt::Display) -> ServiceError {
 
 #[cfg(test)]
 mod tests {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio_tungstenite::{accept_async, tungstenite::Message};
+
     use super::*;
 
     #[test]
@@ -1123,5 +1127,107 @@ mod tests {
         .expect("REST endpoint");
         assert_eq!(rest.base_url.as_str(), "https://gateway.example/hermes/");
         assert_eq!(rest.session_token.as_deref(), Some("a b&c"));
+    }
+
+    #[tokio::test]
+    async fn rest_adapter_preserves_base_path_auth_and_json_body() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let address = listener.local_addr().expect("address");
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("connection");
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 2048];
+            loop {
+                let count = stream.read(&mut chunk).await.expect("request bytes");
+                if count == 0 {
+                    break;
+                }
+                request.extend_from_slice(&chunk[..count]);
+                let text = String::from_utf8_lossy(&request);
+                if let Some(headers_end) = text.find("\r\n\r\n") {
+                    let content_length = text[..headers_end]
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length: "))
+                        .and_then(|value| value.parse::<usize>().ok())
+                        .unwrap_or_default();
+                    if request.len() >= headers_end + 4 + content_length {
+                        break;
+                    }
+                }
+            }
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}")
+                .await
+                .expect("response");
+            String::from_utf8(request).expect("UTF-8 request")
+        });
+        let rest = GatewayRest {
+            client: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .expect("client"),
+            base_url: url::Url::parse(&format!("http://{address}/hermes/")).expect("URL"),
+            session_token: Some("secret-token".into()),
+        };
+        let response = rest
+            .request(
+                Method::PATCH,
+                "/api/sessions/session-1",
+                Some(json!({ "pinned": true })),
+            )
+            .await
+            .expect("REST response");
+        assert_eq!(response, json!({ "ok": true }));
+        let request = server.await.expect("server");
+        assert!(request.starts_with("PATCH /hermes/api/sessions/session-1 HTTP/1.1"));
+        assert!(request.contains("x-hermes-session-token: secret-token"));
+        assert!(request.ends_with("{\"pinned\":true}"));
+    }
+
+    #[tokio::test]
+    async fn session_submit_uses_the_official_text_payload() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let address = listener.local_addr().expect("address");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("connection");
+            let mut socket = accept_async(stream).await.expect("WebSocket");
+            let message = socket.next().await.expect("request").expect("frame");
+            let frame: hermes_protocol::JsonRpcFrame =
+                serde_json::from_str(message.to_text().expect("text frame")).expect("JSON-RPC");
+            let response = json!({
+                "jsonrpc": "2.0",
+                "id": frame.id,
+                "result": { "accepted": true }
+            });
+            socket
+                .send(Message::Text(response.to_string().into()))
+                .await
+                .expect("response");
+            frame
+        });
+        let client = GatewayClient::connect(
+            &format!("ws://{address}/api/ws"),
+            hermes_agent_client::GatewayOptions::default(),
+        )
+        .await
+        .expect("gateway");
+        let services = GatewayServices {
+            client: Arc::new(RwLock::new(Some(client))),
+            rest: Arc::new(RwLock::new(None)),
+        };
+        services
+            .submit("runtime-1", "hello Hermes")
+            .await
+            .expect("submit");
+        let frame = server.await.expect("server");
+        assert_eq!(frame.method.as_deref(), Some("prompt.submit"));
+        assert_eq!(
+            frame.params,
+            Some(json!({ "session_id": "runtime-1", "text": "hello Hermes" }))
+        );
     }
 }

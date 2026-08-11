@@ -2031,6 +2031,7 @@ name = "hermes-desktop"
 version = "0.18.62"
 dependencies = [
  "async-stream",
+ "futures-util",
  "hermes-agent-client",
  "hermes-core",
  "hermes-protocol",
@@ -2040,6 +2041,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tokio-tungstenite",
  "trash",
  "url",
  "uuid",

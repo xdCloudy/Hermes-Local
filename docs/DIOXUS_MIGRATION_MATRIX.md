@@ -78,7 +78,7 @@ updater work itself.
 | Old capability | New Rust owner | New Dioxus surface | Coverage required | Status |
 | --- | --- | --- | --- | --- |
 | Agent gateway URL/auth resolution | `hermes-agent-client` | connection status/recovery | URL/auth ladder fixtures | Designed |
-| JSON-RPC framing, calls and cancellation | `hermes-agent-client` | n/a | protocol fixtures + harness replay | Designed |
+| JSON-RPC framing, calls and cancellation | `hermes-agent-client` | n/a | protocol fixtures + harness replay | Validated |
 | WebSocket lifecycle/reconnect | `hermes-agent-client` | connecting/degraded states | fake socket + real harness tests | Designed |
 | Session identities, lineage and profile scope | `SessionService` | chat/sidebar | durable/runtime/lineage mapping tests | Ported |
 | Session list merge, pin/archive/delete | `SessionService` | sidebar | stale-response/optimistic rollback tests | Ported |

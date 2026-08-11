@@ -303,7 +303,7 @@ the header and composer. Gateway submission now matches the official source
 contract (`text`, not `prompt`) and uses the source's 30-minute acknowledgement
 window while normal RPCs keep the short default timeout.
 
-`cargo test --workspace` passes 18 unit tests plus doc-tests, including stream
+`cargo test --workspace` passes 20 unit tests plus doc-tests, including stream
 isolation, tool upsert, interim settlement and structured stored-message
 fixtures. `cargo clippy --workspace --all-targets` passes with only the existing
 pedantic documentation/style warning backlog.
@@ -311,3 +311,12 @@ pedantic documentation/style warning backlog.
 Exact next action: add a deterministic live Agent HTTP/WebSocket harness for
 resume, streaming, submit, interrupt and sidebar mutations, then port project
 scope and the remaining OG chat composer controls.
+
+The first compatibility-harness slice is complete: an in-process HTTP peer
+proves base-path-preserving session routes, the legacy token header and JSON
+mutation body, while an in-process WebSocket peer decodes the actual JSON-RPC
+frame and proves `prompt.submit` carries the official `session_id` + `text`
+shape. Neither test requires a configured user Agent or external network.
+
+Exact next action: extend the harness through resume/event/interrupt and REST
+error mapping, then port project scope into the sidebar and composer.

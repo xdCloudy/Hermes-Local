@@ -23,3 +23,8 @@ uuid = { workspace = true, features = ["v4"] }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+futures-util.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread"] }
+tokio-tungstenite.workspace = true
