@@ -8,3 +8,14 @@ title = "Hermes Local"
 
 [desktop]
 resource_dir = "../../resources"
+
+[bundle]
+identifier = "com.nousresearch.hermes.local"
+publisher = "Nous Research"
+icon = ["assets/icon.ico"]
+category = "DeveloperTool"
+short_description = "Native desktop shell for Hermes Agent."
+long_description = "Hermes Local is the native desktop workstation for Hermes Agent and local inference."
+
+[bundle.windows]
+icon_path = "assets/icon.ico"
