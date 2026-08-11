@@ -34,10 +34,8 @@ impl GitBranchService {
                 "refs/heads",
             ],
         )?;
-        let worktrees = worktree_paths(&run_git(
-            &repository,
-            &["worktree", "list", "--porcelain"],
-        )?);
+        let worktrees =
+            worktree_paths(&run_git(&repository, &["worktree", "list", "--porcelain"])?);
         let default = default_branch(&repository);
 
         Ok(output
@@ -220,7 +218,10 @@ fn sanitize_branch(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     #[test]
     fn parses_worktree_porcelain_into_branch_paths() {
@@ -280,7 +281,10 @@ mod tests {
 
         let service = GitBranchService;
         let branches = service.list(&root).expect("branch list");
-        let main = branches.iter().find(|branch| branch.name == "main").unwrap();
+        let main = branches
+            .iter()
+            .find(|branch| branch.name == "main")
+            .unwrap();
         let feature = branches
             .iter()
             .find(|branch| branch.name == "feature")
