@@ -1058,7 +1058,10 @@ fn random_hex(bytes: usize) -> String {
 
 fn fingerprint_token(token: &str) -> String {
     let digest = Sha256::digest(token.as_bytes());
-    format!("{digest:x}")[..32].to_owned()
+    digest[..16]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn ownership_id(installation_id: &str, scope: &str) -> ServiceResult<String> {
@@ -1070,7 +1073,10 @@ fn ownership_id(installation_id: &str, scope: &str) -> ServiceResult<String> {
     }
     let digest =
         Sha256::digest(format!("{}\0{scope}", installation_id.to_ascii_lowercase()).as_bytes());
-    Ok(format!("{digest:x}")[..32].to_owned())
+    Ok(digest[..16]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 fn load_or_create_installation_id(path: &Path) -> ServiceResult<String> {
