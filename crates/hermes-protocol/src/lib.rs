@@ -455,6 +455,164 @@ pub struct AgentConfigSnapshot {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct OAuthProviderStatus {
+    #[serde(default)]
+    pub logged_in: bool,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub source_label: Option<String>,
+    #[serde(default)]
+    pub token_preview: Option<String>,
+    #[serde(default)]
+    pub expires_at: Option<String>,
+    #[serde(default)]
+    pub has_refresh_token: bool,
+    #[serde(default)]
+    pub last_refresh: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct OAuthProvider {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub flow: String,
+    #[serde(default)]
+    pub cli_command: String,
+    #[serde(default)]
+    pub docs_url: String,
+    #[serde(default)]
+    pub disconnect_command: Option<String>,
+    #[serde(default)]
+    pub disconnect_hint: Option<String>,
+    #[serde(default)]
+    pub disconnectable: Option<bool>,
+    #[serde(default)]
+    pub status: OAuthProviderStatus,
+}
+
+// These independent flags are the Agent's exact `/api/env` wire shape, not a
+// state machine that can be collapsed into a single enum.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct EnvVarInfo {
+    #[serde(default)]
+    pub advanced: bool,
+    #[serde(default)]
+    pub category: String,
+    #[serde(default)]
+    pub channel_managed: bool,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub is_password: bool,
+    #[serde(default)]
+    pub is_set: bool,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub provider_label: Option<String>,
+    #[serde(default)]
+    pub redacted_value: Option<String>,
+    #[serde(default)]
+    pub tools: Vec<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct CustomEndpoint {
+    #[serde(default)]
+    pub api_key_preview: Option<String>,
+    pub base_url: String,
+    #[serde(default)]
+    pub context_length: Option<u64>,
+    #[serde(default = "default_true")]
+    pub discover_models: bool,
+    #[serde(default)]
+    pub has_api_key: bool,
+    pub id: String,
+    #[serde(default)]
+    pub is_current: bool,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub models: Vec<String>,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub source: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct CustomEndpointCurrent {
+    #[serde(default)]
+    pub base_url: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub provider: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct CustomEndpointsResponse {
+    #[serde(default)]
+    pub current: CustomEndpointCurrent,
+    #[serde(default)]
+    pub endpoints: Vec<CustomEndpoint>,
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub ok: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct CustomEndpointUpdate {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    pub base_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_length: Option<u64>,
+    #[serde(default)]
+    pub discover_models: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub make_default: bool,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub models: Vec<String>,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct CustomEndpointValidation {
+    #[serde(default)]
+    pub message: String,
+    #[serde(default)]
+    pub models: Vec<String>,
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub reachable: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct ProviderActivation {
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub provider: String,
+    #[serde(default)]
+    pub model: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct ModelInfo {
     #[serde(default)]
     pub model: String,

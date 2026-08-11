@@ -9,11 +9,12 @@ use std::{
 
 use futures_core::Stream;
 use hermes_protocol::{
-    AgentConfigSnapshot, AppSettings, ChatMessage, ConnectionState, FileEntry, GatewayEvent,
+    AgentConfigSnapshot, AppSettings, ChatMessage, ConnectionState, CustomEndpointUpdate,
+    CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry, GatewayEvent,
     GitStatus, MessageRole, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse,
-    ModelSettingsSnapshot, ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot,
-    RuntimeStatus, SessionCreateRequest, SessionResumeResponse, SessionSummary, TaskSummary,
-    TrustSnapshot,
+    ModelSettingsSnapshot, OAuthProvider, ProjectFilesDeleteResult, ProjectSummary,
+    ProjectsSnapshot, ProviderActivation, RuntimeStatus, SessionCreateRequest,
+    SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -369,6 +370,29 @@ pub trait ModelService: Send + Sync {
     fn save_moa(&self, profile: Option<&str>, config: &MoaConfig) -> ServiceFuture<'_, MoaConfig>;
 }
 
+pub trait ProviderService: Send + Sync {
+    fn list_oauth(&self, profile: Option<&str>) -> ServiceFuture<'_, Vec<OAuthProvider>>;
+    fn disconnect_oauth(&self, profile: Option<&str>, provider_id: &str) -> ServiceFuture<'_, ()>;
+    fn env(
+        &self,
+        profile: Option<&str>,
+    ) -> ServiceFuture<'_, std::collections::BTreeMap<String, EnvVarInfo>>;
+    fn set_env(&self, profile: Option<&str>, key: &str, value: &str) -> ServiceFuture<'_, ()>;
+    fn delete_env(&self, profile: Option<&str>, key: &str) -> ServiceFuture<'_, ()>;
+    fn reveal_env(&self, profile: Option<&str>, key: &str) -> ServiceFuture<'_, String>;
+    fn custom_endpoints(&self) -> ServiceFuture<'_, CustomEndpointsResponse>;
+    fn save_custom_endpoint(
+        &self,
+        endpoint: &CustomEndpointUpdate,
+    ) -> ServiceFuture<'_, CustomEndpointsResponse>;
+    fn validate_custom_endpoint(
+        &self,
+        endpoint: &CustomEndpointUpdate,
+    ) -> ServiceFuture<'_, CustomEndpointValidation>;
+    fn activate_custom_endpoint(&self, id: &str) -> ServiceFuture<'_, ProviderActivation>;
+    fn delete_custom_endpoint(&self, id: &str) -> ServiceFuture<'_, CustomEndpointsResponse>;
+}
+
 pub trait RuntimeService: Send + Sync {
     fn status(&self) -> ServiceFuture<'_, RuntimeStatus>;
     fn actions(&self) -> ServiceFuture<'_, Vec<TaskSummary>>;
@@ -427,6 +451,7 @@ pub struct AppServices {
     pub settings: Arc<dyn SettingsService>,
     pub agent_config: Arc<dyn AgentConfigService>,
     pub models: Arc<dyn ModelService>,
+    pub providers: Arc<dyn ProviderService>,
     pub runtime: Arc<dyn RuntimeService>,
     pub trust: Arc<dyn TrustService>,
     pub files: Arc<dyn FileService>,

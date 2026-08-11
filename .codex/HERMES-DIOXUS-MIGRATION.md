@@ -686,3 +686,26 @@ from detached checkpoint `64a3395`, ruling out this diff as the regression.
 Exact next action: port Providers from the official source and its typed Agent
 provider/model contracts, then return to native toast registration during the
 Windows integration/package identity slice.
+
+## Provider authority checkpoint (2026-08-11)
+
+The Rust service boundary now owns the OG provider contracts before their UI is
+ported. Accounts use profile-scoped OAuth list and disconnect calls. Credential
+keys use the profile-scoped environment list, set, remove, and reveal calls.
+Custom endpoints deliberately remain global and support list, save, validate,
+activate, and delete through the exact official REST paths and payload shapes.
+
+The boundary rejects unsafe provider/endpoint path segments, malformed
+environment keys, empty or control-bearing credential values, credentialed
+endpoint URLs, and invalid endpoint context lengths before transport. It does
+not add a silent removal path for externally owned credentials; the upcoming UI
+must preserve the OG visible-terminal disconnect flow.
+
+An in-process Agent fixture covers all 11 calls, including profile query
+encoding, HTTP methods, bodies, authentication propagation, response decoding,
+and confirmation semantics. The workspace passes 39 unit tests plus doc-tests,
+and Clippy adds no warning beyond the recorded backlog.
+
+Exact next action: port the Providers nested Accounts, API Keys, and Custom
+Endpoints Dioxus views 1:1 from the official source, then run maximized visual
+and rendered interaction QA when a native top-level window is available.

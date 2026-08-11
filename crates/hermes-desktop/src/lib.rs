@@ -12,16 +12,17 @@ use std::{
 use hermes_agent_client::GatewayClient;
 use hermes_core::{
     AgentConfigService, AppServices, ConnectionService, EventStream, FileService, GitService,
-    ModelService, PlatformService, ProjectService, RuntimeService, ServiceError, ServiceFuture,
-    ServiceResult, SessionService, SettingsService, TerminalService, TrustService, UpdateService,
-    validate_identifier, validate_relative_path,
+    ModelService, PlatformService, ProjectService, ProviderService, RuntimeService, ServiceError,
+    ServiceFuture, ServiceResult, SessionService, SettingsService, TerminalService, TrustService,
+    UpdateService, validate_identifier, validate_relative_path,
 };
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, AuxiliaryModels, ConfigSchemaResponse, ConnectionState,
-    FileEntry, GitStatus, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse, ModelInfo,
-    ModelOptions, ModelSettingsSnapshot, ProjectFilesDeleteResult, ProjectSummary,
-    ProjectsSnapshot, RuntimeStatus, SessionCreateRequest, SessionCreateResponse,
-    SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
+    CustomEndpointUpdate, CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry,
+    GitStatus, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse, ModelInfo, ModelOptions,
+    ModelSettingsSnapshot, OAuthProvider, ProjectFilesDeleteResult, ProjectSummary,
+    ProjectsSnapshot, ProviderActivation, RuntimeStatus, SessionCreateRequest,
+    SessionCreateResponse, SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use reqwest::Method;
@@ -84,6 +85,7 @@ impl NativeApp {
                 settings,
                 agent_config: remote.clone(),
                 models: remote.clone(),
+                providers: remote.clone(),
                 runtime: remote.clone(),
                 trust: remote,
                 files: Arc::new(DesktopFiles),
@@ -726,6 +728,211 @@ impl ModelService for GatewayServices {
     }
 }
 
+impl ProviderService for GatewayServices {
+    fn list_oauth(&self, profile: Option<&str>) -> ServiceFuture<'_, Vec<OAuthProvider>> {
+        let profile = profile.map(str::to_owned);
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request(
+                    Method::GET,
+                    &profiled_path("/api/providers/oauth", profile.as_deref()),
+                    None,
+                )
+                .await?;
+            decode_list(value, "providers")
+        })
+    }
+
+    fn disconnect_oauth(&self, profile: Option<&str>, provider_id: &str) -> ServiceFuture<'_, ()> {
+        let profile = profile.map(str::to_owned);
+        let provider_id = provider_id.to_owned();
+        Box::pin(async move {
+            validate_path_id(&provider_id, "provider")?;
+            let value = self
+                .rest()?
+                .request(
+                    Method::DELETE,
+                    &profiled_path(
+                        &format!("/api/providers/oauth/{provider_id}"),
+                        profile.as_deref(),
+                    ),
+                    None,
+                )
+                .await?;
+            require_confirmation(&value, "OAuth disconnect")
+        })
+    }
+
+    fn env(
+        &self,
+        profile: Option<&str>,
+    ) -> ServiceFuture<'_, std::collections::BTreeMap<String, EnvVarInfo>> {
+        let profile = profile.map(str::to_owned);
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request(
+                    Method::GET,
+                    &profiled_path("/api/env", profile.as_deref()),
+                    None,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn set_env(&self, profile: Option<&str>, key: &str, value: &str) -> ServiceFuture<'_, ()> {
+        let profile = profile.map(str::to_owned);
+        let key = key.to_owned();
+        let value = value.to_owned();
+        Box::pin(async move {
+            validate_env_key(&key)?;
+            if value.trim().is_empty()
+                || value.len() > 65_536
+                || value.chars().any(char::is_control)
+            {
+                return Err(ServiceError::InvalidInput(
+                    "credential value must be non-empty plain text".into(),
+                ));
+            }
+            let response = self
+                .rest()?
+                .request(
+                    Method::PUT,
+                    &profiled_path("/api/env", profile.as_deref()),
+                    Some(json!({ "key": key, "value": value })),
+                )
+                .await?;
+            require_confirmation(&response, "credential save")
+        })
+    }
+
+    fn delete_env(&self, profile: Option<&str>, key: &str) -> ServiceFuture<'_, ()> {
+        let profile = profile.map(str::to_owned);
+        let key = key.to_owned();
+        Box::pin(async move {
+            validate_env_key(&key)?;
+            let response = self
+                .rest()?
+                .request(
+                    Method::DELETE,
+                    &profiled_path("/api/env", profile.as_deref()),
+                    Some(json!({ "key": key })),
+                )
+                .await?;
+            require_confirmation(&response, "credential removal")
+        })
+    }
+
+    fn reveal_env(&self, profile: Option<&str>, key: &str) -> ServiceFuture<'_, String> {
+        let profile = profile.map(str::to_owned);
+        let key = key.to_owned();
+        Box::pin(async move {
+            validate_env_key(&key)?;
+            let response = self
+                .rest()?
+                .request(
+                    Method::POST,
+                    &profiled_path("/api/env/reveal", profile.as_deref()),
+                    Some(json!({ "key": key })),
+                )
+                .await?;
+            response
+                .get("value")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .ok_or_else(|| protocol_missing("credential reveal value"))
+        })
+    }
+
+    fn custom_endpoints(&self) -> ServiceFuture<'_, CustomEndpointsResponse> {
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request(Method::GET, "/api/providers/custom-endpoints", None)
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn save_custom_endpoint(
+        &self,
+        endpoint: &CustomEndpointUpdate,
+    ) -> ServiceFuture<'_, CustomEndpointsResponse> {
+        let endpoint = endpoint.clone();
+        Box::pin(async move {
+            validate_custom_endpoint(&endpoint)?;
+            let value = self
+                .rest()?
+                .request(
+                    Method::POST,
+                    "/api/providers/custom-endpoints",
+                    Some(serde_json::to_value(endpoint).map_err(protocol)?),
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn validate_custom_endpoint(
+        &self,
+        endpoint: &CustomEndpointUpdate,
+    ) -> ServiceFuture<'_, CustomEndpointValidation> {
+        let endpoint = endpoint.clone();
+        Box::pin(async move {
+            validate_custom_endpoint(&endpoint)?;
+            let value = self
+                .rest()?
+                .request(
+                    Method::POST,
+                    "/api/providers/custom-endpoints/validate",
+                    Some(serde_json::to_value(endpoint).map_err(protocol)?),
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn activate_custom_endpoint(&self, id: &str) -> ServiceFuture<'_, ProviderActivation> {
+        let id = id.to_owned();
+        Box::pin(async move {
+            validate_path_id(&id, "custom endpoint")?;
+            let value = self
+                .rest()?
+                .request(
+                    Method::POST,
+                    &format!("/api/providers/custom-endpoints/{id}/activate"),
+                    None,
+                )
+                .await?;
+            let response: ProviderActivation = serde_json::from_value(value).map_err(protocol)?;
+            if !response.ok {
+                return Err(ServiceError::Transport(
+                    "Hermes Agent did not confirm custom endpoint activation".into(),
+                ));
+            }
+            Ok(response)
+        })
+    }
+
+    fn delete_custom_endpoint(&self, id: &str) -> ServiceFuture<'_, CustomEndpointsResponse> {
+        let id = id.to_owned();
+        Box::pin(async move {
+            validate_path_id(&id, "custom endpoint")?;
+            let value = self
+                .rest()?
+                .request(
+                    Method::DELETE,
+                    &format!("/api/providers/custom-endpoints/{id}"),
+                    None,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+}
+
 impl RuntimeService for GatewayServices {
     fn status(&self) -> ServiceFuture<'_, RuntimeStatus> {
         Box::pin(async move {
@@ -1343,6 +1550,83 @@ fn model_options_path(profile: Option<&str>) -> String {
     format!("/api/model/options?{}", query.finish())
 }
 
+fn validate_path_id(value: &str, field: &str) -> ServiceResult<()> {
+    if value.is_empty()
+        || value.len() > 256
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    {
+        return Err(ServiceError::InvalidInput(format!("invalid {field}")));
+    }
+    Ok(())
+}
+
+fn validate_env_key(key: &str) -> ServiceResult<()> {
+    if key.is_empty()
+        || key.len() > 128
+        || !key
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+    {
+        return Err(ServiceError::InvalidInput(
+            "invalid credential environment key".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_custom_endpoint(endpoint: &CustomEndpointUpdate) -> ServiceResult<()> {
+    if endpoint.name.trim().is_empty()
+        || endpoint.name.len() > 256
+        || endpoint.name.chars().any(char::is_control)
+    {
+        return Err(ServiceError::InvalidInput(
+            "custom endpoint name is required".into(),
+        ));
+    }
+    if let Some(id) = endpoint.id.as_deref() {
+        validate_path_id(id, "custom endpoint")?;
+    }
+    let url = url::Url::parse(&endpoint.base_url)
+        .map_err(|error| ServiceError::InvalidInput(format!("invalid endpoint URL: {error}")))?;
+    if !matches!(url.scheme(), "http" | "https") || url.cannot_be_a_base() {
+        return Err(ServiceError::InvalidInput(
+            "custom endpoint URL must use HTTP or HTTPS".into(),
+        ));
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(ServiceError::InvalidInput(
+            "custom endpoint URL must not contain credentials".into(),
+        ));
+    }
+    if endpoint.model.len() > 1_024 || endpoint.model.chars().any(char::is_control) {
+        return Err(ServiceError::InvalidInput(
+            "invalid custom endpoint model".into(),
+        ));
+    }
+    if endpoint.context_length == Some(0) {
+        return Err(ServiceError::InvalidInput(
+            "context length must be greater than zero".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn require_confirmation(value: &Value, operation: &str) -> ServiceResult<()> {
+    if value.get("ok").and_then(Value::as_bool) == Some(true) {
+        Ok(())
+    } else {
+        Err(ServiceError::Transport(format!(
+            "Hermes Agent did not confirm {operation}"
+        )))
+    }
+}
+
+fn protocol_missing(field: &str) -> ServiceError {
+    ServiceError::Transport(format!("invalid Agent response: missing {field}"))
+}
+
 fn contained_root(root: &Path) -> ServiceResult<PathBuf> {
     root.canonicalize().map_err(platform)
 }
@@ -1661,6 +1945,202 @@ mod tests {
             .expect("request body");
         let saved: Value = serde_json::from_str(saved_body).expect("saved JSON");
         assert_eq!(saved, json!({ "config": loaded.config }));
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn provider_service_uses_the_official_accounts_env_and_endpoint_contracts() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let address = listener.local_addr().expect("address");
+        let server = tokio::spawn(async move {
+            let responses = [
+                json!({
+                    "providers": [{
+                        "id": "nous",
+                        "name": "Nous Research",
+                        "flow": "device_code",
+                        "status": { "logged_in": true }
+                    }]
+                }),
+                json!({ "ok": true, "provider": "nous" }),
+                json!({
+                    "OPENAI_API_KEY": {
+                        "category": "Models",
+                        "description": "OpenAI API key",
+                        "is_password": true,
+                        "is_set": true,
+                        "redacted_value": "sk-...",
+                        "tools": [],
+                        "url": "https://platform.openai.com/api-keys"
+                    }
+                }),
+                json!({ "ok": true }),
+                json!({ "ok": true }),
+                json!({ "key": "OPENAI_API_KEY", "value": "secret" }),
+                json!({
+                    "current": { "base_url": "", "model": "", "provider": "" },
+                    "endpoints": []
+                }),
+                json!({
+                    "current": { "base_url": "https://local.test/v1", "model": "", "provider": "custom" },
+                    "endpoints": [],
+                    "ok": true
+                }),
+                json!({ "message": "Connected", "models": ["model-a"], "ok": true, "reachable": true }),
+                json!({ "ok": true, "provider": "custom", "model": "model-a" }),
+                json!({
+                    "current": { "base_url": "", "model": "", "provider": "" },
+                    "endpoints": [],
+                    "ok": true
+                }),
+            ];
+            let mut requests = Vec::new();
+            for body in responses {
+                let (mut stream, _) = listener.accept().await.expect("connection");
+                let mut request = Vec::new();
+                let mut chunk = [0_u8; 4096];
+                loop {
+                    let count = stream.read(&mut chunk).await.expect("request bytes");
+                    if count == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&chunk[..count]);
+                    let text = String::from_utf8_lossy(&request);
+                    if let Some(headers_end) = text.find("\r\n\r\n") {
+                        let content_length = text[..headers_end]
+                            .lines()
+                            .find_map(|line| line.strip_prefix("content-length: "))
+                            .and_then(|value| value.parse::<usize>().ok())
+                            .unwrap_or_default();
+                        if request.len() >= headers_end + 4 + content_length {
+                            break;
+                        }
+                    }
+                }
+                let body = body.to_string();
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("response");
+                requests.push(String::from_utf8(request).expect("UTF-8 request"));
+            }
+            requests
+        });
+        let services = GatewayServices {
+            client: Arc::new(RwLock::new(None)),
+            rest: Arc::new(RwLock::new(Some(GatewayRest {
+                client: reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .build()
+                    .expect("client"),
+                base_url: url::Url::parse(&format!("http://{address}/hermes/")).expect("URL"),
+                session_token: Some("providers-token".into()),
+            }))),
+        };
+
+        let providers = ProviderService::list_oauth(&services, Some("work profile"))
+            .await
+            .expect("OAuth providers");
+        assert_eq!(providers[0].id, "nous");
+        ProviderService::disconnect_oauth(&services, Some("work profile"), "nous")
+            .await
+            .expect("disconnect OAuth");
+        let env = ProviderService::env(&services, Some("work profile"))
+            .await
+            .expect("environment variables");
+        assert!(env["OPENAI_API_KEY"].is_set);
+        ProviderService::set_env(&services, Some("work profile"), "OPENAI_API_KEY", "secret")
+            .await
+            .expect("set credential");
+        ProviderService::delete_env(&services, Some("work profile"), "OPENAI_API_KEY")
+            .await
+            .expect("delete credential");
+        assert_eq!(
+            ProviderService::reveal_env(&services, Some("work profile"), "OPENAI_API_KEY")
+                .await
+                .expect("reveal credential"),
+            "secret"
+        );
+        ProviderService::custom_endpoints(&services)
+            .await
+            .expect("custom endpoints");
+        let endpoint = CustomEndpointUpdate {
+            base_url: "https://local.test/v1".into(),
+            discover_models: true,
+            make_default: true,
+            name: "Local gateway".into(),
+            ..CustomEndpointUpdate::default()
+        };
+        ProviderService::save_custom_endpoint(&services, &endpoint)
+            .await
+            .expect("save custom endpoint");
+        let validation = ProviderService::validate_custom_endpoint(&services, &endpoint)
+            .await
+            .expect("validate custom endpoint");
+        assert_eq!(validation.models, ["model-a"]);
+        ProviderService::activate_custom_endpoint(&services, "local-1")
+            .await
+            .expect("activate custom endpoint");
+        ProviderService::delete_custom_endpoint(&services, "local-1")
+            .await
+            .expect("delete custom endpoint");
+
+        let requests = server.await.expect("server");
+        let expected = [
+            "GET /hermes/api/providers/oauth?profile=work+profile ",
+            "DELETE /hermes/api/providers/oauth/nous?profile=work+profile ",
+            "GET /hermes/api/env?profile=work+profile ",
+            "PUT /hermes/api/env?profile=work+profile ",
+            "DELETE /hermes/api/env?profile=work+profile ",
+            "POST /hermes/api/env/reveal?profile=work+profile ",
+            "GET /hermes/api/providers/custom-endpoints ",
+            "POST /hermes/api/providers/custom-endpoints ",
+            "POST /hermes/api/providers/custom-endpoints/validate ",
+            "POST /hermes/api/providers/custom-endpoints/local-1/activate ",
+            "DELETE /hermes/api/providers/custom-endpoints/local-1 ",
+        ];
+        for (request, expected) in requests.iter().zip(expected) {
+            assert!(
+                request.starts_with(expected),
+                "unexpected request: {request}"
+            );
+            assert!(request.contains("x-hermes-session-token: providers-token"));
+        }
+        assert!(requests[3].ends_with("{\"key\":\"OPENAI_API_KEY\",\"value\":\"secret\"}"));
+        assert!(requests[4].ends_with("{\"key\":\"OPENAI_API_KEY\"}"));
+        assert!(requests[5].ends_with("{\"key\":\"OPENAI_API_KEY\"}"));
+        let saved_endpoint: Value = serde_json::from_str(
+            requests[7]
+                .split_once("\r\n\r\n")
+                .map(|(_, body)| body)
+                .expect("custom endpoint body"),
+        )
+        .expect("custom endpoint JSON");
+        assert_eq!(saved_endpoint["base_url"], "https://local.test/v1");
+        assert_eq!(saved_endpoint["discover_models"], true);
+        assert_eq!(saved_endpoint["make_default"], true);
+    }
+
+    #[test]
+    fn provider_inputs_reject_path_injection_and_credentialed_endpoint_urls() {
+        assert!(validate_path_id("nous", "provider").is_ok());
+        assert!(validate_path_id("../oauth", "provider").is_err());
+        assert!(validate_env_key("OPENAI_API_KEY").is_ok());
+        assert!(validate_env_key("OPENAI_API_KEY?profile=other").is_err());
+        assert!(
+            validate_custom_endpoint(&CustomEndpointUpdate {
+                base_url: "https://user:password@example.com/v1".into(),
+                name: "Unsafe".into(),
+                ..CustomEndpointUpdate::default()
+            })
+            .is_err()
+        );
     }
 
     #[tokio::test]
