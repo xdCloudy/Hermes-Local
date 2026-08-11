@@ -50,9 +50,7 @@ pub struct PendingUpdate {
 pub fn run_helper_if_requested() -> Option<Result<(), String>> {
     let mut args = std::env::args_os();
     let _program = args.next();
-    let Some(mode) = args.next() else {
-        return None;
-    };
+    let mode = args.next()?;
     if mode != HELPER_ARGUMENT {
         return None;
     }
