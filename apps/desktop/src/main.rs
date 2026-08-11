@@ -27,7 +27,9 @@ fn desktop_root() -> Element {
 
     let services = use_context::<AppServices>();
     let startup_services = services.clone();
+    let mut startup_attempt = use_signal(|| 0_u64);
     let local_startup = use_resource(move || {
+        let _ = startup_attempt();
         let services = startup_services.clone();
         async move { startup::prepare_local_agent(&services).await }
     });
@@ -49,7 +51,14 @@ fn desktop_root() -> Element {
                 div { style: "display:grid;gap:10px;max-width:680px;",
                     strong { "Hermes Local could not start" }
                     p { style: "margin:0;color:rgb(203 213 225);line-height:1.5;", "{error}" }
-                    p { style: "margin:0;color:rgb(148 163 184);font-size:12px;", "Close the window after fixing the runtime problem, then launch Hermes Local again." }
+                    p { style: "margin:0;color:rgb(148 163 184);font-size:12px;", "Fix the runtime problem, then retry without losing this window." }
+                    div { style: "display:flex;gap:8px;margin-top:4px;",
+                        button {
+                            style: "border:1px solid rgb(71 85 105);border-radius:4px;background:rgb(30 41 59);color:rgb(241 245 249);padding:6px 12px;font:inherit;cursor:pointer;",
+                            onclick: move |_| startup_attempt += 1,
+                            "Retry"
+                        }
+                    }
                 }
             }
         },
