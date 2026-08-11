@@ -22,6 +22,7 @@ use hermes_protocol::{
     TaskSummary, TrustSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
+use reqwest::Method;
 use serde_json::{Value, json};
 use tokio::sync::broadcast;
 use uuid::Uuid;
@@ -29,6 +30,14 @@ use uuid::Uuid;
 #[derive(Clone)]
 struct GatewayServices {
     client: Arc<RwLock<Option<GatewayClient>>>,
+    rest: Arc<RwLock<Option<GatewayRest>>>,
+}
+
+#[derive(Clone)]
+struct GatewayRest {
+    client: reqwest::Client,
+    base_url: url::Url,
+    session_token: Option<String>,
 }
 
 impl GatewayServices {
@@ -39,18 +48,29 @@ impl GatewayServices {
             .clone()
             .ok_or_else(|| ServiceError::Unavailable("Hermes Agent is not connected".into()))
     }
+
+    fn rest(&self) -> ServiceResult<GatewayRest> {
+        self.rest
+            .read()
+            .map_err(|_| ServiceError::Platform("gateway REST lock was poisoned".into()))?
+            .clone()
+            .ok_or_else(|| {
+                ServiceError::Unavailable("Hermes Agent REST API is not connected".into())
+            })
+    }
 }
 
 pub struct NativeApp {
     pub services: AppServices,
-    gateway: Arc<RwLock<Option<GatewayClient>>>,
 }
 
 impl NativeApp {
     pub fn new(data_dir: PathBuf) -> Self {
         let gateway = Arc::new(RwLock::new(None));
+        let rest = Arc::new(RwLock::new(None));
         let remote = Arc::new(GatewayServices {
             client: gateway.clone(),
+            rest: rest.clone(),
         });
         let settings = Arc::new(JsonSettings::new(data_dir.join("settings.json")));
         let platform = Arc::new(DesktopPlatform);
@@ -68,17 +88,7 @@ impl NativeApp {
                 updates: Arc::new(DesktopUpdates { data_dir }),
                 platform,
             },
-            gateway,
         }
-    }
-
-    pub fn set_gateway(&self, client: GatewayClient) -> ServiceResult<()> {
-        *self
-            .gateway
-            .write()
-            .map_err(|_| ServiceError::Platform("gateway lock was poisoned".into()))? =
-            Some(client);
-        Ok(())
     }
 }
 
@@ -111,6 +121,7 @@ impl ConnectionService for GatewayServices {
     fn connect(&self, websocket_url: &str) -> ServiceFuture<'_, ConnectionState> {
         let websocket_url = websocket_url.to_owned();
         Box::pin(async move {
+            let rest = rest_from_websocket_url(&websocket_url)?;
             let client = GatewayClient::connect(&websocket_url, Default::default())
                 .await
                 .map_err(transport)?;
@@ -123,6 +134,11 @@ impl ConnectionService for GatewayServices {
             if let Some(previous) = previous {
                 let _ = previous.close().await;
             }
+            *self
+                .rest
+                .write()
+                .map_err(|_| ServiceError::Platform("gateway REST lock was poisoned".into()))? =
+                Some(rest);
             Ok(ConnectionState::Open)
         })
     }
@@ -138,6 +154,10 @@ impl ConnectionService for GatewayServices {
             if let Some(previous) = previous {
                 previous.close().await.map_err(transport)?;
             }
+            self.rest
+                .write()
+                .map_err(|_| ServiceError::Platform("gateway REST lock was poisoned".into()))?
+                .take();
             Ok(())
         })
     }
@@ -156,11 +176,14 @@ impl ConnectionService for GatewayServices {
 impl SessionService for GatewayServices {
     fn list(&self) -> ServiceFuture<'_, Vec<SessionSummary>> {
         Box::pin(async move {
-            let value: Value = self
-                .client()?
-                .request("session.active_list", json!({}))
-                .await
-                .map_err(transport)?;
+            let value = self
+                .rest()?
+                .request(
+                    Method::GET,
+                    "/api/sessions?limit=50&offset=0&min_messages=1&archived=exclude&order=recent",
+                    None,
+                )
+                .await?;
             decode_list(value, "sessions")
         })
     }
@@ -228,6 +251,91 @@ impl SessionService for GatewayServices {
                 .request("session.interrupt", json!({ "session_id": session_id }))
                 .await
                 .map_err(transport)?;
+            Ok(())
+        })
+    }
+
+    fn set_pinned(&self, session_id: &str, pinned: bool) -> ServiceFuture<'_, ()> {
+        let session_id = session_id.to_owned();
+        Box::pin(async move {
+            validate_identifier(&session_id, "session")?;
+            self.rest()?
+                .request(
+                    Method::PATCH,
+                    &format!("/api/sessions/{session_id}"),
+                    Some(json!({ "pinned": pinned })),
+                )
+                .await?;
+            Ok(())
+        })
+    }
+
+    fn set_archived(&self, session_id: &str, archived: bool) -> ServiceFuture<'_, ()> {
+        let session_id = session_id.to_owned();
+        Box::pin(async move {
+            validate_identifier(&session_id, "session")?;
+            self.rest()?
+                .request(
+                    Method::PATCH,
+                    &format!("/api/sessions/{session_id}"),
+                    Some(json!({ "archived": archived })),
+                )
+                .await?;
+            Ok(())
+        })
+    }
+
+    fn rename(
+        &self,
+        session_id: &str,
+        runtime_id: Option<&str>,
+        title: &str,
+    ) -> ServiceFuture<'_, ()> {
+        let session_id = session_id.to_owned();
+        let runtime_id = runtime_id.map(str::to_owned);
+        let title = title.to_owned();
+        Box::pin(async move {
+            validate_identifier(&session_id, "session")?;
+            if let Some(runtime_id) = &runtime_id {
+                validate_identifier(runtime_id, "runtime session")?;
+            }
+            if title.len() > 512 || title.chars().any(char::is_control) {
+                return Err(ServiceError::InvalidInput("invalid session title".into()));
+            }
+
+            if !title.is_empty()
+                && let Some(runtime_id) = runtime_id
+            {
+                let runtime_rename = self
+                    .client()?
+                    .request::<_, Value>(
+                        "session.title",
+                        json!({ "session_id": runtime_id, "title": title }),
+                    )
+                    .await;
+                if runtime_rename.is_ok() {
+                    return Ok(());
+                }
+            }
+
+            self.rest()?
+                .request(
+                    Method::PATCH,
+                    &format!("/api/sessions/{session_id}"),
+                    Some(json!({ "title": title })),
+                )
+                .await?;
+            Ok(())
+        })
+    }
+
+    fn delete(&self, session_id: &str) -> ServiceFuture<'_, ()> {
+        let session_id = session_id.to_owned();
+        Box::pin(async move {
+            validate_identifier(&session_id, "session")?;
+            self.rest()?
+                .request(Method::DELETE, &format!("/api/sessions/{session_id}"), None)
+                .await?;
             Ok(())
         })
     }
@@ -786,6 +894,103 @@ fn websocket_url(base: &str, token: &str) -> ServiceResult<String> {
     Ok(url.into())
 }
 
+impl GatewayRest {
+    async fn request(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+    ) -> ServiceResult<Value> {
+        let path = path.strip_prefix('/').ok_or_else(|| {
+            ServiceError::InvalidInput("Hermes REST path must be absolute".into())
+        })?;
+        let url = self.base_url.join(path).map_err(|error| {
+            ServiceError::InvalidInput(format!("invalid Hermes REST path: {error}"))
+        })?;
+        if !matches!(url.scheme(), "http" | "https") || url.origin() != self.base_url.origin() {
+            return Err(ServiceError::PermissionDenied(
+                "Hermes REST request escaped the configured gateway".into(),
+            ));
+        }
+
+        let mut request = self.client.request(method, url);
+        if let Some(token) = &self.session_token {
+            request = request.header("X-Hermes-Session-Token", token);
+        }
+        if let Some(body) = body {
+            request = request.json(&body);
+        }
+        let response = request
+            .send()
+            .await
+            .map_err(|error| ServiceError::Transport(error.to_string()))?;
+        let status = response.status();
+        if response
+            .content_length()
+            .is_some_and(|length| length > 16 * 1024 * 1024)
+        {
+            return Err(ServiceError::Transport(
+                "Hermes REST response exceeded the 16 MiB limit".into(),
+            ));
+        }
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|error| ServiceError::Transport(error.to_string()))?;
+        if !status.is_success() {
+            let detail = String::from_utf8_lossy(&bytes);
+            return match status.as_u16() {
+                404 => Err(ServiceError::NotFound(detail.trim().to_owned())),
+                401 | 403 => Err(ServiceError::PermissionDenied(detail.trim().to_owned())),
+                _ => Err(ServiceError::Transport(format!(
+                    "{status}: {}",
+                    detail.trim()
+                ))),
+            };
+        }
+        if bytes.is_empty() {
+            return Ok(Value::Null);
+        }
+        serde_json::from_slice(&bytes).map_err(protocol)
+    }
+}
+
+fn rest_from_websocket_url(websocket_url: &str) -> ServiceResult<GatewayRest> {
+    let mut url = url::Url::parse(websocket_url)
+        .map_err(|error| ServiceError::InvalidInput(format!("invalid gateway URL: {error}")))?;
+    let http_scheme = match url.scheme() {
+        "ws" => "http",
+        "wss" => "https",
+        _ => {
+            return Err(ServiceError::InvalidInput(
+                "gateway WebSocket URL must use ws or wss".into(),
+            ));
+        }
+    };
+    let session_token = url
+        .query_pairs()
+        .find_map(|(key, value)| (key == "token").then(|| value.into_owned()));
+    url.set_scheme(http_scheme)
+        .map_err(|()| ServiceError::InvalidInput("could not set gateway REST scheme".into()))?;
+    let base_path = url
+        .path()
+        .strip_suffix("/api/ws")
+        .unwrap_or_else(|| url.path())
+        .trim_end_matches('/');
+    url.set_path(&format!("{base_path}/"));
+    url.set_query(None);
+    url.set_fragment(None);
+    Ok(GatewayRest {
+        client: reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|error| ServiceError::Platform(error.to_string()))?,
+        base_url: url,
+        session_token,
+    })
+}
+
 fn contained_root(root: &Path) -> ServiceResult<PathBuf> {
     root.canonicalize().map_err(platform)
 }
@@ -909,5 +1114,15 @@ mod tests {
     fn builds_encoded_websocket_url_without_losing_base_path() {
         let url = websocket_url("https://gateway.example/hermes", "a b&c").expect("URL");
         assert_eq!(url, "wss://gateway.example/hermes/api/ws?token=a+b%26c");
+    }
+
+    #[test]
+    fn derives_rest_endpoint_and_legacy_token_from_websocket() {
+        let rest = rest_from_websocket_url(
+            "wss://gateway.example/hermes/api/ws?token=a+b%26c&ignored=yes",
+        )
+        .expect("REST endpoint");
+        assert_eq!(rest.base_url.as_str(), "https://gateway.example/hermes/");
+        assert_eq!(rest.session_token.as_deref(), Some("a b&c"));
     }
 }

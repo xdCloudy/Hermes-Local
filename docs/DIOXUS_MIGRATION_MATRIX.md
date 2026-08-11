@@ -80,8 +80,8 @@ updater work itself.
 | Agent gateway URL/auth resolution | `hermes-agent-client` | connection status/recovery | URL/auth ladder fixtures | Designed |
 | JSON-RPC framing, calls and cancellation | `hermes-agent-client` | n/a | protocol fixtures + harness replay | Designed |
 | WebSocket lifecycle/reconnect | `hermes-agent-client` | connecting/degraded states | fake socket + real harness tests | Designed |
-| Session identities, lineage and profile scope | `SessionService` | chat/sidebar | durable/runtime/lineage mapping tests | Designed |
-| Session list merge, pin/archive/delete | `SessionService` | sidebar | stale-response/optimistic rollback tests | Designed |
+| Session identities, lineage and profile scope | `SessionService` | chat/sidebar | durable/runtime/lineage mapping tests | Ported |
+| Session list merge, pin/archive/delete | `SessionService` | sidebar | stale-response/optimistic rollback tests | Ported |
 | New/resume/switch session | `SessionService` | chat workspace | route/race/background isolation E2E | Designed |
 | Transcript load and large-history virtualization | `SessionService` | transcript | pagination + realistic long-session benchmark | Designed |
 | Streaming deltas and terminal events | `SessionService` | assistant turns/tool cards | coalescing/terminal-flush/perf tests | Designed |

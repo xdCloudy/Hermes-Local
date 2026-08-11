@@ -153,7 +153,8 @@ the production dependency graph and Cargo lock use 0.7.10, and the CLI must be
 updated to the matching version before package validation.
 
 Pinned direct Rust dependencies now include Dioxus/Dioxus Router 0.7.10,
-Tokio 1.53.1, tokio-tungstenite 0.30.0, portable-pty 0.9.0, serde 1.0.229,
+Tokio 1.53.1, tokio-tungstenite 0.30.0, reqwest 0.13.4 with Rustls,
+portable-pty 0.9.0, serde 1.0.229,
 serde_json 1.0.151, thiserror 2.0.20, url 2.5.8, uuid 1.24.0, trash 5.2.6,
 open 5.4.1, and async-stream 0.3.6. `Cargo.lock` is generated.
 
@@ -249,3 +250,31 @@ by the shared Dioxus crate so both Cargo and Dioxus builds render identically.
 Exact next action: audit and port the OG sidebar interaction/state model
 (selection, search, pinned/recent sessions, row controls and context actions),
 then verify its interaction and visual parity before beginning the chat slice.
+
+## Durable sidebar checkpoint (2026-08-11)
+
+The sidebar now reads persisted sessions through the OG `/api/sessions` REST
+contract rather than the gateway's active-runtime-only RPC. The Rust adapter
+derives an origin-confined REST base from the connected WebSocket URL, retains
+base-path deployments, extracts the legacy session token without exposing it
+to Dioxus state, and sends it only as `X-Hermes-Session-Token`. HTTP status
+classes map to typed service errors. Session identifiers reject URL path/query
+delimiters before they can reach a REST path.
+
+Pinned and recent sections, case-insensitive loaded-session search, active
+route selection, running state, hover and context actions, inline rename,
+archive, destructive delete confirmation and durable lineage-root pin identity
+are implemented in the OG compact row geometry. Mutations are optimistic; a
+monotonic mutation epoch prevents an older failed request from rolling back a
+newer user action. Runtime rename first uses the OG `session.title` RPC and
+falls back to persisted REST for non-live rows and title clearing.
+
+Native visual QA at 1296x809 passes the corrected shell geometry. This build
+used about 34.4 MiB working set and 6.6 MiB private memory. `cargo check
+--workspace`, `cargo test --workspace` (13 unit tests plus doc-tests), and
+`cargo clippy --workspace --all-targets` pass; remaining Clippy output is the
+documented pedantic-warning backlog rather than denied correctness lints.
+
+Exact next action: port the OG chat/session transcript state machine and
+streaming event reconciliation, then exercise sidebar actions against a live
+Agent fixture before marking the session slice validated.

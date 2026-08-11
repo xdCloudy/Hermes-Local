@@ -39,6 +39,15 @@ pub trait SessionService: Send + Sync {
     fn resume(&self, session_id: &str) -> ServiceFuture<'_, Vec<ChatMessage>>;
     fn submit(&self, session_id: &str, text: &str) -> ServiceFuture<'_, ()>;
     fn interrupt(&self, session_id: &str) -> ServiceFuture<'_, ()>;
+    fn set_pinned(&self, session_id: &str, pinned: bool) -> ServiceFuture<'_, ()>;
+    fn set_archived(&self, session_id: &str, archived: bool) -> ServiceFuture<'_, ()>;
+    fn rename(
+        &self,
+        session_id: &str,
+        runtime_id: Option<&str>,
+        title: &str,
+    ) -> ServiceFuture<'_, ()>;
+    fn delete(&self, session_id: &str) -> ServiceFuture<'_, ()>;
     fn events(&self) -> ServiceResult<EventStream>;
 }
 
@@ -122,7 +131,12 @@ pub struct AppServices {
 }
 
 pub fn validate_identifier(value: &str, field: &str) -> ServiceResult<()> {
-    if value.is_empty() || value.len() > 256 || value.chars().any(char::is_control) {
+    if value.is_empty()
+        || value.len() > 256
+        || value
+            .chars()
+            .any(|character| character.is_control() || matches!(character, '/' | '\\' | '?' | '#'))
+    {
         return Err(ServiceError::InvalidInput(format!("invalid {field}")));
     }
     Ok(())
@@ -161,5 +175,7 @@ mod tests {
     fn rejects_control_characters_in_identifiers() {
         assert!(validate_identifier("session-1", "session").is_ok());
         assert!(validate_identifier("session\n2", "session").is_err());
+        assert!(validate_identifier("../profiles", "session").is_err());
+        assert!(validate_identifier("session?profile=other", "session").is_err());
     }
 }

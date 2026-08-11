@@ -2,7 +2,7 @@
 
 use dioxus::prelude::*;
 use hermes_core::AppServices;
-use hermes_protocol::{MessageRole, SessionCreateRequest};
+use hermes_protocol::{MessageRole, SessionCreateRequest, SessionSummary};
 
 const APP_CSS: &str = include_str!("../assets/app.css");
 const CODICON_SPRITE: &str = include_str!("../assets/codicon-sprite.svg");
@@ -162,10 +162,60 @@ fn Titlebar() -> Element {
 fn AppShell() -> Element {
     let services = use_context::<AppServices>();
     let session_service = services.sessions.clone();
-    let sessions = use_resource(move || {
+    let mut session_rows = use_signal(Vec::<SessionSummary>::new);
+    let mut sessions_loading = use_signal(|| true);
+    let mut sessions_error = use_signal(|| None::<String>);
+    let mut refresh = use_signal(|| 0_u64);
+    let mut query = use_signal(String::new);
+    let mut menu_session = use_signal(|| None::<String>);
+    let mut rename_session = use_signal(|| None::<String>);
+    let mut rename_value = use_signal(String::new);
+    let mut delete_session = use_signal(|| None::<String>);
+    let mut mutation_epoch = use_signal(|| 0_u64);
+    let _sessions = use_resource(move || {
+        let _ = refresh();
         let session_service = session_service.clone();
-        async move { session_service.list().await }
+        async move {
+            sessions_loading.set(true);
+            match session_service.list().await {
+                Ok(rows) => {
+                    session_rows.set(rows);
+                    sessions_error.set(None);
+                }
+                Err(error) => sessions_error.set(Some(error.to_string())),
+            }
+            sessions_loading.set(false);
+        }
     });
+
+    let normalized_query = query().trim().to_lowercase();
+    let visible_sessions = session_rows()
+        .into_iter()
+        .filter(|session| {
+            !session.archived
+                && (normalized_query.is_empty()
+                    || session.title.to_lowercase().contains(&normalized_query)
+                    || session
+                        .cwd
+                        .as_deref()
+                        .is_some_and(|cwd| cwd.to_lowercase().contains(&normalized_query))
+                    || session
+                        .model
+                        .as_deref()
+                        .is_some_and(|model| model.to_lowercase().contains(&normalized_query)))
+        })
+        .collect::<Vec<_>>();
+    let pinned_sessions = visible_sessions
+        .iter()
+        .filter(|session| session.pinned)
+        .cloned()
+        .collect::<Vec<_>>();
+    let recent_sessions = visible_sessions
+        .iter()
+        .filter(|session| !session.pinned)
+        .take(12)
+        .cloned()
+        .collect::<Vec<_>>();
     rsx! {
         div { class: "app-shell",
             aside { class: "rail", aria_label: "Hermes navigation",
@@ -190,22 +240,165 @@ fn AppShell() -> Element {
                 }
                 div { class: "sidebar-search",
                     Codicon { name: "search" }
-                    input { aria_label: "Search sessions", placeholder: "Search sessions" }
+                    input {
+                        aria_label: "Search sessions",
+                        placeholder: "Search sessions",
+                        value: "{query}",
+                        oninput: move |event| query.set(event.value())
+                    }
                 }
                 section { class: "sidebar-sessions", aria_label: "Sessions",
-                    div { class: "sidebar-section-label", "PINNED" }
-                    p { class: "sidebar-empty", "No pinned sessions" }
-                    div { class: "sidebar-section-label recent", "RECENT" }
-                    match &*sessions.read_unchecked() {
-                        Some(Ok(items)) if !items.is_empty() => rsx! {
-                            for session in items.iter().take(5) {
-                                Link { class: "session-link", to: Route::Session { id: session.id.clone() },
-                                    span { class: "session-dot" }
-                                    span { if session.title.is_empty() { "Untitled session" } else { "{session.title}" } }
-                                }
+                    if !normalized_query.is_empty() {
+                        div { class: "sidebar-section-label", "RESULTS" }
+                    } else {
+                        div { class: "sidebar-section-label", "PINNED" }
+                        if pinned_sessions.is_empty() {
+                            p { class: "sidebar-empty", "No pinned sessions" }
+                        }
+                        for session in pinned_sessions {
+                            SidebarSessionRow {
+                                session: session.clone(),
+                                menu_open: menu_session().as_deref() == Some(session.id.as_str()),
+                                renaming: rename_session().as_deref() == Some(session.id.as_str()),
+                                rename_value: rename_value(),
+                                on_open_menu: move |id: String| menu_session.set(Some(id)),
+                                on_close_menu: move |()| menu_session.set(None),
+                                on_start_rename: move |(id, title): (String, String)| { rename_session.set(Some(id)); rename_value.set(title); menu_session.set(None); },
+                                on_rename_input: move |value: String| rename_value.set(value),
+                                on_cancel_rename: move |()| rename_session.set(None),
+                                on_commit_rename: {
+                                    let service = services.sessions.clone();
+                                    move |(id, runtime_id): (String, Option<String>)| {
+                                        let title = rename_value().trim().to_owned();
+                                        let before = session_rows();
+                                        let epoch = mutation_epoch() + 1;
+                                        mutation_epoch.set(epoch);
+                                        for row in session_rows.write().iter_mut().filter(|row| row.id == id) { row.title.clone_from(&title); }
+                                        rename_session.set(None);
+                                        let service = service.clone();
+                                        spawn(async move {
+                                            if let Err(error) = service.rename(&id, runtime_id.as_deref(), &title).await {
+                                                if mutation_epoch() == epoch { session_rows.set(before); }
+                                                sessions_error.set(Some(error.to_string()));
+                                            }
+                                        });
+                                    }
+                                },
+                                on_toggle_pin: {
+                                    let service = services.sessions.clone();
+                                    move |(id, durable_id, pinned): (String, String, bool)| {
+                                        let before = session_rows();
+                                        let epoch = mutation_epoch() + 1;
+                                        mutation_epoch.set(epoch);
+                                        for row in session_rows.write().iter_mut().filter(|row| row.id == id) { row.pinned = pinned; }
+                                        menu_session.set(None);
+                                        let service = service.clone();
+                                        spawn(async move {
+                                            if let Err(error) = service.set_pinned(&durable_id, pinned).await {
+                                                if mutation_epoch() == epoch { session_rows.set(before); }
+                                                sessions_error.set(Some(error.to_string()));
+                                            }
+                                        });
+                                    }
+                                },
+                                on_archive: {
+                                    let service = services.sessions.clone();
+                                    move |id: String| {
+                                        let before = session_rows();
+                                        let epoch = mutation_epoch() + 1;
+                                        mutation_epoch.set(epoch);
+                                        session_rows.write().retain(|row| row.id != id);
+                                        menu_session.set(None);
+                                        let service = service.clone();
+                                        spawn(async move {
+                                            if let Err(error) = service.set_archived(&id, true).await {
+                                                if mutation_epoch() == epoch { session_rows.set(before); }
+                                                sessions_error.set(Some(error.to_string()));
+                                            }
+                                        });
+                                    }
+                                },
+                                on_request_delete: move |id: String| { delete_session.set(Some(id)); menu_session.set(None); },
                             }
-                        },
-                        _ => rsx! { p { class: "sidebar-empty", "No recent sessions" } },
+                        }
+                        div { class: "sidebar-section-label recent", "RECENT" }
+                    }
+                    for session in recent_sessions {
+                        SidebarSessionRow {
+                            session: session.clone(),
+                            menu_open: menu_session().as_deref() == Some(session.id.as_str()),
+                            renaming: rename_session().as_deref() == Some(session.id.as_str()),
+                            rename_value: rename_value(),
+                            on_open_menu: move |id: String| menu_session.set(Some(id)),
+                            on_close_menu: move |()| menu_session.set(None),
+                            on_start_rename: move |(id, title): (String, String)| { rename_session.set(Some(id)); rename_value.set(title); menu_session.set(None); },
+                            on_rename_input: move |value: String| rename_value.set(value),
+                            on_cancel_rename: move |()| rename_session.set(None),
+                            on_commit_rename: {
+                                let service = services.sessions.clone();
+                                move |(id, runtime_id): (String, Option<String>)| {
+                                    let title = rename_value().trim().to_owned();
+                                    let before = session_rows();
+                                    let epoch = mutation_epoch() + 1;
+                                    mutation_epoch.set(epoch);
+                                    for row in session_rows.write().iter_mut().filter(|row| row.id == id) { row.title.clone_from(&title); }
+                                    rename_session.set(None);
+                                    let service = service.clone();
+                                    spawn(async move {
+                                        if let Err(error) = service.rename(&id, runtime_id.as_deref(), &title).await {
+                                            if mutation_epoch() == epoch { session_rows.set(before); }
+                                            sessions_error.set(Some(error.to_string()));
+                                        }
+                                    });
+                                }
+                            },
+                            on_toggle_pin: {
+                                let service = services.sessions.clone();
+                                move |(id, durable_id, pinned): (String, String, bool)| {
+                                    let before = session_rows();
+                                    let epoch = mutation_epoch() + 1;
+                                    mutation_epoch.set(epoch);
+                                    for row in session_rows.write().iter_mut().filter(|row| row.id == id) { row.pinned = pinned; }
+                                    menu_session.set(None);
+                                    let service = service.clone();
+                                    spawn(async move {
+                                        if let Err(error) = service.set_pinned(&durable_id, pinned).await {
+                                            if mutation_epoch() == epoch { session_rows.set(before); }
+                                            sessions_error.set(Some(error.to_string()));
+                                        }
+                                    });
+                                }
+                            },
+                            on_archive: {
+                                let service = services.sessions.clone();
+                                move |id: String| {
+                                    let before = session_rows();
+                                    let epoch = mutation_epoch() + 1;
+                                    mutation_epoch.set(epoch);
+                                    session_rows.write().retain(|row| row.id != id);
+                                    menu_session.set(None);
+                                    let service = service.clone();
+                                    spawn(async move {
+                                        if let Err(error) = service.set_archived(&id, true).await {
+                                            if mutation_epoch() == epoch { session_rows.set(before); }
+                                            sessions_error.set(Some(error.to_string()));
+                                        }
+                                    });
+                                }
+                            },
+                            on_request_delete: move |id: String| { delete_session.set(Some(id)); menu_session.set(None); },
+                        }
+                    }
+                    if sessions_loading() {
+                        p { class: "sidebar-empty", "Loading sessions…" }
+                    } else if visible_sessions.is_empty() {
+                        p { class: "sidebar-empty", if normalized_query.is_empty() { "No recent sessions" } else { "No matching sessions" } }
+                    }
+                    if let Some(error) = sessions_error() {
+                        div { class: "sidebar-session-error", role: "alert",
+                            span { "{error}" }
+                            button { title: "Retry", aria_label: "Retry loading sessions", onclick: move |_| { sessions_error.set(None); refresh += 1; }, Codicon { name: "refresh" } }
+                        }
                     }
                 }
                 nav { class: "secondary-nav", aria_label: "Application navigation",
@@ -213,8 +406,124 @@ fn AppShell() -> Element {
                     NavItem { to: Route::About {}, icon: "info", label: "About" }
                 }
                 div { class: "sidebar-footer", span { class: "avatar", "C" } span { "Local profile" } span { class: "chevron", "›" } }
+                if let Some(id) = delete_session() {
+                    div { class: "session-delete-confirm", role: "alertdialog", aria_label: "Delete session?",
+                        strong { "Delete session?" }
+                        span { "This cannot be undone." }
+                        div {
+                            button { onclick: move |_| delete_session.set(None), "Cancel" }
+                            button {
+                                class: "danger",
+                                onclick: {
+                                    let service = services.sessions.clone();
+                                    move |_| {
+                                        let id = id.clone();
+                                        let before = session_rows();
+                                        let epoch = mutation_epoch() + 1;
+                                        mutation_epoch.set(epoch);
+                                        session_rows.write().retain(|row| row.id != id);
+                                        delete_session.set(None);
+                                        let service = service.clone();
+                                        spawn(async move {
+                                            if let Err(error) = service.delete(&id).await {
+                                                if mutation_epoch() == epoch { session_rows.set(before); }
+                                                sessions_error.set(Some(error.to_string()));
+                                            }
+                                        });
+                                    }
+                                },
+                                "Delete"
+                            }
+                        }
+                    }
+                }
             }
             main { class: "workspace", Outlet::<Route> {} }
+        }
+    }
+}
+
+#[component]
+fn SidebarSessionRow(
+    session: SessionSummary,
+    menu_open: bool,
+    renaming: bool,
+    rename_value: String,
+    on_open_menu: EventHandler<String>,
+    on_close_menu: EventHandler<()>,
+    on_start_rename: EventHandler<(String, String)>,
+    on_rename_input: EventHandler<String>,
+    on_cancel_rename: EventHandler<()>,
+    on_commit_rename: EventHandler<(String, Option<String>)>,
+    on_toggle_pin: EventHandler<(String, String, bool)>,
+    on_archive: EventHandler<String>,
+    on_request_delete: EventHandler<String>,
+) -> Element {
+    let id = session.id.clone();
+    let durable_id = session
+        .lineage_root
+        .clone()
+        .unwrap_or_else(|| session.id.clone());
+    let title = if session.title.is_empty() {
+        "Untitled session".to_owned()
+    } else {
+        session.title.clone()
+    };
+    let runtime_id = session.runtime_id.clone();
+    rsx! {
+        div {
+            class: "session-row",
+            oncontextmenu: {
+                let id = id.clone();
+                move |event| { event.prevent_default(); on_open_menu.call(id.clone()); }
+            },
+            if renaming {
+                input {
+                    class: "session-rename",
+                    aria_label: "Rename session",
+                    value: "{rename_value}",
+                    autofocus: true,
+                    oninput: move |event| on_rename_input.call(event.value()),
+                    onkeydown: {
+                        let id = id.clone();
+                        move |event| match event.key() {
+                            Key::Enter => on_commit_rename.call((id.clone(), runtime_id.clone())),
+                            Key::Escape => on_cancel_rename.call(()),
+                            _ => {}
+                        }
+                    }
+                }
+            } else {
+                Link { class: "session-link", to: Route::Session { id: id.clone() }, title: "{title}",
+                    span { class: if session.running { "session-dot running" } else { "session-dot" } }
+                    span { "{title}" }
+                }
+                button {
+                    class: "session-actions-button",
+                    aria_label: "Session actions",
+                    title: "Session actions",
+                    onclick: {
+                        let id = id.clone();
+                        move |event| { event.stop_propagation(); if menu_open { on_close_menu.call(()) } else { on_open_menu.call(id.clone()) } }
+                    },
+                    Codicon { name: "kebab-vertical" }
+                }
+            }
+            if menu_open {
+                div { class: "session-menu", role: "menu",
+                    button { role: "menuitem", onclick: {
+                        let id = id.clone(); let title = session.title.clone();
+                        move |_| on_start_rename.call((id.clone(), title.clone()))
+                    }, Codicon { name: "edit" } "Rename" }
+                    button { role: "menuitem", onclick: {
+                        let id = id.clone(); let durable_id = durable_id.clone(); let pinned = !session.pinned;
+                        move |_| on_toggle_pin.call((id.clone(), durable_id.clone(), pinned))
+                    }, Codicon { name: if session.pinned { "pinned-dirty" } else { "pin" } } if session.pinned { "Unpin" } else { "Pin" } }
+                    button { role: "menuitem", onclick: { let id = id.clone(); move |_| on_archive.call(id.clone()) }, Codicon { name: "archive" } "Archive" }
+                    div { class: "session-menu-separator" }
+                    button { class: "danger", role: "menuitem", onclick: { let id = id.clone(); move |_| on_request_delete.call(id.clone()) }, Codicon { name: "trash" } "Delete" }
+                }
+            }
         }
     }
 }
@@ -230,7 +539,7 @@ fn NavItem(to: Route, icon: &'static str, label: &'static str) -> Element {
 }
 
 #[component]
-fn Codicon(name: &'static str) -> Element {
+fn Codicon(name: String) -> Element {
     let reference = format!("#{name}");
     rsx! {
         svg { class: "codicon", view_box: "0 0 16 16", "aria-hidden": "true", "focusable": "false",

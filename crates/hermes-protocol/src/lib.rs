@@ -206,18 +206,13 @@ pub struct ProjectsSnapshot {
     pub active_id: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ThemeMode {
     Dark,
     Light,
+    #[default]
     System,
-}
-
-impl Default for ThemeMode {
-    fn default() -> Self {
-        Self::System
-    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
