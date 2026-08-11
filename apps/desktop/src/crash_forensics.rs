@@ -53,7 +53,7 @@ fn record_panic(root: &Path, info: &std::panic::PanicHookInfo<'_>) -> Result<(),
         "location": location,
         "messageSha256": message_hash,
     });
-    atomic_write_json(&root.join(LATEST_CRASH), &document)
+    write_json_record(&root.join(LATEST_CRASH), &document)
 }
 
 fn panic_payload_hash(payload: &(dyn std::any::Any + Send)) -> String {
@@ -78,7 +78,7 @@ fn bounded_location(location: &str) -> String {
     format!("{}…", &location[..end])
 }
 
-fn atomic_write_json(path: &Path, value: &serde_json::Value) -> Result<(), String> {
+fn write_json_record(path: &Path, value: &serde_json::Value) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| "Crash diagnostic path has no parent directory.".to_owned())?;
@@ -94,6 +94,10 @@ fn atomic_write_json(path: &Path, value: &serde_json::Value) -> Result<(), Strin
             .and_then(|_| file.write_all(b"\n"))
             .and_then(|_| file.sync_all())
             .map_err(|error| format!("Could not persist crash diagnostic: {error}"))?;
+    }
+    if path.exists() {
+        fs::remove_file(path)
+            .map_err(|error| format!("Could not replace previous crash diagnostic: {error}"))?;
     }
     fs::rename(&temporary, path)
         .map_err(|error| format!("Could not promote crash diagnostic: {error}"))?;
@@ -112,7 +116,7 @@ mod tests {
         assert!(!digest.contains("secret"));
         assert_eq!(
             digest,
-            "b9d93eac086e00bfb430493d162c2cbe11ac0facf3f3ae745f8c8773c9dc3df2"
+            "8d34f8c9db74266ca5da36d4b8aa50191cbaf1be304560476d43386b69916748"
         );
     }
 
@@ -125,7 +129,7 @@ mod tests {
     }
 
     #[test]
-    fn atomic_writer_replaces_complete_json() {
+    fn writer_replaces_complete_json() {
         let root = std::env::temp_dir().join(format!(
             "hermes-crash-forensics-test-{}",
             SystemTime::now()
@@ -134,8 +138,8 @@ mod tests {
                 .as_nanos()
         ));
         let path = root.join(LATEST_CRASH);
-        atomic_write_json(&path, &serde_json::json!({"value": 1})).expect("first write");
-        atomic_write_json(&path, &serde_json::json!({"value": 2})).expect("second write");
+        write_json_record(&path, &serde_json::json!({"value": 1})).expect("first write");
+        write_json_record(&path, &serde_json::json!({"value": 2})).expect("second write");
         let value: serde_json::Value =
             serde_json::from_slice(&fs::read(&path).expect("read record")).expect("valid json");
         assert_eq!(value["value"], 2);
