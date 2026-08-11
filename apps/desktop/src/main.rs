@@ -5,8 +5,13 @@ mod base64_impl;
 pub use base64_impl::{Engine, engine};
 extern crate self as base64;
 
+mod crash_forensics;
 mod deep_link;
+mod login_item;
+mod platform_diagnostics;
+mod power;
 mod ssh;
+mod ssh_config;
 mod ssh_lifecycle;
 mod ssh_service;
 #[cfg(windows)]
@@ -82,6 +87,9 @@ fn main() {
     let data_dir = std::env::var_os("APPDATA")
         .map_or_else(std::env::temp_dir, PathBuf::from)
         .join("Hermes Local");
+    if let Err(error) = crash_forensics::install(&data_dir) {
+        eprintln!("Hermes Local crash diagnostics are unavailable: {error}");
+    }
     if let Err(error) = deep_link::register() {
         eprintln!("Hermes Local protocol registration is unavailable: {error}");
     }
