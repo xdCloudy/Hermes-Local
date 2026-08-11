@@ -491,6 +491,28 @@ h1 { margin-top: 4px !important; margin-bottom: 0 !important; font-size: 1.25rem
 .auxiliary-editor .settings-select.compact { width: 145px; }
 .auxiliary-editor .settings-select.model { width: 220px; }
 .auxiliary-actions .button, .auxiliary-editor .button { white-space: nowrap; }
+.moa-settings { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--stroke-3); }
+.moa-settings > .settings-intro { margin-top: 7px; }
+.moa-toolbar { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 7px; }
+.moa-toolbar .settings-select { width: 158px; }
+.moa-enabled { display: flex; height: 30px; align-items: center; gap: 8px; border: 1px solid var(--stroke-2); border-radius: 6px; padding: 0 8px; color: var(--text-2); font-size: .6875rem; }
+.moa-name { width: 155px; }
+.moa-default { margin: 9px 0 5px; color: var(--text-3); font-size: .6875rem; }
+.moa-default span { color: var(--text-2); font-family: ui-monospace, "Cascadia Code", monospace; }
+.moa-slot-list { display: grid; gap: 5px; }
+.moa-slot { border-top: 1px solid var(--stroke-3); padding: 10px 2px; }
+.moa-slot.disabled { opacity: .6; }
+.moa-slot-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.moa-slot-heading > div { min-width: 0; }
+.moa-slot-heading strong, .moa-slot-heading small { display: block; }
+.moa-slot-heading strong { font-size: .75rem; }
+.moa-slot-heading small { overflow: hidden; margin-top: 2px; color: var(--text-3); font-family: ui-monospace, "Cascadia Code", monospace; font-size: .625rem; text-overflow: ellipsis; white-space: nowrap; }
+.moa-slot-controls { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 8px; }
+.moa-slot-controls .settings-select.compact { width: 155px; }
+.moa-slot-controls .settings-select.moa-model { width: min(100%, 340px); flex: 1; }
+.moa-add-reference { width: max-content; margin: 2px 0 4px; }
+.moa-add-reference .codicon { width: 13px; height: 13px; }
+.moa-slot.aggregator { margin-top: 3px; }
 .settings-mode-control { display: flex; flex: 0 0 auto; gap: 2px; padding: 2px; border-radius: 7px; background: var(--active); }
 .settings-mode-control button { display: flex; height: 26px; align-items: center; gap: 5px; border: 0; border-radius: 5px; padding: 0 8px; background: transparent; color: var(--text-3); font-size: .6875rem; }
 .settings-mode-control button.selected { background: var(--panel-bg); box-shadow: 0 1px 2px rgba(0, 0, 0, .15); color: var(--text-1); }

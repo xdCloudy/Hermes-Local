@@ -10,9 +10,9 @@ use std::{
 use futures_core::Stream;
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, ChatMessage, ConnectionState, FileEntry, GatewayEvent,
-    GitStatus, MessageRole, ModelAssignmentRequest, ModelAssignmentResponse, ModelSettingsSnapshot,
-    ProjectSummary, ProjectsSnapshot, RuntimeStatus, SessionCreateRequest, SessionResumeResponse,
-    SessionSummary, TaskSummary, TrustSnapshot,
+    GitStatus, MessageRole, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse,
+    ModelSettingsSnapshot, ProjectSummary, ProjectsSnapshot, RuntimeStatus, SessionCreateRequest,
+    SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -353,6 +353,7 @@ pub trait ModelService: Send + Sync {
         profile: Option<&str>,
         request: &ModelAssignmentRequest,
     ) -> ServiceFuture<'_, ModelAssignmentResponse>;
+    fn save_moa(&self, profile: Option<&str>, config: &MoaConfig) -> ServiceFuture<'_, MoaConfig>;
 }
 
 pub trait RuntimeService: Send + Sync {

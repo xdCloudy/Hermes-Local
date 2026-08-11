@@ -18,9 +18,10 @@ use hermes_core::{
 };
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, AuxiliaryModels, ConfigSchemaResponse, ConnectionState,
-    FileEntry, GitStatus, ModelAssignmentRequest, ModelAssignmentResponse, ModelInfo, ModelOptions,
-    ModelSettingsSnapshot, ProjectSummary, ProjectsSnapshot, RuntimeStatus, SessionCreateRequest,
-    SessionCreateResponse, SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
+    FileEntry, GitStatus, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse, ModelInfo,
+    ModelOptions, ModelSettingsSnapshot, ProjectSummary, ProjectsSnapshot, RuntimeStatus,
+    SessionCreateRequest, SessionCreateResponse, SessionResumeResponse, SessionSummary,
+    TaskSummary, TrustSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use reqwest::Method;
@@ -563,11 +564,23 @@ impl ModelService for GatewayServices {
                     None,
                 )
                 .await?;
+            let moa = match rest
+                .request(
+                    Method::GET,
+                    &profiled_path("/api/model/moa", profile.as_deref()),
+                    None,
+                )
+                .await
+            {
+                Ok(value) => serde_json::from_value::<MoaConfig>(value).ok(),
+                Err(_) => None,
+            };
             Ok(ModelSettingsSnapshot {
                 info: serde_json::from_value::<ModelInfo>(info).map_err(protocol)?,
                 options: serde_json::from_value::<ModelOptions>(options).map_err(protocol)?,
                 auxiliary: serde_json::from_value::<AuxiliaryModels>(auxiliary)
                     .map_err(protocol)?,
+                moa,
             })
         })
     }
@@ -613,6 +626,27 @@ impl ModelService for GatewayServices {
                 ));
             }
             Ok(response)
+        })
+    }
+
+    fn save_moa(&self, profile: Option<&str>, config: &MoaConfig) -> ServiceFuture<'_, MoaConfig> {
+        let profile = profile.map(str::to_owned);
+        let config = config.clone();
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request(
+                    Method::PUT,
+                    &profiled_path("/api/model/moa", profile.as_deref()),
+                    Some(serde_json::to_value(config).map_err(protocol)?),
+                )
+                .await?;
+            if value.get("ok").and_then(Value::as_bool) == Some(false) {
+                return Err(ServiceError::Transport(
+                    "Hermes Agent did not confirm the MoA save".into(),
+                ));
+            }
+            serde_json::from_value(value).map_err(protocol)
         })
     }
 }
@@ -1578,7 +1612,18 @@ mod tests {
                     "main": { "provider": "nous", "model": "Hermes-4" },
                     "tasks": []
                 }),
+                json!({
+                    "default_preset": "default",
+                    "active_preset": "",
+                    "presets": {}
+                }),
                 json!({ "ok": true, "scope": "auxiliary", "tasks": ["vision"] }),
+                json!({
+                    "ok": true,
+                    "default_preset": "default",
+                    "active_preset": "",
+                    "presets": {}
+                }),
             ];
             let mut requests = Vec::new();
             for body in responses {
@@ -1633,6 +1678,8 @@ mod tests {
         assert_eq!(loaded.info.model, "Hermes-4");
         assert!(loaded.options.providers[0].capabilities["Hermes-4"].fast);
         assert!(loaded.auxiliary.tasks.is_empty());
+        let moa = loaded.moa.clone().expect("MoA");
+        assert_eq!(moa.default_preset, "default");
         let response = ModelService::assign(
             &services,
             Some("work profile"),
@@ -1647,13 +1694,19 @@ mod tests {
         .await
         .expect("assign model");
         assert_eq!(response.tasks, ["vision"]);
+        let saved_moa = ModelService::save_moa(&services, Some("work profile"), &moa)
+            .await
+            .expect("save MoA");
+        assert_eq!(saved_moa.default_preset, "default");
 
         let requests = server.await.expect("server");
         for (request, endpoint) in requests.iter().zip([
             "/hermes/api/model/info?profile=work+profile",
             "/hermes/api/model/options?explicit_only=1&profile=work+profile",
             "/hermes/api/model/auxiliary?profile=work+profile",
+            "/hermes/api/model/moa?profile=work+profile",
             "/hermes/api/model/set?profile=work+profile",
+            "/hermes/api/model/moa?profile=work+profile",
         ]) {
             assert!(request.contains(endpoint));
             assert!(request.contains("x-hermes-session-token: model-token"));
@@ -1661,8 +1714,10 @@ mod tests {
         assert!(requests[0].starts_with("GET "));
         assert!(requests[1].starts_with("GET "));
         assert!(requests[2].starts_with("GET "));
-        assert!(requests[3].starts_with("POST "));
-        let assigned_body = requests[3]
+        assert!(requests[3].starts_with("GET "));
+        assert!(requests[4].starts_with("POST "));
+        assert!(requests[5].starts_with("PUT "));
+        let assigned_body = requests[4]
             .split_once("\r\n\r\n")
             .map(|(_, body)| body)
             .expect("request body");
@@ -1676,6 +1731,12 @@ mod tests {
                 "task": "vision"
             })
         );
+        let saved_body = requests[5]
+            .split_once("\r\n\r\n")
+            .map(|(_, body)| body)
+            .expect("MoA body");
+        let saved: Value = serde_json::from_str(saved_body).expect("MoA JSON");
+        assert_eq!(saved, serde_json::to_value(moa).expect("serialized MoA"));
     }
 
     #[tokio::test]

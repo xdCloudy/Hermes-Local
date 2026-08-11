@@ -435,6 +435,75 @@ pub struct ModelSettingsSnapshot {
     pub info: ModelInfo,
     pub options: ModelOptions,
     pub auxiliary: AuxiliaryModels,
+    pub moa: Option<MoaConfig>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct MoaModelSlot {
+    #[serde(default)]
+    pub provider: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct MoaPreset {
+    #[serde(default)]
+    pub aggregator: MoaModelSlot,
+    #[serde(default)]
+    pub aggregator_temperature: f64,
+    #[serde(default)]
+    pub degraded_reference_policy: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub max_tokens: u64,
+    #[serde(default)]
+    pub reference_models: Vec<MoaModelSlot>,
+    #[serde(default)]
+    pub reference_temperature: f64,
+    #[serde(default)]
+    pub reference_max_tokens: Option<u64>,
+    #[serde(default)]
+    pub fanout: Option<String>,
+    #[serde(default)]
+    pub reference_timeout: Option<f64>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct MoaConfig {
+    #[serde(default)]
+    pub default_preset: String,
+    #[serde(default)]
+    pub active_preset: String,
+    #[serde(default)]
+    pub presets: BTreeMap<String, MoaPreset>,
+    #[serde(default)]
+    pub aggregator: MoaModelSlot,
+    #[serde(default)]
+    pub aggregator_temperature: f64,
+    #[serde(default)]
+    pub degraded_reference_policy: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub max_tokens: u64,
+    #[serde(default)]
+    pub reference_models: Vec<MoaModelSlot>,
+    #[serde(default)]
+    pub reference_temperature: f64,
+    #[serde(default)]
+    pub reference_timeout: Option<f64>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]

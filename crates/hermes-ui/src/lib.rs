@@ -6,8 +6,9 @@ use dioxus::prelude::*;
 use futures_util::StreamExt;
 use hermes_core::{AgentConfigService, AppServices, ModelService, SessionTranscript};
 use hermes_protocol::{
-    AgentConfigSnapshot, AppSettings, MessageRole, ModelAssignmentRequest, ModelSettingsSnapshot,
-    ProjectsSnapshot, SessionCreateRequest, SessionSummary, ThemeMode,
+    AgentConfigSnapshot, AppSettings, MessageRole, MoaConfig, ModelAssignmentRequest,
+    ModelProvider, ModelSettingsSnapshot, ProjectsSnapshot, SessionCreateRequest, SessionSummary,
+    ThemeMode,
 };
 use serde_json::{Map, Value, json};
 
@@ -2148,6 +2149,9 @@ fn ModelAssignmentFields(
                 }
             }
         }
+        if let Some(moa) = models.moa.clone() {
+            MoaSettings { initial: moa, providers: models.options.providers.clone(), profile: profile.clone() }
+        }
     }
 }
 
@@ -2170,6 +2174,363 @@ fn assign_model(
             Err(assign_error) => error.set(Some(assign_error.to_string())),
         }
         applying.set(false);
+    });
+}
+
+#[component]
+fn MoaSettings(
+    initial: MoaConfig,
+    providers: Vec<ModelProvider>,
+    profile: Option<String>,
+) -> Element {
+    let service = use_context::<AppServices>().models.clone();
+    let initial_preset = initial.default_preset.clone();
+    let config = use_signal(|| initial);
+    let mut selected = use_signal(|| initial_preset);
+    let mut new_name = use_signal(String::new);
+    let saving = use_signal(|| false);
+    let error = use_signal(|| None::<String>);
+    let available_providers = providers
+        .into_iter()
+        .filter(|provider| !provider.slug.eq_ignore_ascii_case("moa"))
+        .collect::<Vec<_>>();
+    let current_name = selected();
+    let current_config = config();
+    let Some(current) = current_config.presets.get(&current_name).cloned() else {
+        return rsx! {};
+    };
+    let preset_names = current_config.presets.keys().cloned().collect::<Vec<_>>();
+    rsx! {
+        section { class: "moa-settings",
+            div { class: "settings-subheading",
+                div { Codicon { name: "server-process" } strong { "Mixture of Agents" } }
+            }
+            p { class: "settings-intro", "Configure named presets that appear as models under the Mixture of Agents provider. The aggregator is the acting model." }
+            div { class: "moa-toolbar",
+                select {
+                    class: "settings-select compact",
+                    value: "{current_name}",
+                    disabled: saving(),
+                    onchange: move |event| selected.set(event.value()),
+                    for name in &preset_names { option { value: "{name}", selected: *name == current_name, "{name}" } }
+                }
+                label { class: "moa-enabled", "Enabled"
+                    span { class: "settings-switch",
+                        input {
+                            r#type: "checkbox",
+                            checked: current.enabled,
+                            disabled: saving(),
+                            onchange: {
+                                let service = service.clone();
+                                let profile = profile.clone();
+                                let name = current_name.clone();
+                                move |event| {
+                                    let mut next = config();
+                                    if let Some(preset) = next.presets.get_mut(&name) {
+                                        preset.enabled = event.checked();
+                                    }
+                                    persist_moa(service.clone(), profile.clone(), next, config, saving, error);
+                                }
+                            }
+                        }
+                        span {}
+                    }
+                }
+                button {
+                    class: "button",
+                    disabled: saving(),
+                    onclick: {
+                        let service = service.clone();
+                        let profile = profile.clone();
+                        let name = current_name.clone();
+                        move |_| {
+                            let mut next = config();
+                            next.default_preset.clone_from(&name);
+                            persist_moa(service.clone(), profile.clone(), next, config, saving, error);
+                        }
+                    },
+                    "Set default"
+                }
+                button {
+                    class: "button ghost",
+                    disabled: saving() || preset_names.len() <= 1,
+                    onclick: {
+                        let service = service.clone();
+                        let profile = profile.clone();
+                        let name = current_name.clone();
+                        move |_| {
+                            let mut next = config();
+                            if next.presets.len() <= 1 {
+                                return;
+                            }
+                            next.presets.remove(&name);
+                            let fallback = next.presets.keys().next().cloned().unwrap_or_default();
+                            if next.default_preset == name {
+                                next.default_preset.clone_from(&fallback);
+                            }
+                            if next.active_preset == name {
+                                next.active_preset.clear();
+                            }
+                            selected.set(fallback);
+                            persist_moa(service.clone(), profile.clone(), next, config, saving, error);
+                        }
+                    },
+                    "Delete"
+                }
+                input {
+                    class: "settings-input moa-name",
+                    placeholder: "new preset",
+                    disabled: saving(),
+                    value: "{new_name}",
+                    oninput: move |event| new_name.set(event.value()),
+                }
+                button {
+                    class: "button",
+                    disabled: saving() || new_name().trim().is_empty() || current_config.presets.contains_key(new_name().trim()),
+                    onclick: {
+                        let service = service.clone();
+                        let profile = profile.clone();
+                        let template = current.clone();
+                        move |_| {
+                            let name = new_name().trim().to_owned();
+                            if name.is_empty() {
+                                return;
+                            }
+                            let mut next = config();
+                            if next.presets.contains_key(&name) {
+                                return;
+                            }
+                            next.presets.insert(name.clone(), template.clone());
+                            selected.set(name);
+                            new_name.set(String::new());
+                            persist_moa(service.clone(), profile.clone(), next, config, saving, error);
+                        }
+                    },
+                    "Add preset"
+                }
+            }
+            p { class: "moa-default", "Default: " span { "{current_config.default_preset}" } }
+            div { class: "moa-slot-list",
+                for (index, slot) in current.reference_models.iter().cloned().enumerate() {
+                    {
+                        let slot_models = models_for_provider(&available_providers, &slot.provider, &slot.model);
+                        let enabled = slot.enabled.unwrap_or(true);
+                        rsx! {
+                            div { class: if enabled { "moa-slot" } else { "moa-slot disabled" }, key: "{current_name}-ref-{index}",
+                                div { class: "moa-slot-heading",
+                                    div { strong { "Reference {index + 1}" } small { "{slot.provider} · {slot.model}" } }
+                                    label { class: "settings-switch",
+                                        input {
+                                            r#type: "checkbox",
+                                            checked: enabled,
+                                            disabled: saving(),
+                                            aria_label: "Toggle reference model",
+                                            onchange: {
+                                                let service = service.clone();
+                                                let profile = profile.clone();
+                                                let name = current_name.clone();
+                                                move |event| {
+                                                    let mut next = config();
+                                                    if let Some(reference) = next.presets.get_mut(&name).and_then(|preset| preset.reference_models.get_mut(index)) {
+                                                        reference.enabled = Some(event.checked());
+                                                    }
+                                                    persist_moa(service.clone(), profile.clone(), next, config, saving, error);
+                                                }
+                                            }
+                                        }
+                                        span {}
+                                    }
+                                }
+                                div { class: "moa-slot-controls",
+                                    select {
+                                        class: "settings-select compact",
+                                        disabled: saving(),
+                                        value: "{slot.provider}",
+                                        onchange: {
+                                            let service = service.clone();
+                                            let profile = profile.clone();
+                                            let name = current_name.clone();
+                                            move |event| {
+                                                let mut next = config();
+                                                if let Some(reference) = next.presets.get_mut(&name).and_then(|preset| preset.reference_models.get_mut(index)) {
+                                                    reference.provider = event.value();
+                                                    reference.model.clear();
+                                                }
+                                                persist_moa(service.clone(), profile.clone(), next, config, saving, error);
+                                            }
+                                        },
+                                        for provider in &available_providers {
+                                            option { value: "{provider.slug}", selected: provider.slug == slot.provider, "{provider.name}" }
+                                        }
+                                    }
+                                    select {
+                                        class: "settings-select moa-model",
+                                        disabled: saving(),
+                                        value: "{slot.model}",
+                                        onchange: {
+                                            let service = service.clone();
+                                            let profile = profile.clone();
+                                            let name = current_name.clone();
+                                            move |event| {
+                                                let mut next = config();
+                                                if let Some(reference) = next.presets.get_mut(&name).and_then(|preset| preset.reference_models.get_mut(index)) {
+                                                    reference.model = event.value();
+                                                }
+                                                persist_moa(service.clone(), profile.clone(), next, config, saving, error);
+                                            }
+                                        },
+                                        for model in &slot_models { option { value: "{model}", selected: *model == slot.model, "{model}" } }
+                                    }
+                                    button {
+                                        class: "button ghost",
+                                        disabled: saving() || current.reference_models.len() <= 1,
+                                        onclick: {
+                                            let service = service.clone();
+                                            let profile = profile.clone();
+                                            let name = current_name.clone();
+                                            move |_| {
+                                                let mut next = config();
+                                                if let Some(preset) = next.presets.get_mut(&name)
+                                                    && preset.reference_models.len() > 1
+                                                {
+                                                    preset.reference_models.remove(index);
+                                                }
+                                                persist_moa(service.clone(), profile.clone(), next, config, saving, error);
+                                            }
+                                        },
+                                        "Remove"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                button {
+                    class: "button moa-add-reference",
+                    disabled: saving(),
+                    onclick: {
+                        let service = service.clone();
+                        let profile = profile.clone();
+                        let name = current_name.clone();
+                        move |_| {
+                            let mut next = config();
+                            if let Some(preset) = next.presets.get_mut(&name) {
+                                let mut slot = preset.aggregator.clone();
+                                slot.enabled = Some(true);
+                                preset.reference_models.push(slot);
+                            }
+                            persist_moa(service.clone(), profile.clone(), next, config, saving, error);
+                        }
+                    },
+                    Codicon { name: "add" }
+                    "Add reference model"
+                }
+                {
+                    let aggregator_models = models_for_provider(&available_providers, &current.aggregator.provider, &current.aggregator.model);
+                    rsx! {
+                        div { class: "moa-slot aggregator",
+                            div { class: "moa-slot-heading",
+                                div { strong { "Aggregator" } small { "{current.aggregator.provider} · {current.aggregator.model}" } }
+                            }
+                            div { class: "moa-slot-controls",
+                                select {
+                                    class: "settings-select compact",
+                                    disabled: saving(),
+                                    value: "{current.aggregator.provider}",
+                                    onchange: {
+                                        let service = service.clone();
+                                        let profile = profile.clone();
+                                        let name = current_name.clone();
+                                        move |event| {
+                                            let mut next = config();
+                                            if let Some(preset) = next.presets.get_mut(&name) {
+                                                preset.aggregator.provider = event.value();
+                                                preset.aggregator.model.clear();
+                                            }
+                                            persist_moa(service.clone(), profile.clone(), next, config, saving, error);
+                                        }
+                                    },
+                                    for provider in &available_providers {
+                                        option { value: "{provider.slug}", selected: provider.slug == current.aggregator.provider, "{provider.name}" }
+                                    }
+                                }
+                                select {
+                                    class: "settings-select moa-model",
+                                    disabled: saving(),
+                                    value: "{current.aggregator.model}",
+                                    onchange: {
+                                        let service = service.clone();
+                                        let profile = profile.clone();
+                                        let name = current_name.clone();
+                                        move |event| {
+                                            let mut next = config();
+                                            if let Some(preset) = next.presets.get_mut(&name) {
+                                                preset.aggregator.model = event.value();
+                                            }
+                                            persist_moa(service.clone(), profile.clone(), next, config, saving, error);
+                                        }
+                                    },
+                                    for model in &aggregator_models { option { value: "{model}", selected: *model == current.aggregator.model, "{model}" } }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if saving() { p { class: "settings-save-state", "Saving MoA preset…" } }
+            if let Some(save_error) = error() { p { class: "inline-error", role: "alert", "{save_error}" } }
+        }
+    }
+}
+
+fn models_for_provider(providers: &[ModelProvider], provider: &str, active: &str) -> Vec<String> {
+    let mut models = providers
+        .iter()
+        .find(|candidate| candidate.slug == provider)
+        .map(|candidate| candidate.models.clone())
+        .unwrap_or_default();
+    if !active.is_empty() && !models.iter().any(|model| model == active) {
+        models.insert(0, active.to_owned());
+    }
+    models
+}
+
+fn moa_complete(config: &MoaConfig) -> bool {
+    config.presets.values().all(|preset| {
+        !preset.aggregator.provider.trim().is_empty()
+            && !preset.aggregator.model.trim().is_empty()
+            && !preset.reference_models.is_empty()
+            && preset
+                .reference_models
+                .iter()
+                .all(|slot| !slot.provider.trim().is_empty() && !slot.model.trim().is_empty())
+    })
+}
+
+fn persist_moa(
+    service: Arc<dyn ModelService>,
+    profile: Option<String>,
+    next: MoaConfig,
+    mut state: Signal<MoaConfig>,
+    mut saving: Signal<bool>,
+    mut error: Signal<Option<String>>,
+) {
+    let before = state();
+    state.set(next.clone());
+    error.set(None);
+    if !moa_complete(&next) || saving() {
+        return;
+    }
+    saving.set(true);
+    spawn(async move {
+        match service.save_moa(profile.as_deref(), &next).await {
+            Ok(saved) => state.set(saved),
+            Err(save_error) => {
+                state.set(before);
+                error.set(Some(save_error.to_string()));
+            }
+        }
+        saving.set(false);
     });
 }
 
@@ -2867,4 +3228,40 @@ fn LoadingState(label: String) -> Element {
 #[component]
 fn ErrorState(error: String) -> Element {
     rsx! { div { class: "error-state", role: "alert", h2 { "Could not load this view" } p { "{error}" } } }
+}
+
+#[cfg(test)]
+mod tests {
+    use hermes_protocol::{MoaConfig, MoaModelSlot, MoaPreset};
+
+    use super::moa_complete;
+
+    #[test]
+    fn holds_moa_saves_while_a_slot_is_incomplete() {
+        let slot = MoaModelSlot {
+            provider: "nous".into(),
+            model: "Hermes-4".into(),
+            enabled: Some(true),
+            ..MoaModelSlot::default()
+        };
+        let preset = MoaPreset {
+            aggregator: slot.clone(),
+            enabled: true,
+            reference_models: vec![slot],
+            ..MoaPreset::default()
+        };
+        let mut config = MoaConfig {
+            default_preset: "default".into(),
+            presets: [("default".into(), preset)].into_iter().collect(),
+            ..MoaConfig::default()
+        };
+        assert!(moa_complete(&config));
+        let preset = config.presets.get_mut("default").expect("preset");
+        preset.reference_models[0].model.clear();
+        assert!(!moa_complete(&config));
+        let preset = config.presets.get_mut("default").expect("preset");
+        preset.reference_models[0].model = "Hermes-4".into();
+        preset.reference_models.clear();
+        assert!(!moa_complete(&config));
+    }
 }

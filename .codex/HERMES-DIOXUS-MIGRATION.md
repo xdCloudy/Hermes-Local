@@ -474,3 +474,32 @@ block not yet ported.
 Exact next action: connect `/api/model/moa` load/save and reproduce the OG MoA
 preset/slot editor, then return to Project Centre repair and separately
 confirmed file deletion.
+
+## Mixture-of-Agents settings checkpoint (2026-08-11)
+
+The final large OG Model-settings block is now connected. `ModelService` treats
+`GET /api/model/moa` as an optional capability exactly like the source and
+round-trips the complete forward-compatible config through
+`PUT /api/model/moa`. Typed presets retain aggregator/reference slots,
+temperatures, token and timeout limits, degraded policy, per-slot reasoning,
+enabled state, fanout, and unknown future fields even where this first UI does
+not edit them.
+
+The pane reproduces the source hierarchy and controls: named preset selection,
+Enabled, Set default, Delete, clone-as-new preset, default identity, ordered
+reference rows and toggles, provider/model editors, Remove, Add reference, and
+the acting Aggregator row. The `moa` virtual provider is excluded from slot
+selectors to prevent recursive agent trees. Provider changes clear their stale
+model locally, and the completeness guard refuses to persist half-filled or
+reference-free presets; a focused unit test proves that hold behavior.
+
+The compatibility peer now also proves the profile-scoped MoA GET and exact
+whole-config PUT. Native 1296x809 QA covers the complete block at the bottom of
+the scrollable Model pane. A real WebView toggle persisted the balanced preset
+`true → false → true` while the fixture confirmed both reference slots and the
+`openai/gpt-5` aggregator were preserved. The workspace passes 28 unit tests
+plus doc-tests.
+
+Exact next action: implement the OG Project Centre repair operation and the
+separately confirmed delete-files flow, then move through the remaining
+settings sections in official source order.
