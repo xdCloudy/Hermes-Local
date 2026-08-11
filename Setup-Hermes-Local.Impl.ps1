@@ -351,15 +351,16 @@ function Install-HermesDependencies {
         UV_CACHE_DIR = (Resolve-HermesPath 'cache\uv')
     } -LogComponent setup
 
+    $clientRoot = Get-HermesRoot
     Invoke-HermesProcess -FilePath npm.cmd -ArgumentList @(
         'ci', '--cache', (Resolve-HermesPath 'cache\npm'), '--no-audit'
-    ) -WorkingDirectory $Source -LogComponent setup
+    ) -WorkingDirectory $clientRoot -LogComponent setup
 
-    $playwright = Join-Path $Source 'apps\desktop\node_modules\.bin\playwright.cmd'
+    $playwright = Join-Path $clientRoot 'node_modules\.bin\playwright.cmd'
     if (Test-Path -LiteralPath $playwright -PathType Leaf) {
         Invoke-HermesProcess -FilePath $playwright -ArgumentList @(
             'install', 'chromium'
-        ) -WorkingDirectory (Join-Path $Source 'apps\desktop') -Environment @{
+        ) -WorkingDirectory (Resolve-HermesPath 'apps\desktop') -Environment @{
             PLAYWRIGHT_BROWSERS_PATH = (Resolve-HermesPath 'runtimes\tools\playwright')
         } -LogComponent setup
     }
@@ -529,9 +530,9 @@ try {
         -Repository $manifest.sources.hermesAgent.repository `
         -Branch $manifest.sources.hermesAgent.branch `
         -Commit $manifest.sources.hermesAgent.commit `
-        -IntegrationBranch $manifest.sources.hermesAgent.integrationBranch `
-        -IntegrationCommit $manifest.sources.hermesAgent.integrationCommit `
-        -IntegrationTree $manifest.sources.hermesAgent.integrationTree `
+        -IntegrationBranch $manifest.sources.hermesAgent.harnessBranch `
+        -IntegrationCommit $manifest.sources.hermesAgent.harnessCommit `
+        -IntegrationTree $manifest.sources.hermesAgent.harnessTree `
         -PatchDirectory (Resolve-HermesPath 'source\hermes-launcher\patches')
 
     $llamaSource = Resolve-HermesPath 'runtimes\llama.cpp\source'

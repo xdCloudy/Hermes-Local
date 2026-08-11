@@ -1,0 +1,241 @@
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+
+import { AboutHub, buildSupportSummary, detectInstallationType } from './about-hub'
+import type { LocalWorkstationSnapshot } from './types'
+
+function makeSnapshot(overrides: Partial<LocalWorkstationSnapshot> = {}): LocalWorkstationSnapshot {
+  return {
+    actions: {
+      backup: true,
+      benchmark: true,
+      diagnostics: true,
+      'model-download': true,
+      repair: true,
+      restart: true,
+      restore: true,
+      security: true,
+      start: true,
+      stop: true,
+      'switch-model': true,
+      test: true,
+      update: true
+    },
+    generatedAt: '2026-08-07T18:00:00.000Z',
+    gpu: {
+      memoryFreeMiB: 8192,
+      memoryTotalMiB: 12288,
+      memoryUsedMiB: 4096,
+      name: 'Fixture GPU',
+      powerWatts: 80,
+      temperatureCelsius: 48,
+      utilizationPercent: 20
+    },
+    hardware: {
+      cpu: 'Fixture CPU',
+      logicalProcessors: 20,
+      memoryFreeBytes: 32 * 1024 ** 3,
+      memoryTotalBytes: 64 * 1024 ** 3
+    },
+    health: { dashboard: true, hermes: true, model: true },
+    model: {
+      alias: 'fixture-model',
+      displayName: 'Fixture model',
+      filename: 'fixture.gguf',
+      installed: true,
+      license: 'Apache-2.0',
+      revision: 'a'.repeat(40)
+    },
+    models: [],
+    profiles: {
+      profiles: [{ contextTokens: 32768, name: 'Balanced' }],
+      schemaVersion: 1,
+      selected: 'Balanced'
+    },
+    reports: { benchmark: true, security: true },
+    root: 'D:\\Hermes-Local',
+    runtime: {
+      controllerAlive: true,
+      hermesAlive: true,
+      modelAlive: true,
+      profile: 'Balanced'
+    },
+    settings: {
+      autoTuning: {},
+      network: { hermesPort: 9119, host: '127.0.0.1', modelPort: 8011 },
+      runtime: { acceleration: 'cuda', pythonVersion: '3.13.14' },
+      selectedModelId: 'fixture-model',
+      selectedProfile: 'Balanced'
+    },
+    startup: {
+      available: true,
+      enabled: false,
+      executable: 'D:\\Hermes-Local\\Hermes Launcher.exe'
+    },
+    storage: { memoryFiles: 4, stateDatabaseBytes: 4096 },
+    taskLedger: '# Historical evidence',
+    tasks: [],
+    updates: {
+      installed: {
+        baseCommit: 'b'.repeat(40),
+        harnessCommit: 'c'.repeat(40),
+        harnessTree: 'd'.repeat(40),
+        patchCount: 67
+      },
+      latest: {
+        completedAt: '2026-08-07T17:55:00.000Z',
+        currentStage: null,
+        failure: null,
+        mode: 'Check',
+        operationId: 'update-check',
+        progress: { completed: 1, percent: 100, total: 1 },
+        recovery: {
+          previousOperationId: null,
+          recoveredLockPath: null,
+          staleLockRecovered: false
+        },
+        reportPath: null,
+        requestedAt: '2026-08-07T17:54:00.000Z',
+        result: null,
+        stageResults: {},
+        status: 'succeeded',
+        taskId: 'update-task',
+        target: {
+          candidate: 'e'.repeat(40),
+          current: 'b'.repeat(40),
+          updateAvailable: true
+        },
+        updatedAt: '2026-08-07T17:55:00.000Z'
+      }
+    },
+    version: {
+      product: {
+        channel: 'development',
+        name: 'Hermes Launcher',
+        status: 'development',
+        version: '0.18.59'
+      },
+      recordedAt: '2026-08-07T18:00:00.000Z',
+      sources: {
+        hermesAgent: {
+          commit: 'b'.repeat(40),
+          harnessCommit: 'c'.repeat(40),
+          harnessTree: 'd'.repeat(40)
+        },
+        llamaCpp: { commit: 'f'.repeat(40) }
+      }
+    },
+    ...overrides
+  } as unknown as LocalWorkstationSnapshot
+}
+
+function installBridge() {
+  const openPath = vi.fn(async (relativePath: string) => ({ error: '', ok: true, path: `D:\\Hermes-Local\\${relativePath}` }))
+  const openRoot = vi.fn(async () => ({ error: '', ok: true }))
+  const openExternal = vi.fn(async () => true)
+  const writeText = vi.fn(async () => undefined)
+
+  Object.defineProperty(window, 'hermesDesktop', {
+    configurable: true,
+    value: {
+      localWorkstation: { openPath, openRoot },
+      openExternal
+    }
+  })
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText }
+  })
+
+  return { openExternal, openPath, openRoot, writeText }
+}
+
+describe('About diagnostics hub', () => {
+  it('degrades safely when build and profile metadata are unavailable', () => {
+    installBridge()
+    render(<AboutHub onNavigate={vi.fn()} onRun={vi.fn()} snapshot={makeSnapshot({ profiles: null, version: null })} />)
+
+    expect(screen.getAllByText(/Build metadata is unavailable/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Balanced').length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: /Open installation folder/i })).toBeTruthy()
+  })
+
+  it('distinguishes installed, running and available component state', () => {
+    installBridge()
+    render(<AboutHub onNavigate={vi.fn()} onRun={vi.fn()} snapshot={makeSnapshot()} />)
+
+    expect(screen.getByRole('columnheader', { name: 'Installed' })).toBeTruthy()
+    expect(screen.getByRole('columnheader', { name: 'Running' })).toBeTruthy()
+    expect(screen.getByRole('columnheader', { name: 'Available / source' })).toBeTruthy()
+    expect(screen.getByText('Check · succeeded')).toBeTruthy()
+  })
+
+  it('requires diagnostic preview before export', () => {
+    installBridge()
+    const onRun = vi.fn()
+    render(<AboutHub onNavigate={vi.fn()} onRun={onRun} snapshot={makeSnapshot()} />)
+
+    const exportButton = screen.getByRole('button', { name: 'Export diagnostic bundle' })
+    expect(exportButton.hasAttribute('disabled')).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview diagnostic export' }))
+    expect(screen.getByText(/Excluded: tokens, API keys, passwords/i)).toBeTruthy()
+    expect(exportButton.hasAttribute('disabled')).toBe(false)
+
+    fireEvent.click(exportButton)
+    expect(onRun).toHaveBeenCalledWith('diagnostics')
+  })
+
+  it('redacts exact paths from the default support summary', () => {
+    const redacted = buildSupportSummary(makeSnapshot(), false)
+    const exact = buildSupportSummary(makeSnapshot(), true)
+
+    expect(redacted).toContain('<INSTALLATION_ROOT>')
+    expect(redacted).not.toContain('D:\\Hermes-Local')
+    expect(redacted).toContain('exact personal paths are excluded by default')
+    expect(exact).toContain('D:\\Hermes-Local')
+  })
+
+  it('detects installed, portable and development launch modes', () => {
+    expect(detectInstallationType(makeSnapshot())).toBe('Installed')
+    expect(detectInstallationType(makeSnapshot({
+      startup: { available: true, enabled: false, executable: 'D:\\Portable\\Hermes-Launcher-portable.exe' }
+    }))).toBe('Portable')
+    expect(detectInstallationType(makeSnapshot({
+      startup: { available: true, enabled: false, executable: 'D:\\Hermes-Local\\node_modules\\electron\\electron.exe' }
+    }))).toBe('Development checkout')
+  })
+
+  it('reveals each important path through the bounded path bridge', () => {
+    const { openPath } = installBridge()
+    render(<AboutHub onNavigate={vi.fn()} onRun={vi.fn()} snapshot={makeSnapshot()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reveal Models' }))
+    expect(openPath).toHaveBeenCalledWith('models')
+  })
+
+  it('routes project links through the desktop external-link boundary', () => {
+    const { openExternal } = installBridge()
+    render(<AboutHub onNavigate={vi.fn()} onRun={vi.fn()} snapshot={makeSnapshot()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Issue tracker/i }))
+    expect(openExternal).toHaveBeenCalledWith('https://github.com/xdCloudy/Hermes-Local/issues')
+    expect(screen.getByText(/Apache-2.0/)).toBeTruthy()
+  })
+
+  it('keeps the hub horizontally safe and remains useful offline', () => {
+    installBridge()
+    render(<AboutHub
+      onNavigate={vi.fn()}
+      onRun={vi.fn()}
+      snapshot={makeSnapshot({
+        health: { dashboard: false, hermes: false, model: false },
+        model: undefined
+      })}
+    />)
+
+    expect(screen.getByTestId('about-diagnostics-hub').className).toContain('min-w-0')
+    expect(screen.getAllByText('Not running').length).toBeGreaterThan(0)
+    expect(screen.getByText('Installation health')).toBeTruthy()
+  })
+})

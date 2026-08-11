@@ -1,0 +1,1161 @@
+From f7fcb7f40919168fa9af686111ed47996fd17089 Mon Sep 17 00:00:00 2001
+From: Hermes Local Integration <hermes-local-ci@localhost>
+Date: Mon, 3 Aug 2026 07:30:00 +0100
+Subject: [PATCH] feat: add stable project identity and path recovery
+
+---
+ hermes_cli/projects_db.py              | 487 +++++++++++++++++++++++--
+ tests/hermes_cli/test_projects_db.py   | 150 +++++++-
+ tests/tui_gateway/test_project_tree.py |  28 ++
+ tests/tui_gateway/test_projects_rpc.py | 104 ++++++
+ tui_gateway/project_tree.py            |   3 +-
+ tui_gateway/server.py                  |  81 +++-
+ 6 files changed, 810 insertions(+), 43 deletions(-)
+
+diff --git a/hermes_cli/projects_db.py b/hermes_cli/projects_db.py
+index 53bead222..704815809 100644
+--- a/hermes_cli/projects_db.py
++++ b/hermes_cli/projects_db.py
+@@ -63,22 +63,42 @@ CREATE TABLE IF NOT EXISTS projects (
+     icon          TEXT,
+     color         TEXT,
+     board_slug    TEXT,
+-    primary_path  TEXT,
+-    created_at    INTEGER NOT NULL,
+-    archived      INTEGER NOT NULL DEFAULT 0
++    primary_path    TEXT,
++    created_at      INTEGER NOT NULL,
++    last_opened_at  INTEGER,
++    last_active_at  INTEGER,
++    path_state      TEXT NOT NULL DEFAULT 'missing',
++    archived        INTEGER NOT NULL DEFAULT 0
+ );
+ 
+ CREATE TABLE IF NOT EXISTS project_folders (
+     project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+     path        TEXT NOT NULL,
+-    label       TEXT,
+-    is_primary  INTEGER NOT NULL DEFAULT 0,
+-    added_at    INTEGER NOT NULL,
++    label           TEXT,
++    is_primary      INTEGER NOT NULL DEFAULT 0,
++    added_at        INTEGER NOT NULL,
++    path_key        TEXT,
++    repository_id   TEXT,
++    path_state      TEXT NOT NULL DEFAULT 'missing',
++    last_checked_at INTEGER,
+     PRIMARY KEY (project_id, path)
+ );
+ 
+ CREATE INDEX IF NOT EXISTS idx_project_folders_path
+     ON project_folders(path);
++CREATE TABLE IF NOT EXISTS project_path_aliases (
++    project_id     TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
++    path           TEXT NOT NULL,
++    path_key       TEXT NOT NULL,
++    repository_id  TEXT,
++    replaced_at    INTEGER NOT NULL,
++    PRIMARY KEY (project_id, path_key)
++);
++
++CREATE INDEX IF NOT EXISTS idx_project_path_aliases_path_key
++    ON project_path_aliases(path_key);
++CREATE INDEX IF NOT EXISTS idx_project_path_aliases_repository_id
++    ON project_path_aliases(repository_id);
+ 
+ CREATE TABLE IF NOT EXISTS project_meta (
+     key    TEXT PRIMARY KEY,
+@@ -145,6 +165,52 @@ def _normalize_path(path: str) -> str:
+     return p.rstrip("/\\") or p
+ 
+ 
++def _path_key(path: str) -> str:
++    """Stable comparison key for a canonical path on the current platform."""
++    return os.path.normcase(os.path.realpath(_normalize_path(path)))
++
++
++def _path_state(path: str) -> str:
++    """Return available, missing or inaccessible without mutating the path."""
++    try:
++        os.stat(path)
++        return "available"
++    except FileNotFoundError:
++        return "missing"
++    except (PermissionError, OSError):
++        return "inaccessible"
++
++
++def normalize_repository_identity(identity: Optional[str]) -> Optional[str]:
++    """Normalize an optional repository identity for duplicate/move detection.
++
++    Callers normally supply a remote URL or another stable repository token.
++    Local paths remain valid identities, but are normalized through ``_path_key``.
++    """
++    if identity is None:
++        return None
++    value = str(identity).strip()
++    if not value:
++        return None
++    if re.match(r"^[A-Za-z]:[\\/]", value) or value.startswith(("/", "~")):
++        return "path:" + _path_key(value)
++    scp = re.match(r"^(?:[^@]+@)?([^:]+):(.+)$", value)
++    if scp and "://" not in value:
++        value = f"{scp.group(1)}/{scp.group(2)}"
++    value = re.sub(r"^[a-z][a-z0-9+.-]*://", "", value, flags=re.I)
++    value = value.split("#", 1)[0].split("?", 1)[0]
++    value = re.sub(r"^[^/@]+@", "", value).strip().rstrip("/")
++    if value.lower().endswith(".git"):
++        value = value[:-4]
++    return value.lower() or None
++
++
++def _is_under(parent: str, child: str) -> bool:
++    parent_key = _path_key(parent)
++    child_key = _path_key(child)
++    return child_key == parent_key or child_key.startswith(parent_key + os.sep)
++
++
+ # ---------------------------------------------------------------------------
+ # Connection management
+ # ---------------------------------------------------------------------------
+@@ -198,17 +264,70 @@ def connect_closing(db_path: Optional[Path] = None):
+             pass
+ 
+ 
+-# TEXT columns added to `projects` after v1; re-applied idempotently on every
+-# open so a legacy DB upgrades in place.
+-_OPTIONAL_PROJECT_COLUMNS = ("board_slug", "primary_path", "icon", "color")
++# Columns introduced after the original projects.db schema. Re-applied
++# idempotently so legacy profiles upgrade in place without losing ids.
++_OPTIONAL_PROJECT_TEXT_COLUMNS = ("board_slug", "primary_path", "icon", "color")
++_OPTIONAL_PROJECT_INTEGER_COLUMNS = ("last_opened_at", "last_active_at")
++_OPTIONAL_FOLDER_TEXT_COLUMNS = ("path_key", "repository_id", "path_state")
++_OPTIONAL_FOLDER_INTEGER_COLUMNS = ("last_checked_at",)
+ 
+ 
+ def _migrate_add_optional_columns(conn: sqlite3.Connection) -> None:
+-    """Add columns introduced after v1 to legacy DBs (safe on every open)."""
+-    cols = {row["name"] for row in conn.execute("PRAGMA table_info(projects)")}
+-    for col in _OPTIONAL_PROJECT_COLUMNS:
+-        if col not in cols:
++    """Upgrade legacy project rows into the stable registry schema."""
++    project_cols = {row["name"] for row in conn.execute("PRAGMA table_info(projects)")}
++    for col in _OPTIONAL_PROJECT_TEXT_COLUMNS:
++        if col not in project_cols:
+             _add_column_if_missing(conn, "projects", col, f"{col} TEXT")
++    for col in _OPTIONAL_PROJECT_INTEGER_COLUMNS:
++        if col not in project_cols:
++            _add_column_if_missing(conn, "projects", col, f"{col} INTEGER")
++    if "path_state" not in project_cols:
++        _add_column_if_missing(conn, "projects", "path_state", "path_state TEXT NOT NULL DEFAULT 'missing'")
++
++    folder_cols = {row["name"] for row in conn.execute("PRAGMA table_info(project_folders)")}
++    for col in _OPTIONAL_FOLDER_TEXT_COLUMNS:
++        if col not in folder_cols:
++            definition = f"{col} TEXT"
++            if col == "path_state":
++                definition = "path_state TEXT NOT NULL DEFAULT 'missing'"
++            _add_column_if_missing(conn, "project_folders", col, definition)
++    for col in _OPTIONAL_FOLDER_INTEGER_COLUMNS:
++        if col not in folder_cols:
++            _add_column_if_missing(conn, "project_folders", col, f"{col} INTEGER")
++
++    conn.executescript(
++        """
++        CREATE TABLE IF NOT EXISTS project_path_aliases (
++            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
++            path TEXT NOT NULL,
++            path_key TEXT NOT NULL,
++            repository_id TEXT,
++            replaced_at INTEGER NOT NULL,
++            PRIMARY KEY (project_id, path_key)
++        );
++        CREATE INDEX IF NOT EXISTS idx_project_folders_path_key ON project_folders(path_key);
++        CREATE INDEX IF NOT EXISTS idx_project_folders_repository_id ON project_folders(repository_id);
++        CREATE INDEX IF NOT EXISTS idx_project_path_aliases_path_key ON project_path_aliases(path_key);
++        CREATE INDEX IF NOT EXISTS idx_project_path_aliases_repository_id ON project_path_aliases(repository_id);
++        """
++    )
++
++    now = _now()
++    with write_txn(conn):
++        rows = conn.execute(
++            "SELECT project_id, path, path_key, path_state FROM project_folders"
++        ).fetchall()
++        for row in rows:
++            key = row["path_key"] or _path_key(row["path"])
++            state = row["path_state"] or _path_state(row["path"])
++            conn.execute(
++                "UPDATE project_folders SET path_key = ?, path_state = ?, "
++                "last_checked_at = COALESCE(last_checked_at, ?) "
++                "WHERE project_id = ? AND path = ?",
++                (key, state, now, row["project_id"], row["path"]),
++            )
++        for project_id in [r["id"] for r in conn.execute("SELECT id FROM projects")]:
++            _refresh_project_state_locked(conn, project_id)
+ 
+ 
+ # ---------------------------------------------------------------------------
+@@ -222,6 +341,10 @@ class ProjectFolder:
+     label: Optional[str] = None
+     is_primary: bool = False
+     added_at: int = 0
++    path_key: Optional[str] = None
++    repository_id: Optional[str] = None
++    path_state: str = "missing"
++    last_checked_at: Optional[int] = None
+ 
+     def to_dict(self) -> dict:
+         return {
+@@ -229,6 +352,10 @@ class ProjectFolder:
+             "label": self.label,
+             "is_primary": bool(self.is_primary),
+             "added_at": self.added_at,
++            "path_key": self.path_key,
++            "repository_id": self.repository_id,
++            "path_state": self.path_state,
++            "last_checked_at": self.last_checked_at,
+         }
+ 
+ 
+@@ -243,8 +370,12 @@ class Project:
+     color: Optional[str] = None
+     board_slug: Optional[str] = None
+     primary_path: Optional[str] = None
++    last_opened_at: Optional[int] = None
++    last_active_at: Optional[int] = None
++    path_state: str = "missing"
+     archived: bool = False
+     folders: List[ProjectFolder] = field(default_factory=list)
++    path_aliases: List[dict] = field(default_factory=list)
+ 
+     def to_dict(self) -> dict:
+         return {
+@@ -258,7 +389,11 @@ class Project:
+             "primary_path": self.primary_path,
+             "archived": bool(self.archived),
+             "created_at": self.created_at,
++            "last_opened_at": self.last_opened_at,
++            "last_active_at": self.last_active_at,
++            "path_state": self.path_state,
+             "folders": [f.to_dict() for f in self.folders],
++            "path_aliases": list(self.path_aliases),
+         }
+ 
+ 
+@@ -274,13 +409,17 @@ def _project_from_row(row: sqlite3.Row) -> Project:
+         color=row["color"] if "color" in keys else None,
+         board_slug=row["board_slug"] if "board_slug" in keys else None,
+         primary_path=row["primary_path"] if "primary_path" in keys else None,
++        last_opened_at=row["last_opened_at"] if "last_opened_at" in keys else None,
++        last_active_at=row["last_active_at"] if "last_active_at" in keys else None,
++        path_state=(row["path_state"] if "path_state" in keys else None) or "missing",
+         archived=bool(row["archived"]) if "archived" in keys else False,
+     )
+ 
+ 
+ def _load_folders(conn: sqlite3.Connection, project_id: str) -> List[ProjectFolder]:
+     rows = conn.execute(
+-        "SELECT path, label, is_primary, added_at FROM project_folders "
++        "SELECT path, label, is_primary, added_at, path_key, repository_id, "
++        "path_state, last_checked_at FROM project_folders "
+         "WHERE project_id = ? ORDER BY is_primary DESC, added_at ASC",
+         (project_id,),
+     ).fetchall()
+@@ -290,6 +429,10 @@ def _load_folders(conn: sqlite3.Connection, project_id: str) -> List[ProjectFold
+             label=r["label"],
+             is_primary=bool(r["is_primary"]),
+             added_at=r["added_at"],
++            path_key=r["path_key"],
++            repository_id=r["repository_id"],
++            path_state=r["path_state"] or "missing",
++            last_checked_at=r["last_checked_at"],
+         )
+         for r in rows
+     ]
+@@ -297,9 +440,83 @@ def _load_folders(conn: sqlite3.Connection, project_id: str) -> List[ProjectFold
+ 
+ def _attach_folders(conn: sqlite3.Connection, project: Project) -> Project:
+     project.folders = _load_folders(conn, project.id)
++    project.path_aliases = [
++        {
++            "path": row["path"],
++            "path_key": row["path_key"],
++            "repository_id": row["repository_id"],
++            "replaced_at": row["replaced_at"],
++        }
++        for row in conn.execute(
++            "SELECT path, path_key, repository_id, replaced_at "
++            "FROM project_path_aliases WHERE project_id = ? ORDER BY replaced_at DESC",
++            (project.id,),
++        ).fetchall()
++    ]
+     return project
+ 
+ 
++def _project_state_from_folder_states(states: Iterable[str]) -> str:
++    values = list(states)
++    if "moved" in values:
++        return "moved"
++    if "available" in values:
++        return "available"
++    if "inaccessible" in values:
++        return "inaccessible"
++    return "missing"
++
++
++def _refresh_project_state_locked(conn: sqlite3.Connection, project_id: str) -> str:
++    states = [
++        row["path_state"] or "missing"
++        for row in conn.execute(
++            "SELECT path_state FROM project_folders WHERE project_id = ?",
++            (project_id,),
++        ).fetchall()
++    ]
++    state = _project_state_from_folder_states(states)
++    conn.execute("UPDATE projects SET path_state = ? WHERE id = ?", (state, project_id))
++    return state
++
++
++def _assert_registry_identity_available(
++    conn: sqlite3.Connection,
++    project_id: str,
++    *,
++    path: Optional[str] = None,
++    repository_id: Optional[str] = None,
++) -> None:
++    if path:
++        key = _path_key(path)
++        row = conn.execute(
++            "SELECT project_id FROM project_folders WHERE path_key = ? AND project_id <> ? LIMIT 1",
++            (key, project_id),
++        ).fetchone()
++        if row is None:
++            row = conn.execute(
++                "SELECT project_id FROM project_path_aliases WHERE path_key = ? AND project_id <> ? LIMIT 1",
++                (key, project_id),
++            ).fetchone()
++        if row is not None:
++            raise ValueError(f"project path is already registered by {row['project_id']}: {path}")
++    repo = normalize_repository_identity(repository_id)
++    if repo:
++        row = conn.execute(
++            "SELECT project_id FROM project_folders "
++            "WHERE repository_id = ? AND project_id <> ? LIMIT 1",
++            (repo, project_id),
++        ).fetchone()
++        if row is None:
++            row = conn.execute(
++                "SELECT project_id FROM project_path_aliases "
++                "WHERE repository_id = ? AND project_id <> ? LIMIT 1",
++                (repo, project_id),
++            ).fetchone()
++        if row is not None:
++            raise ValueError(f"repository is already registered by {row['project_id']}: {repo}")
++
++
+ # ---------------------------------------------------------------------------
+ # CRUD
+ # ---------------------------------------------------------------------------
+@@ -330,6 +547,7 @@ def create_project(
+     icon: Optional[str] = None,
+     color: Optional[str] = None,
+     board_slug: Optional[str] = None,
++    repository_id: Optional[str] = None,
+ ) -> str:
+     """Create a project and return its id.
+ 
+@@ -346,10 +564,13 @@ def create_project(
+     now = _now()
+ 
+     folder_paths: List[str] = []
++    folder_keys: set[str] = set()
+     for f in folders or []:
+         norm = _normalize_path(f)
+-        if norm and norm not in folder_paths:
++        key = _path_key(norm)
++        if norm and key not in folder_keys:
+             folder_paths.append(norm)
++            folder_keys.add(key)
+ 
+     primary = _normalize_path(primary_path) if primary_path else None
+     if primary and primary not in folder_paths:
+@@ -357,13 +578,19 @@ def create_project(
+     if primary is None and folder_paths:
+         primary = folder_paths[0]
+ 
++    repo_identity = normalize_repository_identity(repository_id)
++    for folder_path in folder_paths:
++        _assert_registry_identity_available(
++            conn, pid, path=folder_path, repository_id=repo_identity if folder_path == primary else None
++        )
++
+     with write_txn(conn):
+         unique = _unique_slug(conn, slug_candidate)
+         conn.execute(
+             "INSERT INTO projects "
+             "(id, slug, name, description, icon, color, board_slug, "
+-            " primary_path, created_at, archived) "
+-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
++            " primary_path, created_at, last_opened_at, last_active_at, path_state, archived) "
++            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, 0)",
+             (
+                 pid,
+                 unique,
+@@ -374,14 +601,26 @@ def create_project(
+                 normalize_slug(board_slug) if board_slug else None,
+                 primary,
+                 now,
++                _project_state_from_folder_states(_path_state(path) for path in folder_paths),
+             ),
+         )
+         for path in folder_paths:
+             conn.execute(
+                 "INSERT INTO project_folders "
+-                "(project_id, path, label, is_primary, added_at) "
+-                "VALUES (?, ?, ?, ?, ?)",
+-                (pid, path, None, 1 if path == primary else 0, now),
++                "(project_id, path, label, is_primary, added_at, path_key, "
++                " repository_id, path_state, last_checked_at) "
++                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                (
++                    pid,
++                    path,
++                    None,
++                    1 if path == primary else 0,
++                    now,
++                    _path_key(path),
++                    repo_identity if path == primary else None,
++                    _path_state(path),
++                    now,
++                ),
+             )
+     return pid
+ 
+@@ -466,6 +705,7 @@ def add_folder(
+     *,
+     label: Optional[str] = None,
+     is_primary: bool = False,
++    repository_id: Optional[str] = None,
+ ) -> str:
+     """Add a folder to a project. Returns the normalized path.
+ 
+@@ -478,12 +718,24 @@ def add_folder(
+     if get_project(conn, project_id) is None:
+         raise ValueError(f"no such project: {project_id}")
+     now = _now()
++    repo_identity = normalize_repository_identity(repository_id)
++    duplicate = conn.execute(
++        "SELECT path FROM project_folders WHERE project_id = ? AND path_key = ? LIMIT 1",
++        (project_id, _path_key(norm)),
++    ).fetchone()
++    if duplicate is not None:
++        raise ValueError(f"project path is already registered by {project_id}: {duplicate['path']}")
++    _assert_registry_identity_available(
++        conn, project_id, path=norm, repository_id=repo_identity
++    )
++    state = _path_state(norm)
+     with write_txn(conn):
+         conn.execute(
+             "INSERT OR IGNORE INTO project_folders "
+-            "(project_id, path, label, is_primary, added_at) "
+-            "VALUES (?, ?, ?, 0, ?)",
+-            (project_id, norm, label, now),
++            "(project_id, path, label, is_primary, added_at, path_key, "
++            " repository_id, path_state, last_checked_at) "
++            "VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?)",
++            (project_id, norm, label, now, _path_key(norm), repo_identity, state, now),
+         )
+         if label is not None:
+             conn.execute(
+@@ -502,6 +754,7 @@ def add_folder(
+             ).fetchone()
+             if existing_primary is None:
+                 _set_primary_locked(conn, project_id, norm)
++        _refresh_project_state_locked(conn, project_id)
+     return norm
+ 
+ 
+@@ -532,6 +785,7 @@ def remove_folder(conn: sqlite3.Connection, project_id: str, path: str) -> bool:
+                     "UPDATE projects SET primary_path = NULL WHERE id = ?",
+                     (project_id,),
+                 )
++        _refresh_project_state_locked(conn, project_id)
+     return cur.rowcount > 0
+ 
+ 
+@@ -605,6 +859,13 @@ def set_active(conn: sqlite3.Connection, project_id: Optional[str]) -> None:
+         if project_id is None:
+             conn.execute("DELETE FROM project_meta WHERE key = ?", (_ACTIVE_META_KEY,))
+         else:
++            if get_project(conn, project_id) is None:
++                raise ValueError(f"no such project: {project_id}")
++            now = _now()
++            conn.execute(
++                "UPDATE projects SET last_opened_at = ?, last_active_at = ? WHERE id = ?",
++                (now, now, project_id),
++            )
+             conn.execute(
+                 "INSERT INTO project_meta (key, value) VALUES (?, ?) "
+                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+@@ -742,26 +1003,184 @@ def project_for_path(
+     if not str(path or "").strip():
+         return None
+     target = _normalize_path(path)
+-    sql = (
++    filters = "" if include_archived else " WHERE p.archived = 0"
++    rows = conn.execute(
+         "SELECT pf.project_id AS pid, pf.path AS folder "
+-        "FROM project_folders pf JOIN projects p ON p.id = pf.project_id"
+-    )
+-    if not include_archived:
+-        sql += " WHERE p.archived = 0"
++        "FROM project_folders pf JOIN projects p ON p.id = pf.project_id" + filters
++    ).fetchall()
++    rows += conn.execute(
++        "SELECT pa.project_id AS pid, pa.path AS folder "
++        "FROM project_path_aliases pa JOIN projects p ON p.id = pa.project_id" + filters
++    ).fetchall()
+     best_pid: Optional[str] = None
+     best_len = -1
+-    for row in conn.execute(sql).fetchall():
++    for row in rows:
+         folder = row["folder"]
+-        if target == folder or target.startswith(folder.rstrip("/\\") + os.sep) or \
+-                target.startswith(folder.rstrip("/\\") + "/"):
+-            if len(folder) > best_len:
+-                best_len = len(folder)
+-                best_pid = row["pid"]
++        if _is_under(folder, target) and len(folder) > best_len:
++            best_len = len(folder)
++            best_pid = row["pid"]
+     if best_pid is None:
+         return None
+     return get_project(conn, best_pid)
+ 
+ 
++def project_for_repository(
++    conn: sqlite3.Connection, repository_id: str, *, include_archived: bool = False
++) -> Optional[Project]:
++    repo = normalize_repository_identity(repository_id)
++    if not repo:
++        return None
++    filters = "" if include_archived else " AND p.archived = 0"
++    row = conn.execute(
++        "SELECT pf.project_id AS pid FROM project_folders pf "
++        "JOIN projects p ON p.id = pf.project_id "
++        "WHERE pf.repository_id = ?" + filters + " LIMIT 1",
++        (repo,),
++    ).fetchone()
++    if row is None:
++        row = conn.execute(
++            "SELECT pa.project_id AS pid FROM project_path_aliases pa "
++            "JOIN projects p ON p.id = pa.project_id "
++            "WHERE pa.repository_id = ?" + filters + " LIMIT 1",
++            (repo,),
++        ).fetchone()
++    return get_project(conn, row["pid"]) if row else None
++
++
++def refresh_registry(
++    conn: sqlite3.Connection, project_id: Optional[str] = None
++) -> List[Project]:
++    """Probe registered paths and persist available/missing/inaccessible state."""
++    now = _now()
++    params: tuple[object, ...] = ()
++    sql = "SELECT project_id, path FROM project_folders"
++    if project_id is not None:
++        sql += " WHERE project_id = ?"
++        params = (project_id,)
++    rows = conn.execute(sql, params).fetchall()
++    touched: set[str] = set()
++    with write_txn(conn):
++        for row in rows:
++            state = _path_state(row["path"])
++            conn.execute(
++                "UPDATE project_folders SET path_key = ?, path_state = ?, "
++                "last_checked_at = ? WHERE project_id = ? AND path = ?",
++                (_path_key(row["path"]), state, now, row["project_id"], row["path"]),
++            )
++            touched.add(row["project_id"])
++        for pid in touched:
++            _refresh_project_state_locked(conn, pid)
++    if project_id is not None:
++        project = get_project(conn, project_id)
++        return [project] if project else []
++    return list_projects(conn, include_archived=True)
++
++
++def repair_project_path(
++    conn: sqlite3.Connection,
++    project_id: str,
++    old_path: str,
++    new_path: str,
++    *,
++    repository_id: Optional[str] = None,
++) -> Project:
++    """Move one registered folder without changing the stable project id.
++
++    The old canonical path is retained as an alias so sessions, tasks and other
++    legacy references continue to resolve to the same project after relocation.
++    """
++    old_norm = _normalize_path(old_path)
++    new_norm = _normalize_path(new_path)
++    row = conn.execute(
++        "SELECT * FROM project_folders WHERE project_id = ? AND path = ?",
++        (project_id, old_norm),
++    ).fetchone()
++    if row is None:
++        raise ValueError(f"folder is not registered by {project_id}: {old_norm}")
++    repo = normalize_repository_identity(repository_id) or row["repository_id"]
++    duplicate = conn.execute(
++        "SELECT path FROM project_folders WHERE project_id = ? AND path_key = ? AND path <> ? LIMIT 1",
++        (project_id, _path_key(new_norm), old_norm),
++    ).fetchone()
++    if duplicate is not None:
++        raise ValueError(f"project path is already registered by {project_id}: {duplicate['path']}")
++    _assert_registry_identity_available(conn, project_id, path=new_norm, repository_id=repo)
++    now = _now()
++    with write_txn(conn):
++        conn.execute(
++            "INSERT INTO project_path_aliases "
++            "(project_id, path, path_key, repository_id, replaced_at) "
++            "VALUES (?, ?, ?, ?, ?) "
++            "ON CONFLICT(project_id, path_key) DO UPDATE SET "
++            "path = excluded.path, repository_id = excluded.repository_id, "
++            "replaced_at = excluded.replaced_at",
++            (project_id, old_norm, _path_key(old_norm), row["repository_id"], now),
++        )
++        conn.execute(
++            "UPDATE project_folders SET path = ?, path_key = ?, repository_id = ?, "
++            "path_state = 'moved', last_checked_at = ? "
++            "WHERE project_id = ? AND path = ?",
++            (new_norm, _path_key(new_norm), repo, now, project_id, old_norm),
++        )
++        if row["is_primary"]:
++            conn.execute(
++                "UPDATE projects SET primary_path = ?, path_state = 'moved', "
++                "last_opened_at = COALESCE(last_opened_at, ?) WHERE id = ?",
++                (new_norm, now, project_id),
++            )
++        else:
++            _refresh_project_state_locked(conn, project_id)
++    project = get_project(conn, project_id)
++    if project is None:
++        raise ValueError(f"no such project: {project_id}")
++    return project
++
++
++def migrate_legacy_references(
++    conn: sqlite3.Connection,
++    references: Iterable[str],
++    *,
++    installation_root: Optional[str] = None,
++) -> List[dict]:
++    """Resolve legacy cwd/workspace references without implicitly creating rows."""
++    results: List[dict] = []
++    install = _normalize_path(installation_root) if installation_root else None
++    for raw in references:
++        value = str(raw or "").strip()
++        if not value:
++            results.append({"path": value, "project_id": None, "status": "projectless"})
++            continue
++        path = _normalize_path(value)
++        project = project_for_path(conn, path, include_archived=True)
++        if project is not None:
++            results.append({"path": path, "project_id": project.id, "status": "resolved"})
++        elif install and _is_under(install, path):
++            results.append({"path": path, "project_id": None, "status": "installation-excluded"})
++        else:
++            results.append({"path": path, "project_id": None, "status": "projectless"})
++    return results
++
++
++def touch_project(
++    conn: sqlite3.Connection, project_id: str, *, opened: bool = False, active: bool = False
++) -> bool:
++    if not opened and not active:
++        return False
++    now = _now()
++    sets = []
++    params: List[object] = []
++    if opened or active:
++        sets.append("last_opened_at = ?")
++        params.append(now)
++    if active:
++        sets.append("last_active_at = ?")
++        params.append(now)
++    params.append(project_id)
++    with write_txn(conn):
++        cur = conn.execute(f"UPDATE projects SET {', '.join(sets)} WHERE id = ?", params)
++    return cur.rowcount > 0
++
++
+ # Deterministic branch slug: lowercase, separators collapsed, capped.
+ _BRANCH_SAFE_RE = re.compile(r"[^a-z0-9._-]+")
+ 
+diff --git a/tests/hermes_cli/test_projects_db.py b/tests/hermes_cli/test_projects_db.py
+index fc0347eee..bf826b0bb 100644
+--- a/tests/hermes_cli/test_projects_db.py
++++ b/tests/hermes_cli/test_projects_db.py
+@@ -46,8 +46,9 @@ def test_create_get_list(conn):
+     assert proj.slug == "hermes-agent"
+     assert proj.name == "Hermes Agent"
+     # First folder becomes primary.
+-    assert proj.primary_path == "/tmp/hermes"
+-    assert [f.path for f in proj.folders] == ["/tmp/hermes"]
++    expected_path = pdb._normalize_path("/tmp/hermes")
++    assert proj.primary_path == expected_path
++    assert [f.path for f in proj.folders] == [expected_path]
+     assert proj.folders[0].is_primary is True
+ 
+     # Lookup by slug too.
+@@ -93,7 +94,7 @@ def test_per_profile_isolation(tmp_path):
+         assert [p.slug for p in pdb.list_projects(a)] == ["only-in-a"]
+         assert pdb.list_projects(b) == []
+         assert [row["root"] for row in pdb.list_discovered_repos(a)] == [
+-            "/a/scanned"
++            pdb._normalize_path("/a/scanned")
+         ]
+         assert pdb.list_discovered_repos(b) == []
+     finally:
+@@ -101,3 +102,146 @@ def test_per_profile_isolation(tmp_path):
+         b.close()
+ 
+ 
++
++
++def test_project_identity_survives_rename_and_path_recovery(conn, tmp_path):
++    old = tmp_path / "old-name"
++    old.mkdir()
++    new = tmp_path / "new-name"
++    new.mkdir()
++
++    pid = pdb.create_project(
++        conn,
++        name="Original",
++        folders=[str(old)],
++        repository_id="https://github.com/example/demo.git",
++    )
++    pdb.update_project(conn, pid, name="Renamed")
++    repaired = pdb.repair_project_path(conn, pid, str(old), str(new))
++
++    assert repaired.id == pid
++    assert repaired.name == "Renamed"
++    assert repaired.primary_path == str(new)
++    assert repaired.path_state == "moved"
++    assert repaired.path_aliases[0]["path"] == str(old)
++    assert pdb.project_for_path(conn, str(old / "legacy-chat")).id == pid
++    assert pdb.project_for_path(conn, str(new / "current-chat")).id == pid
++    assert pdb.project_for_repository(conn, "git@github.com:example/demo.git").id == pid
++
++
++def test_registry_tracks_timestamps_and_path_states(conn, tmp_path, monkeypatch):
++    available = tmp_path / "available"
++    available.mkdir()
++    missing = tmp_path / "missing"
++    pid = pdb.create_project(conn, name="Stateful", folders=[str(available), str(missing)])
++
++    pdb.set_active(conn, pid)
++    project = pdb.get_project(conn, pid)
++    assert project.last_opened_at is not None
++    assert project.last_active_at is not None
++    assert project.path_state == "available"
++
++    available.rmdir()
++    refreshed = pdb.refresh_registry(conn, pid)[0]
++    assert refreshed.path_state == "missing"
++    assert {folder.path_state for folder in refreshed.folders} == {"missing"}
++
++    monkeypatch.setattr(pdb, "_path_state", lambda _path: "inaccessible")
++    inaccessible = pdb.refresh_registry(conn, pid)[0]
++    assert inaccessible.path_state == "inaccessible"
++
++
++def test_duplicate_path_and_repository_identity_are_rejected(conn, tmp_path):
++    first = tmp_path / "first"
++    first.mkdir()
++    second = tmp_path / "second"
++    second.mkdir()
++    pdb.create_project(
++        conn,
++        name="One",
++        folders=[str(first)],
++        repository_id="https://github.com/example/shared.git",
++    )
++
++    with pytest.raises(ValueError, match="path is already registered"):
++        pdb.create_project(conn, name="Duplicate path", folders=[str(first)])
++
++    with pytest.raises(ValueError, match="repository is already registered"):
++        pdb.create_project(
++            conn,
++            name="Duplicate repo",
++            folders=[str(second)],
++            repository_id="git@github.com:example/shared.git",
++        )
++
++
++def test_legacy_reference_migration_is_non_destructive_and_projectless(conn, tmp_path):
++    project_root = tmp_path / "project"
++    project_root.mkdir()
++    install_root = tmp_path / "Hermes-Local"
++    install_root.mkdir()
++    unrelated = tmp_path / "unrelated"
++    unrelated.mkdir()
++    pid = pdb.create_project(conn, name="Known", folders=[str(project_root)])
++
++    rows = pdb.migrate_legacy_references(
++        conn,
++        [str(project_root / "chat"), str(install_root / "source"), str(unrelated), ""],
++        installation_root=str(install_root),
++    )
++
++    assert rows == [
++        {"path": str(project_root / "chat"), "project_id": pid, "status": "resolved"},
++        {"path": str(install_root / "source"), "project_id": None, "status": "installation-excluded"},
++        {"path": str(unrelated), "project_id": None, "status": "projectless"},
++        {"path": "", "project_id": None, "status": "projectless"},
++    ]
++    assert len(pdb.list_projects(conn, include_archived=True)) == 1
++
++
++def test_legacy_database_migrates_in_place_without_changing_project_id(tmp_path):
++    import sqlite3
++
++    path = tmp_path / "legacy.db"
++    legacy = sqlite3.connect(path)
++    legacy.executescript(
++        """
++        CREATE TABLE projects (
++            id TEXT PRIMARY KEY,
++            slug TEXT NOT NULL UNIQUE,
++            name TEXT NOT NULL,
++            description TEXT,
++            primary_path TEXT,
++            created_at INTEGER NOT NULL,
++            archived INTEGER NOT NULL DEFAULT 0
++        );
++        CREATE TABLE project_folders (
++            project_id TEXT NOT NULL,
++            path TEXT NOT NULL,
++            label TEXT,
++            is_primary INTEGER NOT NULL DEFAULT 0,
++            added_at INTEGER NOT NULL,
++            PRIMARY KEY (project_id, path)
++        );
++        CREATE TABLE project_meta (key TEXT PRIMARY KEY, value TEXT);
++        CREATE TABLE discovered_repos (root TEXT PRIMARY KEY, label TEXT, last_seen INTEGER NOT NULL);
++        INSERT INTO projects (id, slug, name, primary_path, created_at, archived)
++        VALUES ('p_stable', 'stable', 'Stable', '/legacy/project', 1, 0);
++        INSERT INTO project_folders (project_id, path, is_primary, added_at)
++        VALUES ('p_stable', '/legacy/project', 1, 1);
++        """
++    )
++    legacy.commit()
++    legacy.close()
++
++    pdb._INITIALIZED_PATHS.discard(str(path.resolve()))
++    upgraded = pdb.connect(db_path=path)
++    try:
++        project = pdb.get_project(upgraded, "p_stable")
++        assert project.id == "p_stable"
++        assert project.folders[0].path_key
++        assert project.path_state == "missing"
++        columns = {row["name"] for row in upgraded.execute("PRAGMA table_info(projects)")}
++        assert {"last_opened_at", "last_active_at", "path_state"} <= columns
++    finally:
++        upgraded.close()
+diff --git a/tests/tui_gateway/test_project_tree.py b/tests/tui_gateway/test_project_tree.py
+index a5774097d..8ac24ab38 100644
+--- a/tests/tui_gateway/test_project_tree.py
++++ b/tests/tui_gateway/test_project_tree.py
+@@ -515,3 +515,31 @@ def test_colliding_repo_basenames_disambiguate_labels():
+     labels = sorted(p["label"] for p in tree["projects"])
+ 
+     assert labels == ["x/proj", "y/proj"]
++
++
++def test_explicit_project_path_alias_keeps_moved_session_association():
++    project = {
++        "id": "p_stable",
++        "name": "Stable",
++        "primary_path": "/repos/new",
++        "folders": [{"path": "/repos/new", "is_primary": True}],
++        "path_aliases": [{"path": "/repos/old", "replaced_at": 1}],
++    }
++    session = {
++        "id": "legacy-chat",
++        "cwd": "/repos/old/src",
++        "git_repo_root": "",
++        "git_branch": "",
++        "started_at": 1,
++        "last_active": 2,
++    }
++
++    tree = pt.build_tree([project], [session], [], resolve=lambda _cwd: None, hydrate=True)
++
++    stable = next(node for node in tree["projects"] if node["id"] == "p_stable")
++    assert [
++        row["id"]
++        for repo in stable["repos"]
++        for group in repo["groups"]
++        for row in group["sessions"]
++    ] == ["legacy-chat"]
+diff --git a/tests/tui_gateway/test_projects_rpc.py b/tests/tui_gateway/test_projects_rpc.py
+index cb9638420..c33540040 100644
+--- a/tests/tui_gateway/test_projects_rpc.py
++++ b/tests/tui_gateway/test_projects_rpc.py
+@@ -379,3 +379,107 @@ def test_nondefault_policy_rejects_stale_or_legacy_results(monkeypatch, tmp_path
+     assert any(item["root"] == str(root) for item in accepted["repos"])
+ 
+ 
++
++
++def test_registry_methods_registered_and_refresh_is_long_handler():
++    for method in (
++        "projects.for_repository",
++        "projects.registry_refresh",
++        "projects.recover_path",
++        "projects.migrate_references",
++    ):
++        assert method in server._methods
++    assert "projects.registry_refresh" in server._LONG_HANDLERS
++
++
++def test_recover_path_preserves_project_identity_and_legacy_resolution(tmp_path):
++    old = tmp_path / "old-project"
++    old.mkdir()
++    new = tmp_path / "renamed-project"
++    new.mkdir()
++    created = _call(
++        "projects.create",
++        {
++            "name": "Movable",
++            "folders": [str(old)],
++            "repository_id": "https://github.com/example/movable.git",
++        },
++    )["project"]
++
++    repaired = _call(
++        "projects.recover_path",
++        {"id": created["id"], "old_path": str(old), "new_path": str(new)},
++    )["project"]
++
++    assert repaired["id"] == created["id"]
++    assert repaired["primary_path"] == str(new)
++    assert repaired["path_state"] == "moved"
++    assert repaired["path_aliases"][0]["path"] == str(old)
++    migrated = _call("projects.migrate_references", {"references": [str(old / "legacy")]})
++    assert migrated["references"][0]["project_id"] == created["id"]
++    new.mkdir(exist_ok=True)
++    assert _call("projects.for_cwd", {"cwd": str(new)})["project"]["id"] == created["id"]
++    assert (
++        _call("projects.for_repository", {"repository_id": "git@github.com:example/movable.git"})[
++            "project"
++        ]["id"]
++        == created["id"]
++    )
++
++
++def test_duplicate_repository_registration_is_rejected(tmp_path):
++    first = tmp_path / "first"
++    second = tmp_path / "second"
++    first.mkdir()
++    second.mkdir()
++    _call(
++        "projects.create",
++        {
++            "name": "First",
++            "folders": [str(first)],
++            "repository_id": "https://github.com/example/shared.git",
++        },
++    )
++
++    response = server._methods["projects.create"](
++        1,
++        {
++            "name": "Second",
++            "folders": [str(second)],
++            "repository_id": "git@github.com:example/shared.git",
++        },
++    )
++    assert response["error"]["code"] == server._E_PROJECT_ARG
++
++
++def test_migrate_references_preserves_projectless_and_excludes_installation(tmp_path, monkeypatch):
++    project = tmp_path / "project"
++    project.mkdir()
++    install = tmp_path / "Hermes-Local"
++    install.mkdir()
++    unrelated = tmp_path / "unrelated"
++    unrelated.mkdir()
++    created = _call("projects.create", {"name": "Known", "folders": [str(project)]})["project"]
++    monkeypatch.setenv("HERMES_LOCAL_ROOT", str(install))
++
++    result = _call(
++        "projects.migrate_references",
++        {"references": [str(project / "chat"), str(install / "source"), str(unrelated), ""]},
++    )["references"]
++
++    assert result[0]["project_id"] == created["id"]
++    assert result[0]["status"] == "resolved"
++    assert result[1]["project_id"] is None
++    assert result[1]["status"] == "installation-excluded"
++    assert result[2]["status"] == "projectless"
++    assert result[3]["status"] == "projectless"
++
++
++def test_installation_repository_is_never_auto_discovered(monkeypatch, tmp_path):
++    install = tmp_path / "Hermes-Local"
++    nested = install / "source" / "hermes-agent"
++    nested.mkdir(parents=True)
++    monkeypatch.setenv("HERMES_LOCAL_ROOT", str(install))
++
++    assert server._is_repo_junk(str(install)) is True
++    assert server._is_repo_junk(str(nested)) is True
+diff --git a/tui_gateway/project_tree.py b/tui_gateway/project_tree.py
+index 413f85023..38e74aabc 100644
+--- a/tui_gateway/project_tree.py
++++ b/tui_gateway/project_tree.py
+@@ -457,7 +457,8 @@ class _FolderIndex:
+     def __init__(self, projects: list[dict]) -> None:
+         self._by_path: dict[str, tuple[dict, int]] = {}
+         for project in projects:
+-            for folder in project.get("folders") or []:
++            locations = list(project.get("folders") or []) + list(project.get("path_aliases") or [])
++            for folder in locations:
+                 segs = _comparison_segments(folder.get("path") or "")
+                 if not segs:
+                     continue
+diff --git a/tui_gateway/server.py b/tui_gateway/server.py
+index fd5217baf..5b256af10 100644
+--- a/tui_gateway/server.py
++++ b/tui_gateway/server.py
+@@ -252,6 +252,7 @@ _LONG_HANDLERS = frozenset(
+         "projects.discover_repos",
+         "projects.record_repos",
+         "projects.for_cwd",
++        "projects.registry_refresh",
+         "projects.tree",
+         "projects.project_sessions",
+         # Setup readiness RPCs are polled by the Desktop frontend on connect
+@@ -11269,7 +11270,9 @@ def _(rid, params, pdb, conn) -> dict:
+ 
+ @_projects_method("projects.get")
+ def _(rid, params, pdb, conn) -> dict:
+-    return _ok(rid, {"project": _require_project(pdb, conn, params).to_dict()})
++    proj = _require_project(pdb, conn, params)
++    pdb.touch_project(conn, proj.id, opened=True)
++    return _ok(rid, {"project": pdb.get_project(conn, proj.id).to_dict()})
+ 
+ 
+ @_projects_method("projects.create")
+@@ -11284,6 +11287,7 @@ def _(rid, params, pdb, conn) -> dict:
+         icon=params.get("icon"),
+         color=params.get("color"),
+         board_slug=params.get("board_slug"),
++        repository_id=params.get("repository_id"),
+     )
+     if params.get("use"):
+         pdb.set_active(conn, pid)
+@@ -11315,6 +11319,7 @@ def _(rid, params, pdb, conn) -> dict:
+         str(params.get("path") or ""),
+         label=params.get("label"),
+         is_primary=bool(params.get("is_primary")),
++        repository_id=params.get("repository_id"),
+     )
+     return _ok(rid, {"project": pdb.get_project(conn, proj.id).to_dict()})
+ 
+@@ -11360,6 +11365,66 @@ def _(rid, params, pdb, conn) -> dict:
+     return _ok(rid, {"project": proj.to_dict() if proj else None, "cwd": cwd, "branch": _git_branch_for_cwd(cwd)})
+ 
+ 
++@_projects_method("projects.for_repository")
++def _(rid, params, pdb, conn) -> dict:
++    proj = pdb.project_for_repository(conn, str(params.get("repository_id") or ""))
++    return _ok(rid, {"project": proj.to_dict() if proj else None})
++
++
++@_projects_method("projects.registry_refresh")
++def _(rid, params, pdb, conn) -> dict:
++    project_id = str(params.get("id") or "").strip() or None
++    if project_id is not None and pdb.get_project(conn, project_id) is None:
++        raise _NoProject
++    projects = pdb.refresh_registry(conn, project_id)
++    return _ok(rid, {"projects": [project.to_dict() for project in projects]})
++
++
++@_projects_method("projects.recover_path")
++def _(rid, params, pdb, conn) -> dict:
++    proj = _require_project(pdb, conn, params)
++    repaired = pdb.repair_project_path(
++        conn,
++        proj.id,
++        str(params.get("old_path") or ""),
++        str(params.get("new_path") or ""),
++        repository_id=params.get("repository_id"),
++    )
++    return _ok(rid, {"project": repaired.to_dict()})
++
++
++@_projects_method("projects.migrate_references")
++def _(rid, params, pdb, conn) -> dict:
++    references = params.get("references") or []
++    if not isinstance(references, list):
++        raise ValueError("references must be a list")
++    installation_root = str(params.get("installation_root") or "").strip() or _hermes_local_installation_root()
++    return _ok(
++        rid,
++        {
++            "references": pdb.migrate_legacy_references(
++                conn, references, installation_root=installation_root
++            )
++        },
++    )
++
++
++def _hermes_local_installation_roots() -> list[str]:
++    roots: list[str] = []
++    for name in ("HERMES_LOCAL_ROOT", "HERMES_DESKTOP_HERMES_ROOT"):
++        value = str(os.environ.get(name) or "").strip()
++        if value:
++            real = os.path.normcase(os.path.realpath(value))
++            if real not in roots:
++                roots.append(real)
++    return roots
++
++
++def _hermes_local_installation_root() -> str | None:
++    roots = _hermes_local_installation_roots()
++    return roots[0] if roots else None
++
++
+ def _is_repo_junk(root: str) -> bool:
+     """A git root we never auto-surface as a project: the bare home dir or
+     anything under HERMES_HOME (~/.hermes by default) — config/sessions/skills,
+@@ -11369,11 +11434,17 @@ def _is_repo_junk(root: str) -> bool:
+ 
+     from hermes_constants import get_hermes_home
+ 
+-    real = os.path.realpath(root)
+-    home = os.path.realpath(os.path.expanduser("~"))
+-    hermes_home = os.path.realpath(str(get_hermes_home()))
++    real = os.path.normcase(os.path.realpath(root))
++    home = os.path.normcase(os.path.realpath(os.path.expanduser("~")))
++    hermes_home = os.path.normcase(os.path.realpath(str(get_hermes_home())))
++    installation_roots = _hermes_local_installation_roots()
+ 
+-    return real == home or real == hermes_home or real.startswith(hermes_home + os.sep)
++    return (
++        real == home
++        or real == hermes_home
++        or real.startswith(hermes_home + os.sep)
++        or any(real == install or real.startswith(install + os.sep) for install in installation_roots)
++    )
+ 
+ 
+ def _is_session_cwd_junk(cwd: str) -> bool:
+-- 
+2.55.0.windows.3
+

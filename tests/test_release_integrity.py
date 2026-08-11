@@ -42,8 +42,8 @@ class ReleaseIntegrityTests(unittest.TestCase):
                     "hermesAgent": {
                         "repository": "https://github.com/NousResearch/hermes-agent.git",
                         "commit": "2" * 40,
-                        "integrationCommit": "3" * 40,
-                        "integrationBranch": "hermes-local-integration",
+                        "harnessCommit": "3" * 40,
+                        "harnessBranch": "hermes-local-integration",
                     },
                     "llamaCpp": {
                         "repository": "https://github.com/ggml-org/llama.cpp.git",

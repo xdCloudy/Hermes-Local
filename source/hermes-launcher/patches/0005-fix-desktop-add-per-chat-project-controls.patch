@@ -1,0 +1,218 @@
+From c1c497f9d0c2bc443401ddc6f7f9292c2b3d7987 Mon Sep 17 00:00:00 2001
+From: xdCloudy <connerabery@gmail.com>
+Date: Thu, 30 Jul 2026 05:05:40 +0100
+Subject: [PATCH] fix(desktop): add per-chat project controls
+
+---
+ hermes_state.py                  | 13 ++++++++
+ tests/test_hermes_state.py       | 16 ++++++++++
+ tests/test_tui_gateway_server.py | 55 ++++++++++++++++++++++++++++++++
+ tui_gateway/methods_session.py   | 29 ++++++++++-------
+ tui_gateway/server.py            | 26 ++++++++++++++-
+ 5 files changed, 127 insertions(+), 12 deletions(-)
+
+diff --git a/hermes_state.py b/hermes_state.py
+index 0396567c8..9f1d4148e 100644
+--- a/hermes_state.py
++++ b/hermes_state.py
+@@ -3603,6 +3603,19 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
+ 
+         self._execute_write(_do)
+ 
++    def clear_session_cwd(self, session_id: str) -> None:
++        """Detach a session from its persisted workspace and Git metadata."""
++        if not session_id:
++            return
++
++        def _do(conn):
++            conn.execute(
++                "UPDATE sessions SET cwd = NULL, git_branch = NULL, git_repo_root = NULL WHERE id = ?",
++                (session_id,),
++            )
++
++        self._execute_write(_do)
++
+     def backfill_repo_roots(self, cwd_to_root: Dict[str, str]) -> None:
+         """Persist resolved git repo roots for cwds that don't have one yet.
+ 
+diff --git a/tests/test_hermes_state.py b/tests/test_hermes_state.py
+index 74a028c75..45a849cdf 100644
+--- a/tests/test_hermes_state.py
++++ b/tests/test_hermes_state.py
+@@ -213,6 +213,22 @@ class TestSessionLifecycle:
+         assert session["cwd"] == "/work/repo"
+         assert session["git_branch"] == "pets-feature"
+ 
++    def test_clear_session_cwd_removes_workspace_and_git_metadata(self, db):
++        db.create_session(session_id="s1", source="desktop")
++        db.update_session_cwd(
++            "s1",
++            "/work/repo",
++            git_branch="main",
++            git_repo_root="/work/repo",
++        )
++
++        db.clear_session_cwd("s1")
++
++        session = db.get_session("s1")
++        assert session["cwd"] is None
++        assert session["git_branch"] is None
++        assert session["git_repo_root"] is None
++
+ 
+ 
+ 
+diff --git a/tests/test_tui_gateway_server.py b/tests/test_tui_gateway_server.py
+index 707945be6..22ed91faf 100644
+--- a/tests/test_tui_gateway_server.py
++++ b/tests/test_tui_gateway_server.py
+@@ -2994,6 +2994,61 @@ def test_session_cwd_set_profile_session_updates_profile_db(monkeypatch, tmp_pat
+     assert "launch_update" not in captured
+ 
+ 
++def test_session_cwd_set_empty_detaches_profile_session(monkeypatch, tmp_path):
++    profile_home = tmp_path / "profiles" / "worker"
++    profile_home.mkdir(parents=True)
++    workspace = tmp_path / "workspace"
++    workspace.mkdir()
++    captured = {}
++
++    class ProfileDB:
++        def clear_session_cwd(self, session_id):
++            captured["cleared"] = session_id
++
++        def close(self):
++            captured["closed"] = True
++
++    session = {
++        "agent": None,
++        "cwd": str(workspace),
++        "explicit_cwd": True,
++        "profile_home": str(profile_home),
++        "running": False,
++        "session_key": "stored-profile-session",
++        "source": "desktop",
++    }
++    server._sessions["runtime-session"] = session
++    monkeypatch.setattr("hermes_state.SessionDB", lambda db_path=None: ProfileDB())
++    monkeypatch.setattr(server, "_register_session_cwd", lambda _session: None)
++    monkeypatch.setattr(server, "_emit", lambda *args, **kwargs: None)
++
++    import tools.terminal_tool as terminal_tool
++
++    monkeypatch.setattr(terminal_tool, "cleanup_vm", lambda key: captured.setdefault("cleanup", key))
++
++    try:
++        resp = server.handle_request(
++            {
++                "id": "1",
++                "method": "session.cwd.set",
++                "params": {"session_id": "runtime-session", "cwd": ""},
++            }
++        )
++
++        assert "error" not in resp
++        assert resp["result"]["cwd"] == ""
++        assert resp["result"]["branch"] == ""
++        assert resp["result"]["project"] is None
++        assert resp["result"]["desktop_contract"] == 7
++        assert session["explicit_cwd"] is False
++        assert session["cwd"] == str(Path.home())
++        assert captured["cleared"] == "stored-profile-session"
++        assert captured["cleanup"] == "stored-profile-session"
++        assert captured["closed"] is True
++    finally:
++        server._sessions.pop("runtime-session", None)
++
++
+ def test_stored_session_runtime_overrides_skips_bare_billing_provider():
+     """A bare billing bucket ("custom"/"auto"/"openrouter") must not be restored as the
+     provider identity on resume. A custom endpoint that never used `/model` persists only
+diff --git a/tui_gateway/methods_session.py b/tui_gateway/methods_session.py
+index b46ed702c..e94ba932d 100644
+--- a/tui_gateway/methods_session.py
++++ b/tui_gateway/methods_session.py
+@@ -739,18 +739,25 @@ def _(rid, params: dict) -> dict:
+         return _err(rid, 4009, "session busy")
+     raw = str(params.get("cwd", "") or "").strip()
+     if not raw:
+-        return _err(rid, 4016, "cwd required")
+-    try:
+-        cwd = _set_session_cwd(session, raw)
+-    except ValueError as e:
+-        return _err(rid, 4017, str(e))
++        _clear_session_cwd(session)
++        cwd = ""
++    else:
++        try:
++            cwd = _set_session_cwd(session, raw)
++        except ValueError as e:
++            return _err(rid, 4017, str(e))
+     agent = session.get("agent")
+-    info = _session_info(agent, session) if agent is not None else {
+-        "cwd": cwd,
+-        "branch": _git_branch_for_cwd(cwd),
+-        "project": _project_info_for_cwd(cwd),
+-        "lazy": True,
+-    }
++    info = (
++        _session_info(agent, session)
++        if agent is not None
++        else {
++            "cwd": cwd,
++            "branch": _git_branch_for_cwd(cwd),
++            "project": _project_info_for_cwd(cwd),
++            "lazy": True,
++            "desktop_contract": DESKTOP_BACKEND_CONTRACT,
++        }
++    )
+     _emit("session.info", params.get("session_id", ""), info)
+     return _ok(rid, info)
+ 
+diff --git a/tui_gateway/server.py b/tui_gateway/server.py
+index 01edaeb77..fd5217baf 100644
+--- a/tui_gateway/server.py
++++ b/tui_gateway/server.py
+@@ -2884,6 +2884,29 @@ def _set_session_cwd(session: dict, cwd: str) -> str:
+     return resolved
+ 
+ 
++def _clear_session_cwd(session: dict) -> None:
++    """Detach a desktop chat from its workspace while keeping tools runnable."""
++    neutral = os.path.abspath(os.path.expanduser("~"))
++    if not os.path.isdir(neutral):
++        neutral = os.getcwd()
++
++    session["cwd"] = neutral
++    session["explicit_cwd"] = False
++    _register_session_cwd(session)
++    with _session_db(session) as db:
++        if db is not None:
++            try:
++                db.clear_session_cwd(session.get("session_key", ""))
++            except Exception:
++                logger.debug("failed to clear session cwd", exc_info=True)
++    try:
++        from tools.terminal_tool import cleanup_vm
++
++        cleanup_vm(session["session_key"])
++    except Exception:
++        pass
++
++
+ # ── Config I/O ────────────────────────────────────────────────────────
+ 
+ 
+@@ -4970,7 +4993,8 @@ def _current_profile_name() -> str:
+ # v4: session.create fast=false is an explicit per-session normal-tier override.
+ # v5: uvicorn ws_max_size raised for one-shot base64 file.attach frames (>16 MiB).
+ # v6: implicit desktop execution cwd is never reported as an attached workspace.
+-DESKTOP_BACKEND_CONTRACT = 6
++# v7: session.cwd.set accepts an empty cwd to explicitly detach a chat.
++DESKTOP_BACKEND_CONTRACT = 7
+ 
+ 
+ def _session_usage_snapshot(session: dict | None) -> dict:
+-- 
+2.55.0.windows.3
+

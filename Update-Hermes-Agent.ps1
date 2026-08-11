@@ -239,12 +239,12 @@ function Set-HermesAgentSourceOverride {
     )
 
     $record = [ordered]@{
-        schemaVersion = 1
+        schemaVersion = 2
         sources = [ordered]@{
             hermesAgent = [ordered]@{
                 commit = $BaseCommit.ToLowerInvariant()
-                integrationCommit = $IntegrationCommit.ToLowerInvariant()
-                integrationTree = $IntegrationTree.ToLowerInvariant()
+                harnessCommit = $IntegrationCommit.ToLowerInvariant()
+                harnessTree = $IntegrationTree.ToLowerInvariant()
                 updatedAt = (Get-Date).ToUniversalTime().ToString('o')
             }
         }
@@ -286,9 +286,9 @@ function Assert-ActiveAgentIsReplaceable {
         throw "Hermes Agent checkout has local changes. Run Repair-Hermes-Local.ps1 before updating, or preserve the changes manually.`n$status"
     }
     $tree = Invoke-NativeText -FilePath 'git' -WorkingDirectory $source -ArgumentList @('rev-parse', 'HEAD^{tree}')
-    $expectedTree = [string]$Manifest.sources.hermesAgent.integrationTree
+    $expectedTree = [string]$Manifest.sources.hermesAgent.harnessTree
     if ($expectedTree -and $tree -ne $expectedTree) {
-        throw "Hermes Agent tree $tree does not match the recorded integration tree $expectedTree. Run Repair-Hermes-Local.ps1 before updating."
+        throw "Hermes Agent tree $tree does not match the recorded harness tree $expectedTree. Run Repair-Hermes-Local.ps1 before updating."
     }
 }
 
@@ -623,11 +623,11 @@ function New-StagedAgentCandidate {
     $source = Join-Path $stageRoot 'source'
     $repository = [string]$Manifest.sources.hermesAgent.repository
     $currentBase = [string]$Manifest.sources.hermesAgent.commit
-    $integrationBranch = [string]$Manifest.sources.hermesAgent.integrationBranch
+    $harnessBranch = [string]$Manifest.sources.hermesAgent.harnessBranch
     $patchDirectory = Resolve-HermesPath ([string]$Manifest.sources.hermesAgent.patchSeries)
     $patches = @(Get-ChildItem -LiteralPath $patchDirectory -Filter '*.patch' -File | Sort-Object Name)
     if ($patches.Count -eq 0) {
-        throw "Hermes Local integration patches are missing from $patchDirectory."
+        throw "Hermes Local harness patches are missing from $patchDirectory."
     }
 
     Write-HermesAgentUpdateStage -Stage prepare -Message "Preparing isolated candidate $Candidate."
@@ -655,10 +655,10 @@ function New-StagedAgentCandidate {
             '-C', $source, 'checkout', '--detach', $Candidate
         ) -LogComponent update
         Invoke-HermesProcess -FilePath 'git' -ArgumentList @(
-            '-C', $source, 'switch', '-c', $integrationBranch
+            '-C', $source, 'switch', '-c', $harnessBranch
         ) -LogComponent update
 
-        Write-HermesAgentUpdateStage -Stage patch -Message "Replaying $($patches.Count) Hermes Local integration patches."
+        Write-HermesAgentUpdateStage -Stage patch -Message "Replaying $($patches.Count) Hermes Local harness patches."
         try {
             Invoke-AgentPatchSeries `
                 -Source $source `
@@ -670,9 +670,9 @@ function New-StagedAgentCandidate {
             throw "The Hermes Local patch series did not apply cleanly to $Candidate. The active installation was not changed. $($_.Exception.Message)"
         }
 
-        Write-HermesAgentUpdateStage -Stage compatibility -Message 'Verifying the reconstructed integration tree.'
-        $integrationCommit = Invoke-NativeText -FilePath 'git' -WorkingDirectory $source -ArgumentList @('rev-parse', 'HEAD')
-        $integrationTree = Invoke-NativeText -FilePath 'git' -WorkingDirectory $source -ArgumentList @('rev-parse', 'HEAD^{tree}')
+        Write-HermesAgentUpdateStage -Stage compatibility -Message 'Verifying the reconstructed harness tree.'
+        $harnessCommit = Invoke-NativeText -FilePath 'git' -WorkingDirectory $source -ArgumentList @('rev-parse', 'HEAD')
+        $harnessTree = Invoke-NativeText -FilePath 'git' -WorkingDirectory $source -ArgumentList @('rev-parse', 'HEAD^{tree}')
         $status = Invoke-NativeText -FilePath 'git' -WorkingDirectory $source -ArgumentList @('status', '--porcelain')
         if ($status) {
             throw "The staged Hermes Agent checkout is unexpectedly dirty.`n$status"
@@ -681,8 +681,8 @@ function New-StagedAgentCandidate {
             Root = $stageRoot
             Source = $source
             BaseCommit = $Candidate
-            IntegrationCommit = $integrationCommit
-            IntegrationTree = $integrationTree
+            IntegrationCommit = $harnessCommit
+            IntegrationTree = $harnessTree
         }
     } catch {
         $failedRoot = Resolve-HermesPath "build\updates\failed\hermes-agent-$Stamp"
@@ -706,13 +706,7 @@ function New-CompatibleAgentCandidate {
 
     $staged = New-StagedAgentCandidate -Manifest $Manifest -Candidate $Candidate -Stamp $Stamp
     try {
-        Write-HermesAgentUpdateStage -Stage dependency -Message 'Installing candidate Node and Python dependencies in isolation.'
-        Invoke-HermesProcess -FilePath 'npx.cmd' -ArgumentList @(
-            '--yes', "npm@$HermesAgentNpmVersion",
-            '--prefix', $staged.Source,
-            'ci', '--no-audit', '--fund=false'
-        ) -LogComponent update
-
+        Write-HermesAgentUpdateStage -Stage dependency -Message 'Installing candidate Hermes Agent Python dependencies in isolation.'
         $uvCommand = Get-Command 'uv.exe' -ErrorAction SilentlyContinue
         if (-not $uvCommand) {
             $uvCommand = Get-Command 'uv' -ErrorAction SilentlyContinue
@@ -730,20 +724,18 @@ function New-CompatibleAgentCandidate {
             -WorkingDirectory $staged.Source `
             -LogComponent update
 
-        Write-HermesAgentUpdateStage -Stage schema -Message 'Validating manifests, TypeScript contracts and Python modules.'
+        Write-HermesAgentUpdateStage -Stage schema -Message 'Validating the harness contract and Python modules.'
         foreach ($required in @(
-            'package.json', 'apps\desktop\package.json', 'pyproject.toml',
-            'apps\desktop\electron\hermes-local-control.ts'
+            'pyproject.toml', 'hermes_cli\main.py', 'tui_gateway\server.py'
         )) {
             if (-not (Test-Path -LiteralPath (Join-Path $staged.Source $required) -PathType Leaf)) {
                 throw "Candidate schema is missing required file '$required'."
             }
         }
-        Invoke-HermesProcess -FilePath 'npx.cmd' -ArgumentList @(
-            '--yes', "npm@$HermesAgentNpmVersion",
-            '--prefix', $staged.Source,
-            'run', 'typecheck', '--workspace', 'apps/desktop'
-        ) -LogComponent update
+        Invoke-HermesProcess -FilePath 'python.exe' -ArgumentList @(
+            (Resolve-HermesPath 'scripts\ci\check_native_client_architecture.py'),
+            '--repository-root', (Get-HermesRoot)
+        ) -WorkingDirectory (Get-HermesRoot) -LogComponent update
         $candidatePython = Join-Path $staged.Source '.venv\Scripts\python.exe'
         if (-not (Test-Path -LiteralPath $candidatePython -PathType Leaf)) {
             throw "Candidate Python environment was not created: $candidatePython"
@@ -754,31 +746,23 @@ function New-CompatibleAgentCandidate {
             -WorkingDirectory $staged.Source `
             -LogComponent update
 
-        Write-HermesAgentUpdateStage -Stage test -Message 'Running focused packaged Desktop and backend regression tests.'
-        Invoke-HermesProcess -FilePath 'npx.cmd' -ArgumentList @(
-            '--yes', "npm@$HermesAgentNpmVersion",
-            '--prefix', $staged.Source,
-            'exec', '--', 'vitest', 'run', '--project', 'electron',
-            'electron/hermes-local-control.test.ts',
-            'electron/hermes-local-update.test.ts'
-        ) -WorkingDirectory (Join-Path $staged.Source 'apps\desktop') -LogComponent update
+        Write-HermesAgentUpdateStage -Stage test -Message 'Running focused Hermes Agent harness regression tests.'
         Invoke-HermesProcess `
             -FilePath $candidatePython `
             -ArgumentList @(
                 '-m', 'pytest',
                 'tests/hermes_state/test_session_md_export.py',
                 'tests/tui_gateway/test_projects_rpc.py',
+                'tests/hermes_cli/test_project_centre_flows.py',
+                'tests/hermes_cli/test_hermes_local_trust.py',
                 '-q'
             ) `
             -WorkingDirectory $staged.Source `
             -LogComponent update
 
-        Write-HermesAgentUpdateStage -Stage build -Message 'Building the candidate Desktop workspace.'
-        Invoke-HermesProcess -FilePath 'npx.cmd' -ArgumentList @(
-            '--yes', "npm@$HermesAgentNpmVersion",
-            '--prefix', $staged.Source,
-            'run', 'build', '--workspace', 'apps/desktop'
-        ) -LogComponent update
+        Write-HermesAgentUpdateStage -Stage build -Message 'Building the unchanged Hermes Local client against the harness contract.'
+        Invoke-HermesProcess -FilePath 'npm.cmd' -ArgumentList @('run', 'build') `
+            -WorkingDirectory (Get-HermesRoot) -LogComponent update
         return $staged
     } catch {
         $failedRoot = Resolve-HermesPath "build\updates\failed\hermes-agent-compatibility-$Stamp"
@@ -826,8 +810,8 @@ function Invoke-AgentCompatibility {
         current = $currentBase
         candidate = $candidate
         patchCount = $patchCount
-        integrationCommit = $staged.IntegrationCommit
-        integrationTree = $staged.IntegrationTree
+        harnessCommit = $staged.IntegrationCommit
+        harnessTree = $staged.IntegrationTree
     }
     if (Test-Path -LiteralPath $staged.Root) {
         Remove-Item -LiteralPath $staged.Root -Recurse -Force
@@ -936,7 +920,7 @@ function Invoke-AgentApply {
             Stop-AgentStack
         }
 
-        Write-HermesAgentUpdateStage -Stage validate -Message 'Recording the verified integration and recovery history.'
+        Write-HermesAgentUpdateStage -Stage validate -Message 'Recording the verified harness and recovery history.'
         $history = [ordered]@{
             schemaVersion = 2
             component = 'HermesAgent'
@@ -944,8 +928,8 @@ function Invoke-AgentApply {
             appliedAt = (Get-Date).ToUniversalTime().ToString('o')
             previous = [ordered]@{
                 baseCommit = $currentBase
-                integrationCommit = [string]$manifest.sources.hermesAgent.integrationCommit
-                integrationTree = [string]$manifest.sources.hermesAgent.integrationTree
+                harnessCommit = [string]$manifest.sources.hermesAgent.harnessCommit
+                harnessTree = [string]$manifest.sources.hermesAgent.harnessTree
                 source = $knownSource
                 venv = if (Test-Path -LiteralPath $knownVenv) { $knownVenv } else { $null }
                 dist = if (Test-Path -LiteralPath $knownDist) { $knownDist } else { $null }
@@ -953,8 +937,8 @@ function Invoke-AgentApply {
             }
             current = [ordered]@{
                 baseCommit = $staged.BaseCommit
-                integrationCommit = $staged.IntegrationCommit
-                integrationTree = $staged.IntegrationTree
+                harnessCommit = $staged.IntegrationCommit
+                harnessTree = $staged.IntegrationTree
             }
         }
         $historyPath = Join-Path $historyRoot "$Stamp-hermes-agent.json"
@@ -1104,8 +1088,8 @@ try {
                 component = 'HermesAgent'
                 status = 'checked'
                 current = [string]$manifest.sources.hermesAgent.commit
-                currentIntegrationCommit = [string]$manifest.sources.hermesAgent.integrationCommit
-                currentIntegrationTree = [string]$manifest.sources.hermesAgent.integrationTree
+                currentIntegrationCommit = [string]$manifest.sources.hermesAgent.harnessCommit
+                currentIntegrationTree = [string]$manifest.sources.hermesAgent.harnessTree
                 candidate = $candidate
                 targetBranch = if ($TargetBranch) { $TargetBranch } else { [string]$manifest.sources.hermesAgent.branch }
                 patchCount = @(Get-ChildItem -LiteralPath $patchDirectory -Filter '*.patch' -File).Count

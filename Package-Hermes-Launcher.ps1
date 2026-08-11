@@ -32,29 +32,28 @@ function Get-HermesCommandVersion {
     }
 }
 
-$overlayState = $null
 $exitCode = 0
 
 try {
     Assert-HermesRoot
     Initialize-HermesLayout
     Set-HermesProcessEnvironment
+    $root = Get-HermesRoot
+    $versionManifest = Get-HermesVersionManifest
     $source = Resolve-HermesPath 'source\hermes-agent'
-    $desktop = Join-Path $source 'apps\desktop'
+    $desktop = Resolve-HermesPath ([string]$versionManifest.product.client.sourcePath)
     $release = Join-Path $desktop 'release'
     $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
-    $versionManifest = Get-HermesVersionManifest
     $version = [string]$versionManifest.product.version
 
-    $overlayState = Resolve-HermesPath "temp\launcher-overlay-$([guid]::NewGuid().ToString('N')).json"
-    & (Resolve-HermesPath 'Apply-Hermes-LauncherOverlay.ps1') `
-        -Mode Apply `
-        -StatePath $overlayState `
-        -RepositoryRoot (Get-HermesRoot)
-    $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @('run', 'build', '--workspace', 'apps/desktop') -WorkingDirectory $source -LogComponent launcher
+    $null = Invoke-HermesProcess -FilePath (Get-HermesReleasePython) -ArgumentList @(
+        (Resolve-HermesPath 'scripts\ci\check_native_client_architecture.py'),
+        '--repository-root', $root
+    ) -WorkingDirectory $root -LogComponent launcher
+    $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @('run', 'build') -WorkingDirectory $root -LogComponent launcher
     $null = Invoke-HermesProcess -FilePath $npm -ArgumentList @(
         'run', 'builder', '--workspace', 'apps/desktop', '--', '--win', 'nsis', 'portable', '--x64'
-    ) -WorkingDirectory $source -LogComponent launcher
+    ) -WorkingDirectory $root -LogComponent launcher
 
     $expectedNames = @(
         "Hermes-Launcher-$version-windows-x64-setup.exe",
@@ -145,7 +144,7 @@ try {
         '--toolchain', "npm=$(Get-HermesCommandVersion -FilePath $npm -ArgumentList @('--version'))"
     )
     foreach ($lock in @(
-        @{ Name = 'node'; Path = Join-Path $source 'package-lock.json' },
+        @{ Name = 'node'; Path = Join-Path $root 'package-lock.json' },
         @{ Name = 'python'; Path = Join-Path $source 'uv.lock' }
     )) {
         if (Test-Path -LiteralPath $lock.Path -PathType Leaf) {
@@ -175,19 +174,6 @@ try {
     $exitCode = 1
     Write-HermesLog -Component launcher -Level ERROR -Message $_.Exception.ToString()
     Write-Host "Hermes Launcher packaging failed: $($_.Exception.Message)" -ForegroundColor Red
-} finally {
-    if ($overlayState -and (Test-Path -LiteralPath $overlayState -PathType Leaf)) {
-        try {
-            & (Resolve-HermesPath 'Apply-Hermes-LauncherOverlay.ps1') `
-                -Mode Restore `
-                -StatePath $overlayState `
-                -RepositoryRoot (Get-HermesRoot)
-        } catch {
-            $exitCode = 1
-            Write-HermesLog -Component launcher -Level ERROR -Message $_.Exception.ToString()
-            Write-Host "Hermes Launcher source restoration failed: $($_.Exception.Message)" -ForegroundColor Red
-        }
-    }
 }
 
 exit $exitCode

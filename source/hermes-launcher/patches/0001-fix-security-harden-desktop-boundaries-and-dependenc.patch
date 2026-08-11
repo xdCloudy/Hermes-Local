@@ -1,0 +1,303 @@
+From fc6fadad9d658e0381cddb463f89abf263658d45 Mon Sep 17 00:00:00 2001
+From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
+Date: Tue, 28 Jul 2026 09:40:30 +0100
+Subject: [PATCH] fix(security): harden desktop boundaries and dependencies
+
+---
+ .../devops/watchers/scripts/watch_rss.py      |  6 +-
+ pyproject.toml                                |  4 ++
+ scripts/run_tests.sh                          |  3 +-
+ skills/research/arxiv/scripts/search_arxiv.py |  5 +-
+ tests/security/test_xml_hardening.py          | 61 +++++++++++++++++++
+ tests/tools/test_read_extract.py              | 13 ++++
+ tools/read_extract.py                         | 12 ++--
+ uv.lock                                       | 18 +++---
+ 8 files changed, 104 insertions(+), 18 deletions(-)
+ create mode 100644 tests/security/test_xml_hardening.py
+
+diff --git a/optional-skills/devops/watchers/scripts/watch_rss.py b/optional-skills/devops/watchers/scripts/watch_rss.py
+index 6e0963040..08e9f9f94 100755
+--- a/optional-skills/devops/watchers/scripts/watch_rss.py
++++ b/optional-skills/devops/watchers/scripts/watch_rss.py
+@@ -19,7 +19,9 @@ import sys
+ import urllib.error
+ import urllib.request
+ from pathlib import Path
+-from xml.etree import ElementTree as ET
++
++from defusedxml import ElementTree as ET
++from defusedxml.common import DefusedXmlException
+ 
+ sys.path.insert(0, str(Path(__file__).parent))
+ from _watermark import Watermark, format_items_as_markdown  # type: ignore
+@@ -36,7 +38,7 @@ def _parse_feed(xml_bytes: bytes):
+     """
+     try:
+         root = ET.fromstring(xml_bytes)
+-    except ET.ParseError as e:
++    except (ET.ParseError, DefusedXmlException) as e:
+         print(f"watch_rss: invalid XML: {e}", file=sys.stderr)
+         sys.exit(2)
+ 
+diff --git a/pyproject.toml b/pyproject.toml
+index b9578f3fc..080b8fd3c 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -123,6 +123,10 @@ dependencies = [
+   # install rather than gating it behind an extra + a mid-session lazy install
+   # (which deadlocked the CLI under prompt_toolkit — see #40490).
+   "Pillow==12.3.0",
++  # Core read/extract tools parse user-supplied OOXML, while several bundled
++  # skills parse network XML. The hardened drop-in parser blocks entity
++  # expansion and external-entity attacks across those trust boundaries.
++  "defusedxml==0.7.1",
+   # Windows log rotation. Stdlib ``RotatingFileHandler.doRollover()`` uses
+   # ``os.rename()`` which fails with ``PermissionError [WinError 32]`` on
+   # Windows whenever any other process holds an append-mode handle on
+diff --git a/scripts/run_tests.sh b/scripts/run_tests.sh
+index 0db80ffb1..3b7bc3f78 100755
+--- a/scripts/run_tests.sh
++++ b/scripts/run_tests.sh
+@@ -117,7 +117,7 @@ fi
+ # credentials, so forwarding them keeps the isolation intent intact. Each is
+ # only forwarded when actually set, so POSIX runs are byte-for-byte unchanged.
+ WIN_ENV=()
+-for _win_var in USERPROFILE HOMEDRIVE HOMEPATH LOCALAPPDATA APPDATA SYSTEMROOT TEMP TMP; do
++for _win_var in USERPROFILE HOMEDRIVE HOMEPATH LOCALAPPDATA APPDATA SYSTEMROOT TEMP TMP COMSPEC; do
+   if [ -n "${!_win_var:-}" ]; then
+     WIN_ENV+=("$_win_var=${!_win_var}")
+   fi
+@@ -149,6 +149,7 @@ exec env -i \
+   LC_ALL=C.UTF-8 \
+   PYTHONHASHSEED=0 \
+   PYTHONUTF8=1 \
++  PYTHONIOENCODING=UTF-8 \
+   ${HERMES_RUN_SLOW_PET_TESTS:+HERMES_RUN_SLOW_PET_TESTS="$HERMES_RUN_SLOW_PET_TESTS"} \
+   ${HERMES_E2E_BROWSER:+HERMES_E2E_BROWSER="$HERMES_E2E_BROWSER"} \
+   ${EXTRA_PYTHONPATH:+PYTHONPATH="$EXTRA_PYTHONPATH"} \
+diff --git a/skills/research/arxiv/scripts/search_arxiv.py b/skills/research/arxiv/scripts/search_arxiv.py
+index 0bd6b2370..f522f9c7c 100644
+--- a/skills/research/arxiv/scripts/search_arxiv.py
++++ b/skills/research/arxiv/scripts/search_arxiv.py
+@@ -11,9 +11,10 @@ Usage:
+     python search_arxiv.py --id 2402.03300,2401.12345
+ """
+ import sys
+-import urllib.request
+ import urllib.parse
+-import xml.etree.ElementTree as ET
++import urllib.request
++
++from defusedxml import ElementTree as ET
+ 
+ NS = {'a': 'http://www.w3.org/2005/Atom'}
+ 
+diff --git a/tests/security/test_xml_hardening.py b/tests/security/test_xml_hardening.py
+new file mode 100644
+index 000000000..542891cc5
+--- /dev/null
++++ b/tests/security/test_xml_hardening.py
+@@ -0,0 +1,61 @@
++"""Regression tests for untrusted network XML parsing."""
++
++from __future__ import annotations
++
++import importlib.util
++import sys
++from pathlib import Path
++from unittest.mock import patch
++
++import pytest
++from defusedxml.common import DefusedXmlException
++
++REPO_ROOT = Path(__file__).resolve().parents[2]
++ENTITY_XML = (
++    b'<?xml version="1.0"?>'
++    b'<!DOCTYPE feed [<!ENTITY injected "EXPANDED">]>'
++    b"<feed><entry><id>&injected;</id></entry></feed>"
++)
++
++
++def _load_script(name: str, relative_path: str):
++    path = REPO_ROOT / relative_path
++    spec = importlib.util.spec_from_file_location(name, path)
++    assert spec and spec.loader
++    module = importlib.util.module_from_spec(spec)
++    sys.modules[name] = module
++    spec.loader.exec_module(module)
++    return module
++
++
++def test_rss_watcher_rejects_entity_expansion():
++    watcher = _load_script(
++        "security_test_watch_rss",
++        "optional-skills/devops/watchers/scripts/watch_rss.py",
++    )
++
++    with pytest.raises(SystemExit) as exc_info:
++        watcher._parse_feed(ENTITY_XML)
++
++    assert exc_info.value.code == 2
++
++
++def test_arxiv_parser_rejects_entity_expansion():
++    arxiv = _load_script(
++        "security_test_search_arxiv",
++        "skills/research/arxiv/scripts/search_arxiv.py",
++    )
++
++    class Response:
++        def __enter__(self):
++            return self
++
++        def __exit__(self, *_args):
++            return False
++
++        def read(self):
++            return ENTITY_XML
++
++    with patch.object(arxiv.urllib.request, "urlopen", return_value=Response()):
++        with pytest.raises(DefusedXmlException):
++            arxiv.search(query="security-regression")
+diff --git a/tests/tools/test_read_extract.py b/tests/tools/test_read_extract.py
+index 1025c428b..fc780782f 100644
+--- a/tests/tools/test_read_extract.py
++++ b/tests/tools/test_read_extract.py
+@@ -141,6 +141,19 @@ class TestDocxExtraction(unittest.TestCase):
+         with self.assertRaises(ExtractionError):
+             extract_document_text(p)
+ 
++    def test_xml_entity_expansion_is_rejected(self):
++        p = os.path.join(self.tmp, "entity.docx")
++        _write_docx(
++            p,
++            '<?xml version="1.0"?>'
++            '<!DOCTYPE document [<!ENTITY secret "EXPANDED">]>'
++            f'<w:document xmlns:w="{_NS_W}"><w:body>'
++            '<w:p><w:r><w:t>&secret;</w:t></w:r></w:p>'
++            '</w:body></w:document>',
++        )
++        with self.assertRaises(ExtractionError):
++            extract_document_text(p)
++
+ 
+ # ---------------------------------------------------------------------------
+ # Excel workbooks (.xlsx) — #10740
+diff --git a/tools/read_extract.py b/tools/read_extract.py
+index 3607703de..84105ba4a 100644
+--- a/tools/read_extract.py
++++ b/tools/read_extract.py
+@@ -11,7 +11,9 @@ import json
+ import posixpath
+ import zipfile
+ from pathlib import Path
+-from xml.etree import ElementTree as ET
++
++from defusedxml import ElementTree as ET
++from defusedxml.common import DefusedXmlException
+ 
+ __all__ = ["EXTRACTABLE_EXTENSIONS", "ExtractionError", "extract_document_text", "is_extractable_document"]
+ 
+@@ -100,7 +102,7 @@ def _zip_xml(zf: zipfile.ZipFile, name: str) -> ET.Element:
+         return ET.fromstring(zf.read(name))
+     except KeyError as exc:
+         raise ExtractionError(f"Missing {name}") from exc
+-    except ET.ParseError as exc:
++    except (ET.ParseError, DefusedXmlException) as exc:
+         raise ExtractionError(f"Malformed XML in {name}: {exc}") from exc
+ 
+ 
+@@ -146,7 +148,7 @@ def _extract_xlsx(path: str) -> str:
+                     continue
+                 try:
+                     rows = _sheet_rows(zf.read(part), shared)
+-                except ET.ParseError:
++                except (ET.ParseError, DefusedXmlException):
+                     continue
+                 out.append(f"# ── Sheet: {name} ──")
+                 out.extend("\t".join(row) for row in rows)
+@@ -168,7 +170,7 @@ def _shared_strings(zf: zipfile.ZipFile, names: set[str]) -> list[str]:
+         return []
+     try:
+         root = ET.fromstring(zf.read("xl/sharedStrings.xml"))
+-    except ET.ParseError:
++    except (ET.ParseError, DefusedXmlException):
+         return []
+     s = f"{{{_NS_S}}}"
+     return ["".join(t.text or "" for t in item.iter(f"{s}t")) for item in root.iter(f"{s}si")]
+@@ -189,7 +191,7 @@ def _workbook_rels(zf: zipfile.ZipFile, names: set[str]) -> dict[str, str]:
+         return {}
+     try:
+         root = ET.fromstring(zf.read(rels_path))
+-    except ET.ParseError:
++    except (ET.ParseError, DefusedXmlException):
+         return {}
+     rel_tag = f"{{{_NS_PKG_REL}}}Relationship"
+     return {rel.get("Id", ""): rel.get("Target", "") for rel in root.iter(rel_tag) if rel.get("Id")}
+diff --git a/uv.lock b/uv.lock
+index 592d5db26..623c53cf3 100644
+--- a/uv.lock
++++ b/uv.lock
+@@ -8,7 +8,7 @@ resolution-markers = [
+ ]
+ 
+ [options]
+-exclude-newer = "2026-07-20T16:38:42.729819205Z"
++exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
+ exclude-newer-span = "P14D"
+ 
+ [options.exclude-newer-package]
+@@ -1566,6 +1566,7 @@ dependencies = [
+     { name = "concurrent-log-handler", marker = "sys_platform == 'win32'" },
+     { name = "croniter" },
+     { name = "cryptography" },
++    { name = "defusedxml" },
+     { name = "fastapi" },
+     { name = "fire" },
+     { name = "httpx", extra = ["socks"] },
+@@ -1822,6 +1823,7 @@ requires-dist = [
+     { name = "cryptography", specifier = "==48.0.1" },
+     { name = "daytona", marker = "extra == 'daytona'", specifier = "==0.155.0" },
+     { name = "debugpy", marker = "extra == 'dev'", specifier = "==1.8.20" },
++    { name = "defusedxml", specifier = "==0.7.1" },
+     { name = "defusedxml", marker = "extra == 'wecom'", specifier = "==0.7.1" },
+     { name = "dingtalk-stream", marker = "extra == 'dingtalk'", specifier = "==0.24.3" },
+     { name = "discord-py", extras = ["voice"], marker = "extra == 'messaging'", specifier = "==2.7.1" },
+@@ -3998,7 +4000,7 @@ resolution-markers = [
+     "python_full_version < '3.12'",
+ ]
+ dependencies = [
+-    { name = "numpy", marker = "python_full_version < '3.12'" },
++    { name = "numpy" },
+ ]
+ sdist = { url = "https://files.pythonhosted.org/packages/7a/97/5a3609c4f8d58b039179648e62dd220f89864f56f7357f5d4f45c29eb2cc/scipy-1.17.1.tar.gz", hash = "sha256:95d8e012d8cb8816c226aef832200b1d45109ed4464303e997c5b13122b297c0", size = 30573822, upload-time = "2026-02-23T00:26:24.851Z" }
+ wheels = [
+@@ -4053,7 +4055,7 @@ resolution-markers = [
+     "python_full_version == '3.12.*'",
+ ]
+ dependencies = [
+-    { name = "numpy", marker = "python_full_version >= '3.12'" },
++    { name = "numpy" },
+ ]
+ sdist = { url = "https://files.pythonhosted.org/packages/a7/25/c2700dfaf6442b4effaa91af24ebce5dc9d31bb4a69706313aae70d72cd0/scipy-1.18.0.tar.gz", hash = "sha256:67b2ad2ad54c72ca6d04975a9b2df8c3638c34ddd5b28738e94fc2b57929d378", size = 30774447, upload-time = "2026-06-19T15:01:43.456Z" }
+ wheels = [
+@@ -4692,11 +4694,11 @@ name = "vercel-workers"
+ version = "0.0.25"
+ source = { registry = "https://pypi.org/simple" }
+ dependencies = [
+-    { name = "anyio", marker = "python_full_version >= '3.12'" },
+-    { name = "httpx", marker = "python_full_version >= '3.12'" },
+-    { name = "pydantic", marker = "python_full_version >= '3.12'" },
+-    { name = "python-dotenv", marker = "python_full_version >= '3.12'" },
+-    { name = "vercel", marker = "python_full_version >= '3.12'" },
++    { name = "anyio" },
++    { name = "httpx" },
++    { name = "pydantic" },
++    { name = "python-dotenv" },
++    { name = "vercel" },
+ ]
+ sdist = { url = "https://files.pythonhosted.org/packages/30/df/04d37021ad7ca53b7599c313e411d91623c7a005c741f491d1eefb7a9f0c/vercel_workers-0.0.25.tar.gz", hash = "sha256:212ded01400b524be51d251df49f801caf115ad7d48cca7eb168cbeceda3def3", size = 64149, upload-time = "2026-06-20T19:26:27.177Z" }
+ wheels = [
+-- 
+2.55.0.windows.3
+

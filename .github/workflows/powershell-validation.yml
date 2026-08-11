@@ -10,7 +10,7 @@ on:
       - 'scripts/gateway_snapshot.py'
       - 'tests/test_gateway_snapshot.py'
       - 'tests/test_hermes_desktop_update_contract.py'
-      - 'source/hermes-launcher/overlay-src/**'
+      - 'apps/desktop/electron/hermes-local-desktop-update*'
       - '.github/workflows/powershell-validation.yml'
   push:
     branches:
@@ -23,7 +23,7 @@ on:
       - 'scripts/gateway_snapshot.py'
       - 'tests/test_gateway_snapshot.py'
       - 'tests/test_hermes_desktop_update_contract.py'
-      - 'source/hermes-launcher/overlay-src/**'
+      - 'apps/desktop/electron/hermes-local-desktop-update*'
       - '.github/workflows/powershell-validation.yml'
 
 permissions:
@@ -100,11 +100,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Hermes Agent source manifest tests failed with exit code $LASTEXITCODE."
           }
-          pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
-            -File '.\tests\Test-HermesLauncherOverlayImport.ps1'
-          if ($LASTEXITCODE -ne 0) {
-            throw "Launcher overlay import tests failed with exit code $LASTEXITCODE."
-          }
+          python '.\scripts\ci\check_native_client_architecture.py'
           pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
             -File '.\tests\Test-HermesRestoreTask.ps1'
           if ($LASTEXITCODE -ne 0) {
@@ -147,8 +143,8 @@ jobs:
             sources = @{
               hermesAgent = @{
                 commit = ('1' * 40)
-                integrationCommit = ('2' * 40)
-                integrationTree = ('3' * 40)
+                harnessCommit = ('2' * 40)
+                harnessTree = ('3' * 40)
               }
             }
           } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $overridePath -Encoding utf8
@@ -157,9 +153,9 @@ jobs:
           if ($manifest.sources.hermesAgent.commit -ne ('1' * 40)) {
             throw 'Hermes Agent base commit override was not applied.'
           }
-          if ($manifest.sources.hermesAgent.integrationCommit -ne ('2' * 40)) {
-            throw 'Hermes Agent base integration commit override was not applied.'
+          if ($manifest.sources.hermesAgent.harnessCommit -ne ('2' * 40)) {
+            throw 'Hermes Agent harness commit override was not applied.'
           }
-          if ($manifest.sources.hermesAgent.integrationTree -ne ('3' * 40)) {
-            throw 'Hermes Agent integration tree override was not applied.'
+          if ($manifest.sources.hermesAgent.harnessTree -ne ('3' * 40)) {
+            throw 'Hermes Agent harness tree override was not applied.'
           }

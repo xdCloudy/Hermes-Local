@@ -142,13 +142,13 @@ def _sources_from_version(
     if not isinstance(agent, dict) or not isinstance(llama, dict):
         raise IntegrityError("VERSION.json must identify Hermes Agent and llama.cpp sources")
 
-    agent_commit = str(agent.get("integrationCommit") or agent.get("commit") or "")
+    agent_commit = str(agent.get("harnessCommit") or agent.get("commit") or "")
     return {
         "hermesLocal": _source_record(repository, source_commit),
         "hermesAgent": _source_record(
             str(agent.get("repository") or ""),
             agent_commit,
-            branch=str(agent.get("integrationBranch") or agent.get("branch") or ""),
+            branch=str(agent.get("harnessBranch") or agent.get("branch") or ""),
             upstreamCommit=str(agent.get("commit") or "").lower(),
         ),
         "llamaCpp": _source_record(

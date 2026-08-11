@@ -1,4 +1,2 @@
-# The launcher overlay wrapper embeds an LF-encoded compressed transformer and
-# performs exact source-fragment replacement before executing it. Keep this
-# critical generated wrapper LF-only even on Windows/core.autocrlf checkouts.
-Apply-Hermes-LauncherOverlay.ps1 text eol=lf
+# Mail patches must keep their exact transport encoding on Windows checkouts.
+source/hermes-launcher/patches/*.patch text eol=lf

@@ -5,8 +5,9 @@
 
 ## Repositories
 
-The root repository owns the Windows product scripts, configuration, patch
-series, documentation, benchmark methodology and security evidence.
+The root repository owns the first-class native client in `apps/desktop`, its
+wire-contract package in `packages/hermes-agent-client`, Windows product
+scripts, configuration, documentation and test evidence.
 
 The nested official checkout is:
 
@@ -14,35 +15,20 @@ The nested official checkout is:
 <project-root>\source\hermes-agent
 ```
 
-It preserves the `upstream` remote and uses the
-`hermes-local-integration` branch. The currently pinned upstream base,
-integration commit and tree are recorded in `VERSION.json`.
+It preserves the `upstream` remote and uses the `hermes-local-harness` branch.
+The pinned upstream base and reconstructed harness tree are recorded in
+`VERSION.json`.
 
 Do not edit generated `dist`, model, runtime, cache, log, database or backup
 files into Git.
 
-## Ordered integration patches
+## Ordered harness patches
 
-`source\hermes-launcher\patches` contains the ordered mail patch series:
-
-1. Windows-native Hermes Launcher workstation;
-2. security hardening and dependencies;
-3. offline built-in themes;
-4. current-user launch at login;
-5. native Windows skill preprocessing and WSL rejection;
-6. portable Windows compression-persistence test fixtures;
-7. portable workstation configuration and model/profile controls;
-8. automatic cold-start of the supervised workstation before desktop
-   connection;
-9. workstation action, profile, polling, portability and build fixes;
-10. packaged functional workstation coverage;
-11. manifest-derived packaged source-pin verification;
-12. launch-at-login restoration coverage;
-13. authoritative gateway state reporting;
-14. authoritative gateway status in global desktop chrome;
-15. projectless packaged-chat startup and reconnect behavior;
-16. per-chat project selection and explicit project removal;
-17. theme-consistent, accessible dropdowns across every launcher surface.
+`source\hermes-launcher\patches` contains only runtime-harness changes needed
+for local inference, lifecycle, trust and project integration. UI, Electron,
+workspace manifests and client tests belong in root Git and are forbidden from
+this series. Run `python scripts/ci/check_native_client_architecture.py` to
+enforce that boundary.
 
 Setup reconstructs from the pinned upstream base with `git am`, verifies the
 resulting tree and tolerates a different local commit ID caused only by
@@ -54,22 +40,22 @@ base, compare its tree to `HEAD^{tree}`, then update `VERSION.json`.
 
 ## Desktop development
 
-From the nested source root:
+From the Hermes Local root:
 
 ```powershell
 Set-Location 'C:\path\to\Hermes-Local'
 $HermesRoot = (Get-Location).Path
-Set-Location (Join-Path $HermesRoot 'source\hermes-agent')
 npm.cmd ci --cache (Join-Path $HermesRoot 'cache\npm') --no-audit
-npm.cmd run typecheck --workspace apps/desktop
-npm.cmd run lint --workspace apps/desktop
-npm.cmd run build --workspace apps/desktop
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd test
+npm.cmd run build
 ```
 
 Run the focused local control tests:
 
 ```powershell
-& (Join-Path $HermesRoot 'source\hermes-agent\node_modules\.bin\vitest.cmd') `
+& (Join-Path $HermesRoot 'node_modules\.bin\vitest.cmd') `
   run --project electron electron/hermes-local-control.test.ts
 ```
 
@@ -79,8 +65,8 @@ Run the packaged workstation acceptance against the unpacked binary:
 $env:HERMES_LOCAL_ACCEPTANCE = '1'
 $env:HERMES_LOCAL_ROOT = $HermesRoot
 $env:HERMES_LOCAL_LAUNCHER_PATH = Join-Path $HermesRoot 'dist\Hermes Launcher.exe'
-Set-Location (Join-Path $HermesRoot 'source\hermes-agent\apps\desktop')
-& '.\node_modules\.bin\playwright.cmd' test `
+Set-Location (Join-Path $HermesRoot 'apps\desktop')
+& (Join-Path $HermesRoot 'node_modules\.bin\playwright.cmd') test `
   e2e\hermes-local-functional.spec.ts `
   --workers=1 --reporter=list
 ```
@@ -140,7 +126,7 @@ and both trusted physical runner classes to pass for the exact revision.
 
 Before promotion:
 
-1. nested source and root Git worktrees are clean;
+1. root product source and nested Agent harness worktrees are clean;
 2. setup BootstrapOnly reconstruction passes;
 3. the documented Windows-critical Python selection is green;
 4. TypeScript and Ruff are green, ESLint has no errors;

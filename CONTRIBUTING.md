@@ -31,8 +31,9 @@ change persistent data, agree the approach with maintainers before coding.
 - Never commit models, runtimes, tokens, credentials, conversations or user
   data.
 - Preserve user data during setup, repair, update, rollback and uninstall.
-- Keep changes to upstream Hermes as focused commits and refresh the ordered
-  patch series in `source/hermes-launcher/patches`.
+- Change the client directly in `apps/desktop`. Keep upstream Agent runtime
+  changes focused and refresh the harness-only series in
+  `source/hermes-launcher/patches`; Desktop paths are forbidden there.
 - Do not weaken Electron isolation, CSP, navigation checks, write approvals or
   process argument validation.
 - Resolve paths from the project root and support paths containing spaces.

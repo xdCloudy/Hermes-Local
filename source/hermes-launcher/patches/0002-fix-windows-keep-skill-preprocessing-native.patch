@@ -1,0 +1,243 @@
+From ff69333a7dafcf76f7975e38473a454a7758d76e Mon Sep 17 00:00:00 2001
+From: xdCloudy <52116030+xdCloudy@users.noreply.github.com>
+Date: Tue, 28 Jul 2026 10:36:05 +0100
+Subject: [PATCH] fix(windows): keep skill preprocessing native
+
+---
+ agent/skill_commands.py                       |  15 ++-
+ agent/skill_preprocessing.py                  | 107 +++++++++++++++++-
+ ...test_windows_subprocess_no_window_flags.py |  43 +++++++
+ 3 files changed, 162 insertions(+), 3 deletions(-)
+
+diff --git a/agent/skill_commands.py b/agent/skill_commands.py
+index 3f1156a85..886e0d144 100644
+--- a/agent/skill_commands.py
++++ b/agent/skill_commands.py
+@@ -341,7 +341,13 @@ def _build_skill_message(
+             if subdir_path.exists():
+                 for f in sorted(subdir_path.rglob("*")):
+                     if f.is_file() and not f.is_symlink():
+-                        rel = str(f.relative_to(skill_dir))
++                        # Skill file paths are a portable, slash-delimited
++                        # interface (the same value is passed back to
++                        # skill_view).  Path.__str__ emits backslashes on
++                        # Windows, which makes an otherwise valid skill
++                        # message disagree with SKILL.md paths and breaks
++                        # cross-platform copy/paste.
++                        rel = f.relative_to(skill_dir).as_posix()
+                         supporting.append(rel)
+ 
+     if supporting and skill_dir:
+@@ -353,7 +359,12 @@ def _build_skill_message(
+         parts.append("")
+         parts.append("[This skill has supporting files:]")
+         for sf in supporting:
+-            parts.append(f"- {sf}  ->  {skill_dir / sf}")
++            # linked_files is populated by Path.rglob and can therefore
++            # contain native Windows separators even when the fallback scan
++            # above did not run.  Keep the model-facing/skill_view side of
++            # this mapping platform-neutral.
++            portable_sf = str(sf).replace("\\", "/")
++            parts.append(f"- {portable_sf}  ->  {skill_dir / portable_sf}")
+         parts.append(
+             f'\nLoad any of these with skill_view(name="{skill_view_target}", '
+             f'file_path="<path>"), or run scripts directly by absolute path '
+diff --git a/agent/skill_preprocessing.py b/agent/skill_preprocessing.py
+index 44c5714b9..4b4f86e7b 100644
+--- a/agent/skill_preprocessing.py
++++ b/agent/skill_preprocessing.py
+@@ -1,7 +1,9 @@
+ """Shared SKILL.md preprocessing helpers."""
+ 
+ import logging
++import os
+ import re
++import shutil
+ import subprocess
+ from pathlib import Path
+ 
+@@ -22,6 +24,105 @@ _INLINE_SHELL_RE = re.compile(r"!`([^`\n]+)`")
+ _INLINE_SHELL_MAX_OUTPUT = 4000
+ 
+ 
++def _resolve_inline_shell_bash() -> str | None:
++    """Resolve a native Bash executable without falling into WSL on Windows.
++
++    ``C:\\Windows\\System32\\bash.exe`` is the legacy WSL launcher.  Selecting
++    it through PATH silently moves inline skill commands into a different
++    filesystem and violates Hermes' native-Windows contract.  Prefer the Bash
++    shipped beside Git for Windows; if no native Bash exists, fail closed.
++    """
++    if not IS_WINDOWS:
++        return shutil.which("bash") or "bash"
++
++    candidates: list[Path] = []
++    git_executable = shutil.which("git")
++    if git_executable:
++        git_dir = Path(git_executable).resolve().parent
++        for git_root in (git_dir.parent, git_dir.parent.parent):
++            candidates.extend(
++                (
++                    git_root / "bin" / "bash.exe",
++                    git_root / "usr" / "bin" / "bash.exe",
++                )
++            )
++
++    for env_name in ("ProgramFiles", "ProgramW6432", "LOCALAPPDATA"):
++        base = os.environ.get(env_name)
++        if not base:
++            continue
++        base_path = Path(base)
++        candidates.extend(
++            (
++                base_path / "Git" / "bin" / "bash.exe",
++                base_path / "Programs" / "Git" / "bin" / "bash.exe",
++            )
++        )
++
++    seen: set[str] = set()
++    for candidate in candidates:
++        candidate_key = str(candidate).casefold()
++        if candidate_key in seen:
++            continue
++        seen.add(candidate_key)
++        if candidate.is_file():
++            return str(candidate)
++
++    # A non-system Bash may still be on PATH (for example, portable Git).
++    # Explicitly reject the WSL launchers in System32 and WindowsApps.
++    path_bash = shutil.which("bash")
++    if path_bash:
++        normalized = str(Path(path_bash).resolve()).replace("/", "\\").casefold()
++        system_root = str(
++            Path(os.environ.get("SystemRoot", r"C:\Windows")).resolve()
++        ).replace("/", "\\").casefold()
++        local_app_data = os.environ.get("LOCALAPPDATA", "")
++        windows_apps = (
++            str(Path(local_app_data) / "Microsoft" / "WindowsApps")
++            .replace("/", "\\")
++            .casefold()
++            if local_app_data
++            else ""
++        )
++        if not normalized.startswith(f"{system_root}\\system32\\") and not (
++            windows_apps and normalized.startswith(f"{windows_apps}\\")
++        ):
++            return path_bash
++
++    return None
++
++
++def _normalize_windows_shell_cwd(
++    output: str,
++    cwd: Path | None,
++    command: str,
++) -> str:
++    """Return the native cwd when Bash printed that directory in POSIX form."""
++    if not IS_WINDOWS or cwd is None or not output:
++        return output
++
++    native_cwd = str(Path(cwd).resolve())
++    # Git Bash aliases the Windows TEMP tree to /tmp, so its `pwd` output
++    # cannot always be mechanically reversed from the path alone.  For the
++    # canonical cwd query, report the native path we supplied to Popen.
++    if command.strip() in {"pwd", "pwd -P", "builtin pwd", "builtin pwd -P"}:
++        return native_cwd
++
++    drive, tail = os.path.splitdrive(native_cwd)
++    if not drive:
++        return output
++
++    tail_posix = tail.replace("\\", "/").rstrip("/")
++    drive_letter = drive[0].lower()
++    shell_forms = {
++        f"/{drive_letter}{tail_posix}".casefold(),
++        f"/mnt/{drive_letter}{tail_posix}".casefold(),
++    }
++    if output.rstrip("/").casefold() in shell_forms:
++        return native_cwd
++    return output
++
++
+ def load_skills_config() -> dict:
+     """Load the ``skills`` section of config.yaml (best-effort)."""
+     try:
+@@ -69,9 +170,12 @@ def run_inline_shell(command: str, cwd: Path | None, timeout: int) -> str:
+     raising, so one bad snippet can't wreck the whole skill message.
+     """
+     _popen_kwargs = {"creationflags": windows_hide_flags()} if IS_WINDOWS else {}
++    bash_executable = _resolve_inline_shell_bash()
++    if not bash_executable:
++        return "[inline-shell error: native bash not found]"
+     try:
+         completed = subprocess.run(
+-            ["bash", "-c", command],
++            [bash_executable, "-c", command],
+             cwd=str(cwd) if cwd else None,
+             capture_output=True,
+             text=True, encoding='utf-8', errors='replace',
+@@ -98,6 +202,7 @@ def run_inline_shell(command: str, cwd: Path | None, timeout: int) -> str:
+     output = (completed.stdout or "").rstrip("\n")
+     if not output and completed.stderr:
+         output = completed.stderr.rstrip("\n")
++    output = _normalize_windows_shell_cwd(output, cwd, command)
+     if len(output) > _INLINE_SHELL_MAX_OUTPUT:
+         output = output[:_INLINE_SHELL_MAX_OUTPUT] + "...[truncated]"
+     return output
+diff --git a/tests/test_windows_subprocess_no_window_flags.py b/tests/test_windows_subprocess_no_window_flags.py
+index 5ccc6b74d..39f321b65 100644
+--- a/tests/test_windows_subprocess_no_window_flags.py
++++ b/tests/test_windows_subprocess_no_window_flags.py
+@@ -171,6 +171,49 @@ def test_shell_hooks_hide_hook_command_windows(monkeypatch):
+     assert captured[0][1]["creationflags"] == _CREATE_NO_WINDOW
+ 
+ 
++def test_inline_skill_shell_hides_bash_window(monkeypatch):
++    from agent import skill_preprocessing
++
++    captured = []
++
++    def fake_run(cmd, **kwargs):
++        captured.append((cmd, kwargs))
++        return SimpleNamespace(returncode=0, stdout="ok\n", stderr="")
++
++    monkeypatch.setattr(skill_preprocessing, "IS_WINDOWS", True)
++    monkeypatch.setattr(skill_preprocessing, "windows_hide_flags", lambda: _CREATE_NO_WINDOW)
++    monkeypatch.setattr(
++        skill_preprocessing,
++        "_resolve_inline_shell_bash",
++        lambda: r"C:\Program Files\Git\bin\bash.exe",
++    )
++    monkeypatch.setattr(skill_preprocessing.subprocess, "run", fake_run)
++
++    assert skill_preprocessing.run_inline_shell("echo ok", cwd=None, timeout=5) == "ok"
++    assert captured[0][0] == [
++        r"C:\Program Files\Git\bin\bash.exe",
++        "-c",
++        "echo ok",
++    ]
++    assert captured[0][1]["creationflags"] == _CREATE_NO_WINDOW
++
++
++def test_inline_skill_shell_rejects_wsl_bash(monkeypatch):
++    from agent import skill_preprocessing
++
++    monkeypatch.setattr(skill_preprocessing, "IS_WINDOWS", True)
++    monkeypatch.setattr(
++        skill_preprocessing.shutil,
++        "which",
++        lambda name: r"C:\Windows\System32\bash.exe" if name == "bash" else None,
++    )
++    monkeypatch.setenv("SystemRoot", r"C:\Windows")
++    for name in ("ProgramFiles", "ProgramW6432", "LOCALAPPDATA"):
++        monkeypatch.delenv(name, raising=False)
++
++    assert skill_preprocessing._resolve_inline_shell_bash() is None
++
++
+ 
+ 
+ 
+-- 
+2.55.0.windows.3
+

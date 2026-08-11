@@ -224,7 +224,7 @@ try {
 
     $npmProductionRun = Invoke-SecurityProcess -FilePath 'npm.cmd' -ArgumentList @(
         'audit', '--omit=dev', '--json'
-    ) -WorkingDirectory $source -EvidenceName 'npm-audit-production' -Stage discovery -Message 'Auditing production Node dependencies.' -AcceptExitCode @(0, 1)
+    ) -WorkingDirectory $root -EvidenceName 'npm-audit-production' -Stage discovery -Message 'Auditing production Node dependencies.' -AcceptExitCode @(0, 1)
     $npmProductionPath = Write-JsonEvidence -Name 'npm-audit-production.json' -Content $npmProductionRun.stdout
     $npmProduction = Get-Content -Raw -LiteralPath $npmProductionPath | ConvertFrom-Json -Depth 64
     $npmProductionFindingCount = [int]$npmProduction.metadata.vulnerabilities.total
@@ -232,7 +232,7 @@ try {
 
     $npmFullRun = Invoke-SecurityProcess -FilePath 'npm.cmd' -ArgumentList @(
         'audit', '--json'
-    ) -WorkingDirectory $source -EvidenceName 'npm-audit-full' -Stage discovery -Message 'Auditing the full Node dependency graph.' -AcceptExitCode @(0, 1)
+    ) -WorkingDirectory $root -EvidenceName 'npm-audit-full' -Stage discovery -Message 'Auditing the full Node dependency graph.' -AcceptExitCode @(0, 1)
     $npmFullPath = Write-JsonEvidence -Name 'npm-audit-full.json' -Content $npmFullRun.stdout
     $npmFull = Get-Content -Raw -LiteralPath $npmFullPath | ConvertFrom-Json -Depth 64
     $npmFullFindingCount = [int]$npmFull.metadata.vulnerabilities.total
@@ -258,7 +258,7 @@ try {
     $osvPath = Join-Path $script:RunDirectory 'osv-lockfiles.json'
     $null = Invoke-SecurityProcess -FilePath $osv -ArgumentList @(
         'scan', 'source',
-        '--lockfile', (Join-Path $source 'package-lock.json'),
+        '--lockfile', (Join-Path $root 'package-lock.json'),
         '--lockfile', (Join-Path $source 'uv.lock'),
         '--format', 'json',
         '--output-file', $osvPath,
@@ -309,11 +309,11 @@ try {
     Complete-SecurityCheck -Stage passive-checks -Tool 'ruff' -Message 'Python static checks completed.'
     $null = Invoke-SecurityProcess -FilePath 'npm.cmd' -ArgumentList @(
         'run', 'typecheck', '--workspace', 'apps/desktop'
-    ) -WorkingDirectory $source -EvidenceName 'typescript' -Stage passive-checks -Message 'Validating Desktop TypeScript contracts.'
+    ) -WorkingDirectory $root -EvidenceName 'typescript' -Stage passive-checks -Message 'Validating Desktop TypeScript contracts.'
     Complete-SecurityCheck -Stage passive-checks -Tool 'typescript' -Message 'Desktop TypeScript validation completed.'
     $eslintRun = Invoke-SecurityProcess -FilePath 'npm.cmd' -ArgumentList @(
         'run', 'lint', '--workspace', 'apps/desktop'
-    ) -WorkingDirectory $source -EvidenceName 'eslint' -Stage passive-checks -Message 'Running Desktop lint and unsafe-pattern checks.'
+    ) -WorkingDirectory $root -EvidenceName 'eslint' -Stage passive-checks -Message 'Running Desktop lint and unsafe-pattern checks.'
     Complete-SecurityCheck -Stage passive-checks -Tool 'eslint' -Message 'Desktop lint checks completed.'
 
     $semgrepSummary = $null
@@ -359,7 +359,7 @@ try {
             '--output-format', 'JSON',
             '--output-file', $nodeSbom,
             '--validate'
-        ) -WorkingDirectory $source -EvidenceName 'sbom-node' -Stage active-checks -Message 'Generating and validating the Node SBOM.'
+        ) -WorkingDirectory $root -EvidenceName 'sbom-node' -Stage active-checks -Message 'Generating and validating the Node SBOM.'
         Complete-SecurityCheck -Stage active-checks -Tool 'sbom-node' -Message 'Node SBOM generation completed.'
 
         $pythonSbom = Resolve-HermesPath 'security\sbom\python-runtime.cdx.json'

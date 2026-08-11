@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "useDefineForClassFields": true,
+    "lib": ["DOM", "DOM.Iterable", "ES2023"],
+    "types": ["node"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@hermes/plugin-sdk": ["./src/sdk/index.ts"],
+      "@hermes/shared/billing": ["../../packages/hermes-agent-client/src/billing-types.ts"],
+      "@hermes/shared/*": ["../../packages/hermes-agent-client/src/*"],
+      "@hermes/shared": ["../../packages/hermes-agent-client/src/index.ts"]
+    }
+  },
+  "include": ["src", "../../packages/hermes-agent-client/src"],
+  "exclude": ["e2e", "electron", "playwright.config.ts"],
+  "references": [{ "path": "./tsconfig.electron.json" }]
+}
