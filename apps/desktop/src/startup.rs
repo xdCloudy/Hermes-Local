@@ -276,8 +276,8 @@ fn resolve_powershell() -> Result<PathBuf, String> {
         }
     }
 
-    let system_root = env::var_os("SystemRoot")
-        .map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+    let system_root =
+        env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
     let where_exe = system_root.join("System32").join("where.exe");
     if let Ok(output) = std::process::Command::new(where_exe)
         .arg("pwsh.exe")
