@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `0f18427c7314dee3d9ab2f3ea5f4bfe93c3e5e55` (2026-08-11)  
+> **Implementation audit checkpoint:** `b14ad991064dd06903b5370ad55dd9fb749c761a` (2026-08-11)  
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -53,10 +53,10 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 73 | Largest remaining implementation backlog. |
+| A1 Designed | 72 | Largest remaining implementation backlog. |
 | A2 Service | 10 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 6 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 36 | Automated slice is green; human/live acceptance still required. |
+| A4 Auto-verified | 37 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 1 | Named external validation blocker. |
@@ -66,8 +66,10 @@ Current CI at this checkpoint is green for Documentation validation, the Hermes
 Agent harness/native-client boundary workflow, and Dioxus Rust validation.
 The Rust validation gate includes architecture enforcement, rustfmt,
 `cargo check --workspace --all-targets`, shared-UI WASM compilation, workspace
-tests, Clippy, optimized Windows release build and artifact upload. This is
-evidence for applicable A4 rows only; it is not a substitute for A6.
+tests, Clippy, optimized Windows release build, resolved Cargo CycloneDX SBOM,
+release-manifest/SHA-256 generation and artifact upload. Trusted non-PR runs
+additionally mint and verify GitHub artifact attestations. This is evidence for
+applicable A4 rows only; it is not a substitute for A5 or A6.
 
 ## Roadmap waves
 
@@ -283,7 +285,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | DI-15 | Windows environment, PATH, CA and platform recovery | `PlatformService` | no direct surface | A1 Designed | Only slices needed for current startup/SSH are ported; full OG Windows recovery surface is not. | Test unusual PATH, user env, custom CA/proxy, WSL/remote display and representative broken-install recovery. | ⬜ |
 | DI-16 | Optimized Windows Rust executable build | Rust/Dioxus release tooling | release artifact | A4 Auto-verified | CI builds `hermes-local.exe` with pinned Rust 1.97.1, architecture/WASM/tests/Clippy gates and uploads a Windows x64 artifact. | Run the exact CI artifact on the target Windows machine, verify launch/identity/icon/version and basic navigation. | ⬜ |
 | DI-17 | Installer/portable package, install stamp and artifact identity | Rust/Dioxus packaging | installer/portable | A1 Designed | Release EXE exists; production installer/portable/package identity and install stamp are not complete. | Install both supported distribution forms on clean Windows; verify paths, shortcuts, icon, version, uninstall registration and no Electron runtime. | ⬜ |
-| DI-18 | SBOM, hashes and release provenance | release tooling | About/update | A1 Designed | Not complete for Rust package. | Verify SBOM/hashes/signatures/version provenance against exact packaged binaries and dependencies. | ⬜ |
+| DI-18 | SBOM, hashes and release provenance | release tooling | About/update | A4 Auto-verified | PR #140 / Dioxus Rust validation run #150 passed the optimized Windows build, resolved Cargo CycloneDX generation, SHA-256 release manifest/checksums, focused SBOM tests and artifact upload. Trusted-run attestation wiring is implemented; no human provenance/package review has been recorded. | Verify SBOM/hashes/signatures/version provenance against exact packaged binaries and dependencies. | ⬜ |
 | DI-19 | Production script/launcher cutover to Rust | build/setup/launcher tooling | product entry points | A1 Designed | Electron/React scripts remain production-authoritative while migration is in progress. | Run every official install/start/update/repair entry point and prove it launches only Rust client plus intended Agent/runtime children. | ⬜ |
 | DI-20 | Remove Electron/React/Node production runtime | repository/build tooling | n/a | A1 Designed | Legacy client intentionally remains as oracle; no production-runtime deletion has happened. | Inspect package/build/install outputs and process tree; prove Electron/Chromium/Node/React client code is absent from production artifacts. | ⬜ |
 | DI-21 | Clean-clone, package and full release regression | release/QA | whole product | A1 Designed | Not possible until feature/cutover waves are complete. | From clean clone/clean VM: build, package, install, run full automated suite and execute the human regression plan. | ⬜ |
