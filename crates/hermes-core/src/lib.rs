@@ -10,8 +10,9 @@ use std::{
 use futures_core::Stream;
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, ChatMessage, ConnectionState, FileEntry, GatewayEvent,
-    GitStatus, MessageRole, ProjectSummary, ProjectsSnapshot, RuntimeStatus, SessionCreateRequest,
-    SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
+    GitStatus, MessageRole, ModelAssignmentRequest, ModelAssignmentResponse, ModelSettingsSnapshot,
+    ProjectSummary, ProjectsSnapshot, RuntimeStatus, SessionCreateRequest, SessionResumeResponse,
+    SessionSummary, TaskSummary, TrustSnapshot,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -345,6 +346,15 @@ pub trait AgentConfigService: Send + Sync {
     ) -> ServiceFuture<'_, ()>;
 }
 
+pub trait ModelService: Send + Sync {
+    fn load(&self, profile: Option<&str>) -> ServiceFuture<'_, ModelSettingsSnapshot>;
+    fn assign(
+        &self,
+        profile: Option<&str>,
+        request: &ModelAssignmentRequest,
+    ) -> ServiceFuture<'_, ModelAssignmentResponse>;
+}
+
 pub trait RuntimeService: Send + Sync {
     fn status(&self) -> ServiceFuture<'_, RuntimeStatus>;
     fn actions(&self) -> ServiceFuture<'_, Vec<TaskSummary>>;
@@ -402,6 +412,7 @@ pub struct AppServices {
     pub projects: Arc<dyn ProjectService>,
     pub settings: Arc<dyn SettingsService>,
     pub agent_config: Arc<dyn AgentConfigService>,
+    pub models: Arc<dyn ModelService>,
     pub runtime: Arc<dyn RuntimeService>,
     pub trust: Arc<dyn TrustService>,
     pub files: Arc<dyn FileService>,

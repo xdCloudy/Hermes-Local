@@ -125,7 +125,8 @@ updater work itself.
 | --- | --- | --- | --- | --- |
 | Settings and per-scope persistence | `SettingsService` | settings overlay | schema/scope/migration tests | Ported |
 | Agent config record, defaults and schema | `AgentConfigService` | Model/Chat settings | profile-aware REST replacement contract + rendered save E2E | Validated |
-| Main, auxiliary and MoA model configuration | typed model services | Model settings | provider/catalog/assignment fixtures + interaction E2E | Audited |
+| Main and auxiliary model configuration | `ModelService` | Model settings | provider/catalog/assignment fixtures + interaction E2E | Ported |
+| Mixture-of-Agents model configuration | typed model service | Model settings | preset/slot round-trip + interaction E2E | Audited |
 | Local/remote/cloud connection profiles | `ConnectionService` | settings/profiles | soft/hard/live re-home tests | Designed |
 | OAuth login/logout and callbacks | `AuthService` | settings/recovery | RFC 8252/state/origin/token tests | Designed |
 | Hermes Cloud discovery/sign-in | `AuthService` | settings/profile menu | auth/connectivity separation tests | Designed |

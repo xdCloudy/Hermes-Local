@@ -4,10 +4,10 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use dioxus::prelude::*;
 use futures_util::StreamExt;
-use hermes_core::{AgentConfigService, AppServices, SessionTranscript};
+use hermes_core::{AgentConfigService, AppServices, ModelService, SessionTranscript};
 use hermes_protocol::{
-    AgentConfigSnapshot, AppSettings, MessageRole, ProjectsSnapshot, SessionCreateRequest,
-    SessionSummary, ThemeMode,
+    AgentConfigSnapshot, AppSettings, MessageRole, ModelAssignmentRequest, ModelSettingsSnapshot,
+    ProjectsSnapshot, SessionCreateRequest, SessionSummary, ThemeMode,
 };
 use serde_json::{Map, Value, json};
 
@@ -1676,6 +1676,21 @@ const PERSONALITIES: &[&str] = &[
     "hype",
 ];
 
+const REASONING_EFFORTS: &[&str] = &[
+    "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
+];
+
+const AUXILIARY_TASKS: &[(&str, &str, &str)] = &[
+    ("vision", "Vision", "Image analysis"),
+    ("web_extract", "Web extract", "Page summarization"),
+    ("compression", "Compression", "Context compaction"),
+    ("skills_hub", "Skills hub", "Skill search"),
+    ("approval", "Approval", "Smart auto-approve"),
+    ("mcp", "MCP", "MCP tool routing"),
+    ("title_generation", "Title gen", "Session titles"),
+    ("curator", "Curator", "Skill-usage review"),
+];
+
 #[component]
 fn AgentConfigPanel(section: &'static str, icon: &'static str, label: &'static str) -> Element {
     let services = use_context::<AppServices>();
@@ -1754,6 +1769,411 @@ fn AgentConfigPanel(section: &'static str, icon: &'static str, label: &'static s
 }
 
 #[component]
+fn ModelAssignmentFields(
+    config_snapshot: Signal<Option<AgentConfigSnapshot>>,
+    config: AgentConfigSnapshot,
+    profile: Option<String>,
+    config_saving: Signal<bool>,
+    config_error: Signal<Option<String>>,
+) -> Element {
+    let services = use_context::<AppServices>();
+    let load_service = services.models.clone();
+    let load_profile = profile.clone();
+    let mut model_snapshot = use_signal(|| None::<ModelSettingsSnapshot>);
+    let mut loading = use_signal(|| true);
+    let applying = use_signal(|| false);
+    let mut model_error = use_signal(|| None::<String>);
+    let mut refresh = use_signal(|| 0_u64);
+    let mut selected_provider = use_signal(String::new);
+    let mut selected_model = use_signal(String::new);
+    let mut editing_task = use_signal(|| None::<String>);
+    let mut auxiliary_provider = use_signal(String::new);
+    let mut auxiliary_model = use_signal(String::new);
+    let _load = use_resource(move || {
+        let service = load_service.clone();
+        let profile = load_profile.clone();
+        let _revision = refresh();
+        async move {
+            loading.set(true);
+            match service.load(profile.as_deref()).await {
+                Ok(loaded) => {
+                    selected_provider.set(loaded.info.provider.clone());
+                    selected_model.set(loaded.info.model.clone());
+                    model_snapshot.set(Some(loaded));
+                    model_error.set(None);
+                }
+                Err(error) => model_error.set(Some(error.to_string())),
+            }
+            loading.set(false);
+        }
+    });
+    let model_error_text =
+        model_error().unwrap_or_else(|| "The model service is unavailable.".to_owned());
+    let Some(models) = model_snapshot() else {
+        return if loading() {
+            rsx! {
+                div { class: "model-settings-skeleton",
+                    p { "Loading model configuration…" }
+                    div { i {} i {} span {} }
+                }
+            }
+        } else {
+            rsx! {
+                div { class: "settings-load-error compact", role: "alert",
+                    Codicon { name: "error" }
+                    strong { "Could not load model configuration" }
+                    p { "{model_error_text}" }
+                    button { class: "button", onclick: move |_| refresh += 1, "Retry" }
+                }
+            }
+        };
+    };
+    let main_provider = selected_provider();
+    let main_model = selected_model();
+    let main_models = models
+        .options
+        .providers
+        .iter()
+        .find(|provider| provider.slug == main_provider)
+        .map(|provider| provider.models.clone())
+        .unwrap_or_default();
+    let applied_provider = models
+        .options
+        .providers
+        .iter()
+        .find(|provider| provider.slug == models.info.provider);
+    let capabilities =
+        applied_provider.and_then(|provider| provider.capabilities.get(&models.info.model));
+    let reasoning_supported = capabilities.is_none_or(|capabilities| capabilities.reasoning);
+    let fast_supported = capabilities.is_some_and(|capabilities| capabilities.fast);
+    let reasoning = config_value(&config.config, "agent.reasoning_effort")
+        .and_then(Value::as_str)
+        .unwrap_or("medium")
+        .to_owned();
+    let fast = config_value(&config.config, "agent.service_tier")
+        .and_then(Value::as_str)
+        .is_some_and(|tier| matches!(tier, "fast" | "priority" | "on"));
+    let auxiliary_models = models
+        .options
+        .providers
+        .iter()
+        .find(|provider| provider.slug == auxiliary_provider())
+        .map(|provider| provider.models.clone())
+        .unwrap_or_default();
+
+    rsx! {
+        section { class: "model-assignment-section",
+            p { class: "settings-intro", "Applies to new sessions. Use the model picker in the composer to hot-swap the active chat." }
+            div { class: "model-picker-row",
+                select {
+                    class: "settings-select provider",
+                    disabled: applying(),
+                    value: "{main_provider}",
+                    onchange: {
+                        let providers = models.options.providers.clone();
+                        move |event| {
+                            let provider = event.value();
+                            let model = providers
+                                .iter()
+                                .find(|candidate| candidate.slug == provider)
+                                .and_then(|candidate| candidate.models.first())
+                                .cloned()
+                                .unwrap_or_default();
+                            selected_provider.set(provider);
+                            selected_model.set(model);
+                        }
+                    },
+                    for provider in &models.options.providers {
+                        option { value: "{provider.slug}", selected: provider.slug == main_provider, "{provider.name}" }
+                    }
+                }
+                select {
+                    class: "settings-select model",
+                    disabled: applying() || main_models.is_empty(),
+                    value: "{main_model}",
+                    onchange: move |event| selected_model.set(event.value()),
+                    for model in &main_models { option { value: "{model}", selected: *model == main_model, "{model}" } }
+                }
+                button {
+                    class: "button primary",
+                    disabled: applying() || main_provider.is_empty() || main_model.is_empty(),
+                    onclick: {
+                        let service = services.models.clone();
+                        let profile = profile.clone();
+                        let providers = models.options.providers.clone();
+                        move |_| {
+                            let provider = selected_provider();
+                            let base_url = providers
+                                .iter()
+                                .find(|candidate| candidate.slug == provider)
+                                .and_then(|candidate| candidate.api_url.clone());
+                            assign_model(
+                                service.clone(),
+                                profile.clone(),
+                                ModelAssignmentRequest {
+                                    provider,
+                                    model: selected_model(),
+                                    scope: "main".into(),
+                                    base_url,
+                                    ..ModelAssignmentRequest::default()
+                                },
+                                applying,
+                                model_error,
+                                refresh,
+                            );
+                        }
+                    },
+                    if applying() { "Applying…" } else { "Apply" }
+                }
+            }
+            if reasoning_supported || fast_supported {
+                div { class: "model-defaults-row",
+                    span { "Defaults" }
+                    if reasoning_supported {
+                        label { "Reasoning"
+                            select {
+                                class: "settings-select compact",
+                                disabled: config_saving(),
+                                value: "{reasoning}",
+                                onchange: {
+                                    let service = services.agent_config.clone();
+                                    let profile = profile.clone();
+                                    let current = config.config.clone();
+                                    move |event| commit_agent_config(
+                                        config_snapshot,
+                                        config_saving,
+                                        config_error,
+                                        service.clone(),
+                                        profile.clone(),
+                                        set_config_value(&current, "agent.reasoning_effort", json!(event.value())),
+                                    )
+                                },
+                                for effort in REASONING_EFFORTS {
+                                    option { value: "{effort}", selected: reasoning == *effort,
+                                        if *effort == "none" { "Off" } else { "{effort}" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if fast_supported {
+                        label { class: "model-fast-control", "Fast"
+                            span { class: "settings-switch",
+                                input {
+                                    r#type: "checkbox",
+                                    checked: fast,
+                                    disabled: config_saving(),
+                                    onchange: {
+                                        let service = services.agent_config.clone();
+                                        let profile = profile.clone();
+                                        let current = config.config.clone();
+                                        move |event| commit_agent_config(
+                                            config_snapshot,
+                                            config_saving,
+                                            config_error,
+                                            service.clone(),
+                                            profile.clone(),
+                                            set_config_value(&current, "agent.service_tier", json!(if event.checked() { "fast" } else { "normal" })),
+                                        )
+                                    }
+                                }
+                                span {}
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(error) = model_error() { p { class: "inline-error", role: "alert", "{error}" } }
+        }
+        section { class: "auxiliary-model-section",
+            div { class: "settings-subheading",
+                div { Codicon { name: "server-process" } strong { "Auxiliary models" } }
+                button {
+                    class: "button",
+                    disabled: applying() || models.info.provider.is_empty() || models.info.model.is_empty(),
+                    onclick: {
+                        let service = services.models.clone();
+                        let profile = profile.clone();
+                        let info = models.info.clone();
+                        move |_| assign_model(
+                            service.clone(),
+                            profile.clone(),
+                            ModelAssignmentRequest {
+                                provider: info.provider.clone(),
+                                model: info.model.clone(),
+                                scope: "auxiliary".into(),
+                                task: Some("__reset__".into()),
+                                ..ModelAssignmentRequest::default()
+                            },
+                            applying,
+                            model_error,
+                            refresh,
+                        )
+                    },
+                    "Reset all to main"
+                }
+            }
+            p { class: "settings-intro", "Helper tasks run on the main model by default. Assign a dedicated model to any task to override." }
+            div { class: "auxiliary-list",
+                for (task, task_label, hint) in AUXILIARY_TASKS {
+                    {
+                        let assignment = models.auxiliary.tasks.iter().find(|assignment| assignment.task == *task).cloned();
+                        let is_editing = editing_task().as_deref() == Some(*task);
+                        rsx! {
+                            div { class: "auxiliary-row", key: "{task}",
+                                div { class: "settings-row-copy",
+                                    strong { "{task_label}" }
+                                    p {
+                                        if let Some(current) = &assignment {
+                                            "{current.provider} · {current.model}"
+                                        } else {
+                                            "auto · use main model — {hint}"
+                                        }
+                                    }
+                                }
+                                if is_editing {
+                                    div { class: "auxiliary-editor",
+                                        select {
+                                            class: "settings-select compact",
+                                            value: "{auxiliary_provider}",
+                                            onchange: {
+                                                let providers = models.options.providers.clone();
+                                                move |event| {
+                                                    let provider = event.value();
+                                                    let model = providers
+                                                        .iter()
+                                                        .find(|candidate| candidate.slug == provider)
+                                                        .and_then(|candidate| candidate.models.first())
+                                                        .cloned()
+                                                        .unwrap_or_default();
+                                                    auxiliary_provider.set(provider);
+                                                    auxiliary_model.set(model);
+                                                }
+                                            },
+                                            for provider in &models.options.providers {
+                                                option { value: "{provider.slug}", selected: provider.slug == auxiliary_provider(), "{provider.name}" }
+                                            }
+                                        }
+                                        select {
+                                            class: "settings-select compact model",
+                                            value: "{auxiliary_model}",
+                                            onchange: move |event| auxiliary_model.set(event.value()),
+                                            for model in &auxiliary_models {
+                                                option { value: "{model}", selected: *model == auxiliary_model(), "{model}" }
+                                            }
+                                        }
+                                        button {
+                                            class: "button primary",
+                                            disabled: applying() || auxiliary_provider().is_empty() || auxiliary_model().is_empty(),
+                                            onclick: {
+                                                let service = services.models.clone();
+                                                let profile = profile.clone();
+                                                let task = (*task).to_owned();
+                                                let providers = models.options.providers.clone();
+                                                move |_| {
+                                                    let provider = auxiliary_provider();
+                                                    let base_url = providers
+                                                        .iter()
+                                                        .find(|candidate| candidate.slug == provider)
+                                                        .and_then(|candidate| candidate.api_url.clone());
+                                                    editing_task.set(None);
+                                                    assign_model(
+                                                        service.clone(),
+                                                        profile.clone(),
+                                                        ModelAssignmentRequest {
+                                                            provider,
+                                                            model: auxiliary_model(),
+                                                            scope: "auxiliary".into(),
+                                                            task: Some(task.clone()),
+                                                            base_url,
+                                                        },
+                                                        applying,
+                                                        model_error,
+                                                        refresh,
+                                                    );
+                                                }
+                                            },
+                                            "Apply"
+                                        }
+                                        button { class: "button", onclick: move |_| editing_task.set(None), "Cancel" }
+                                    }
+                                } else {
+                                    div { class: "auxiliary-actions",
+                                        button {
+                                            class: "button",
+                                            disabled: applying(),
+                                            onclick: {
+                                                let service = services.models.clone();
+                                                let profile = profile.clone();
+                                                let info = models.info.clone();
+                                                let task = (*task).to_owned();
+                                                move |_| assign_model(
+                                                    service.clone(),
+                                                    profile.clone(),
+                                                    ModelAssignmentRequest {
+                                                        provider: info.provider.clone(),
+                                                        model: info.model.clone(),
+                                                        scope: "auxiliary".into(),
+                                                        task: Some(task.clone()),
+                                                        ..ModelAssignmentRequest::default()
+                                                    },
+                                                    applying,
+                                                    model_error,
+                                                    refresh,
+                                                )
+                                            },
+                                            "Set to main"
+                                        }
+                                        button {
+                                            class: "button",
+                                            disabled: applying() || models.options.providers.is_empty(),
+                                            onclick: {
+                                                let assignment = assignment.clone();
+                                                let main = models.info.clone();
+                                                move |_| {
+                                                    let provider = assignment.as_ref().map_or_else(|| main.provider.clone(), |value| value.provider.clone());
+                                                    let model = assignment.as_ref().map_or_else(|| main.model.clone(), |value| value.model.clone());
+                                                    auxiliary_provider.set(provider);
+                                                    auxiliary_model.set(model);
+                                                    editing_task.set(Some((*task).to_owned()));
+                                                }
+                                            },
+                                            "Change"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn assign_model(
+    service: Arc<dyn ModelService>,
+    profile: Option<String>,
+    request: ModelAssignmentRequest,
+    mut applying: Signal<bool>,
+    mut error: Signal<Option<String>>,
+    mut refresh: Signal<u64>,
+) {
+    if applying() {
+        return;
+    }
+    applying.set(true);
+    error.set(None);
+    spawn(async move {
+        match service.assign(profile.as_deref(), &request).await {
+            Ok(_) => refresh += 1,
+            Err(assign_error) => error.set(Some(assign_error.to_string())),
+        }
+        applying.set(false);
+    });
+}
+
+#[component]
 fn ModelConfigFields(
     snapshot: Signal<Option<AgentConfigSnapshot>>,
     loaded: AgentConfigSnapshot,
@@ -1769,6 +2189,13 @@ fn ModelConfigFields(
     let mut context_draft = use_signal(|| context_length.to_string());
     let mut fallback_draft = use_signal(|| fallback_entries);
     rsx! {
+        ModelAssignmentFields {
+            config_snapshot: snapshot,
+            config: loaded.clone(),
+            profile: profile.clone(),
+            config_saving: saving,
+            config_error: error,
+        }
         SettingsRow {
             title: "Context Window",
             description: "Leave at 0 to use the selected model's detected context window.",

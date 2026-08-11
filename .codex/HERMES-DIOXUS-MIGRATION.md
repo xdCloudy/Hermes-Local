@@ -444,3 +444,33 @@ Mixture-of-Agents editor still require their official typed model services.
 Exact next action: port those OG Model settings services and controls into this
 pane, then implement Project Centre repair and separately confirmed file
 deletion.
+
+## Main and auxiliary model checkpoint (2026-08-11)
+
+The upper OG Model settings hierarchy is restored. A typed `ModelService`
+loads `/api/model/info`, `/api/model/options?explicit_only=1` and
+`/api/model/auxiliary`, and posts source-shaped assignments to
+`/api/model/set`. Profile routing, authentication, provider capabilities,
+custom provider base URLs and unknown response fields remain behind the Rust
+boundary. Model and provider identifiers permit the slash-rich model names the
+real catalog uses while rejecting empty, oversized or control-character input.
+
+The populated pane now renders the main provider/model selectors and Apply
+action, capability-gated Reasoning and Fast profile defaults, the Auxiliary
+models heading and reset action, all eight source task rows, persisted override
+copy, and inline provider/model Change, Apply and Cancel controls. Reset and
+Set-to-main use the OG `scope: auxiliary` plus `task: __reset__`/task-name
+contract instead of inventing a second endpoint.
+
+An in-process compatibility peer proves all three reads and the assignment
+write, including `explicit_only=1`, profile encoding, the session-token header
+and exact auxiliary JSON body. Native 1296x809 QA covers the expanded model
+pane, the inline Vision editor, and a successful applied assignment followed
+by a service refresh. The workspace passes 27 unit tests plus doc-tests.
+
+The Mixture-of-Agents preset editor remains the one large OG Model-settings
+block not yet ported.
+
+Exact next action: connect `/api/model/moa` load/save and reproduce the OG MoA
+preset/slot editor, then return to Project Centre repair and separately
+confirmed file deletion.

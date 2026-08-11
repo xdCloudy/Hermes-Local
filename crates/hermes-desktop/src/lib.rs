@@ -12,14 +12,15 @@ use std::{
 use hermes_agent_client::GatewayClient;
 use hermes_core::{
     AgentConfigService, AppServices, ConnectionService, EventStream, FileService, GitService,
-    PlatformService, ProjectService, RuntimeService, ServiceError, ServiceFuture, ServiceResult,
-    SessionService, SettingsService, TerminalService, TrustService, UpdateService,
+    ModelService, PlatformService, ProjectService, RuntimeService, ServiceError, ServiceFuture,
+    ServiceResult, SessionService, SettingsService, TerminalService, TrustService, UpdateService,
     validate_identifier, validate_relative_path,
 };
 use hermes_protocol::{
-    AgentConfigSnapshot, AppSettings, ConfigSchemaResponse, ConnectionState, FileEntry, GitStatus,
-    ProjectSummary, ProjectsSnapshot, RuntimeStatus, SessionCreateRequest, SessionCreateResponse,
-    SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
+    AgentConfigSnapshot, AppSettings, AuxiliaryModels, ConfigSchemaResponse, ConnectionState,
+    FileEntry, GitStatus, ModelAssignmentRequest, ModelAssignmentResponse, ModelInfo, ModelOptions,
+    ModelSettingsSnapshot, ProjectSummary, ProjectsSnapshot, RuntimeStatus, SessionCreateRequest,
+    SessionCreateResponse, SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use reqwest::Method;
@@ -81,6 +82,7 @@ impl NativeApp {
                 projects: remote.clone(),
                 settings,
                 agent_config: remote.clone(),
+                models: remote.clone(),
                 runtime: remote.clone(),
                 trust: remote,
                 files: Arc::new(DesktopFiles),
@@ -535,6 +537,82 @@ impl AgentConfigService for GatewayServices {
                 ));
             }
             Ok(())
+        })
+    }
+}
+
+impl ModelService for GatewayServices {
+    fn load(&self, profile: Option<&str>) -> ServiceFuture<'_, ModelSettingsSnapshot> {
+        let profile = profile.map(str::to_owned);
+        Box::pin(async move {
+            let rest = self.rest()?;
+            let info = rest
+                .request(
+                    Method::GET,
+                    &profiled_path("/api/model/info", profile.as_deref()),
+                    None,
+                )
+                .await?;
+            let options = rest
+                .request(Method::GET, &model_options_path(profile.as_deref()), None)
+                .await?;
+            let auxiliary = rest
+                .request(
+                    Method::GET,
+                    &profiled_path("/api/model/auxiliary", profile.as_deref()),
+                    None,
+                )
+                .await?;
+            Ok(ModelSettingsSnapshot {
+                info: serde_json::from_value::<ModelInfo>(info).map_err(protocol)?,
+                options: serde_json::from_value::<ModelOptions>(options).map_err(protocol)?,
+                auxiliary: serde_json::from_value::<AuxiliaryModels>(auxiliary)
+                    .map_err(protocol)?,
+            })
+        })
+    }
+
+    fn assign(
+        &self,
+        profile: Option<&str>,
+        request: &ModelAssignmentRequest,
+    ) -> ServiceFuture<'_, ModelAssignmentResponse> {
+        let profile = profile.map(str::to_owned);
+        let request = request.clone();
+        Box::pin(async move {
+            if !matches!(request.scope.as_str(), "main" | "auxiliary") {
+                return Err(ServiceError::InvalidInput("invalid model scope".into()));
+            }
+            for (field, value) in [
+                ("model", request.model.as_str()),
+                ("provider", request.provider.as_str()),
+            ] {
+                if value.trim().is_empty()
+                    || value.len() > 1_024
+                    || value.chars().any(char::is_control)
+                {
+                    return Err(ServiceError::InvalidInput(format!("invalid {field}")));
+                }
+            }
+            if let Some(task) = &request.task {
+                validate_identifier(task, "model task")?;
+            }
+            let value = self
+                .rest()?
+                .request(
+                    Method::POST,
+                    &profiled_path("/api/model/set", profile.as_deref()),
+                    Some(serde_json::to_value(request).map_err(protocol)?),
+                )
+                .await?;
+            let response: ModelAssignmentResponse =
+                serde_json::from_value(value).map_err(protocol)?;
+            if !response.ok {
+                return Err(ServiceError::Transport(
+                    "Hermes Agent did not confirm the model assignment".into(),
+                ));
+            }
+            Ok(response)
         })
     }
 }
@@ -1147,6 +1225,15 @@ fn profiled_path(path: &str, profile: Option<&str>) -> String {
     format!("{path}?{query}")
 }
 
+fn model_options_path(profile: Option<&str>) -> String {
+    let mut query = url::form_urlencoded::Serializer::new(String::new());
+    query.append_pair("explicit_only", "1");
+    if let Some(profile) = profile.filter(|profile| !profile.is_empty()) {
+        query.append_pair("profile", profile);
+    }
+    format!("/api/model/options?{}", query.finish())
+}
+
 fn contained_root(root: &Path) -> ServiceResult<PathBuf> {
     root.canonicalize().map_err(platform)
 }
@@ -1465,6 +1552,130 @@ mod tests {
             .expect("request body");
         let saved: Value = serde_json::from_str(saved_body).expect("saved JSON");
         assert_eq!(saved, json!({ "config": loaded.config }));
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn model_settings_use_the_official_info_options_auxiliary_and_set_contracts() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let address = listener.local_addr().expect("address");
+        let server = tokio::spawn(async move {
+            let responses = [
+                json!({ "provider": "nous", "model": "Hermes-4" }),
+                json!({
+                    "provider": "nous",
+                    "model": "Hermes-4",
+                    "providers": [{
+                        "name": "Nous Portal",
+                        "slug": "nous",
+                        "models": ["Hermes-4"],
+                        "capabilities": { "Hermes-4": { "reasoning": true, "fast": true } }
+                    }]
+                }),
+                json!({
+                    "main": { "provider": "nous", "model": "Hermes-4" },
+                    "tasks": []
+                }),
+                json!({ "ok": true, "scope": "auxiliary", "tasks": ["vision"] }),
+            ];
+            let mut requests = Vec::new();
+            for body in responses {
+                let (mut stream, _) = listener.accept().await.expect("connection");
+                let mut request = Vec::new();
+                let mut chunk = [0_u8; 2048];
+                loop {
+                    let count = stream.read(&mut chunk).await.expect("request bytes");
+                    if count == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&chunk[..count]);
+                    let text = String::from_utf8_lossy(&request);
+                    if let Some(headers_end) = text.find("\r\n\r\n") {
+                        let content_length = text[..headers_end]
+                            .lines()
+                            .find_map(|line| line.strip_prefix("content-length: "))
+                            .and_then(|value| value.parse::<usize>().ok())
+                            .unwrap_or_default();
+                        if request.len() >= headers_end + 4 + content_length {
+                            break;
+                        }
+                    }
+                }
+                let body = body.to_string();
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("response");
+                requests.push(String::from_utf8(request).expect("UTF-8 request"));
+            }
+            requests
+        });
+        let services = GatewayServices {
+            client: Arc::new(RwLock::new(None)),
+            rest: Arc::new(RwLock::new(Some(GatewayRest {
+                client: reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .build()
+                    .expect("client"),
+                base_url: url::Url::parse(&format!("http://{address}/hermes/")).expect("URL"),
+                session_token: Some("model-token".into()),
+            }))),
+        };
+        let loaded = ModelService::load(&services, Some("work profile"))
+            .await
+            .expect("load models");
+        assert_eq!(loaded.info.model, "Hermes-4");
+        assert!(loaded.options.providers[0].capabilities["Hermes-4"].fast);
+        assert!(loaded.auxiliary.tasks.is_empty());
+        let response = ModelService::assign(
+            &services,
+            Some("work profile"),
+            &ModelAssignmentRequest {
+                model: "Hermes-4".into(),
+                provider: "nous".into(),
+                scope: "auxiliary".into(),
+                task: Some("vision".into()),
+                base_url: None,
+            },
+        )
+        .await
+        .expect("assign model");
+        assert_eq!(response.tasks, ["vision"]);
+
+        let requests = server.await.expect("server");
+        for (request, endpoint) in requests.iter().zip([
+            "/hermes/api/model/info?profile=work+profile",
+            "/hermes/api/model/options?explicit_only=1&profile=work+profile",
+            "/hermes/api/model/auxiliary?profile=work+profile",
+            "/hermes/api/model/set?profile=work+profile",
+        ]) {
+            assert!(request.contains(endpoint));
+            assert!(request.contains("x-hermes-session-token: model-token"));
+        }
+        assert!(requests[0].starts_with("GET "));
+        assert!(requests[1].starts_with("GET "));
+        assert!(requests[2].starts_with("GET "));
+        assert!(requests[3].starts_with("POST "));
+        let assigned_body = requests[3]
+            .split_once("\r\n\r\n")
+            .map(|(_, body)| body)
+            .expect("request body");
+        let assigned: Value = serde_json::from_str(assigned_body).expect("assignment JSON");
+        assert_eq!(
+            assigned,
+            json!({
+                "model": "Hermes-4",
+                "provider": "nous",
+                "scope": "auxiliary",
+                "task": "vision"
+            })
+        );
     }
 
     #[tokio::test]
