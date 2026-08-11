@@ -5,9 +5,13 @@ mod base64_impl;
 pub use base64_impl::{Engine, engine};
 extern crate self as base64;
 
+mod clipboard_service;
 mod crash_forensics;
 mod deep_link;
+mod git_branch_service;
+mod git_worktree_service;
 mod login_item;
+mod notification_service;
 mod platform_diagnostics;
 mod power;
 mod ssh;
@@ -107,6 +111,7 @@ fn main() {
         eprintln!("Hermes Local protocol registration is unavailable: {error}");
     }
     let mut native = NativeApp::new(data_dir.clone());
+    notification_service::install(&mut native.services);
     startup::install_local_bootstrap(&mut native.services);
     ssh_service::install_ssh_probe(&mut native.services, data_dir);
     let window = WindowBuilder::new()
