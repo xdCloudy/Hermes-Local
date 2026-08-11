@@ -1,6 +1,7 @@
 #![cfg_attr(feature = "bundle", windows_subsystem = "windows")]
 
 mod ssh;
+mod ssh_service;
 mod startup;
 
 use std::path::PathBuf;
@@ -74,6 +75,7 @@ fn main() {
         .join("Hermes Local");
     let mut native = NativeApp::new(data_dir);
     startup::install_local_bootstrap(&mut native.services);
+    ssh_service::install_ssh_probe(&mut native.services);
     let window = WindowBuilder::new()
         .with_title("Hermes Local")
         .with_inner_size(LogicalSize::new(1_280.0, 800.0))
