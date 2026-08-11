@@ -113,7 +113,7 @@ unavailable installer, launch, process, startup, RAM or CPU values.
 | --- | ---: | ---: |
 | Packaged size | installer/portable pending | pending |
 | Unpacked size | 399,302,609 B (380.80 MiB), 486 files | pending |
-| Process count | pending | pending |
+| Process count | pending | one native client before Agent/runtime children; packaged measurement pending |
 | Cold start | median spawn-to-CDP 321 ms; DOM interactive 150 ms; FCP 588 ms | pending |
 | First usable window | median spawn-to-driver 1,397 ms | pending |
 | Idle working set | pending | pending |
@@ -142,13 +142,20 @@ port.
 
 ## Dependency decisions
 
-Official documentation review selected stable Dioxus 0.7.9, not the 0.8 alpha
+Official documentation review and the resolved crate graph selected stable Dioxus 0.7.10, not the 0.8 alpha
 or experimental native renderer. Dioxus Desktop uses the system WebView (WebView2
 on Windows) through Wry. Desktop and web will be isolated with Cargo features;
 the platform-neutral UI will compile with `dioxus/web` while Desktop composition
 uses `dioxus/desktop`. Rust 1.97.1 and the `wasm32-unknown-unknown` target are
-installed; the local Dioxus 0.7.9 CLI binary was verified against release SHA-256
-`0423b94dd36372d09936a9a288c4a6e7903a9f1bddd193b60bba9659890c87c4`.
+installed. An initial local Dioxus 0.7.9 CLI binary was verified against release
+SHA-256 `0423b94dd36372d09936a9a288c4a6e7903a9f1bddd193b60bba9659890c87c4`;
+the production dependency graph and Cargo lock use 0.7.10, and the CLI must be
+updated to the matching version before package validation.
+
+Pinned direct Rust dependencies now include Dioxus/Dioxus Router 0.7.10,
+Tokio 1.53.1, tokio-tungstenite 0.30.0, portable-pty 0.9.0, serde 1.0.229,
+serde_json 1.0.151, thiserror 2.0.20, url 2.5.8, uuid 1.24.0, trash 5.2.6,
+open 5.4.1, and async-stream 0.3.6. `Cargo.lock` is generated.
 
 ## Security decisions
 
@@ -170,17 +177,40 @@ installed; the local Dioxus 0.7.9 CLI binary was verified against release SHA-25
 - Locked TypeScript/lint/Vitest/build/architecture baseline captured.
 - Unpacked Electron Windows package and initial size/startup evidence captured.
 - Stable Rust, WASM target and hash-verified Dioxus CLI prepared.
+- Root Cargo workspace created with five cohesive crates and the Desktop
+  composition root.
+- Forward-compatible JSON-RPC DTOs and an actor-based WebSocket client are
+  implemented with bounded queues, request/connect timeouts, cancellation,
+  state/event subscriptions, ping/pong, and graceful close.
+- Cohesive typed service boundaries exist for sessions, projects, settings,
+  runtime/tasks, Trust, files, Git, ConPTY terminals, updates and platform
+  operations. The Dioxus crate contains no direct native authority calls.
+- Native filesystem operations canonicalise the selected root and target or
+  parent; Git uses argument arrays and `--`; external URL schemes are
+  allowlisted; deletion uses the Windows recycle bin.
+- Dioxus Desktop shell, route model, visual tokens, responsive/reduced-motion
+  CSS, primary navigation and all audited top-level feature destinations exist.
+- `cargo check --workspace --all-targets`: PASS.
+- `cargo test --workspace`: PASS, 9 unit tests plus doc-tests.
 
 ## Outstanding components
 
-- Focused PowerShell, release-integrity and harness baseline checks.
 - Remaining installer/portable, process/RAM/CPU and visual baseline capture.
-- Rust workspace, protocol, core/native services and Dioxus UI.
+- Complete DTO coverage, Agent bootstrap/auth/reconnect, state models,
+  route-specific behavior, secondary windows and specialty surfaces.
 - Native feature, packaging, updater, CI, guard, documentation and test migration.
 - Security review, visual parity, clean-build/package validation, commits, push
   and draft pull request.
 
 ## Results and unresolved failures
 
-None yet. This journal must be reconciled with Git state at every resumed
-session and updated before destructive removal of the legacy stack.
+The initial Dioxus compile required explicit `macro`, `asset`, `document`,
+`router`, and `launch` features because workspace dependencies disable defaults;
+that mismatch is repaired. No unresolved Rust compiler or unit-test failure
+exists at this checkpoint. Updater apply and native notifications deliberately
+report unavailable until their signed Windows implementations are completed;
+neither is marked migrated.
+
+Exact next action: connect native startup to local/remote Agent resolution and
+wire live settings/session/project state into Dioxus, then add protocol fixtures
+before the first implementation checkpoint commit.

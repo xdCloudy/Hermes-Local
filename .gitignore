@@ -11,6 +11,7 @@
 /backups/
 /build/
 /dist/
+/target/
 /temp/
 /Hermes Launcher/
 /apps/desktop/build/

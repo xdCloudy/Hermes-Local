@@ -1,0 +1,51 @@
+[workspace]
+resolver = "2"
+members = [
+  "apps/desktop",
+  "crates/hermes-agent-client",
+  "crates/hermes-core",
+  "crates/hermes-desktop",
+  "crates/hermes-protocol",
+  "crates/hermes-ui",
+]
+
+[workspace.package]
+version = "0.18.62"
+edition = "2024"
+rust-version = "1.97.1"
+license = "MIT"
+repository = "https://github.com/xdCloudy/Hermes-Local"
+
+[workspace.dependencies]
+async-stream = "=0.3.6"
+dioxus = { version = "=0.7.10", default-features = false }
+dioxus-router = "=0.7.10"
+futures-core = "=0.3.33"
+futures-util = { version = "=0.3.33", default-features = false }
+portable-pty = { version = "=0.9.0", default-features = false }
+open = "=5.4.1"
+reqwest = { version = "=0.13.4", default-features = false }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+thiserror = "=2.0.20"
+tokio = "=1.53.1"
+tokio-tungstenite = { version = "=0.30.0", default-features = false }
+tracing = "=0.1.44"
+trash = "=5.2.6"
+url = "=2.5.8"
+uuid = "=1.24.0"
+windows = "=0.62.2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"

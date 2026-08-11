@@ -1,0 +1,15 @@
+[package]
+name = "hermes-local"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+dioxus = { workspace = true, features = ["desktop", "launch"] }
+hermes-desktop = { path = "../../crates/hermes-desktop" }
+hermes-ui = { path = "../../crates/hermes-ui" }
+
+[lints]
+workspace = true
