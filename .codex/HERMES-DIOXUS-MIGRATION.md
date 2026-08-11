@@ -191,7 +191,7 @@ open 5.4.1, and async-stream 0.3.6. `Cargo.lock` is generated.
 - Dioxus Desktop shell, route model, visual tokens, responsive/reduced-motion
   CSS, primary navigation and all audited top-level feature destinations exist.
 - `cargo check --workspace --all-targets`: PASS.
-- `cargo test --workspace`: PASS, 9 unit tests plus doc-tests.
+- `cargo test --workspace`: PASS, 12 unit tests plus doc-tests.
 
 ## Outstanding components
 
@@ -214,3 +214,38 @@ neither is marked migrated.
 Exact next action: connect native startup to local/remote Agent resolution and
 wire live settings/session/project state into Dioxus, then add protocol fixtures
 before the first implementation checkpoint commit.
+
+## Visual parity correction (2026-08-11)
+
+The product owner rejected the initial Dioxus visual direction because it did
+not resemble the OG Hermes Launcher. That shell was an exploratory migration
+scaffold, not an acceptable parity result, and is now superseded.
+
+The implementation oracle is the official OG launcher source retained under
+`apps/desktop/src`, especially `app/chat/sidebar/index.tsx`,
+`app/local-workstation/index.tsx`, `styles.css`, and the theme definitions.
+Repository screenshots under `docs/assets/screenshots` and
+`reports/qa/screenshots` are the visual regression baselines. The port must
+preserve the original compact 0.8125rem sidebar rows, full launcher navigation,
+light/dark theme tokens, workstation header, bordered cards, action geometry,
+session/search regions, and bottom status bar. No visual redesign is authorised.
+
+Parity is a four-part gate: visual parity, interaction parity, state parity and
+behavioural parity. A matching screenshot alone is insufficient. Shell parity
+must be validated before the same component language is propagated through
+large feature areas. The already validated Rust workspace, typed Agent client,
+async gateway actor, cohesive application service traits and security
+boundaries remain the migration foundation unless concrete evidence proves an
+implementation incorrect.
+
+The corrected shell now uses the OG source geometry and tokens, a 34px custom
+titlebar behind typed composition-root window actions, the 237px compact
+sidebar and original route order, source Codicon SVG paths, workstation cards,
+session/search regions and a 20px status bar. Native captures exist at standard
+and maximised dimensions; the first unstyled capture was rejected because a
+plain Cargo build had skipped the external asset transform. CSS is now embedded
+by the shared Dioxus crate so both Cargo and Dioxus builds render identically.
+
+Exact next action: audit and port the OG sidebar interaction/state model
+(selection, search, pinned/recent sessions, row controls and context actions),
+then verify its interaction and visual parity before beginning the chat slice.

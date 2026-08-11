@@ -4,13 +4,31 @@ use dioxus::prelude::*;
 use hermes_core::AppServices;
 use hermes_protocol::{MessageRole, SessionCreateRequest};
 
-const APP_CSS: Asset = asset!("/assets/app.css");
+const APP_CSS: &str = include_str!("../assets/app.css");
+const CODICON_SPRITE: &str = include_str!("../assets/codicon-sprite.svg");
+
+/// Platform window commands supplied by a composition root. The shared UI does
+/// not import a desktop/windowing crate and a future Web host can supply its own
+/// implementation.
+#[derive(Clone)]
+pub struct WindowActions {
+    pub drag: Callback<()>,
+    pub minimize: Callback<()>,
+    pub toggle_maximized: Callback<()>,
+    pub close: Callback<()>,
+}
 
 #[derive(Clone, Debug, PartialEq, Routable)]
 pub enum Route {
     #[layout(AppShell)]
     #[route("/")]
     Overview {},
+    #[route("/chat")]
+    Chat {},
+    #[route("/tui")]
+    Tui {},
+    #[route("/dashboard")]
+    Dashboard {},
     #[route("/session/:id")]
     Session { id: String },
     #[route("/projects")]
@@ -29,6 +47,26 @@ pub enum Route {
     Terminal {},
     #[route("/tasks")]
     Tasks {},
+    #[route("/services")]
+    Services {},
+    #[route("/models")]
+    Models {},
+    #[route("/profiles")]
+    Profiles {},
+    #[route("/tools")]
+    Tools {},
+    #[route("/memory")]
+    Memory {},
+    #[route("/sessions")]
+    Sessions {},
+    #[route("/integrations")]
+    Integrations {},
+    #[route("/benchmarks")]
+    Benchmarks {},
+    #[route("/security")]
+    Security {},
+    #[route("/logs")]
+    Logs {},
     #[route("/model")]
     Model {},
     #[route("/runtime")]
@@ -77,36 +115,104 @@ pub fn App() -> Element {
         async move { connection.initialize().await }
     });
     rsx! {
-        document::Link { rel: "stylesheet", href: APP_CSS }
-        div { class: "connection-state",
-            match &*boot.read_unchecked() {
-                Some(Ok(_)) => rsx! { span { class: "online", "● Agent connected" } },
-                Some(Err(error)) => rsx! { span { class: "offline", "○ Offline · {error}" } },
-                None => rsx! { span { class: "connecting", "◌ Connecting to Agent" } },
+        style { dangerous_inner_html: APP_CSS }
+        div { class: "icon-sprite", aria_hidden: "true", dangerous_inner_html: CODICON_SPRITE }
+        div { class: "window-root",
+            Titlebar {}
+            Router::<Route> {}
+            footer { class: "connection-state",
+                span { class: "status-brand", "Hermes Local" }
+                match &*boot.read_unchecked() {
+                    Some(Ok(_)) => rsx! { span { class: "online", "● Agent connected" } },
+                    Some(Err(_)) => rsx! { span { class: "offline", "○ Agent offline" } },
+                    None => rsx! { span { class: "connecting", "◌ Connecting to Agent" } },
+                }
+                span { class: "status-spacer" }
+                span { "Local workstation" }
+                span { "UTF-8" }
             }
         }
-        Router::<Route> {}
+    }
+}
+
+#[component]
+fn Titlebar() -> Element {
+    let actions = use_context::<WindowActions>();
+    let drag = actions.drag;
+    let minimize = actions.minimize;
+    let toggle_maximized = actions.toggle_maximized;
+    let close = actions.close;
+    rsx! {
+        header {
+            class: "titlebar",
+            onmousedown: move |_| drag.call(()),
+            ondoubleclick: move |_| toggle_maximized.call(()),
+            div { class: "titlebar-brand", span { class: "app-symbol", "✣" } span { "Hermes Local" } }
+            div { class: "titlebar-drag", aria_hidden: "true" }
+            div { class: "window-controls", onmousedown: move |event| event.stop_propagation(), ondoubleclick: move |event| event.stop_propagation(),
+                button { aria_label: "Minimize", title: "Minimize", onclick: move |event| { event.stop_propagation(); minimize.call(()); }, "—" }
+                button { aria_label: "Maximize", title: "Maximize", onclick: move |event| { event.stop_propagation(); toggle_maximized.call(()); }, "□" }
+                button { class: "window-close", aria_label: "Close", title: "Close", onclick: move |event| { event.stop_propagation(); close.call(()); }, "×" }
+            }
+        }
     }
 }
 
 #[component]
 fn AppShell() -> Element {
+    let services = use_context::<AppServices>();
+    let session_service = services.sessions.clone();
+    let sessions = use_resource(move || {
+        let session_service = session_service.clone();
+        async move { session_service.list().await }
+    });
     rsx! {
         div { class: "app-shell",
-            aside { class: "rail",
-                div { class: "brand-mark", "H" }
+            aside { class: "rail", aria_label: "Hermes navigation",
                 nav { class: "primary-nav", aria_label: "Primary navigation",
-                    NavItem { to: Route::Overview {}, glyph: "⌂", label: "Home" }
-                    NavItem { to: Route::Projects {}, glyph: "◇", label: "Projects" }
-                    NavItem { to: Route::Files {}, glyph: "▱", label: "Files" }
-                    NavItem { to: Route::Git {}, glyph: "⑂", label: "Git" }
-                    NavItem { to: Route::Terminal {}, glyph: ">_", label: "Terminal" }
-                    NavItem { to: Route::Tasks {}, glyph: "✓", label: "Tasks" }
+                    NavItem { to: Route::Overview {}, icon: "home", label: "Home" }
+                    NavItem { to: Route::Chat {}, icon: "comment-discussion", label: "Chat" }
+                    NavItem { to: Route::Tui {}, icon: "terminal", label: "TUI" }
+                    NavItem { to: Route::Dashboard {}, icon: "dashboard", label: "Web Dashboard" }
+                    NavItem { to: Route::Tasks {}, icon: "checklist", label: "Tasks" }
+                    NavItem { to: Route::Services {}, icon: "server-process", label: "Services" }
+                    NavItem { to: Route::Models {}, icon: "hubot", label: "Models" }
+                    NavItem { to: Route::Profiles {}, icon: "settings-gear", label: "Profiles" }
+                    NavItem { to: Route::Tools {}, icon: "tools", label: "Tools" }
+                    NavItem { to: Route::Memory {}, icon: "database", label: "Memory" }
+                    NavItem { to: Route::Skills {}, icon: "symbol-misc", label: "Skills" }
+                    NavItem { to: Route::Sessions {}, icon: "history", label: "Sessions" }
+                    NavItem { to: Route::Projects {}, icon: "project", label: "Projects" }
+                    NavItem { to: Route::Integrations {}, icon: "plug", label: "Integrations" }
+                    NavItem { to: Route::Benchmarks {}, icon: "graph-line", label: "Benchmarks" }
+                    NavItem { to: Route::Security {}, icon: "shield", label: "Security" }
+                    NavItem { to: Route::Logs {}, icon: "output", label: "Logs" }
+                }
+                div { class: "sidebar-search",
+                    Codicon { name: "search" }
+                    input { aria_label: "Search sessions", placeholder: "Search sessions" }
+                }
+                section { class: "sidebar-sessions", aria_label: "Sessions",
+                    div { class: "sidebar-section-label", "PINNED" }
+                    p { class: "sidebar-empty", "No pinned sessions" }
+                    div { class: "sidebar-section-label recent", "RECENT" }
+                    match &*sessions.read_unchecked() {
+                        Some(Ok(items)) if !items.is_empty() => rsx! {
+                            for session in items.iter().take(5) {
+                                Link { class: "session-link", to: Route::Session { id: session.id.clone() },
+                                    span { class: "session-dot" }
+                                    span { if session.title.is_empty() { "Untitled session" } else { "{session.title}" } }
+                                }
+                            }
+                        },
+                        _ => rsx! { p { class: "sidebar-empty", "No recent sessions" } },
+                    }
                 }
                 nav { class: "secondary-nav", aria_label: "Application navigation",
-                    NavItem { to: Route::Trust {}, glyph: "◈", label: "Trust" }
-                    NavItem { to: Route::Settings {}, glyph: "⚙", label: "Settings" }
+                    NavItem { to: Route::Settings {}, icon: "settings", label: "Settings" }
+                    NavItem { to: Route::About {}, icon: "info", label: "About" }
                 }
+                div { class: "sidebar-footer", span { class: "avatar", "C" } span { "Local profile" } span { class: "chevron", "›" } }
             }
             main { class: "workspace", Outlet::<Route> {} }
         }
@@ -114,23 +220,28 @@ fn AppShell() -> Element {
 }
 
 #[component]
-fn NavItem(to: Route, glyph: &'static str, label: &'static str) -> Element {
+fn NavItem(to: Route, icon: &'static str, label: &'static str) -> Element {
     rsx! {
         Link { class: "nav-item", to, aria_label: label, title: label,
-            span { class: "nav-glyph", "{glyph}" }
+            span { class: "nav-glyph", Codicon { name: icon } }
             span { class: "nav-label", "{label}" }
         }
     }
 }
 
 #[component]
-fn Overview() -> Element {
+fn Codicon(name: &'static str) -> Element {
+    let reference = format!("#{name}");
+    rsx! {
+        svg { class: "codicon", view_box: "0 0 16 16", "aria-hidden": "true", "focusable": "false",
+            r#use { href: reference }
+        }
+    }
+}
+
+#[component]
+fn Chat() -> Element {
     let services = use_context::<AppServices>();
-    let list_service = services.sessions.clone();
-    let sessions = use_resource(move || {
-        let list_service = list_service.clone();
-        async move { list_service.list().await }
-    });
     let create_service = services.sessions.clone();
     let navigator = use_navigator();
     let mut prompt = use_signal(String::new);
@@ -138,7 +249,8 @@ fn Overview() -> Element {
     let mut submit_error = use_signal(|| None::<String>);
 
     rsx! {
-        Surface { eyebrow: "Local intelligence", title: "Good afternoon.", subtitle: "Your private workspace is ready when you are.",
+        Surface { eyebrow: "Hermes Agent", title: "Chat", subtitle: "Work with the local Hermes Agent.",
+            div { class: "chat-watermark", "HERMES AGENT" }
             div { class: "composer-card",
                 textarea {
                     aria_label: "Start a conversation",
@@ -179,30 +291,168 @@ fn Overview() -> Element {
                     p { class: "inline-error", role: "alert", "{error}" }
                 }
             }
-            div { class: "section-heading",
-                h2 { "Recent work" }
-                Link { to: Route::Projects {}, "View projects" }
-            }
-            div { class: "card-grid",
-                match &*sessions.read_unchecked() {
-                    Some(Ok(items)) if !items.is_empty() => rsx! {
-                        for session in items.iter().take(6) {
-                            Link { to: Route::Session { id: session.id.clone() },
-                                article { class: "work-card violet",
-                                    div { class: "card-icon", "✦" }
-                                    h3 { if session.title.is_empty() { "Untitled session" } else { "{session.title}" } }
-                                    p { if session.running { "Running locally" } else { "Ready to resume" } }
-                                }
-                            }
+        }
+    }
+}
+
+#[component]
+fn Overview() -> Element {
+    let services = use_context::<AppServices>();
+    let runtime_service = services.runtime.clone();
+    let runtime = use_resource(move || {
+        let runtime_service = runtime_service.clone();
+        async move { runtime_service.status().await }
+    });
+
+    let runtime_read = runtime.read_unchecked();
+    let (ready, phase, model, provider) = match &*runtime_read {
+        Some(Ok(status)) => (
+            matches!(status.phase.as_str(), "ready" | "running" | "online"),
+            if status.phase.is_empty() {
+                "Available".to_owned()
+            } else {
+                status.phase.clone()
+            },
+            status.model.as_deref().unwrap_or("Hermes model").to_owned(),
+            status
+                .provider
+                .as_deref()
+                .unwrap_or("Local inference")
+                .to_owned(),
+        ),
+        Some(Err(_)) => (
+            false,
+            "Offline".to_owned(),
+            "Hermes model".to_owned(),
+            "Local inference".to_owned(),
+        ),
+        None => (
+            false,
+            "Checking".to_owned(),
+            "Hermes model".to_owned(),
+            "Local inference".to_owned(),
+        ),
+    };
+
+    rsx! {
+        Surface { eyebrow: "Hermes Local", title: "Local AI workstation", subtitle: "One control centre for the model, Hermes and local operations.",
+            section { class: "status-card",
+                div { class: "status-accent" }
+                div { class: "status-copy",
+                    div { class: "status-meta",
+                        span { class: if ready { "health-pill good" } else { "health-pill" },
+                            span { class: "health-dot" }
+                            "{phase}"
                         }
-                    },
-                    Some(Ok(_)) => rsx! { WorkCard { title: "New local session", detail: "Start from a clean context", accent: "violet" } },
-                    Some(Err(error)) => rsx! { p { class: "inline-error", "Could not load sessions: {error}" } },
-                    None => rsx! { WorkCard { title: "Loading sessions", detail: "Connecting to Hermes Agent", accent: "blue" } },
+                        span { "{model}" }
+                    }
+                    h2 { if ready { "Local workstation is ready" } else { "Start the local workstation" } }
+                    p {
+                        if ready {
+                            "Hermes and the local model are available for private work on this computer."
+                        } else {
+                            "Start the managed local services to use Hermes, the model runtime and the web dashboard."
+                        }
+                    }
+                }
+                div { class: "status-actions",
+                    button { class: "button outline", Codicon { name: "refresh" } "Restart" }
+                    button { class: "button danger", Codicon { name: "primitive-square" } "Stop stack" }
+                }
+            }
+
+            div { class: "dashboard-grid",
+                section { class: "panel services-panel",
+                    PanelTitle { label: "Services" }
+                    ServiceRow { icon: "hubot", name: "Hermes model server", detail: "OpenAI-compatible · loopback", healthy: ready }
+                    ServiceRow { icon: "server-process", name: "Hermes serve", detail: "JSON-RPC / WebSocket · local", healthy: ready }
+                    ServiceRow { icon: "dashboard", name: "Web Dashboard", detail: "Unified Hermes management surface", healthy: ready }
+                }
+                section { class: "panel resources-panel",
+                    PanelTitle { label: "Resources" }
+                    ResourceRow { icon: "database", label: "System memory", value: "—", note: "Local telemetry" }
+                    ResourceRow { icon: "dashboard", label: "GPU memory", value: "—", note: "Accelerator telemetry" }
+                }
+            }
+
+            div { class: "action-grid",
+                LauncherAction { to: Route::Chat {}, icon: "rocket", label: "Open Chat", detail: "Chat with Hermes through the local Agent." }
+                LauncherAction { to: Route::Tui {}, icon: "terminal", label: "Open TUI", detail: "Run the keyboard-driven Hermes terminal UI." }
+                LauncherAction { to: Route::Logs {}, icon: "output", label: "View Logs", detail: "Inspect service logs without exposing secrets." }
+            }
+
+            section { class: "panel integrity-panel",
+                PanelTitle { label: "Integrity and provenance" }
+                div { class: "integrity-grid",
+                    IntegrityItem { label: "Model", value: model }
+                    IntegrityItem { label: "Provider", value: provider }
+                    IntegrityItem { label: "Hermes Agent", value: "Local gateway" }
+                    IntegrityItem { label: "Local authentication", value: "Per-user" }
                 }
             }
         }
     }
+}
+
+#[component]
+fn PanelTitle(label: &'static str) -> Element {
+    rsx! { header { class: "panel-title", "{label}" } }
+}
+
+#[component]
+fn ServiceRow(
+    icon: &'static str,
+    name: &'static str,
+    detail: &'static str,
+    healthy: bool,
+) -> Element {
+    rsx! {
+        div { class: "service-row",
+            span { class: "service-icon", Codicon { name: icon } }
+            div { class: "service-copy", strong { "{name}" } span { "{detail}" } }
+            span { class: if healthy { "health-pill good" } else { "health-pill" },
+                span { class: "health-dot" }
+                if healthy { "Healthy" } else { "Offline" }
+            }
+        }
+    }
+}
+
+#[component]
+fn ResourceRow(
+    icon: &'static str,
+    label: &'static str,
+    value: &'static str,
+    note: &'static str,
+) -> Element {
+    rsx! {
+        div { class: "resource-row",
+            div { class: "resource-heading", span { class: "resource-icon", Codicon { name: icon } } strong { "{label}" } b { "{value}" } }
+            div { class: "resource-track", span {} }
+            small { "{note}" }
+        }
+    }
+}
+
+#[component]
+fn LauncherAction(
+    to: Route,
+    icon: &'static str,
+    label: &'static str,
+    detail: &'static str,
+) -> Element {
+    rsx! {
+        Link { class: "launcher-action", to,
+            span { class: "action-icon", Codicon { name: icon } }
+            div { strong { "{label}" } span { "{detail}" } }
+            b { "›" }
+        }
+    }
+}
+
+#[component]
+fn IntegrityItem(label: &'static str, value: String) -> Element {
+    rsx! { div { span { "{label}" } strong { "{value}" } } }
 }
 
 #[component]
@@ -252,6 +502,78 @@ simple_surface!(
     "Workspace",
     "Files",
     "Browse and edit files inside a selected project root."
+);
+simple_surface!(
+    Tui,
+    "Hermes Local",
+    "TUI",
+    "Run the official keyboard-driven Hermes terminal interface."
+);
+simple_surface!(
+    Dashboard,
+    "Hermes Local",
+    "Dashboard",
+    "Open the full local Hermes web management surface."
+);
+simple_surface!(
+    Services,
+    "Hermes Local",
+    "Services",
+    "Structured health, process ownership and lifecycle controls."
+);
+simple_surface!(
+    Models,
+    "Hermes Local",
+    "Models",
+    "Verified weights, runtime support and context configuration."
+);
+simple_surface!(
+    Profiles,
+    "Hermes Local",
+    "Profiles",
+    "Editable inference profiles kept as versioned structured data."
+);
+simple_surface!(
+    Tools,
+    "Hermes Local",
+    "Tools",
+    "Inspect the tools available to the local Hermes Agent."
+);
+simple_surface!(
+    Memory,
+    "Hermes Local",
+    "Memory",
+    "Local state, session index and explicit memory controls."
+);
+simple_surface!(
+    Sessions,
+    "Hermes Local",
+    "Sessions",
+    "Resume and manage persistent local Hermes conversations."
+);
+simple_surface!(
+    Integrations,
+    "Hermes Local",
+    "Integrations",
+    "Connect explicit, trusted local and messaging services."
+);
+simple_surface!(
+    Benchmarks,
+    "Hermes Local",
+    "Benchmarks",
+    "Measured performance, stability and profile selection evidence."
+);
+simple_surface!(
+    Security,
+    "Hermes Local",
+    "Security",
+    "Loopback trust boundaries, audits and remediation evidence."
+);
+simple_surface!(
+    Logs,
+    "Hermes Local",
+    "Logs",
+    "Live, redacted output from each local service."
 );
 simple_surface!(
     Git,

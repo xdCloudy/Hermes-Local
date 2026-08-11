@@ -58,14 +58,14 @@ updater work itself.
 | Old capability | New Rust owner | New Dioxus surface | Coverage required | Status |
 | --- | --- | --- | --- | --- |
 | Startup/boot progress and failure recovery | `PlatformService` + `RuntimeService` | boot/onboarding/failure overlays | bootstrap state-machine unit + packaged launch E2E | Designed |
-| Main window lifecycle and single-instance behavior | `WindowService` | main shell | Windows integration + packaged relaunch | Designed |
-| Routes and legacy session redirects | `hermes-ui` route model | workspace router | route classification and navigation tests | Designed |
-| Titlebar, drag regions and window controls | `WindowService` | titlebar | window-state integration + visual parity | Designed |
-| Sidebar and session navigation | `SessionService` | sidebar | merge/scope/selection unit + visual/E2E | Designed |
+| Main window lifecycle and single-instance behavior | typed composition-root window actions | main shell | Windows integration + packaged relaunch | Ported |
+| Routes and legacy session redirects | `hermes-ui` route model | workspace router | route classification and navigation tests | Ported |
+| Titlebar, drag regions and window controls | typed composition-root window actions | titlebar | window-state integration + visual parity | Ported |
+| Sidebar and session navigation | `SessionService` | sidebar | merge/scope/selection unit + visual/E2E | Ported |
 | Pane tree, splits, tabs and floating panes | `hermes-core` layout model | pane shell | layout invariants + interaction E2E | Designed |
 | Right rail and persistent tools | cohesive file/terminal/preview services | right rail | lifecycle and hidden-state retention tests | Designed |
-| Status bar and model/gateway status | runtime/session read models | status bar | state derivation unit + visual parity | Designed |
-| Dark/light/system themes and translucency | `SettingsService` + `WindowService` | theme provider/settings | persisted scope + visual baselines | Designed |
+| Status bar and model/gateway status | runtime/session read models | status bar | state derivation unit + visual parity | Ported |
+| Dark/light/system themes and translucency | `SettingsService` + typed window actions | theme provider/settings | persisted scope + visual baselines | Ported |
 | Zoom and find-in-page | `WindowService` | settings/find bar | bounds/shortcut/integration tests | Designed |
 | Keyboard routing/keybindings | `ShortcutService` + UI focus model | all interactive surfaces | focus ownership and collision E2E | Designed |
 | Command palette | typed command registry | palette | ranking/action tests + keyboard E2E | Designed |
