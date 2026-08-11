@@ -88,7 +88,10 @@ fn validate_suggested_name(name: &str) -> Result<(), String> {
         || name == ".."
         || name.chars().any(|character| {
             character.is_control()
-                || matches!(character, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+                || matches!(
+                    character,
+                    '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'
+                )
         })
     {
         return Err("Suggested save name contains an unsafe character.".to_owned());
@@ -131,7 +134,9 @@ impl TemporaryPayload {
             .map_err(|error| format!("Could not create temporary clipboard/save payload: {error}"))?;
         file.write_all(bytes)
             .and_then(|_| file.sync_all())
-            .map_err(|error| format!("Could not persist temporary clipboard/save payload: {error}"))?;
+            .map_err(|error| {
+                format!("Could not persist temporary clipboard/save payload: {error}")
+            })?;
         Ok(Self { path })
     }
 
@@ -319,7 +324,15 @@ mod tests {
 
     #[test]
     fn suggested_filename_is_leaf_only() {
-        for invalid in ["", ".", "..", "../secret", r"folder\secret", "a:b", "a|b"] {
+        for invalid in [
+            "",
+            ".",
+            "..",
+            "../secret",
+            r"folder\secret",
+            "a:b",
+            "a|b",
+        ] {
             assert!(validate_suggested_name(invalid).is_err(), "{invalid}");
         }
         assert!(validate_suggested_name("Hermes image 01.png").is_ok());
