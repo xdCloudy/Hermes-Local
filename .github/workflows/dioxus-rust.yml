@@ -1,6 +1,7 @@
 name: Dioxus Rust validation
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - refactor/dioxus-rust-client
