@@ -350,10 +350,10 @@ fn verify_binary(path: &Path, expected_hash: Option<&str>) -> Result<(), String>
     if magic != *b"MZ" {
         return Err("Update binary is not a Windows PE executable.".into());
     }
-    if let Some(expected) = expected_hash {
-        if !sha256_file(path)?.eq_ignore_ascii_case(expected) {
-            return Err("Update binary SHA-256 does not match the staged plan.".into());
-        }
+    if let Some(expected) = expected_hash
+        && !sha256_file(path)?.eq_ignore_ascii_case(expected)
+    {
+        return Err("Update binary SHA-256 does not match the staged plan.".into());
     }
     Ok(())
 }
