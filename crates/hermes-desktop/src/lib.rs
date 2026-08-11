@@ -374,11 +374,16 @@ impl ProjectService for GatewayServices {
                 .client()?
                 .request(
                     "projects.create",
-                    json!({ "name": name, "folders": folders }),
+                    json!({
+                        "name": name,
+                        "folders": folders,
+                        "primary_path": folders.first(),
+                        "use": false
+                    }),
                 )
                 .await
                 .map_err(transport)?;
-            serde_json::from_value(value).map_err(protocol)
+            serde_json::from_value(value.get("project").cloned().unwrap_or(value)).map_err(protocol)
         })
     }
 
@@ -390,7 +395,7 @@ impl ProjectService for GatewayServices {
             }
             let _: Value = self
                 .client()?
-                .request("projects.set_active", json!({ "project_id": id }))
+                .request("projects.set_active", json!({ "id": id }))
                 .await
                 .map_err(transport)?;
             Ok(())
@@ -403,7 +408,7 @@ impl ProjectService for GatewayServices {
             validate_identifier(&id, "project")?;
             let _: Value = self
                 .client()?
-                .request("projects.delete", json!({ "project_id": id }))
+                .request("projects.delete", json!({ "id": id }))
                 .await
                 .map_err(transport)?;
             Ok(())
@@ -1229,5 +1234,83 @@ mod tests {
             frame.params,
             Some(json!({ "session_id": "runtime-1", "text": "hello Hermes" }))
         );
+    }
+
+    #[tokio::test]
+    async fn projects_use_the_official_gateway_contracts() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let address = listener.local_addr().expect("address");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("connection");
+            let mut socket = accept_async(stream).await.expect("WebSocket");
+            let mut frames = Vec::new();
+            for result in [
+                json!({
+                    "project": {
+                        "id": "project-1",
+                        "slug": "demo",
+                        "name": "Demo",
+                        "primary_path": "C:\\\\Code\\\\Demo",
+                        "folders": [{ "path": "C:\\\\Code\\\\Demo", "is_primary": true }]
+                    }
+                }),
+                json!({ "active_id": "project-1" }),
+                json!({ "projects": [], "active_id": null }),
+            ] {
+                let message = socket.next().await.expect("request").expect("frame");
+                let frame: hermes_protocol::JsonRpcFrame =
+                    serde_json::from_str(message.to_text().expect("text frame")).expect("JSON-RPC");
+                let response = json!({
+                    "jsonrpc": "2.0",
+                    "id": frame.id,
+                    "result": result
+                });
+                socket
+                    .send(Message::Text(response.to_string().into()))
+                    .await
+                    .expect("response");
+                frames.push(frame);
+            }
+            frames
+        });
+        let client = GatewayClient::connect(
+            &format!("ws://{address}/api/ws"),
+            hermes_agent_client::GatewayOptions::default(),
+        )
+        .await
+        .expect("gateway");
+        let services = GatewayServices {
+            client: Arc::new(RwLock::new(Some(client))),
+            rest: Arc::new(RwLock::new(None)),
+        };
+        let folders = vec![r"C:\Code\Demo".to_owned()];
+        let project = ProjectService::create(&services, "Demo", &folders)
+            .await
+            .expect("create project");
+        assert_eq!(project.id, "project-1");
+        ProjectService::set_active(&services, Some("project-1"))
+            .await
+            .expect("activate project");
+        ProjectService::remove(&services, "project-1")
+            .await
+            .expect("remove project");
+
+        let frames = server.await.expect("server");
+        assert_eq!(frames[0].method.as_deref(), Some("projects.create"));
+        assert_eq!(
+            frames[0].params,
+            Some(json!({
+                "name": "Demo",
+                "folders": [r"C:\Code\Demo"],
+                "primary_path": r"C:\Code\Demo",
+                "use": false
+            }))
+        );
+        assert_eq!(frames[1].method.as_deref(), Some("projects.set_active"));
+        assert_eq!(frames[1].params, Some(json!({ "id": "project-1" })));
+        assert_eq!(frames[2].method.as_deref(), Some("projects.delete"));
+        assert_eq!(frames[2].params, Some(json!({ "id": "project-1" })));
     }
 }

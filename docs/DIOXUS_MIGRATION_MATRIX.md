@@ -103,8 +103,8 @@ updater work itself.
 
 | Old capability | New Rust owner | New Dioxus surface | Coverage required | Status |
 | --- | --- | --- | --- | --- |
-| Projects registry and project scope | `ProjectService` | sidebar/Project Centre | persistence/merge/scope tests | Designed |
-| Project Centre create/edit/remove | `ProjectService` | dialogs | validation/rollback/E2E | Designed |
+| Projects registry and project scope | `ProjectService` | sidebar/Project Centre | persistence/merge/scope tests | Ported |
+| Project Centre create/edit/remove | `ProjectService` | dialogs | validation/rollback/E2E | Ported |
 | Default project directory and pickers | `SettingsService` + `FileService` | settings/dialogs | canonical path/boundary tests | Designed |
 | File tree, read and text write | `FileService` | tree/editor | root containment/symlink/encoding tests | Designed |
 | Rename, trash, reveal and open | `FileService` | tree/context actions | containment and platform integration tests | Designed |

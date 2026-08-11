@@ -3,7 +3,7 @@
 use dioxus::prelude::*;
 use futures_util::StreamExt;
 use hermes_core::{AppServices, SessionTranscript};
-use hermes_protocol::{MessageRole, SessionCreateRequest, SessionSummary};
+use hermes_protocol::{MessageRole, ProjectsSnapshot, SessionCreateRequest, SessionSummary};
 
 const APP_CSS: &str = include_str!("../assets/app.css");
 const CODICON_SPRITE: &str = include_str!("../assets/codicon-sprite.svg");
@@ -17,6 +17,14 @@ pub struct WindowActions {
     pub minimize: Callback<()>,
     pub toggle_maximized: Callback<()>,
     pub close: Callback<()>,
+}
+
+#[derive(Clone, Copy)]
+struct ProjectUiState {
+    snapshot: Signal<ProjectsSnapshot>,
+    loading: Signal<bool>,
+    error: Signal<Option<String>>,
+    refresh: Signal<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Routable)]
@@ -166,6 +174,7 @@ fn AppShell() -> Element {
     let boot =
         use_context::<Resource<hermes_core::ServiceResult<hermes_protocol::ConnectionState>>>();
     let session_service = services.sessions.clone();
+    let project_service = services.projects.clone();
     let mut session_rows = use_signal(Vec::<SessionSummary>::new);
     let mut sessions_loading = use_signal(|| true);
     let mut sessions_error = use_signal(|| None::<String>);
@@ -176,6 +185,16 @@ fn AppShell() -> Element {
     let mut rename_value = use_signal(String::new);
     let mut delete_session = use_signal(|| None::<String>);
     let mut mutation_epoch = use_signal(|| 0_u64);
+    let mut project_snapshot = use_signal(ProjectsSnapshot::default);
+    let mut projects_loading = use_signal(|| false);
+    let mut projects_error = use_signal(|| None::<String>);
+    let projects_refresh = use_signal(|| 0_u64);
+    use_context_provider(|| ProjectUiState {
+        snapshot: project_snapshot,
+        loading: projects_loading,
+        error: projects_error,
+        refresh: projects_refresh,
+    });
     let _sessions = use_resource(move || {
         let _ = refresh();
         let connected = matches!(
@@ -199,6 +218,30 @@ fn AppShell() -> Element {
                 Err(error) => sessions_error.set(Some(error.to_string())),
             }
             sessions_loading.set(false);
+        }
+    });
+    let _projects = use_resource(move || {
+        let _ = projects_refresh();
+        let connected = matches!(
+            &*boot.read(),
+            Some(Ok(hermes_protocol::ConnectionState::Open))
+        );
+        let project_service = project_service.clone();
+        async move {
+            if !connected {
+                projects_loading.set(false);
+                projects_error.set(None);
+                return;
+            }
+            projects_loading.set(true);
+            match project_service.snapshot().await {
+                Ok(snapshot) => {
+                    project_snapshot.set(snapshot);
+                    projects_error.set(None);
+                }
+                Err(error) => projects_error.set(Some(error.to_string())),
+            }
+            projects_loading.set(false);
         }
     });
 
@@ -563,8 +606,106 @@ fn Codicon(name: String) -> Element {
 }
 
 #[component]
+fn ProjectPicker() -> Element {
+    let services = use_context::<AppServices>();
+    let state = use_context::<ProjectUiState>();
+    let mut open = use_signal(|| false);
+    let snapshot = (state.snapshot)();
+    let active = snapshot
+        .active_id
+        .as_ref()
+        .and_then(|id| snapshot.projects.iter().find(|project| &project.id == id));
+    let label = active.map_or_else(
+        || "No project".to_owned(),
+        |project| {
+            if project.name.is_empty() {
+                "Unnamed project".to_owned()
+            } else {
+                project.name.clone()
+            }
+        },
+    );
+    rsx! {
+        div { class: "project-picker",
+            button {
+                class: "composer-project",
+                aria_expanded: open(),
+                aria_label: "Select project",
+                onclick: move |_| open.toggle(),
+                Codicon { name: "folder" }
+                span { "{label}" }
+                Codicon { name: "chevron-down" }
+            }
+            if open() {
+                div { class: "project-picker-menu", role: "menu",
+                    button {
+                        class: if snapshot.active_id.is_none() { "selected" } else { "" },
+                        role: "menuitem",
+                        onclick: {
+                            let service = services.projects.clone();
+                            let before = snapshot.clone();
+                            move |_| {
+                                let mut next = before.clone();
+                                next.active_id = None;
+                                let mut snapshot_signal = state.snapshot;
+                                let mut error_signal = state.error;
+                                snapshot_signal.set(next);
+                                open.set(false);
+                                let service = service.clone();
+                                let before = before.clone();
+                                spawn(async move {
+                                    if let Err(error) = service.set_active(None).await {
+                                        snapshot_signal.set(before);
+                                        error_signal.set(Some(error.to_string()));
+                                    }
+                                });
+                            }
+                        },
+                        Codicon { name: "circle-slash" }
+                        "No project"
+                    }
+                    for project in snapshot.projects.iter().filter(|project| !project.archived) {
+                        button {
+                            class: if snapshot.active_id.as_deref() == Some(project.id.as_str()) { "selected" } else { "" },
+                            role: "menuitem",
+                            onclick: {
+                                let service = services.projects.clone();
+                                let before = snapshot.clone();
+                                let id = project.id.clone();
+                                move |_| {
+                                    let mut next = before.clone();
+                                    next.active_id = Some(id.clone());
+                                    let mut snapshot_signal = state.snapshot;
+                                    let mut error_signal = state.error;
+                                    snapshot_signal.set(next);
+                                    open.set(false);
+                                    let service = service.clone();
+                                    let before = before.clone();
+                                    let id = id.clone();
+                                    spawn(async move {
+                                        if let Err(error) = service.set_active(Some(&id)).await {
+                                            snapshot_signal.set(before);
+                                            error_signal.set(Some(error.to_string()));
+                                        }
+                                    });
+                                }
+                            },
+                            Codicon { name: "project" }
+                            span { if project.name.is_empty() { "Unnamed project" } else { "{project.name}" } }
+                        }
+                    }
+                    div { class: "project-picker-separator" }
+                    Link { class: "project-picker-manage", to: Route::Projects {}, onclick: move |_| open.set(false), Codicon { name: "settings" } "Manage projects" }
+                }
+            }
+        }
+    }
+}
+
+#[component]
 fn Chat() -> Element {
     let services = use_context::<AppServices>();
+    let projects = use_context::<ProjectUiState>();
     let create_service = services.sessions.clone();
     let navigator = use_navigator();
     let mut prompt = use_signal(String::new);
@@ -578,9 +719,24 @@ fn Chat() -> Element {
         }
         submitting.set(true);
         submit_error.set(None);
+        let snapshot = (projects.snapshot)();
+        let project_id = snapshot.active_id.clone();
+        let cwd = project_id.as_ref().and_then(|active_id| {
+            snapshot
+                .projects
+                .iter()
+                .find(|project| &project.id == active_id)
+                .and_then(|project| project.primary_path.clone())
+        });
         spawn(async move {
             let result = async {
-                let session = service.create(SessionCreateRequest::default()).await?;
+                let session = service
+                    .create(SessionCreateRequest {
+                        cwd,
+                        project_id,
+                        ..SessionCreateRequest::default()
+                    })
+                    .await?;
                 service
                     .submit(session.runtime_id.as_deref().unwrap_or(&session.id), &text)
                     .await?;
@@ -605,7 +761,7 @@ fn Chat() -> Element {
                 p { "Send a prompt to trigger tool calls. Supports multi-file edits, test runs, git ops, and web fetches." }
             }
             div { class: "chat-composer-dock",
-                div { class: "composer-project", Codicon { name: "folder" } span { "No project" } }
+                ProjectPicker {}
                 div { class: "composer-card",
                     button { class: "composer-tool", title: "Attach", aria_label: "Attach", Codicon { name: "add" } }
                     textarea {
@@ -1049,34 +1205,228 @@ simple_surface!(
 #[component]
 fn Projects() -> Element {
     let services = use_context::<AppServices>();
-    let project_service = services.projects.clone();
-    let projects = use_resource(move || {
-        let project_service = project_service.clone();
-        async move { project_service.snapshot().await }
-    });
+    let state = use_context::<ProjectUiState>();
+    let snapshot = (state.snapshot)();
+    let mut query = use_signal(String::new);
+    let mut filter = use_signal(|| "all".to_owned());
+    let mut create_open = use_signal(|| false);
+    let mut project_name = use_signal(String::new);
+    let mut project_path = use_signal(String::new);
+    let mut creating = use_signal(|| false);
+    let mut remove_target = use_signal(|| None::<String>);
+
+    let needle = query().trim().to_lowercase();
+    let visible = snapshot
+        .projects
+        .iter()
+        .filter(|project| match filter().as_str() {
+            "active" => !project.archived,
+            "archived" => project.archived,
+            _ => true,
+        })
+        .filter(|project| {
+            needle.is_empty()
+                || project.name.to_lowercase().contains(&needle)
+                || project.slug.to_lowercase().contains(&needle)
+                || project
+                    .description
+                    .as_deref()
+                    .is_some_and(|description| description.to_lowercase().contains(&needle))
+                || project
+                    .primary_path
+                    .as_deref()
+                    .is_some_and(|path| path.to_lowercase().contains(&needle))
+                || project
+                    .folders
+                    .iter()
+                    .any(|folder| folder.path.to_lowercase().contains(&needle))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
     rsx! {
-        Surface { eyebrow: "Workspace", title: "Projects", subtitle: "Organise repositories and working folders.",
-            match &*projects.read_unchecked() {
-                Some(Ok(snapshot)) if !snapshot.projects.is_empty() => rsx! {
-                    div { class: "list-stack",
-                        for project in &snapshot.projects {
-                            Link { to: Route::Project { id: project.id.clone() },
-                                article { class: "list-row",
-                                    div {
-                                        h2 { if project.name.is_empty() { "Unnamed project" } else { "{project.name}" } }
-                                        p {
-                                            if let Some(path) = &project.primary_path { "{path}" } else { "No primary folder" }
+        Surface { eyebrow: "Workspace", title: "Project Centre", subtitle: "Find and maintain stable projects. Removing a registration keeps files on disk.",
+            div { class: "project-centre",
+                div { class: "project-centre-toolbar",
+                    label { class: "project-search",
+                        Codicon { name: "search" }
+                        input {
+                            aria_label: "Search projects or paths",
+                            placeholder: "Search projects or paths",
+                            value: "{query}",
+                            oninput: move |event| query.set(event.value())
+                        }
+                    }
+                    button { class: "button project-create-button", onclick: move |_| create_open.set(true),
+                        Codicon { name: "add" }
+                        "New project"
+                    }
+                }
+                div { class: "project-filters", aria_label: "Project filters",
+                    for (id, label) in [("all", "All"), ("active", "Active"), ("archived", "Archived")] {
+                        button {
+                            class: if filter() == id { "selected" } else { "" },
+                            onclick: move |_| filter.set(id.to_owned()),
+                            "{label}"
+                        }
+                    }
+                }
+                if (state.loading)() {
+                    div { class: "project-centre-empty", "Loading projects…" }
+                } else if visible.is_empty() {
+                    div { class: "project-centre-empty", "No projects match this view." }
+                } else {
+                    div { class: "project-centre-list",
+                        for project in visible {
+                            article { class: "project-centre-row",
+                                div { class: "project-centre-row-head",
+                                    Link { class: "project-centre-copy", to: Route::Project { id: project.id.clone() },
+                                        div { class: "project-title-line",
+                                            strong { if project.name.is_empty() { "Unnamed project" } else { "{project.name}" } }
+                                            if snapshot.active_id.as_deref() == Some(project.id.as_str()) {
+                                                span { class: "project-badge", "Active" }
+                                            }
+                                            if project.archived {
+                                                span { class: "project-badge", "Archived" }
+                                            }
+                                        }
+                                        span { class: "project-path", title: project.primary_path.clone().unwrap_or_default(),
+                                            if let Some(path) = &project.primary_path { "{path}" } else { "No folder attached" }
+                                        }
+                                        small { "{project.folders.len()} registered folder(s)" }
+                                    }
+                                    if !project.archived && snapshot.active_id.as_deref() != Some(project.id.as_str()) {
+                                        button {
+                                            class: "icon-button",
+                                            aria_label: "Set active project",
+                                            title: "Set active project",
+                                            onclick: {
+                                                let service = services.projects.clone();
+                                                let id = project.id.clone();
+                                                let before = snapshot.clone();
+                                                move |_| {
+                                                    let mut next = before.clone();
+                                                    next.active_id = Some(id.clone());
+                                                    let mut snapshot_signal = state.snapshot;
+                                                    let mut error_signal = state.error;
+                                                    snapshot_signal.set(next);
+                                                    let service = service.clone();
+                                                    let before = before.clone();
+                                                    let id = id.clone();
+                                                    spawn(async move {
+                                                        if let Err(error) = service.set_active(Some(&id)).await {
+                                                            snapshot_signal.set(before);
+                                                            error_signal.set(Some(error.to_string()));
+                                                        }
+                                                    });
+                                                }
+                                            },
+                                            Codicon { name: "target" }
                                         }
                                     }
-                                    span { "{project.folders.len()} folders  ›" }
+                                }
+                                div { class: "project-row-actions",
+                                    Link { class: "project-action", to: Route::Project { id: project.id.clone() }, "Open" }
+                                    button {
+                                        class: "project-action danger",
+                                        onclick: { let id = project.id.clone(); move |_| remove_target.set(Some(id.clone())) },
+                                        "Remove registration"
+                                    }
                                 }
                             }
                         }
                     }
-                },
-                Some(Ok(_)) => rsx! { EmptyState { label: "No projects yet", detail: "Create a project from a folder to group sessions and tools." } },
-                Some(Err(error)) => rsx! { ErrorState { error: error.to_string() } },
-                None => rsx! { LoadingState { label: "Loading projects" } },
+                }
+                if let Some(error) = (state.error)() {
+                    p { class: "inline-error", "{error}" }
+                }
+            }
+            if create_open() {
+                div { class: "dialog-backdrop", role: "presentation",
+                    section { class: "hermes-dialog", role: "dialog", aria_modal: "true", aria_label: "Create project",
+                        header { h2 { "Create project" } p { "Create a stable project with an optional local folder." } }
+                        label { class: "dialog-field", span { "Project name" }
+                            input { autofocus: true, placeholder: "Project name", value: "{project_name}", oninput: move |event| project_name.set(event.value()) }
+                        }
+                        label { class: "dialog-field", span { "Folder (optional)" }
+                            input { placeholder: "C:\\path\\to\\project", value: "{project_path}", oninput: move |event| project_path.set(event.value()) }
+                        }
+                        p { class: "dialog-hint", "Leave the folder empty to create a stable project identity first. You can attach a folder later." }
+                        footer {
+                            button { class: "button", disabled: creating(), onclick: move |_| create_open.set(false), "Cancel" }
+                            button {
+                                class: "button primary",
+                                disabled: creating() || project_name().trim().is_empty(),
+                                onclick: {
+                                    let service = services.projects.clone();
+                                    move |_| {
+                                        let name = project_name().trim().to_owned();
+                                        let path = project_path().trim().to_owned();
+                                        if name.is_empty() || creating() { return; }
+                                        creating.set(true);
+                                        let folders = if path.is_empty() { Vec::new() } else { vec![path] };
+                                        let service = service.clone();
+                                        let mut refresh = state.refresh;
+                                        let mut error = state.error;
+                                        spawn(async move {
+                                            let result = async {
+                                                let project = service.create(&name, &folders).await?;
+                                                service.set_active(Some(&project.id)).await?;
+                                                Ok::<_, hermes_core::ServiceError>(())
+                                            }.await;
+                                            creating.set(false);
+                                            match result {
+                                                Ok(()) => {
+                                                    project_name.set(String::new());
+                                                    project_path.set(String::new());
+                                                    create_open.set(false);
+                                                    refresh += 1;
+                                                }
+                                                Err(problem) => error.set(Some(problem.to_string())),
+                                            }
+                                        });
+                                    }
+                                },
+                                "Create project"
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(id) = remove_target() {
+                div { class: "dialog-backdrop", role: "presentation",
+                    section { class: "hermes-dialog compact", role: "alertdialog", aria_modal: "true", aria_label: "Remove project registration",
+                        header { h2 { "Remove project?" } p { "This removes the Project Centre registration only. Files and Git repositories remain on disk." } }
+                        footer {
+                            button { class: "button", onclick: move |_| remove_target.set(None), "Cancel" }
+                            button {
+                                class: "button danger",
+                                onclick: {
+                                    let service = services.projects.clone();
+                                    let before = snapshot.clone();
+                                    move |_| {
+                                        let mut next = before.clone();
+                                        next.projects.retain(|project| project.id != id);
+                                        if next.active_id.as_deref() == Some(id.as_str()) { next.active_id = None; }
+                                        let mut snapshot_signal = state.snapshot;
+                                        let mut error_signal = state.error;
+                                        snapshot_signal.set(next);
+                                        remove_target.set(None);
+                                        let service = service.clone();
+                                        let before = before.clone();
+                                        let id = id.clone();
+                                        spawn(async move {
+                                            if let Err(error) = service.remove(&id).await {
+                                                snapshot_signal.set(before);
+                                                error_signal.set(Some(error.to_string()));
+                                            }
+                                        });
+                                    }
+                                },
+                                "Remove registration"
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -1284,6 +1634,7 @@ fn Session(id: String) -> Element {
                 }
             }
             div { class: "session-composer-dock",
+                ProjectPicker {}
                 div { class: "composer-card",
                     button { class: "composer-tool", title: "Attach", aria_label: "Attach", Codicon { name: "add" } }
                     textarea {

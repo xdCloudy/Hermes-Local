@@ -320,3 +320,31 @@ shape. Neither test requires a configured user Agent or external network.
 
 Exact next action: extend the harness through resume/event/interrupt and REST
 error mapping, then port project scope into the sidebar and composer.
+
+## Project scope checkpoint (2026-08-11)
+
+Project selection is now shared across the application shell, the new-chat
+composer and resumed-session composer. The compact OG status row opens an
+upward project menu, supports clearing or changing the active scope, and feeds
+the selected project ID and primary working folder into typed session creation.
+Optimistic activation rolls back on a gateway failure.
+
+The Project Centre now uses the OG source copy, search and active/archive filter
+geometry, compact project rows, active state, creation overlay and explicit
+registration-only removal confirmation. Creation and removal refresh or update
+the same shared snapshot used by the composer, so scope state cannot diverge
+between surfaces. Folder attachment currently accepts an explicit local path;
+the native folder picker, clone mode, pin/archive writes and repair/delete-files
+flows remain required before final Project Centre parity.
+
+The Rust gateway adapter was corrected to the official source contracts:
+`projects.create` sends `primary_path` and `use` and decodes the nested
+`project`; activation and deletion send `id`, not `project_id`. An in-process
+WebSocket compatibility test proves all three real JSON-RPC frames and the
+nested create response. Native dark-mode captures at 1296x809 cover the empty
+Project Centre and creation dialog. `cargo test --workspace` passes 21 unit
+tests plus doc-tests.
+
+Exact next action: add folder picking and the remaining Project Centre RPCs,
+then extend the deterministic Agent harness through resume/event/interrupt and
+REST error mapping before moving to settings/theme parity.
