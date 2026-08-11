@@ -709,3 +709,28 @@ and Clippy adds no warning beyond the recorded backlog.
 Exact next action: port the Providers nested Accounts, API Keys, and Custom
 Endpoints Dioxus views 1:1 from the official source, then run maximized visual
 and rendered interaction QA when a native top-level window is available.
+
+## Provider accounts UI checkpoint (2026-08-11)
+
+Providers now expands the same nested Accounts, API Keys, and Custom Endpoints
+rail used by the official desktop settings. The Accounts view preserves the
+shared onboarding picker order and titles, the featured Nous row, Fireworks and
+OpenRouter API-key shortcuts, connected and collapsed-other group topology,
+flow-specific descriptions, externally managed credential hints, best-effort
+loading, and a confirmed profile-scoped sign-out path.
+
+The view talks only to `ProviderService`; it has no REST, token, profile, shell,
+or native-window authority. Unconnected account rows are present but OAuth
+initiation remains deliberately unwired until its typed start/poll/submit/cancel
+session slice lands, rather than simulating sign-in in Dioxus.
+
+The workspace passes 40 unit tests plus doc-tests. Focused coverage pins the
+official provider ordering and display-name overlays. Maximized native visual QA
+was attempted with a populated local Agent fixture, but the Dioxus process again
+settled with no top-level window handle. Captures briefly associated with other
+foreground windows were rejected and deleted; this checkpoint therefore makes
+no rendered-visual claim.
+
+Exact next action: add the typed OAuth session lifecycle and connect the account
+rows to the OG browser/device-code/external sign-in overlay, then port provider
+API-key groups.

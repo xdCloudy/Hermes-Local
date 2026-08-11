@@ -7,8 +7,8 @@ use futures_util::StreamExt;
 use hermes_core::{AgentConfigService, AppServices, ModelService, SessionTranscript};
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, MessageRole, MoaConfig, ModelAssignmentRequest,
-    ModelProvider, ModelSettingsSnapshot, NativeNotificationKind, ProjectFolder, ProjectsSnapshot,
-    SessionCreateRequest, SessionSummary, ThemeMode,
+    ModelProvider, ModelSettingsSnapshot, NativeNotificationKind, OAuthProvider, ProjectFolder,
+    ProjectsSnapshot, SessionCreateRequest, SessionSummary, ThemeMode,
 };
 use serde_json::{Map, Value, json};
 
@@ -1762,6 +1762,7 @@ fn Appearance() -> Element {
 fn SettingsOverlay(initial: &'static str) -> Element {
     let navigator = use_navigator();
     let mut active = use_signal(|| initial.to_owned());
+    let mut provider_view = use_signal(|| "accounts".to_owned());
     let sections = [
         ("model", "hubot", "Model"),
         ("chat", "comment-discussion", "Chat"),
@@ -1796,9 +1797,28 @@ fn SettingsOverlay(initial: &'static str) -> Element {
                 button { class: "settings-close", aria_label: "Close settings", title: "Close settings", onclick: move |_| navigator.go_back(), Codicon { name: "close" } }
                 aside { class: "settings-rail", aria_label: "Settings sections",
                     for (id, icon, label) in sections {
-                        button { class: if active() == id { "active" } else { "" }, onclick: move |_| active.set(id.to_owned()),
+                        button { class: if active() == id { "active" } else { "" }, onclick: move |_| {
+                                active.set(id.to_owned());
+                                if id == "providers" { provider_view.set("accounts".to_owned()); }
+                            },
                             Codicon { name: icon }
                             span { "{label}" }
+                        }
+                        if id == "providers" && active() == "providers" {
+                            div { class: "settings-rail-subnav", aria_label: "Provider settings",
+                                for (view, view_icon, view_label) in [
+                                    ("accounts", "account", "Accounts"),
+                                    ("keys", "key", "API Keys"),
+                                    ("custom-endpoints", "globe", "Custom Endpoints"),
+                                ] {
+                                    button {
+                                        class: if provider_view() == view { "active" } else { "" },
+                                        onclick: move |_| provider_view.set(view.to_owned()),
+                                        Codicon { name: view_icon }
+                                        span { "{view_label}" }
+                                    }
+                                }
+                            }
                         }
                     }
                     div { class: "settings-rail-footer",
@@ -1826,6 +1846,8 @@ fn SettingsOverlay(initial: &'static str) -> Element {
                         AgentConfigPanel { section: "advanced", icon: "tools", label: "Advanced" }
                     } else if active() == "notifications" {
                         NotificationsSettingsPanel {}
+                    } else if active() == "providers" && provider_view() == "accounts" {
+                        ProviderAccountsPanel { on_want_api_key: move |()| provider_view.set("keys".to_owned()) }
                     } else {
                         section { class: "settings-placeholder",
                             div { class: "settings-section-title", Codicon { name: active_icon } h1 { "{active_label}" } }
@@ -3907,6 +3929,252 @@ fn AppearanceSettingsPanel() -> Element {
     }
 }
 
+fn provider_title(provider: &OAuthProvider) -> String {
+    match provider.id.as_str() {
+        "nous" => "Nous Portal".into(),
+        "openai-codex" => "OpenAI OAuth (ChatGPT)".into(),
+        "minimax-oauth" => "MiniMax".into(),
+        "qwen-oauth" => "Qwen Code".into(),
+        "xai-oauth" => "xAI Grok".into(),
+        "anthropic" => "Anthropic API Key".into(),
+        "claude-code" => "Anthropic OAuth: Required Extra Usage Credits to Use Subscription".into(),
+        _ => provider.name.clone(),
+    }
+}
+
+fn provider_order(provider: &OAuthProvider) -> u8 {
+    match provider.id.as_str() {
+        "nous" => 0,
+        "openai-codex" => 1,
+        "minimax-oauth" => 2,
+        "qwen-oauth" => 3,
+        "xai-oauth" => 4,
+        "anthropic" => 5,
+        "claude-code" => 6,
+        _ => 99,
+    }
+}
+
+fn provider_flow_subtitle(flow: &str) -> &'static str {
+    match flow {
+        "pkce" => "Opens your browser to sign in, then continues here",
+        "device_code" => {
+            "Opens a verification page in your browser — Hermes connects automatically"
+        }
+        "external" => "Sign in once in your terminal, then come back to chat",
+        _ => "Connect this provider to Hermes",
+    }
+}
+
+#[component]
+fn ProviderAccountsPanel(on_want_api_key: Callback<()>) -> Element {
+    let services = use_context::<AppServices>();
+    let settings = use_context::<SettingsUiState>();
+    let profile = (settings.settings)().profile;
+    let load_service = services.providers.clone();
+    let mut providers = use_signal(Vec::<OAuthProvider>::new);
+    let mut loading = use_signal(|| true);
+    let mut error = use_signal(|| None::<String>);
+    let mut refresh = use_signal(|| 0_u64);
+    let mut show_all = use_signal(|| false);
+    let mut disconnect_target = use_signal(|| None::<OAuthProvider>);
+    let mut disconnecting = use_signal(|| None::<String>);
+    let load_profile = profile.clone();
+    let _load = use_resource(move || {
+        let service = load_service.clone();
+        let profile = load_profile.clone();
+        let _revision = refresh();
+        async move {
+            loading.set(true);
+            match service.list_oauth(profile.as_deref()).await {
+                Ok(mut next) => {
+                    next.sort_by(|left, right| {
+                        provider_order(left)
+                            .cmp(&provider_order(right))
+                            .then_with(|| left.name.cmp(&right.name))
+                    });
+                    providers.set(next);
+                    error.set(None);
+                }
+                Err(problem) => error.set(Some(problem.to_string())),
+            }
+            loading.set(false);
+        }
+    });
+
+    let rows = providers();
+    let featured = rows
+        .iter()
+        .find(|provider| provider.id == "nous" && !provider.status.logged_in)
+        .cloned();
+    let rest = rows
+        .iter()
+        .filter(|provider| featured.as_ref().is_none_or(|row| row.id != provider.id))
+        .cloned()
+        .collect::<Vec<_>>();
+    let connected = rest
+        .iter()
+        .filter(|provider| provider.status.logged_in)
+        .cloned()
+        .collect::<Vec<_>>();
+    let others = rest
+        .iter()
+        .filter(|provider| !provider.status.logged_in)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    rsx! {
+        section { class: "provider-settings",
+            div { class: "provider-heading",
+                div { class: "settings-section-title", Codicon { name: "key" } h1 { "Connect an account" } }
+                button { class: "provider-key-link", onclick: move |_| on_want_api_key.call(()), "Have an API key instead?" }
+            }
+            p { class: "settings-intro", "Sign in with a subscription — no API key to copy. Hermes runs the browser sign-in for you, right here in the app." }
+            if loading() {
+                div { class: "provider-list provider-loading",
+                    for _ in 0..5 { div { class: "provider-skeleton" } }
+                }
+            } else if let Some(problem) = error() {
+                div { class: "settings-load-error compact", role: "alert",
+                    Codicon { name: "warning" }
+                    strong { "Could not load providers" }
+                    p { "{problem}" }
+                    button { class: "button", onclick: move |_| refresh += 1, "Retry" }
+                }
+            } else if rows.is_empty() {
+                div { class: "provider-empty", "No account providers are available from the connected Agent." }
+            } else {
+                div { class: "provider-list",
+                    if let Some(provider) = featured {
+                        ProviderAccountRow { provider, featured: true, disconnecting: false, on_disconnect: move |_| {} }
+                    }
+                    ProviderKeyShortcut { title: "Fireworks AI", description: "Fast open models through a Fireworks API key", on_select: move |()| on_want_api_key.call(()) }
+                    if !connected.is_empty() {
+                        p { class: "provider-group-label", "Connected" }
+                        for provider in connected.clone() {
+                            ProviderAccountRow {
+                                disconnecting: disconnecting().as_deref() == Some(provider.id.as_str()),
+                                provider,
+                                featured: false,
+                                on_disconnect: move |provider| disconnect_target.set(Some(provider)),
+                            }
+                        }
+                    }
+                    if show_all() || others.is_empty() {
+                        if !connected.is_empty() && !others.is_empty() {
+                            p { class: "provider-group-label", "Other providers" }
+                        }
+                        for provider in others.clone() {
+                            ProviderAccountRow { provider, featured: false, disconnecting: false, on_disconnect: move |_| {} }
+                        }
+                        ProviderKeyShortcut { title: "OpenRouter", description: "One API key for models from many providers", on_select: move |()| on_want_api_key.call(()) }
+                    }
+                    if !others.is_empty() {
+                        button { class: "provider-disclosure", onclick: move |_| show_all.toggle(),
+                            if show_all() { "Collapse" } else if connected.is_empty() { "Other providers" } else { "Connect another provider" }
+                            Codicon { name: if show_all() { "chevron-up" } else { "chevron-down" } }
+                        }
+                    }
+                }
+            }
+            if let Some(provider) = disconnect_target() {
+                div { class: "dialog-backdrop", role: "presentation",
+                    section { class: "hermes-dialog compact", role: "alertdialog", aria_modal: "true", aria_label: "Remove provider account",
+                        header { h2 { "Remove {provider_title(&provider)}?" } p { "Hermes will remove this account credential from the active profile." } }
+                        footer {
+                            button { class: "button", disabled: disconnecting().is_some(), onclick: move |_| disconnect_target.set(None), "Cancel" }
+                            button { class: "button danger", disabled: disconnecting().is_some(), onclick: {
+                                let service = services.providers.clone();
+                                let profile = profile.clone();
+                                let provider_id = provider.id.clone();
+                                move |_| {
+                                    disconnecting.set(Some(provider_id.clone()));
+                                    let service = service.clone();
+                                    let profile = profile.clone();
+                                    let provider_id = provider_id.clone();
+                                    spawn(async move {
+                                        match service.disconnect_oauth(profile.as_deref(), &provider_id).await {
+                                            Ok(()) => {
+                                                disconnect_target.set(None);
+                                                refresh += 1;
+                                                error.set(None);
+                                            }
+                                            Err(problem) => error.set(Some(problem.to_string())),
+                                        }
+                                        disconnecting.set(None);
+                                    });
+                                }
+                            }, if disconnecting().is_some() { "Removing…" } else { "Remove" } }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ProviderKeyShortcut(
+    title: &'static str,
+    description: &'static str,
+    on_select: Callback<()>,
+) -> Element {
+    rsx! {
+        button { class: "provider-row", onclick: move |_| on_select.call(()),
+            div { strong { "{title}" } p { "{description}" } }
+            Codicon { name: "chevron-right" }
+        }
+    }
+}
+
+#[component]
+fn ProviderAccountRow(
+    provider: OAuthProvider,
+    featured: bool,
+    disconnecting: bool,
+    on_disconnect: Callback<OAuthProvider>,
+) -> Element {
+    let title = provider_title(&provider);
+    let can_disconnect = provider
+        .disconnectable
+        .unwrap_or(provider.flow != "external");
+    let show_hint = provider.status.logged_in && !can_disconnect;
+    let row_class = if featured {
+        "provider-row featured"
+    } else {
+        "provider-row"
+    };
+    rsx! {
+        div { class: "provider-row-shell",
+            button { class: row_class, disabled: provider.status.logged_in,
+                div {
+                    div { class: "provider-title-line",
+                        strong { "{title}" }
+                        if provider.status.logged_in { span { class: "provider-connected", Codicon { name: "check" } "Connected" } }
+                        if featured && !provider.status.logged_in { span { class: "provider-recommended", "Recommended" } }
+                    }
+                    p { "{provider_flow_subtitle(&provider.flow)}" }
+                    if show_hint { small { "{title} is managed by its own CLI — remove it there." } }
+                }
+                Codicon { name: if provider.flow == "external" { "terminal" } else { "chevron-right" } }
+            }
+            if provider.status.logged_in && can_disconnect {
+                button {
+                    class: "provider-remove",
+                    disabled: disconnecting,
+                    aria_label: "Remove {title}",
+                    title: "Remove {title}",
+                    onclick: {
+                        let provider = provider.clone();
+                        move |_| on_disconnect.call(provider.clone())
+                    },
+                    Codicon { name: if disconnecting { "loading" } else { "trash" } }
+                }
+            }
+        }
+    }
+}
+
 const NOTIFICATION_KINDS: &[(NativeNotificationKind, &str, &str)] = &[
     (
         NativeNotificationKind::Approval,
@@ -4440,13 +4708,13 @@ fn ErrorState(error: String) -> Element {
 
 #[cfg(test)]
 mod tests {
-    use hermes_protocol::{MoaConfig, MoaModelSlot, MoaPreset};
+    use hermes_protocol::{MoaConfig, MoaModelSlot, MoaPreset, OAuthProvider};
     use serde_json::json;
 
     use super::{
         completion_sound_data_uri, completion_sound_variant_id, config_display_value, config_value,
-        curated_config_options, moa_complete, set_config_value, voice_config_field_visible,
-        voice_free_input_field,
+        curated_config_options, moa_complete, provider_order, provider_title, set_config_value,
+        voice_config_field_visible, voice_free_input_field,
     };
 
     #[test]
@@ -4585,6 +4853,26 @@ mod tests {
         let data_uri = completion_sound_data_uri(2);
         assert!(data_uri.starts_with("data:audio/wav;base64,UklGR"));
         assert!(data_uri.len() > 10_000);
+    }
+
+    #[test]
+    fn provider_account_order_and_titles_match_the_shared_og_picker() {
+        let provider = |id: &str, name: &str| OAuthProvider {
+            id: id.into(),
+            name: name.into(),
+            ..OAuthProvider::default()
+        };
+        assert_eq!(provider_order(&provider("nous", "Nous")), 0);
+        assert_eq!(provider_order(&provider("claude-code", "Claude")), 6);
+        assert_eq!(provider_order(&provider("future-provider", "Future")), 99);
+        assert_eq!(
+            provider_title(&provider("openai-codex", "OpenAI")),
+            "OpenAI OAuth (ChatGPT)"
+        );
+        assert_eq!(
+            provider_title(&provider("future-provider", "Future")),
+            "Future"
+        );
     }
 
     #[test]

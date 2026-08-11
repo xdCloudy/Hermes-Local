@@ -135,6 +135,7 @@ updater work itself.
 | Main and auxiliary model configuration | `ModelService` | Model settings | provider/catalog/assignment fixtures + interaction E2E | Ported |
 | Mixture-of-Agents model configuration | `ModelService` | Model settings | preset/slot round-trip + interaction E2E | Ported |
 | Provider accounts, API credentials and custom endpoints | `ProviderService` | Providers nested settings | exact 11-call REST fixture + rendered CRUD/sign-out E2E | Service validated |
+| Provider account discovery and disconnect | `ProviderService` | Providers → Accounts | ordering/title unit fixture + populated render/sign-out E2E | Ported |
 | Local/remote/cloud connection profiles | `ConnectionService` | settings/profiles | soft/hard/live re-home tests | Designed |
 | OAuth login/logout and callbacks | `AuthService` | settings/recovery | RFC 8252/state/origin/token tests | Designed |
 | Hermes Cloud discovery/sign-in | `AuthService` | settings/profile menu | auth/connectivity separation tests | Designed |

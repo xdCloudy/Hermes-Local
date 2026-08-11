@@ -420,12 +420,17 @@ h1 { margin-top: 4px !important; margin-bottom: 0 !important; font-size: 1.25rem
 .settings-rail > button:hover { background: var(--hover); color: var(--text-1); }
 .settings-rail > button.active { border-color: var(--stroke-3); background: var(--active); color: var(--text-1); }
 .settings-rail > button .codicon { width: 14px; height: 14px; color: var(--text-3); }
+.settings-rail-subnav { display: grid; gap: 1px; margin: -1px 0 3px 14px; padding-left: 9px; border-left: 1px solid var(--stroke-3); }
+.settings-rail-subnav button { display: flex; width: 100%; height: 25px; align-items: center; gap: 7px; border: 0; border-radius: 5px; padding: 0 7px; background: transparent; color: var(--text-3); text-align: left; font-size: .6875rem; }
+.settings-rail-subnav button:hover { background: var(--hover); color: var(--text-1); }
+.settings-rail-subnav button.active { background: var(--active); color: var(--text-1); }
+.settings-rail-subnav .codicon { width: 12px; height: 12px; }
 .settings-rail-footer { display: flex; gap: 3px; margin-top: auto; padding-top: 8px; }
 .settings-rail-footer button { display: grid; width: 26px; height: 26px; place-items: center; border: 0; border-radius: 5px; padding: 0; background: transparent; color: var(--text-3); }
 .settings-rail-footer button:hover { background: var(--hover); color: var(--text-1); }
 .settings-rail-footer .codicon { width: 13px; height: 13px; }
 .settings-main { min-width: 0; overflow: hidden auto; padding: 32px clamp(20px, 4vw, 44px) 28px; }
-.appearance-settings, .agent-config-settings, .notifications-settings, .settings-placeholder { width: 100%; max-width: 980px; margin: 0 auto; }
+.appearance-settings, .agent-config-settings, .notifications-settings, .provider-settings, .settings-placeholder { width: 100%; max-width: 980px; margin: 0 auto; }
 .settings-section-title { display: flex; align-items: center; gap: 8px; }
 .settings-section-title > .codicon { width: 17px; height: 17px; color: var(--text-2); }
 .settings-section-title h1 { margin: 0 !important; font-size: 1rem; }
@@ -462,6 +467,37 @@ h1 { margin-top: 4px !important; margin-bottom: 0 !important; font-size: 1.25rem
 .notification-test > p { margin: 0; color: var(--text-3); font-size: .6875rem; line-height: 1.45; }
 .notification-test-result.error { color: var(--red); }
 .notifications-settings audio { display: none; }
+.provider-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.provider-key-link, .provider-disclosure { display: inline-flex; align-items: center; gap: 5px; border: 0; padding: 0; background: transparent; color: var(--text-2); font-size: .6875rem; font-weight: 600; }
+.provider-key-link:hover, .provider-disclosure:hover { color: var(--text-1); }
+.provider-list { display: grid; gap: 2px; margin-top: 5px; }
+.provider-row-shell { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border-radius: 6px; }
+.provider-row-shell:hover { background: var(--hover); }
+.provider-row { display: flex; width: 100%; min-width: 0; min-height: 56px; align-items: center; justify-content: space-between; gap: 16px; border: 0; border-radius: 6px; padding: 9px 12px; background: transparent; color: var(--text-1); text-align: left; }
+.provider-row:not(:disabled):hover { background: var(--hover); }
+.provider-row:disabled { opacity: 1; }
+.provider-row > div { min-width: 0; }
+.provider-row strong { font-size: .75rem; font-weight: 600; }
+.provider-row p { overflow: hidden; margin: 4px 0 0; color: var(--text-3); font-size: .6875rem; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.provider-row small { display: block; overflow: hidden; margin-top: 2px; color: var(--text-4); font-size: .625rem; text-overflow: ellipsis; white-space: nowrap; }
+.provider-row > .codicon { width: 14px; height: 14px; flex: 0 0 auto; color: var(--text-3); }
+.provider-row.featured { position: relative; overflow: hidden; background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.provider-row.featured:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.provider-row.featured::before { position: absolute; inset: 0 auto 0 0; width: 2px; background: var(--accent); content: ""; }
+.provider-title-line { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.provider-title-line strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.provider-connected, .provider-recommended { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; padding: 2px 7px; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); font-size: .625rem; font-weight: 600; }
+.provider-connected .codicon { width: 10px; height: 10px; }
+.provider-recommended { background: var(--accent); color: #fff; text-transform: uppercase; letter-spacing: .11em; }
+.provider-remove { display: grid; width: 27px; height: 27px; place-items: center; margin-right: 8px; border: 0; border-radius: 5px; padding: 0; background: transparent; color: var(--text-3); }
+.provider-remove:hover { background: var(--active); color: var(--red); }
+.provider-remove .codicon { width: 13px; height: 13px; }
+.provider-group-label { margin: 10px 2px 2px; color: var(--text-3); font-size: .6875rem; font-weight: 500; }
+.provider-disclosure { width: max-content; margin: 7px 0 0 12px; color: var(--text-3); font-weight: 400; }
+.provider-disclosure .codicon { width: 12px; height: 12px; }
+.provider-empty { display: grid; min-height: 128px; place-items: center; padding: 24px; color: var(--text-3); font-size: .6875rem; text-align: center; }
+.provider-loading { gap: 6px; }
+.provider-skeleton { height: 56px; border-radius: 6px; background: var(--active); }
 .settings-save-state { margin: 10px 0 0; color: var(--text-3); font-size: .6875rem; text-align: right; }
 .settings-load-error { display: grid; max-width: 520px; justify-items: start; gap: 7px; margin-top: 20px; border: 1px solid var(--stroke-2); border-radius: 8px; padding: 16px; background: var(--panel-bg); }
 .settings-load-error > .codicon { width: 18px; height: 18px; color: var(--red); }
