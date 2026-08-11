@@ -144,8 +144,7 @@ fn stage_candidate_at(
     require_absolute_file(current_exe, "Current executable")?;
     verify_binary(candidate, None)?;
 
-    fs::create_dir_all(root)
-        .map_err(|error| format!("Could not create update root: {error}"))?;
+    fs::create_dir_all(root).map_err(|error| format!("Could not create update root: {error}"))?;
     let operation_id = Uuid::new_v4().simple().to_string();
     let operation_root = root.join("operations").join(&operation_id);
     fs::create_dir_all(&operation_root)
@@ -200,9 +199,18 @@ fn run_helper(plan_path: &Path) -> Result<(), String> {
 
     pending.status = ActivationStatus::Probation;
     write_pending(plan_path, &pending)?;
-    let mut child = Command::new(&pending.current_exe)
-        .spawn()
-        .map_err(|error| format!("Activated executable could not start: {error}"))?;
+    let mut child = match Command::new(&pending.current_exe).spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            let message = format!("Activated executable could not start: {error}");
+            rollback_offline(&pending)?;
+            pending.status = ActivationStatus::ActivationFailed;
+            pending.activation_error = Some(message.clone());
+            write_pending(plan_path, &pending)?;
+            let _ = Command::new(&pending.current_exe).spawn();
+            return Err(message);
+        }
+    };
 
     if let Some(status) = wait_for_exit(&mut child, PROBATION)? {
         let message = format!("Activated executable exited during probation: {status}");
@@ -272,7 +280,10 @@ fn rollback_offline(pending: &PendingUpdate) -> Result<(), String> {
     copy_synced(&pending.backup_exe, &pending.current_exe)
 }
 
-fn wait_for_exit(child: &mut Child, duration: Duration) -> Result<Option<std::process::ExitStatus>, String> {
+fn wait_for_exit(
+    child: &mut Child,
+    duration: Duration,
+) -> Result<Option<std::process::ExitStatus>, String> {
     let deadline = Instant::now() + duration;
     loop {
         match child
@@ -291,12 +302,18 @@ fn validate_plan(root: &Path, pending: &PendingUpdate) -> Result<(), String> {
         return Err("Unsupported pending-update schema.".into());
     }
     if pending.operation_id.len() != 32
-        || !pending.operation_id.bytes().all(|byte| byte.is_ascii_hexdigit())
+        || !pending
+            .operation_id
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
     {
         return Err("Pending update operation id is invalid.".into());
     }
     if pending.expected_sha256.len() != 64
-        || !pending.expected_sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+        || !pending
+            .expected_sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
     {
         return Err("Pending update SHA-256 is invalid.".into());
     }
@@ -311,7 +328,9 @@ fn validate_plan(root: &Path, pending: &PendingUpdate) -> Result<(), String> {
         ("helper executable", &pending.helper_exe),
     ] {
         if !path.is_absolute() || !lexical_absolute(path)?.starts_with(&operation_root) {
-            return Err(format!("Pending update {label} escaped its operation directory."));
+            return Err(format!(
+                "Pending update {label} escaped its operation directory."
+            ));
         }
     }
     Ok(())
@@ -490,10 +509,19 @@ mod tests {
         let pending = stage_candidate_at(&candidate, &current, &update_root, "0.19.0").unwrap();
 
         assert_eq!(pending.status, ActivationStatus::ReadyToRestart);
-        assert_eq!(pending.expected_sha256, sha256_file(&pending.staged_exe).unwrap());
-        assert!(pending.staged_exe.starts_with(update_root.join("operations")));
         assert_eq!(
-            read_pending(&update_root.join("pending.json")).unwrap().unwrap(),
+            pending.expected_sha256,
+            sha256_file(&pending.staged_exe).unwrap()
+        );
+        assert!(
+            pending
+                .staged_exe
+                .starts_with(update_root.join("operations"))
+        );
+        assert_eq!(
+            read_pending(&update_root.join("pending.json"))
+                .unwrap()
+                .unwrap(),
             pending
         );
         let _ = fs::remove_dir_all(root);
@@ -506,7 +534,8 @@ mod tests {
         let candidate = root.join("incoming/hermes-local.exe");
         fake_pe(&current, b"old");
         fake_pe(&candidate, b"new");
-        let pending = stage_candidate_at(&candidate, &current, &root.join("updates"), "0.19.0").unwrap();
+        let pending =
+            stage_candidate_at(&candidate, &current, &root.join("updates"), "0.19.0").unwrap();
         fake_pe(&pending.staged_exe, b"tampered");
 
         assert!(promote_offline(&pending).is_err());
@@ -521,7 +550,8 @@ mod tests {
         let candidate = root.join("incoming/hermes-local.exe");
         fake_pe(&current, b"old-build");
         fake_pe(&candidate, b"new-build");
-        let pending = stage_candidate_at(&candidate, &current, &root.join("updates"), "0.19.0").unwrap();
+        let pending =
+            stage_candidate_at(&candidate, &current, &root.join("updates"), "0.19.0").unwrap();
 
         promote_offline(&pending).unwrap();
         assert_eq!(sha256_file(&current).unwrap(), pending.expected_sha256);
