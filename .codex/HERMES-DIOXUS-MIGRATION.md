@@ -821,3 +821,33 @@ PKCE/device/external OAuth, API Keys, and Custom Endpoints all use typed Rust
 authority and mirror the OG source structure. Exact next action: move to Gateway
 and connection profiles, while retaining the pending native-window and Windows
 toast-registration items for the desktop integration slice.
+
+## Gateway profile authority checkpoint (2026-08-11)
+
+The exact OG local/remote/cloud/SSH renderer contract now exists as typed Rust
+protocol data, including the global or per-profile scope, OAuth-versus-token
+auth, cloud organization provenance, SSH fields, probe metadata, masked token
+state, and the distinction between an omitted SSH port and an explicit clear.
+
+`ConnectionService` owns load, save, apply, test, and public status probing.
+Desktop authority persists the non-secret connection topology in
+`connection.json`; new static Gateway tokens are stored under a scope-specific
+entry in Windows Credential Manager and the JSON contains only an opaque marker.
+The UI can receive only `remoteTokenPreview` and `remoteTokenSet`, never the
+token. Legacy plain markers can still be read for migration, while malformed
+documents fall back to Local as the OG does.
+
+Remote token connections can now be re-established from saved settings. OAuth,
+SSH bootstrap, and Local Agent startup retain explicit pending errors rather
+than silently claiming connectivity. The public `/api/status` probe discovers
+token versus OAuth mode and optionally reads provider display metadata without
+sending stored credentials.
+
+Focused coverage proves OG DTO casing/null behavior, strict profile names,
+URL normalization, global/per-profile isolation, token previews, Credential
+Manager indirection, absence of raw tokens on disk, cloud provenance, and SSH
+port clearing. The workspace passes 48 unit tests plus doc-tests.
+
+Exact next action: port the OG Gateway settings surface onto this service, then
+complete OAuth login/logout, Hermes Cloud discovery, SSH host/config probing,
+and Local Agent bootstrap before marking apply/re-home behavior complete.

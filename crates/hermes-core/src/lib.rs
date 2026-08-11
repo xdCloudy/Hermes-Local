@@ -9,7 +9,8 @@ use std::{
 
 use futures_core::Stream;
 use hermes_protocol::{
-    AgentConfigSnapshot, AppSettings, ChatMessage, ConnectionState, CustomEndpointUpdate,
+    AgentConfigSnapshot, AppSettings, ChatMessage, ConnectionConfig, ConnectionConfigInput,
+    ConnectionProbeResult, ConnectionState, ConnectionTestResult, CustomEndpointUpdate,
     CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry, GatewayEvent,
     GitStatus, MessageRole, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse,
     ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit,
@@ -315,6 +316,12 @@ pub trait ConnectionService: Send + Sync {
     fn connect(&self, websocket_url: &str) -> ServiceFuture<'_, ConnectionState>;
     fn disconnect(&self) -> ServiceFuture<'_, ()>;
     fn state(&self) -> ServiceResult<ConnectionState>;
+    fn config(&self, profile: Option<&str>) -> ServiceFuture<'_, ConnectionConfig>;
+    fn save_config(&self, input: &ConnectionConfigInput) -> ServiceFuture<'_, ConnectionConfig>;
+    fn apply_config(&self, input: &ConnectionConfigInput) -> ServiceFuture<'_, ConnectionConfig>;
+    fn test_config(&self, input: &ConnectionConfigInput)
+    -> ServiceFuture<'_, ConnectionTestResult>;
+    fn probe_config(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionProbeResult>;
 }
 
 pub trait ProjectService: Send + Sync {

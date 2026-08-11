@@ -22,6 +22,9 @@ trash.workspace = true
 url.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 
+[target.'cfg(windows)'.dependencies]
+keyring = { workspace = true, features = ["v1", "windows-native-keyring-store"] }
+
 [lints]
 workspace = true
 

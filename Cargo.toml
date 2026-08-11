@@ -22,6 +22,7 @@ dioxus = { version = "=0.7.10", default-features = false }
 dioxus-router = "=0.7.10"
 futures-core = "=0.3.33"
 futures-util = { version = "=0.3.33", default-features = false }
+keyring = { version = "=4.1.6", default-features = false }
 portable-pty = { version = "=0.9.0", default-features = false }
 open = "=5.4.1"
 reqwest = { version = "=0.13.4", default-features = false }

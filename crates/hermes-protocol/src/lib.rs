@@ -10,6 +10,15 @@ use serde_json::Value;
 
 pub const JSON_RPC_VERSION: &str = "2.0";
 
+#[allow(clippy::option_option)] // Three states are required: omitted, explicit null, and a port.
+fn deserialize_present_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum RpcId {
@@ -95,6 +104,196 @@ pub enum ConnectionState {
     Open,
     Closed,
     Error,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ConnectionMode {
+    #[default]
+    Local,
+    Remote,
+    Cloud,
+    Ssh,
+}
+
+impl ConnectionMode {
+    pub const fn is_remote_like(self) -> bool {
+        matches!(self, Self::Remote | Self::Cloud)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RemoteAuthMode {
+    Oauth,
+    #[default]
+    Token,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProbeAuthMode {
+    Oauth,
+    Token,
+    #[default]
+    Unknown,
+}
+
+/// Sanitized Gateway settings exposed to the UI. The actual remote token is
+/// deliberately absent: desktop authority returns only a preview and set flag.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionConfig {
+    #[serde(default)]
+    pub env_override: bool,
+    #[serde(default)]
+    pub mode: ConnectionMode,
+    #[serde(default)]
+    pub profile: Option<String>,
+    #[serde(default)]
+    pub remote_auth_mode: RemoteAuthMode,
+    #[serde(default)]
+    pub remote_oauth_connected: bool,
+    #[serde(default)]
+    pub remote_token_preview: Option<String>,
+    #[serde(default)]
+    pub remote_token_set: bool,
+    #[serde(default)]
+    pub remote_url: String,
+    #[serde(default)]
+    pub cloud_org: String,
+    #[serde(default)]
+    pub ssh_host: String,
+    #[serde(default)]
+    pub ssh_user: String,
+    #[serde(default)]
+    pub ssh_port: Option<u16>,
+    #[serde(default)]
+    pub ssh_key_path: String,
+    #[serde(default)]
+    pub ssh_remote_hermes_path: String,
+    #[serde(default)]
+    pub ssh_remote_profile: String,
+}
+
+impl Default for ConnectionConfig {
+    fn default() -> Self {
+        Self {
+            env_override: false,
+            mode: ConnectionMode::Local,
+            profile: None,
+            remote_auth_mode: RemoteAuthMode::Token,
+            remote_oauth_connected: false,
+            remote_token_preview: None,
+            remote_token_set: false,
+            remote_url: String::new(),
+            cloud_org: String::new(),
+            ssh_host: String::new(),
+            ssh_user: String::new(),
+            ssh_port: None,
+            ssh_key_path: String::new(),
+            ssh_remote_hermes_path: String::new(),
+            ssh_remote_profile: String::new(),
+        }
+    }
+}
+
+/// Renderer-to-desktop Gateway mutation. A missing token means "preserve the
+/// existing secret"; an empty token is never persisted.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionConfigInput {
+    #[serde(default)]
+    pub mode: ConnectionMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_auth_mode: Option<RemoteAuthMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloud_org: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_host: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_user: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub ssh_port: Option<Option<u16>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_key_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_remote_hermes_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_remote_profile: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SshErrorKind {
+    AuthFailed,
+    HermesNotFound,
+    HostKeyChanged,
+    Timeout,
+    Unreachable,
+    UnsupportedPlatform,
+    UpdateRequired,
+    Unknown,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionTestResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ok: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reachable: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_error: Option<SshErrorKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_hermes_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_hermes_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_platform: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthProvider {
+    pub name: String,
+    pub display_name: String,
+    #[serde(default)]
+    pub supports_password: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionProbeResult {
+    pub base_url: String,
+    #[serde(default)]
+    pub reachable: bool,
+    #[serde(default)]
+    pub auth_mode: ProbeAuthMode,
+    #[serde(default)]
+    pub providers: Vec<AuthProvider>,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -1020,6 +1219,48 @@ mod tests {
             round_trip
                 .notification_kinds
                 .enabled(NativeNotificationKind::Approval)
+        );
+    }
+
+    #[test]
+    fn gateway_config_uses_the_og_renderer_shape_without_a_raw_token() {
+        let config = ConnectionConfig {
+            mode: ConnectionMode::Cloud,
+            profile: Some("work".into()),
+            remote_auth_mode: RemoteAuthMode::Oauth,
+            remote_oauth_connected: true,
+            remote_token_preview: Some("...secret".into()),
+            remote_token_set: true,
+            remote_url: "https://gateway.example".into(),
+            cloud_org: "nous".into(),
+            ssh_port: Some(22),
+            ..ConnectionConfig::default()
+        };
+        let value = serde_json::to_value(config).expect("serialize Gateway config");
+        assert_eq!(value["mode"], "cloud");
+        assert_eq!(value["profile"], "work");
+        assert_eq!(value["remoteAuthMode"], "oauth");
+        assert_eq!(value["remoteOauthConnected"], true);
+        assert_eq!(value["remoteTokenPreview"], "...secret");
+        assert_eq!(value["remoteTokenSet"], true);
+        assert_eq!(value["sshPort"], 22);
+        assert!(value.get("remoteToken").is_none());
+    }
+
+    #[test]
+    fn gateway_input_distinguishes_an_absent_ssh_port_from_explicit_null() {
+        let absent: ConnectionConfigInput =
+            serde_json::from_value(serde_json::json!({ "mode": "ssh" })).expect("absent port");
+        let cleared: ConnectionConfigInput = serde_json::from_value(serde_json::json!({
+            "mode": "ssh",
+            "sshPort": null
+        }))
+        .expect("cleared port");
+        assert_eq!(absent.ssh_port, None);
+        assert_eq!(cleared.ssh_port, Some(None));
+        assert_eq!(
+            serde_json::to_value(cleared).expect("serialize cleared port")["sshPort"],
+            Value::Null
         );
     }
 }

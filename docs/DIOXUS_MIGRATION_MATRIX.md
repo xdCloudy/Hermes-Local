@@ -140,10 +140,12 @@ updater work itself.
 | Provider PKCE/device/external sign-in UI | `ProviderService` + `PlatformService` | Providers → Accounts overlay | session cleanup unit + rendered flow E2E | Ported |
 | Provider API-key grouping and credential editing | `ProviderService` | Providers → API Keys | grouping/redaction unit + rendered save/remove E2E | Ported |
 | OpenAI-compatible custom endpoint CRUD/discovery | `ProviderService` | Providers → Custom Endpoints | form/payload unit + rendered validate/activate/delete E2E | Ported |
-| Local/remote/cloud connection profiles | `ConnectionService` | settings/profiles | soft/hard/live re-home tests | Designed |
+| Local/remote/cloud/SSH connection profile persistence | `ConnectionService` + Windows Credential Manager | settings/profiles | DTO/persistence/scope/redaction tests | Service validated |
+| Gateway settings and live re-home behavior | `ConnectionService` | Settings → Gateway | soft/hard/live re-home tests | In progress |
 | OAuth login/logout and callbacks | `AuthService` | settings/recovery | RFC 8252/state/origin/token tests | Designed |
 | Hermes Cloud discovery/sign-in | `AuthService` | settings/profile menu | auth/connectivity separation tests | Designed |
-| Secrets at rest | `SecretService` (DPAPI/Credential Manager) | no DOM exposure | round-trip/ACL/redaction tests | Designed |
+| Gateway tokens at rest | `ConnectionService` + Windows Credential Manager | no DOM exposure | marker/preview/no-plaintext tests | Service validated |
+| Remaining secrets at rest | `SecretService` (DPAPI/Credential Manager) | no DOM exposure | round-trip/ACL/redaction tests | Designed |
 | Local Workstation snapshot | `RuntimeService` | workstation home | schema/refresh/degraded-state tests | Designed |
 | Runtime actions and Task Centre | `TaskService` | tasks/status | durable lifecycle/cancel/pause/retry tests | Designed |
 | Models and model downloads | `RuntimeService` | models | integrity/progress/cancel/recovery tests | Designed |

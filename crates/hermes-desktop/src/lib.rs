@@ -1,7 +1,7 @@
 //! Windows desktop authority for Hermes Local.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fs,
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -17,16 +17,19 @@ use hermes_core::{
     UpdateService, validate_identifier, validate_relative_path,
 };
 use hermes_protocol::{
-    AgentConfigSnapshot, AppSettings, AuxiliaryModels, ConfigSchemaResponse, ConnectionState,
-    CustomEndpointUpdate, CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry,
-    GitStatus, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse, ModelInfo, ModelOptions,
-    ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit,
-    ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation, RuntimeStatus,
+    AgentConfigSnapshot, AppSettings, AuthProvider, AuxiliaryModels, ConfigSchemaResponse,
+    ConnectionConfig, ConnectionConfigInput, ConnectionMode, ConnectionProbeResult,
+    ConnectionState, ConnectionTestResult, CustomEndpointUpdate, CustomEndpointValidation,
+    CustomEndpointsResponse, EnvVarInfo, FileEntry, GitStatus, MoaConfig, ModelAssignmentRequest,
+    ModelAssignmentResponse, ModelInfo, ModelOptions, ModelSettingsSnapshot, OAuthPoll,
+    OAuthProvider, OAuthStart, OAuthSubmit, ProbeAuthMode, ProjectFilesDeleteResult,
+    ProjectSummary, ProjectsSnapshot, ProviderActivation, RemoteAuthMode, RuntimeStatus,
     SessionCreateRequest, SessionCreateResponse, SessionResumeResponse, SessionSummary,
     TaskSummary, TrustSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use reqwest::Method;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::broadcast;
 use uuid::Uuid;
@@ -35,6 +38,383 @@ use uuid::Uuid;
 struct GatewayServices {
     client: Arc<RwLock<Option<GatewayClient>>>,
     rest: Arc<RwLock<Option<GatewayRest>>>,
+    connection_store: Arc<ConnectionConfigStore>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredSecret {
+    #[serde(default)]
+    encoding: String,
+    #[serde(default)]
+    value: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredConnectionBlock {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mode: Option<ConnectionMode>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    url: String,
+    #[serde(default)]
+    auth_mode: RemoteAuthMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    token: Option<StoredSecret>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    org: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    host: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    user: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    port: Option<u16>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    key_path: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    remote_hermes_path: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    remote_profile: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    saved_ssh: Option<Box<Self>>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+struct StoredConnectionDocument {
+    #[serde(default)]
+    mode: ConnectionMode,
+    #[serde(default)]
+    remote: StoredConnectionBlock,
+    #[serde(default)]
+    profiles: BTreeMap<String, StoredConnectionBlock>,
+}
+
+trait GatewaySecretStore: Send + Sync {
+    fn get(&self, account: &str) -> ServiceResult<Option<String>>;
+    fn set(&self, account: &str, secret: &str) -> ServiceResult<()>;
+    fn delete(&self, account: &str) -> ServiceResult<()>;
+}
+
+#[cfg(windows)]
+struct NativeGatewaySecretStore;
+
+#[cfg(windows)]
+impl NativeGatewaySecretStore {
+    fn entry(account: &str) -> ServiceResult<keyring::Entry> {
+        keyring::Entry::new("Hermes Local Gateway", account).map_err(platform)
+    }
+}
+
+#[cfg(windows)]
+impl GatewaySecretStore for NativeGatewaySecretStore {
+    fn get(&self, account: &str) -> ServiceResult<Option<String>> {
+        match Self::entry(account)?.get_password() {
+            Ok(secret) => Ok(Some(secret)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(error) => Err(platform(error)),
+        }
+    }
+
+    fn set(&self, account: &str, secret: &str) -> ServiceResult<()> {
+        Self::entry(account)?.set_password(secret).map_err(platform)
+    }
+
+    fn delete(&self, account: &str) -> ServiceResult<()> {
+        match Self::entry(account)?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(error) => Err(platform(error)),
+        }
+    }
+}
+
+#[cfg(not(windows))]
+struct NativeGatewaySecretStore;
+
+#[cfg(not(windows))]
+impl GatewaySecretStore for NativeGatewaySecretStore {
+    fn get(&self, _account: &str) -> ServiceResult<Option<String>> {
+        Ok(None)
+    }
+
+    fn set(&self, _account: &str, _secret: &str) -> ServiceResult<()> {
+        Err(ServiceError::Unavailable(
+            "native Gateway secret storage is unavailable on this platform".into(),
+        ))
+    }
+
+    fn delete(&self, _account: &str) -> ServiceResult<()> {
+        Ok(())
+    }
+}
+
+struct ConnectionConfigStore {
+    path: PathBuf,
+    secrets: Arc<dyn GatewaySecretStore>,
+    lock: Mutex<()>,
+}
+
+impl ConnectionConfigStore {
+    fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            secrets: Arc::new(NativeGatewaySecretStore),
+            lock: Mutex::new(()),
+        }
+    }
+
+    #[cfg(test)]
+    fn with_secrets(path: PathBuf, secrets: Arc<dyn GatewaySecretStore>) -> Self {
+        Self {
+            path,
+            secrets,
+            lock: Mutex::new(()),
+        }
+    }
+
+    fn document(&self) -> ServiceResult<StoredConnectionDocument> {
+        match fs::read(&self.path) {
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(protocol),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                Ok(StoredConnectionDocument::default())
+            }
+            Err(error) => Err(platform(error)),
+        }
+    }
+
+    fn write_document(&self, document: &StoredConnectionDocument) -> ServiceResult<()> {
+        let parent = self.path.parent().ok_or_else(|| {
+            ServiceError::Platform("connection settings path has no parent".into())
+        })?;
+        fs::create_dir_all(parent).map_err(platform)?;
+        let bytes = serde_json::to_vec_pretty(document).map_err(protocol)?;
+        let temporary = self.path.with_extension("json.tmp");
+        fs::write(&temporary, bytes).map_err(platform)?;
+        fs::rename(&temporary, &self.path).map_err(platform)
+    }
+
+    fn load(&self, profile: Option<&str>) -> ServiceResult<ConnectionConfig> {
+        let _guard = self
+            .lock
+            .lock()
+            .map_err(|_| ServiceError::Platform("connection settings lock was poisoned".into()))?;
+        let document = self.document().unwrap_or_default();
+        self.sanitize(&document, profile)
+    }
+
+    #[allow(clippy::too_many_lines)] // Mirrors the OG mode-transition state machine in one lock.
+    fn save(&self, input: &ConnectionConfigInput) -> ServiceResult<ConnectionConfig> {
+        let _guard = self
+            .lock
+            .lock()
+            .map_err(|_| ServiceError::Platform("connection settings lock was poisoned".into()))?;
+        let mut document = self.document().unwrap_or_default();
+        let profile = validated_profile(input.profile.as_deref())?;
+        let account = secret_account(profile.as_deref());
+        let existing = profile.as_ref().map_or_else(
+            || document.remote.clone(),
+            |profile| document.profiles.get(profile).cloned().unwrap_or_default(),
+        );
+
+        let mut block = existing.clone();
+        match input.mode {
+            ConnectionMode::Remote | ConnectionMode::Cloud => {
+                let leaving_cloud = existing.mode == Some(ConnectionMode::Cloud)
+                    && input.mode != ConnectionMode::Cloud;
+                if leaving_cloud || existing.mode == Some(ConnectionMode::Ssh) {
+                    block = StoredConnectionBlock::default();
+                }
+                block.mode = profile.as_ref().map(|_| input.mode);
+                block.url =
+                    normalize_remote_url(input.remote_url.as_deref().unwrap_or(&block.url))?;
+                block.auth_mode = input.remote_auth_mode.unwrap_or(block.auth_mode);
+                block.org = if input.mode == ConnectionMode::Cloud {
+                    input
+                        .cloud_org
+                        .as_deref()
+                        .unwrap_or(&block.org)
+                        .trim()
+                        .to_owned()
+                } else {
+                    String::new()
+                };
+                if let Some(token) = input
+                    .remote_token
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                {
+                    self.secrets.set(&account, token)?;
+                    block.token = Some(StoredSecret {
+                        encoding: "credentialManager".into(),
+                        value: account.clone(),
+                    });
+                }
+                if block.auth_mode == RemoteAuthMode::Token
+                    && self.secret(&block, &account)?.is_none()
+                {
+                    return Err(ServiceError::InvalidInput(
+                        "Remote gateway session token is required.".into(),
+                    ));
+                }
+            }
+            ConnectionMode::Ssh => {
+                let host = input.ssh_host.as_deref().unwrap_or(&block.host).trim();
+                if host.is_empty() {
+                    return Err(ServiceError::InvalidInput("SSH host is required.".into()));
+                }
+                if existing.host != host {
+                    self.secrets.delete(&account)?;
+                    block.token = None;
+                }
+                block = StoredConnectionBlock {
+                    mode: Some(ConnectionMode::Ssh),
+                    host: host.to_owned(),
+                    user: input
+                        .ssh_user
+                        .as_deref()
+                        .unwrap_or(&block.user)
+                        .trim()
+                        .to_owned(),
+                    port: input.ssh_port.unwrap_or(block.port),
+                    key_path: input
+                        .ssh_key_path
+                        .as_deref()
+                        .unwrap_or(&block.key_path)
+                        .trim()
+                        .to_owned(),
+                    remote_hermes_path: input
+                        .ssh_remote_hermes_path
+                        .as_deref()
+                        .unwrap_or(&block.remote_hermes_path)
+                        .trim()
+                        .to_owned(),
+                    remote_profile: input
+                        .ssh_remote_profile
+                        .as_deref()
+                        .unwrap_or(&block.remote_profile)
+                        .trim()
+                        .to_owned(),
+                    token: block.token,
+                    ..StoredConnectionBlock::default()
+                };
+            }
+            ConnectionMode::Local => {
+                if profile.is_some() {
+                    if existing.mode == Some(ConnectionMode::Ssh) {
+                        block = StoredConnectionBlock {
+                            mode: Some(ConnectionMode::Local),
+                            saved_ssh: Some(Box::new(existing)),
+                            ..StoredConnectionBlock::default()
+                        };
+                    } else {
+                        block = StoredConnectionBlock::default();
+                    }
+                }
+            }
+        }
+
+        if let Some(profile) = profile.as_ref() {
+            if input.mode == ConnectionMode::Local && block.saved_ssh.is_none() {
+                document.profiles.remove(profile);
+            } else {
+                document.profiles.insert(profile.clone(), block);
+            }
+        } else {
+            document.mode = input.mode;
+            document.remote = block;
+        }
+        self.write_document(&document)?;
+        self.sanitize(&document, profile.as_deref())
+    }
+
+    fn sanitize(
+        &self,
+        document: &StoredConnectionDocument,
+        profile: Option<&str>,
+    ) -> ServiceResult<ConnectionConfig> {
+        let profile = validated_profile(profile)?;
+        let scoped = profile.as_ref().and_then(|key| document.profiles.get(key));
+        let block = scoped.unwrap_or(&document.remote);
+        let saved_mode = if profile.is_some() {
+            scoped
+                .and_then(|entry| entry.mode)
+                .unwrap_or(ConnectionMode::Local)
+        } else {
+            document.mode
+        };
+        let env_url = (profile.is_none())
+            .then(|| std::env::var("HERMES_DESKTOP_REMOTE_URL").ok())
+            .flatten()
+            .filter(|value| !value.trim().is_empty());
+        let env_override = env_url.is_some();
+        let mode = if env_override {
+            ConnectionMode::Remote
+        } else {
+            saved_mode
+        };
+        let ssh = if mode == ConnectionMode::Ssh {
+            Some(block)
+        } else if mode == ConnectionMode::Local {
+            block
+                .saved_ssh
+                .as_deref()
+                .or((block.mode == Some(ConnectionMode::Ssh)).then_some(block))
+        } else {
+            None
+        };
+        let account = secret_account(profile.as_deref());
+        let token = self.secret(block, &account)?;
+        Ok(ConnectionConfig {
+            env_override,
+            mode,
+            profile,
+            remote_auth_mode: block.auth_mode,
+            remote_oauth_connected: false,
+            remote_token_preview: token_preview(token.as_deref()),
+            remote_token_set: token.is_some(),
+            remote_url: env_url.unwrap_or_else(|| block.url.clone()),
+            cloud_org: if mode == ConnectionMode::Cloud {
+                block.org.clone()
+            } else {
+                String::new()
+            },
+            ssh_host: ssh.map_or_else(String::new, |ssh| ssh.host.clone()),
+            ssh_user: ssh.map_or_else(String::new, |ssh| ssh.user.clone()),
+            ssh_port: ssh.and_then(|ssh| ssh.port),
+            ssh_key_path: ssh.map_or_else(String::new, |ssh| ssh.key_path.clone()),
+            ssh_remote_hermes_path: ssh
+                .map_or_else(String::new, |ssh| ssh.remote_hermes_path.clone()),
+            ssh_remote_profile: ssh.map_or_else(String::new, |ssh| ssh.remote_profile.clone()),
+        })
+    }
+
+    fn secret(
+        &self,
+        block: &StoredConnectionBlock,
+        account: &str,
+    ) -> ServiceResult<Option<String>> {
+        let Some(secret) = block.token.as_ref() else {
+            return Ok(None);
+        };
+        if secret.encoding == "plain" {
+            return Ok((!secret.value.is_empty()).then(|| secret.value.clone()));
+        }
+        self.secrets.get(account)
+    }
+
+    fn remote_secret(&self, profile: Option<&str>) -> ServiceResult<Option<String>> {
+        let _guard = self
+            .lock
+            .lock()
+            .map_err(|_| ServiceError::Platform("connection settings lock was poisoned".into()))?;
+        let profile = validated_profile(profile)?;
+        let document = self.document().unwrap_or_default();
+        let block = profile
+            .as_ref()
+            .and_then(|key| document.profiles.get(key))
+            .unwrap_or(&document.remote);
+        self.secret(block, &secret_account(profile.as_deref()))
+    }
 }
 
 #[derive(Clone)]
@@ -75,6 +455,9 @@ impl NativeApp {
         let remote = Arc::new(GatewayServices {
             client: gateway.clone(),
             rest: rest.clone(),
+            connection_store: Arc::new(ConnectionConfigStore::new(
+                data_dir.join("connection.json"),
+            )),
         });
         let settings = Arc::new(JsonSettings::new(data_dir.join("settings.json")));
         let platform = Arc::new(DesktopPlatform);
@@ -115,9 +498,24 @@ impl ConnectionService for GatewayServices {
                         websocket_url(&base, &token)?
                     }
                     _ => {
-                        return Err(ServiceError::Unavailable(
-                            "no gateway is configured; local Agent bootstrap is pending".into(),
-                        ));
+                        let config = self.connection_store.load(None)?;
+                        if !config.mode.is_remote_like() {
+                            return Err(ServiceError::Unavailable(
+                                "no gateway is configured; local Agent bootstrap is pending".into(),
+                            ));
+                        }
+                        if config.remote_auth_mode != RemoteAuthMode::Token {
+                            return Err(ServiceError::Unavailable(
+                                "OAuth Gateway session bootstrap is pending".into(),
+                            ));
+                        }
+                        let token =
+                            self.connection_store.remote_secret(None)?.ok_or_else(|| {
+                                ServiceError::Unavailable(
+                                    "the configured Gateway token is unavailable".into(),
+                                )
+                            })?;
+                        websocket_url(&config.remote_url, &token)?
                     }
                 },
             };
@@ -177,6 +575,94 @@ impl ConnectionService for GatewayServices {
         Ok(client.as_ref().map_or(ConnectionState::Idle, |client| {
             *client.connection_state().borrow()
         }))
+    }
+
+    fn config(&self, profile: Option<&str>) -> ServiceFuture<'_, ConnectionConfig> {
+        let profile = profile.map(str::to_owned);
+        Box::pin(async move { self.connection_store.load(profile.as_deref()) })
+    }
+
+    fn save_config(&self, input: &ConnectionConfigInput) -> ServiceFuture<'_, ConnectionConfig> {
+        let input = input.clone();
+        Box::pin(async move { self.connection_store.save(&input) })
+    }
+
+    fn apply_config(&self, input: &ConnectionConfigInput) -> ServiceFuture<'_, ConnectionConfig> {
+        let input = input.clone();
+        Box::pin(async move {
+            let config = self.connection_store.save(&input)?;
+            self.disconnect().await?;
+            match config.mode {
+                ConnectionMode::Remote if config.remote_auth_mode == RemoteAuthMode::Token => {
+                    let token = self
+                        .connection_store
+                        .remote_secret(config.profile.as_deref())?
+                        .ok_or_else(|| {
+                            ServiceError::Unavailable(
+                                "the configured Gateway token is unavailable".into(),
+                            )
+                        })?;
+                    self.connect(&websocket_url(&config.remote_url, &token)?)
+                        .await?;
+                }
+                ConnectionMode::Remote | ConnectionMode::Cloud => {
+                    return Err(ServiceError::Unavailable(
+                        "OAuth Gateway session bootstrap is pending".into(),
+                    ));
+                }
+                ConnectionMode::Ssh => {
+                    return Err(ServiceError::Unavailable(
+                        "SSH Gateway bootstrap is pending".into(),
+                    ));
+                }
+                ConnectionMode::Local => {
+                    self.initialize().await?;
+                }
+            }
+            Ok(config)
+        })
+    }
+
+    fn test_config(
+        &self,
+        input: &ConnectionConfigInput,
+    ) -> ServiceFuture<'_, ConnectionTestResult> {
+        let input = input.clone();
+        Box::pin(async move {
+            if input.mode == ConnectionMode::Ssh {
+                return Ok(ConnectionTestResult {
+                    reachable: Some(false),
+                    error: Some("SSH connection testing is not ported yet.".into()),
+                    ..ConnectionTestResult::default()
+                });
+            }
+            let current = self.connection_store.load(input.profile.as_deref())?;
+            let remote_url = input
+                .remote_url
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(&current.remote_url);
+            if remote_url.is_empty() {
+                return Err(ServiceError::Unavailable(
+                    "local Agent bootstrap is pending".into(),
+                ));
+            }
+            let probe = probe_remote_gateway(remote_url).await?;
+            Ok(ConnectionTestResult {
+                base_url: Some(probe.base_url),
+                ok: Some(probe.reachable),
+                version: probe.version,
+                reachable: Some(probe.reachable),
+                error: probe.error,
+                ..ConnectionTestResult::default()
+            })
+        })
+    }
+
+    fn probe_config(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionProbeResult> {
+        let remote_url = remote_url.to_owned();
+        Box::pin(async move { probe_remote_gateway(&remote_url).await })
     }
 }
 
@@ -1540,6 +2026,145 @@ fn websocket_url(base: &str, token: &str) -> ServiceResult<String> {
     Ok(url.into())
 }
 
+fn validated_profile(profile: Option<&str>) -> ServiceResult<Option<String>> {
+    let Some(profile) = profile.map(str::trim).filter(|profile| !profile.is_empty()) else {
+        return Ok(None);
+    };
+    let valid = profile == "default"
+        || (profile.len() <= 64
+            && profile.bytes().enumerate().all(|(index, byte)| {
+                byte.is_ascii_lowercase()
+                    || byte.is_ascii_digit()
+                    || (index > 0 && matches!(byte, b'-' | b'_'))
+            }));
+    if !valid {
+        return Err(ServiceError::InvalidInput(format!(
+            "Invalid profile name: {profile}"
+        )));
+    }
+    Ok(Some(profile.to_owned()))
+}
+
+fn secret_account(profile: Option<&str>) -> String {
+    profile.map_or_else(|| "global".into(), |profile| format!("profile:{profile}"))
+}
+
+fn token_preview(token: Option<&str>) -> Option<String> {
+    let token = token.filter(|token| !token.is_empty())?;
+    if token.chars().count() <= 8 {
+        return Some("set".into());
+    }
+    let suffix: String = token
+        .chars()
+        .rev()
+        .take(6)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    Some(format!("...{suffix}"))
+}
+
+fn normalize_remote_url(raw: &str) -> ServiceResult<String> {
+    let mut url = url::Url::parse(raw.trim())
+        .map_err(|error| ServiceError::InvalidInput(format!("invalid Gateway URL: {error}")))?;
+    if !matches!(url.scheme(), "http" | "https") || url.cannot_be_a_base() {
+        return Err(ServiceError::InvalidInput(
+            "Gateway URL must use HTTP or HTTPS".into(),
+        ));
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(ServiceError::InvalidInput(
+            "Gateway URL must not contain credentials".into(),
+        ));
+    }
+    let path = url.path().trim_end_matches('/').to_owned();
+    url.set_path(&path);
+    url.set_query(None);
+    url.set_fragment(None);
+    Ok(url.as_str().trim_end_matches('/').to_owned())
+}
+
+async fn probe_remote_gateway(remote_url: &str) -> ServiceResult<ConnectionProbeResult> {
+    let base_url = normalize_remote_url(remote_url)?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(platform)?;
+    let status_url = format!("{base_url}/api/status");
+    let response = client
+        .get(status_url)
+        .send()
+        .await
+        .map_err(|error| ServiceError::Transport(error.to_string()))?;
+    if !response.status().is_success() {
+        return Ok(ConnectionProbeResult {
+            base_url,
+            reachable: false,
+            error: Some(format!("Gateway returned HTTP {}", response.status())),
+            ..ConnectionProbeResult::default()
+        });
+    }
+    let status: Value = response
+        .json()
+        .await
+        .map_err(|error| ServiceError::Transport(format!("invalid Gateway response: {error}")))?;
+    let auth_mode = if status
+        .get("auth_required")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        ProbeAuthMode::Oauth
+    } else {
+        ProbeAuthMode::Token
+    };
+    let mut providers = Vec::new();
+    if auth_mode == ProbeAuthMode::Oauth
+        && let Ok(response) = client
+            .get(format!("{base_url}/api/auth/providers"))
+            .send()
+            .await
+        && response.status().is_success()
+        && let Ok(value) = response.json::<Value>().await
+    {
+        let entries = value
+            .get("providers")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        providers = entries
+            .into_iter()
+            .filter_map(|provider| {
+                let name = provider.get("name")?.as_str()?.to_owned();
+                Some(AuthProvider {
+                    display_name: provider
+                        .get("display_name")
+                        .and_then(Value::as_str)
+                        .unwrap_or(&name)
+                        .to_owned(),
+                    supports_password: provider
+                        .get("supports_password")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                    name,
+                })
+            })
+            .collect();
+    }
+    Ok(ConnectionProbeResult {
+        base_url,
+        reachable: true,
+        auth_mode,
+        providers,
+        version: status
+            .get("version")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        error: None,
+    })
+}
+
 impl GatewayRest {
     async fn request(
         &self,
@@ -1851,6 +2476,46 @@ mod tests {
 
     use super::*;
 
+    #[derive(Default)]
+    struct MemoryGatewaySecrets(Mutex<BTreeMap<String, String>>);
+
+    impl GatewaySecretStore for MemoryGatewaySecrets {
+        fn get(&self, account: &str) -> ServiceResult<Option<String>> {
+            Ok(self
+                .0
+                .lock()
+                .map_err(|_| ServiceError::Platform("test secret lock was poisoned".into()))?
+                .get(account)
+                .cloned())
+        }
+
+        fn set(&self, account: &str, secret: &str) -> ServiceResult<()> {
+            self.0
+                .lock()
+                .map_err(|_| ServiceError::Platform("test secret lock was poisoned".into()))?
+                .insert(account.into(), secret.into());
+            Ok(())
+        }
+
+        fn delete(&self, account: &str) -> ServiceResult<()> {
+            self.0
+                .lock()
+                .map_err(|_| ServiceError::Platform("test secret lock was poisoned".into()))?
+                .remove(account);
+            Ok(())
+        }
+    }
+
+    fn test_connection_store() -> Arc<ConnectionConfigStore> {
+        Arc::new(ConnectionConfigStore::with_secrets(
+            std::env::temp_dir().join(format!(
+                "unused-hermes-connection-{}.json",
+                Uuid::new_v4().simple()
+            )),
+            Arc::new(MemoryGatewaySecrets::default()),
+        ))
+    }
+
     #[test]
     fn parses_porcelain_status() {
         let status = parse_git_status(
@@ -1904,6 +2569,97 @@ mod tests {
         assert_eq!(actual, expected);
         fs::remove_file(path).expect("remove test settings");
         fs::remove_dir(directory).expect("remove test directory");
+    }
+
+    #[test]
+    fn gateway_profiles_keep_tokens_out_of_json_and_preserve_global_scope() {
+        let directory = std::env::temp_dir().join(format!(
+            "hermes-connection-test-{}",
+            Uuid::new_v4().simple()
+        ));
+        let path = directory.join("connection.json");
+        let secrets = Arc::new(MemoryGatewaySecrets::default());
+        let store = ConnectionConfigStore::with_secrets(path.clone(), secrets.clone());
+
+        let global = store
+            .save(&ConnectionConfigInput {
+                mode: ConnectionMode::Remote,
+                remote_auth_mode: Some(RemoteAuthMode::Token),
+                remote_token: Some("abcdefghijklmnop".into()),
+                remote_url: Some("https://gateway.example/base/?ignored=1".into()),
+                ..ConnectionConfigInput::default()
+            })
+            .expect("save global Gateway");
+        assert_eq!(global.remote_url, "https://gateway.example/base");
+        assert_eq!(global.remote_token_preview.as_deref(), Some("...klmnop"));
+        assert!(global.remote_token_set);
+        let on_disk = fs::read_to_string(&path).expect("connection settings");
+        assert!(!on_disk.contains("abcdefghijklmnop"));
+        assert!(on_disk.contains("credentialManager"));
+
+        let cloud = store
+            .save(&ConnectionConfigInput {
+                mode: ConnectionMode::Cloud,
+                profile: Some("work_profile".into()),
+                remote_auth_mode: Some(RemoteAuthMode::Oauth),
+                remote_url: Some("https://cloud.example/agent".into()),
+                cloud_org: Some("nous".into()),
+                ..ConnectionConfigInput::default()
+            })
+            .expect("save profile cloud Gateway");
+        assert_eq!(cloud.profile.as_deref(), Some("work_profile"));
+        assert_eq!(cloud.mode, ConnectionMode::Cloud);
+        assert_eq!(cloud.cloud_org, "nous");
+        assert_eq!(
+            store.load(None).expect("global config").mode,
+            ConnectionMode::Remote
+        );
+        assert_eq!(
+            secrets.get("global").expect("secret lookup").as_deref(),
+            Some("abcdefghijklmnop")
+        );
+
+        fs::remove_file(path).expect("remove connection settings");
+        fs::remove_dir(directory).expect("remove connection settings directory");
+    }
+
+    #[test]
+    fn gateway_profile_validation_and_explicit_ssh_port_clear_match_og_contract() {
+        assert_eq!(
+            validated_profile(Some("default")).expect("default"),
+            Some("default".into())
+        );
+        assert!(validated_profile(Some("Work Profile")).is_err());
+
+        let directory = std::env::temp_dir().join(format!(
+            "hermes-ssh-connection-test-{}",
+            Uuid::new_v4().simple()
+        ));
+        let path = directory.join("connection.json");
+        let store = ConnectionConfigStore::with_secrets(
+            path.clone(),
+            Arc::new(MemoryGatewaySecrets::default()),
+        );
+        store
+            .save(&ConnectionConfigInput {
+                mode: ConnectionMode::Ssh,
+                ssh_host: Some("devbox".into()),
+                ssh_port: Some(Some(2222)),
+                ..ConnectionConfigInput::default()
+            })
+            .expect("save SSH Gateway");
+        let cleared = store
+            .save(&ConnectionConfigInput {
+                mode: ConnectionMode::Ssh,
+                ssh_host: Some("devbox".into()),
+                ssh_port: Some(None),
+                ..ConnectionConfigInput::default()
+            })
+            .expect("clear SSH port");
+        assert_eq!(cleared.ssh_port, None);
+
+        fs::remove_file(path).expect("remove connection settings");
+        fs::remove_dir(directory).expect("remove connection settings directory");
     }
 
     #[tokio::test]
@@ -2033,6 +2789,7 @@ mod tests {
                 base_url: url::Url::parse(&format!("http://{address}/hermes/")).expect("URL"),
                 session_token: Some("config-token".into()),
             }))),
+            connection_store: test_connection_store(),
         };
         let loaded = AgentConfigService::load(&services, Some("work profile"))
             .await
@@ -2160,6 +2917,7 @@ mod tests {
                 base_url: url::Url::parse(&format!("http://{address}/hermes/")).expect("URL"),
                 session_token: Some("providers-token".into()),
             }))),
+            connection_store: test_connection_store(),
         };
 
         let providers = ProviderService::list_oauth(&services, Some("work profile"))
@@ -2310,6 +3068,7 @@ mod tests {
                 base_url: url::Url::parse(&format!("http://{address}/hermes/")).expect("URL"),
                 session_token: Some("oauth-token".into()),
             }))),
+            connection_store: test_connection_store(),
         };
 
         let start = ProviderService::start_oauth(&services, Some("work profile"), "openai-codex")
@@ -2459,6 +3218,7 @@ mod tests {
                 base_url: url::Url::parse(&format!("http://{address}/hermes/")).expect("URL"),
                 session_token: Some("model-token".into()),
             }))),
+            connection_store: test_connection_store(),
         };
         let loaded = ModelService::load(&services, Some("work profile"))
             .await
@@ -2559,6 +3319,7 @@ mod tests {
         let services = GatewayServices {
             client: Arc::new(RwLock::new(Some(client))),
             rest: Arc::new(RwLock::new(None)),
+            connection_store: test_connection_store(),
         };
         services
             .submit("runtime-1", "hello Hermes")
@@ -2620,6 +3381,7 @@ mod tests {
         let services = GatewayServices {
             client: Arc::new(RwLock::new(Some(client))),
             rest: Arc::new(RwLock::new(None)),
+            connection_store: test_connection_store(),
         };
         let folders = vec![r"C:\Code\Demo".to_owned()];
         let project = ProjectService::create(&services, "Demo", &folders)
@@ -2721,6 +3483,7 @@ mod tests {
         let services = GatewayServices {
             client: Arc::new(RwLock::new(Some(client))),
             rest: Arc::new(RwLock::new(None)),
+            connection_store: test_connection_store(),
         };
         let mut events = SessionService::events(&services).expect("events");
         let resumed = SessionService::resume(&services, "stored-1")
@@ -2788,6 +3551,7 @@ mod tests {
         let services = GatewayServices {
             client: Arc::new(RwLock::new(Some(client))),
             rest: Arc::new(RwLock::new(None)),
+            connection_store: test_connection_store(),
         };
         let snapshot = ProjectService::snapshot(&services)
             .await
@@ -2891,6 +3655,7 @@ mod tests {
         let services = GatewayServices {
             client: Arc::new(RwLock::new(Some(client))),
             rest: Arc::new(RwLock::new(None)),
+            connection_store: test_connection_store(),
         };
 
         let repaired = ProjectService::recover_path(
