@@ -15,6 +15,7 @@ use url::Url;
 const START_TIMEOUT: Duration = Duration::from_secs(17 * 60);
 const TOKEN_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_DIAGNOSTIC_BYTES: usize = 2_048;
+const ROOT_SEARCH_DEPTH: usize = 8;
 
 /// Prepare the native local Hermes runtime before the shared Dioxus UI mounts.
 ///
@@ -61,16 +62,25 @@ fn environment_connection_override() -> bool {
 
 fn resolve_project_root() -> Result<PathBuf, String> {
     if let Some(explicit) = env::var_os("HERMES_LOCAL_ROOT") {
-        let explicit = PathBuf::from(explicit);
-        return canonical_root(&explicit).ok_or_else(|| {
-            format!(
-                "HERMES_LOCAL_ROOT does not point to a Hermes Local installation: {}",
-                explicit.display()
-            )
-        });
+        return validate_explicit_root(PathBuf::from(explicit), "HERMES_LOCAL_ROOT");
     }
 
-    let mut seeds = Vec::with_capacity(2);
+    if let Some(argument) = env::args_os().find_map(|argument| {
+        let value = argument.to_string_lossy();
+        value
+            .strip_prefix("--hermes-local-root=")
+            .map(PathBuf::from)
+    }) {
+        return validate_explicit_root(argument, "--hermes-local-root");
+    }
+
+    let mut seeds = Vec::with_capacity(3);
+    if let Some(portable) = env::var_os("PORTABLE_EXECUTABLE_DIR") {
+        let portable = PathBuf::from(portable);
+        if portable.is_absolute() {
+            seeds.push(portable);
+        }
+    }
     if let Ok(executable) = env::current_exe()
         && let Some(parent) = executable.parent()
     {
@@ -82,16 +92,28 @@ fn resolve_project_root() -> Result<PathBuf, String> {
 
     seeds
         .iter()
-        .find_map(|seed| walk_for_root(seed, 8))
+        .find_map(|seed| walk_for_root(seed, ROOT_SEARCH_DEPTH))
         .ok_or_else(|| {
-            "Could not locate the Hermes Local installation root. Set HERMES_LOCAL_ROOT to the directory containing VERSION.json and scripts\\Common-Hermes.psm1."
+            "Could not locate the Hermes Local installation root. Set HERMES_LOCAL_ROOT or launch the portable app from the Hermes Local installation."
                 .to_owned()
         })
 }
 
-fn walk_for_root(seed: &Path, max_parents: usize) -> Option<PathBuf> {
+fn validate_explicit_root(path: PathBuf, source: &str) -> Result<PathBuf, String> {
+    if !path.is_absolute() {
+        return Err(format!("{source} must be an absolute path"));
+    }
+    canonical_root(&path).ok_or_else(|| {
+        format!(
+            "{source} does not point to a Hermes Local installation: {}",
+            path.display()
+        )
+    })
+}
+
+fn walk_for_root(seed: &Path, max_depth: usize) -> Option<PathBuf> {
     let mut candidate = seed.to_owned();
-    for _ in 0..=max_parents {
+    for _ in 0..max_depth {
         if let Some(root) = canonical_root(&candidate) {
             return Some(root);
         }
@@ -118,11 +140,11 @@ fn canonical_root(candidate: &Path) -> Option<PathBuf> {
 fn resolve_powershell() -> Result<PathBuf, String> {
     if let Some(explicit) = env::var_os("HERMES_LOCAL_PWSH") {
         let explicit = PathBuf::from(explicit);
-        if explicit.is_file() {
+        if explicit.is_absolute() && explicit.is_file() {
             return Ok(explicit);
         }
         return Err(format!(
-            "HERMES_LOCAL_PWSH does not point to pwsh.exe: {}",
+            "HERMES_LOCAL_PWSH does not point to an absolute pwsh.exe path: {}",
             explicit.display()
         ));
     }
@@ -137,16 +159,20 @@ fn resolve_powershell() -> Result<PathBuf, String> {
         }
     }
 
-    if let Ok(output) = std::process::Command::new("where.exe")
+    let system_root = env::var_os("SystemRoot")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+    let where_exe = system_root.join("System32").join("where.exe");
+    if let Ok(output) = std::process::Command::new(where_exe)
         .arg("pwsh.exe")
         .output()
         && output.status.success()
         && let Some(candidate) = String::from_utf8_lossy(&output.stdout)
             .lines()
             .map(str::trim)
-            .find(|line| !line.is_empty())
+            .filter(|line| !line.is_empty())
             .map(PathBuf::from)
-        && candidate.is_file()
+            .find(|candidate| candidate.is_absolute() && candidate.is_file())
     {
         return Ok(candidate);
     }
@@ -370,7 +396,19 @@ mod tests {
         fs::write(root.join("VERSION.json"), "{}").expect("version");
         fs::write(root.join("scripts/Common-Hermes.psm1"), "# module").expect("module");
 
-        assert_eq!(walk_for_root(&nested, 8), root.canonicalize().ok());
+        assert_eq!(
+            walk_for_root(&nested, ROOT_SEARCH_DEPTH),
+            root.canonicalize().ok()
+        );
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn explicit_roots_must_be_absolute_and_valid() {
+        assert!(validate_explicit_root(PathBuf::from("relative"), "test").is_err());
+        let root = test_directory("explicit");
+        fs::create_dir_all(&root).expect("root");
+        assert!(validate_explicit_root(root.clone(), "test").is_err());
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -412,5 +450,16 @@ mod tests {
                 .map(|(_, value)| value.into_owned()),
             Some("a b&c".repeat(10))
         );
+    }
+
+    #[test]
+    fn repository_network_contract_is_loopback() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("repository root");
+        let (host, port) = read_local_endpoint(&root).expect("repository endpoint");
+        assert_eq!(host, "127.0.0.1");
+        assert!((1_024..=65_535).contains(&port));
     }
 }
