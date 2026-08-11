@@ -795,3 +795,29 @@ the recorded native top-level-window failure.
 Exact next action: port Providers → Custom Endpoints with OG list/edit/add,
 model discovery validation, active selection, config-owned deletion guard, and
 whole-response refresh behavior.
+
+## Custom endpoints UI checkpoint (2026-08-11)
+
+Providers → Custom Endpoints now preserves the complete official topology: a
+counted endpoint list; active and `config.yaml` badges; URL, model, and API-key
+preview; Use and guarded Delete actions; and the shared Add/Edit form with name,
+provider ID, URL, default model, context length, optional API key, new-chat
+default, and model-discovery controls.
+
+Test uses the exact validation contract, retains discovered models as datalist
+suggestions, and adopts the first discovered model only when the field is empty.
+Save preserves a blank edit-time API key so the Agent can retain an existing
+secret. Activation re-reads the whole endpoint response, deletion clears the
+editor when its selected endpoint disappears, and entries sourced from direct
+config cannot be deleted from the desktop surface.
+
+Focused coverage proves source form defaults, context conversion, model-list
+preservation, whitespace trimming, and blank-secret omission. The workspace
+passes 44 unit tests plus doc-tests with no new Clippy warnings. Native rendered
+QA remains blocked by the recorded top-level-window failure.
+
+The Providers block is now ported end to end: nested navigation, Accounts,
+PKCE/device/external OAuth, API Keys, and Custom Endpoints all use typed Rust
+authority and mirror the OG source structure. Exact next action: move to Gateway
+and connection profiles, while retaining the pending native-window and Windows
+toast-registration items for the desktop integration slice.

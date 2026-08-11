@@ -6,9 +6,10 @@ use dioxus::prelude::*;
 use futures_util::StreamExt;
 use hermes_core::{AgentConfigService, AppServices, ModelService, SessionTranscript};
 use hermes_protocol::{
-    AgentConfigSnapshot, AppSettings, EnvVarInfo, MessageRole, MoaConfig, ModelAssignmentRequest,
-    ModelProvider, ModelSettingsSnapshot, NativeNotificationKind, OAuthProvider, OAuthStart,
-    ProjectFolder, ProjectsSnapshot, SessionCreateRequest, SessionSummary, ThemeMode,
+    AgentConfigSnapshot, AppSettings, CustomEndpoint, CustomEndpointUpdate, EnvVarInfo,
+    MessageRole, MoaConfig, ModelAssignmentRequest, ModelProvider, ModelSettingsSnapshot,
+    NativeNotificationKind, OAuthProvider, OAuthStart, ProjectFolder, ProjectsSnapshot,
+    SessionCreateRequest, SessionSummary, ThemeMode,
 };
 use serde_json::{Map, Value, json};
 
@@ -1850,6 +1851,8 @@ fn SettingsOverlay(initial: &'static str) -> Element {
                         ProviderAccountsPanel { on_want_api_key: move |()| provider_view.set("keys".to_owned()) }
                     } else if active() == "providers" && provider_view() == "keys" {
                         ProviderKeysPanel { on_custom_endpoint: move |()| provider_view.set("custom-endpoints".to_owned()) }
+                    } else if active() == "providers" && provider_view() == "custom-endpoints" {
+                        CustomEndpointsPanel {}
                     } else {
                         section { class: "settings-placeholder",
                             div { class: "settings-section-title", Codicon { name: active_icon } h1 { "{active_label}" } }
@@ -4238,6 +4241,274 @@ fn redacted_credential(value: &str) -> String {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct CustomEndpointForm {
+    api_key: String,
+    base_url: String,
+    context_length: String,
+    discover_models: bool,
+    id: String,
+    make_default: bool,
+    model: String,
+    name: String,
+}
+
+impl Default for CustomEndpointForm {
+    fn default() -> Self {
+        Self {
+            api_key: String::new(),
+            base_url: String::new(),
+            context_length: String::new(),
+            discover_models: true,
+            id: String::new(),
+            make_default: true,
+            model: String::new(),
+            name: String::new(),
+        }
+    }
+}
+
+fn custom_endpoint_form(endpoint: &CustomEndpoint) -> CustomEndpointForm {
+    CustomEndpointForm {
+        api_key: String::new(),
+        base_url: endpoint.base_url.clone(),
+        context_length: endpoint
+            .context_length
+            .map_or_else(String::new, |value| value.to_string()),
+        discover_models: endpoint.discover_models,
+        id: endpoint.id.clone(),
+        make_default: endpoint.is_current,
+        model: endpoint.model.clone(),
+        name: endpoint.name.clone(),
+    }
+}
+
+fn custom_endpoint_payload(form: &CustomEndpointForm, models: &[String]) -> CustomEndpointUpdate {
+    CustomEndpointUpdate {
+        api_key: (!form.api_key.trim().is_empty()).then(|| form.api_key.trim().to_owned()),
+        base_url: form.base_url.trim().to_owned(),
+        context_length: form
+            .context_length
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .filter(|value| *value > 0),
+        discover_models: form.discover_models,
+        id: (!form.id.trim().is_empty()).then(|| form.id.trim().to_owned()),
+        make_default: form.make_default,
+        model: form.model.trim().to_owned(),
+        models: models.to_vec(),
+        name: form.name.trim().to_owned(),
+    }
+}
+
+#[component]
+fn CustomEndpointsPanel() -> Element {
+    let services = use_context::<AppServices>();
+    let load_service = services.providers.clone();
+    let mut endpoints = use_signal(Vec::<CustomEndpoint>::new);
+    let mut form = use_signal(CustomEndpointForm::default);
+    let mut discovered_models = use_signal(Vec::<String>::new);
+    let mut loading = use_signal(|| true);
+    let mut busy = use_signal(|| None::<String>);
+    let mut error = use_signal(|| None::<String>);
+    let mut validation = use_signal(|| None::<(String, bool)>);
+    let mut delete_target = use_signal(|| None::<CustomEndpoint>);
+    let _load = use_resource(move || {
+        let service = load_service.clone();
+        async move {
+            loading.set(true);
+            match service.custom_endpoints().await {
+                Ok(data) => {
+                    let current = data
+                        .endpoints
+                        .iter()
+                        .find(|endpoint| endpoint.is_current)
+                        .or_else(|| data.endpoints.first())
+                        .cloned();
+                    endpoints.set(data.endpoints);
+                    if let Some(current) = current {
+                        form.set(custom_endpoint_form(&current));
+                        discovered_models.set(current.models);
+                    }
+                    error.set(None);
+                }
+                Err(problem) => error.set(Some(problem.to_string())),
+            }
+            loading.set(false);
+        }
+    });
+    let current_form = form();
+    let can_save = !current_form.name.trim().is_empty()
+        && !current_form.base_url.trim().is_empty()
+        && !current_form.model.trim().is_empty();
+    let mut model_options = discovered_models();
+    if !current_form.model.is_empty() && !model_options.contains(&current_form.model) {
+        model_options.push(current_form.model.clone());
+    }
+
+    rsx! {
+        section { class: "provider-settings custom-endpoints-settings",
+            if loading() {
+                div { class: "provider-list provider-loading", for _ in 0..4 { div { class: "provider-skeleton" } } }
+            } else {
+                div { class: "custom-endpoint-heading",
+                    div { class: "settings-section-title", Codicon { name: "globe" } h1 { "Custom Endpoints" } }
+                    span { class: "custom-endpoint-count", "{endpoints().len()}" }
+                }
+                div { class: "custom-endpoint-list",
+                    if endpoints().is_empty() {
+                        div { class: "provider-empty", strong { "No custom endpoints" } span { "Add an OpenAI-compatible endpoint below." } }
+                    }
+                    for endpoint in endpoints() {
+                        article { class: "custom-endpoint-row",
+                            button { class: "custom-endpoint-copy", onclick: {
+                                let endpoint = endpoint.clone();
+                                move |_| {
+                                    form.set(custom_endpoint_form(&endpoint));
+                                    discovered_models.set(endpoint.models.clone());
+                                    validation.set(None);
+                                }
+                            },
+                                div { class: "custom-endpoint-title",
+                                    strong { "{endpoint.name}" }
+                                    if endpoint.is_current { span { class: "provider-connected", Codicon { name: "check" } "Active" } }
+                                    if endpoint.source.as_deref() == Some("direct-config") { span { class: "custom-endpoint-source", "config.yaml" } }
+                                }
+                                code { "{endpoint.base_url}" }
+                                p { "{endpoint.model}"
+                                    if endpoint.has_api_key {
+                                        if let Some(preview) = &endpoint.api_key_preview { span { " · {preview}" } }
+                                        else { span { " · API key set" } }
+                                    }
+                                }
+                            }
+                            div { class: "custom-endpoint-actions",
+                                button { class: "button", disabled: endpoint.is_current || busy().is_some(), onclick: {
+                                    let service = services.providers.clone();
+                                    let id = endpoint.id.clone();
+                                    move |_| {
+                                        busy.set(Some(format!("activate:{id}")));
+                                        let service = service.clone();
+                                        let id = id.clone();
+                                        spawn(async move {
+                                            match service.activate_custom_endpoint(&id).await {
+                                                Ok(_) => match service.custom_endpoints().await {
+                                                    Ok(data) => { endpoints.set(data.endpoints); error.set(None); }
+                                                    Err(problem) => error.set(Some(problem.to_string())),
+                                                },
+                                                Err(problem) => error.set(Some(problem.to_string())),
+                                            }
+                                            busy.set(None);
+                                        });
+                                    }
+                                }, Codicon { name: "zap" } if busy().as_deref() == Some(format!("activate:{}", endpoint.id).as_str()) { "Using…" } else { "Use" } }
+                                if endpoint.source.as_deref() != Some("direct-config") {
+                                    button { class: "provider-remove", disabled: busy().is_some(), aria_label: "Delete {endpoint.name}", title: "Delete endpoint", onclick: {
+                                        let endpoint = endpoint.clone();
+                                        move |_| delete_target.set(Some(endpoint.clone()))
+                                    }, Codicon { name: "trash" } }
+                                }
+                            }
+                        }
+                    }
+                }
+                div { class: "custom-endpoint-form-heading",
+                    div { class: "settings-section-title", Codicon { name: "add" } h1 { if current_form.id.is_empty() { "Add Endpoint" } else { "Edit Endpoint" } } }
+                }
+                div { class: "custom-endpoint-form",
+                    div { class: "custom-endpoint-two-columns",
+                        label { class: "dialog-field", span { "Name" } input { placeholder: "Axet Proxy", value: "{current_form.name}", oninput: move |event| form.write().name = event.value() } }
+                        label { class: "dialog-field", span { "Provider ID" } input { placeholder: "axet-proxy", value: "{current_form.id}", oninput: move |event| form.write().id = event.value() } }
+                    }
+                    label { class: "dialog-field", span { "Endpoint URL" } input { placeholder: "http://127.0.0.1:8081/v1", value: "{current_form.base_url}", oninput: move |event| form.write().base_url = event.value() } }
+                    div { class: "custom-endpoint-model-row",
+                        label { class: "dialog-field", span { "Default Model" }
+                            input { list: "custom-endpoint-models", placeholder: "gpt-5.4", value: "{current_form.model}", oninput: move |event| form.write().model = event.value() }
+                            datalist { id: "custom-endpoint-models", for model in model_options { option { value: "{model}" } } }
+                        }
+                        label { class: "dialog-field", span { "Context" } input { inputmode: "numeric", placeholder: "Auto", value: "{current_form.context_length}", oninput: move |event| form.write().context_length = event.value() } }
+                    }
+                    label { class: "dialog-field", span { "API Key" } input { r#type: "password", placeholder: if current_form.id.is_empty() { "Optional" } else { "Leave blank to keep current key" }, value: "{current_form.api_key}", oninput: move |event| form.write().api_key = event.value() } }
+                    div { class: "custom-endpoint-checks",
+                        label { input { r#type: "checkbox", checked: current_form.make_default, onchange: move |event| form.write().make_default = event.checked() } "Use for new chats" }
+                        label { input { r#type: "checkbox", checked: current_form.discover_models, onchange: move |event| form.write().discover_models = event.checked() } "Discover models" }
+                    }
+                    if let Some((message, failed)) = validation() {
+                        p { class: if failed { "custom-endpoint-validation error" } else { "custom-endpoint-validation" }, role: "status", "{message}" }
+                    }
+                    if let Some(problem) = error() { p { class: "inline-error", role: "alert", "{problem}" } }
+                    div { class: "custom-endpoint-form-actions",
+                        button { class: "button", disabled: busy().is_some() || current_form.base_url.trim().is_empty(), onclick: {
+                            let service = services.providers.clone();
+                            let payload = custom_endpoint_payload(&current_form, &[]);
+                            move |_| {
+                                busy.set(Some("test".into())); validation.set(None);
+                                let service = service.clone(); let payload = payload.clone();
+                                spawn(async move {
+                                    match service.validate_custom_endpoint(&payload).await {
+                                        Ok(result) => {
+                                            discovered_models.set(result.models.clone());
+                                            if form().model.is_empty() && let Some(model) = result.models.first() { form.write().model.clone_from(model); }
+                                            let message = if result.ok && !result.models.is_empty() { format!("Endpoint is reachable. Found {} models.", result.models.len()) } else if result.ok { "Endpoint is reachable.".into() } else if result.message.is_empty() { "Endpoint validation failed.".into() } else { result.message };
+                                            validation.set(Some((message, !result.ok)));
+                                        }
+                                        Err(problem) => validation.set(Some((problem.to_string(), true))),
+                                    }
+                                    busy.set(None);
+                                });
+                            }
+                        }, Codicon { name: "zap" } if busy().as_deref() == Some("test") { "Testing…" } else { "Test" } }
+                        button { class: "button primary", disabled: busy().is_some() || !can_save, onclick: {
+                            let service = services.providers.clone();
+                            let payload = custom_endpoint_payload(&current_form, &discovered_models());
+                            move |_| {
+                                busy.set(Some("save".into()));
+                                let service = service.clone(); let payload = payload.clone();
+                                spawn(async move {
+                                    match service.save_custom_endpoint(&payload).await {
+                                        Ok(data) => {
+                                            let saved = data.id.as_deref().and_then(|id| data.endpoints.iter().find(|endpoint| endpoint.id == id)).cloned();
+                                            endpoints.set(data.endpoints);
+                                            if let Some(saved) = saved { form.set(custom_endpoint_form(&saved)); discovered_models.set(saved.models); }
+                                            error.set(None);
+                                        }
+                                        Err(problem) => error.set(Some(problem.to_string())),
+                                    }
+                                    busy.set(None);
+                                });
+                            }
+                        }, Codicon { name: "save" } if busy().as_deref() == Some("save") { "Saving…" } else { "Save" } }
+                        if !current_form.id.is_empty() {
+                            button { class: "button", disabled: busy().is_some(), onclick: move |_| { form.set(CustomEndpointForm::default()); discovered_models.set(Vec::new()); validation.set(None); }, "New endpoint" }
+                        }
+                    }
+                }
+            }
+            if let Some(endpoint) = delete_target() {
+                div { class: "dialog-backdrop", role: "presentation",
+                    section { class: "hermes-dialog compact", role: "alertdialog", aria_modal: "true", aria_label: "Delete custom endpoint",
+                        header { h2 { "Delete {endpoint.name}?" } p { "This removes the saved custom endpoint. It does not delete the server or its models." } }
+                        footer {
+                            button { class: "button", disabled: busy().is_some(), onclick: move |_| delete_target.set(None), "Cancel" }
+                            button { class: "button danger", disabled: busy().is_some(), onclick: {
+                                let service = services.providers.clone(); let id = endpoint.id.clone();
+                                move |_| { busy.set(Some(format!("delete:{id}"))); let service = service.clone(); let id = id.clone(); spawn(async move {
+                                    match service.delete_custom_endpoint(&id).await {
+                                        Ok(data) => { endpoints.set(data.endpoints); if form().id == id { form.set(CustomEndpointForm::default()); discovered_models.set(Vec::new()); } delete_target.set(None); error.set(None); }
+                                        Err(problem) => error.set(Some(problem.to_string())),
+                                    }
+                                    busy.set(None);
+                                }); }
+                            }, if busy().is_some() { "Deleting…" } else { "Delete" } }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[component]
 fn ProviderKeysPanel(on_custom_endpoint: Callback<()>) -> Element {
     let services = use_context::<AppServices>();
@@ -5462,15 +5733,16 @@ mod tests {
     use std::collections::BTreeMap;
 
     use hermes_protocol::{
-        EnvVarInfo, MoaConfig, MoaModelSlot, MoaPreset, OAuthProvider, OAuthStart,
+        CustomEndpoint, EnvVarInfo, MoaConfig, MoaModelSlot, MoaPreset, OAuthProvider, OAuthStart,
     };
     use serde_json::json;
 
     use super::{
         ProviderAuthFlow, build_provider_key_groups, completion_sound_data_uri,
         completion_sound_variant_id, config_display_value, config_value, curated_config_options,
-        moa_complete, provider_group_for_key, provider_order, provider_title, redacted_credential,
-        set_config_value, voice_config_field_visible, voice_free_input_field,
+        custom_endpoint_form, custom_endpoint_payload, moa_complete, provider_group_for_key,
+        provider_order, provider_title, redacted_credential, set_config_value,
+        voice_config_field_visible, voice_free_input_field,
     };
 
     #[test]
@@ -5687,6 +5959,30 @@ mod tests {
         assert_eq!(groups[0].primary.0, "FUTURE_API_KEY");
         assert_eq!(groups[0].advanced[0].0, "FUTURE_BASE_URL");
         assert_eq!(redacted_credential("abcdefghijkl"), "abcd...ijkl");
+    }
+
+    #[test]
+    fn custom_endpoint_form_preserves_source_defaults_and_omits_blank_secrets() {
+        let endpoint = CustomEndpoint {
+            base_url: "http://127.0.0.1:8081/v1".into(),
+            context_length: Some(32_768),
+            discover_models: true,
+            has_api_key: true,
+            id: "local".into(),
+            is_current: true,
+            model: "hermes".into(),
+            name: " Local ".into(),
+            ..CustomEndpoint::default()
+        };
+        let form = custom_endpoint_form(&endpoint);
+        assert!(form.api_key.is_empty());
+        assert_eq!(form.context_length, "32768");
+        assert!(form.make_default);
+        let payload = custom_endpoint_payload(&form, &["hermes".into(), "qwen".into()]);
+        assert_eq!(payload.api_key, None);
+        assert_eq!(payload.context_length, Some(32_768));
+        assert_eq!(payload.name, "Local");
+        assert_eq!(payload.models, ["hermes", "qwen"]);
     }
 
     #[test]

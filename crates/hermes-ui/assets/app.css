@@ -541,6 +541,34 @@ h1 { margin-top: 4px !important; margin-bottom: 0 !important; font-size: 1.25rem
 .provider-key-advanced > .provider-group-label { margin: 0; }
 .provider-advanced-row { display: grid; grid-template-columns: minmax(105px, .75fr) minmax(190px, 1.35fr); align-items: center; gap: 12px; color: var(--text-2); font-size: .6875rem; }
 .provider-advanced-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.custom-endpoint-heading { display: flex; align-items: center; gap: 8px; }
+.custom-endpoint-count, .custom-endpoint-source { padding: 2px 7px; border-radius: 999px; background: var(--active); color: var(--text-3); font-size: .625rem; }
+.custom-endpoint-list { overflow: hidden; margin-top: 12px; border: 1px solid var(--stroke-3); border-radius: 7px; }
+.custom-endpoint-list > .provider-empty { min-height: 105px; gap: 4px; }
+.custom-endpoint-list > .provider-empty strong, .custom-endpoint-list > .provider-empty span { display: block; }
+.custom-endpoint-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 11px 12px; border-top: 1px solid var(--stroke-3); }
+.custom-endpoint-row:first-child { border-top: 0; }
+.custom-endpoint-copy { min-width: 0; border: 0; padding: 0; background: transparent; color: var(--text-1); text-align: left; }
+.custom-endpoint-title { display: flex; min-width: 0; align-items: center; gap: 7px; }
+.custom-endpoint-title strong { overflow: hidden; font-size: .75rem; text-overflow: ellipsis; white-space: nowrap; }
+.custom-endpoint-copy code { display: block; overflow: hidden; margin-top: 5px; color: var(--text-3); font-family: ui-monospace, "Cascadia Code", monospace; font-size: .625rem; text-overflow: ellipsis; white-space: nowrap; }
+.custom-endpoint-copy p { margin: 4px 0 0; color: var(--text-3); font-size: .6875rem; }
+.custom-endpoint-actions { display: flex; align-items: center; gap: 5px; }
+.custom-endpoint-actions .button { gap: 5px; }
+.custom-endpoint-actions .button .codicon { width: 12px; height: 12px; }
+.custom-endpoint-actions .provider-remove { margin: 0; }
+.custom-endpoint-form-heading { margin-top: 24px; }
+.custom-endpoint-form { display: grid; gap: 11px; margin-top: 10px; border: 1px solid var(--stroke-3); border-radius: 7px; padding: 12px; }
+.custom-endpoint-two-columns, .custom-endpoint-model-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+.custom-endpoint-model-row { grid-template-columns: minmax(0, 1fr) 12rem; }
+.custom-endpoint-checks { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; color: var(--text-2); font-size: .6875rem; }
+.custom-endpoint-checks label { display: flex; align-items: center; gap: 7px; }
+.custom-endpoint-checks input { accent-color: var(--accent); }
+.custom-endpoint-form-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.custom-endpoint-form-actions .button { gap: 5px; }
+.custom-endpoint-form-actions .codicon { width: 12px; height: 12px; }
+.custom-endpoint-validation { margin: 0; color: var(--accent); font-size: .6875rem; }
+.custom-endpoint-validation.error { color: var(--red); }
 .settings-save-state { margin: 10px 0 0; color: var(--text-3); font-size: .6875rem; text-align: right; }
 .settings-load-error { display: grid; max-width: 520px; justify-items: start; gap: 7px; margin-top: 20px; border: 1px solid var(--stroke-2); border-radius: 8px; padding: 16px; background: var(--panel-bg); }
 .settings-load-error > .codicon { width: 18px; height: 18px; color: var(--red); }
