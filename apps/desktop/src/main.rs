@@ -5,6 +5,7 @@ mod base64_impl;
 pub use base64_impl::{Engine, engine};
 extern crate self as base64;
 
+mod deep_link;
 mod ssh;
 mod ssh_lifecycle;
 mod ssh_service;
@@ -81,6 +82,9 @@ fn main() {
     let data_dir = std::env::var_os("APPDATA")
         .map_or_else(std::env::temp_dir, PathBuf::from)
         .join("Hermes Local");
+    if let Err(error) = deep_link::register() {
+        eprintln!("Hermes Local protocol registration is unavailable: {error}");
+    }
     let mut native = NativeApp::new(data_dir.clone());
     startup::install_local_bootstrap(&mut native.services);
     ssh_service::install_ssh_probe(&mut native.services, data_dir);
