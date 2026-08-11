@@ -1,0 +1,38 @@
+name: Repair SSH digest formatting
+
+on:
+  push:
+    branches:
+      - refactor/dioxus-rust-client
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/dioxus-rust-client
+          fetch-depth: 0
+      - name: Patch digest formatting and format workspace
+        shell: pwsh
+        run: |
+          $path = 'apps/desktop/src/ssh_lifecycle.rs'
+          $text = Get-Content -Raw $path
+          $old = 'format!("{digest:x}")[..32].to_owned()'
+          $new = 'digest[..16].iter().map(|byte| format!("{byte:02x}")).collect()'
+          if (-not $text.Contains($old)) { throw 'Expected SHA formatting expression was not found.' }
+          $text = $text.Replace($old, $new)
+          Set-Content -NoNewline -Encoding utf8 $path $text
+          cargo fmt --all
+      - name: Commit repair
+        shell: pwsh
+        run: |
+          if (-not (git status --porcelain)) { exit 0 }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/desktop/src/ssh_lifecycle.rs
+          git commit -m 'fix(ssh): encode SHA-256 ownership digests explicitly'
+          git push origin HEAD:refactor/dioxus-rust-client
