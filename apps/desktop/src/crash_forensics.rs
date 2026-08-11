@@ -64,7 +64,11 @@ fn panic_payload_hash(payload: &(dyn std::any::Any + Send)) -> String {
         .unwrap_or("non-string panic payload");
     let mut digest = Sha256::new();
     digest.update(message.as_bytes());
-    format!("{:x}", digest.finalize())
+    digest
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn bounded_location(location: &str) -> String {
