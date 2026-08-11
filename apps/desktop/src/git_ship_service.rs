@@ -577,7 +577,7 @@ mod tests {
             std::process::id()
         ));
         fs::create_dir_all(&directory).expect("test directory");
-        directory.canonicalize().expect("canonical test directory")
+        directory
     }
 
     fn git_ok(repository: &Path, args: &[&str]) {
