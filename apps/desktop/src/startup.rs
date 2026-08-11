@@ -260,7 +260,7 @@ fn resolve_powershell() -> Result<PathBuf, String> {
             return Ok(explicit);
         }
         return Err(format!(
-            "HERMES_LOCAL_PWSH does not point to an absolute pwsh.exe path: {}",
+            "HERMES_LOCAL_PWSH does not point to an absolute PowerShell executable: {}",
             explicit.display()
         ));
     }
@@ -293,7 +293,16 @@ fn resolve_powershell() -> Result<PathBuf, String> {
         return Ok(candidate);
     }
 
-    Err("PowerShell 7 (pwsh.exe) is required to start the Hermes Local runtime.".to_owned())
+    let windows_powershell = system_root
+        .join("System32")
+        .join("WindowsPowerShell")
+        .join("v1.0")
+        .join("powershell.exe");
+    if windows_powershell.is_file() {
+        return Ok(windows_powershell);
+    }
+
+    Err("PowerShell is required to start the Hermes Local runtime.".to_owned())
 }
 
 async fn start_local_stack(powershell: &Path, root: &Path) -> Result<(), String> {
@@ -465,6 +474,7 @@ fn normalize_loopback_host(raw: &str) -> Result<String, String> {
 }
 
 fn local_websocket_url(host: &str, port: u16, token: &str) -> Result<Url, String> {
+    let token = validate_local_token(token)?;
     let authority = if host.contains(':') {
         format!("[{host}]")
     } else {
@@ -472,18 +482,51 @@ fn local_websocket_url(host: &str, port: u16, token: &str) -> Result<Url, String
     };
     let mut url = Url::parse(&format!("ws://{authority}:{port}/api/ws"))
         .map_err(|error| format!("Could not construct the local Hermes Agent URL: {error}"))?;
-    url.query_pairs_mut().append_pair("token", token);
+    url.query_pairs_mut().append_pair("token", &token);
     Ok(url)
 }
 
 fn bounded_diagnostic(bytes: &[u8]) -> String {
-    let text = String::from_utf8_lossy(bytes);
-    text.chars()
+    let mut text = String::from_utf8_lossy(bytes).into_owned();
+    for private_path in [env::var("USERPROFILE").ok(), env::var("HERMES_LOCAL_ROOT").ok()]
+        .into_iter()
+        .flatten()
+        .filter(|value| !value.is_empty())
+    {
+        text = text.replace(&private_path, "[PRIVATE-PATH]");
+        text = text.replace(&private_path.replace('\\', "/"), "[PRIVATE-PATH]");
+    }
+    redact_long_values(&text)
+        .chars()
         .filter(|character| !character.is_control() || matches!(character, '\n' | '\r' | '\t'))
         .take(MAX_DIAGNOSTIC_BYTES)
         .collect::<String>()
         .trim()
         .to_owned()
+}
+
+fn redact_long_values(input: &str) -> String {
+    fn flush(output: &mut String, run: &mut String) {
+        if run.len() >= 40 {
+            output.push_str("[REDACTED-LONG-VALUE]");
+        } else {
+            output.push_str(run);
+        }
+        run.clear();
+    }
+
+    let mut output = String::with_capacity(input.len());
+    let mut run = String::new();
+    for character in input.chars() {
+        if character.is_ascii_alphanumeric() || matches!(character, '_' | '-') {
+            run.push(character);
+        } else {
+            flush(&mut output, &mut run);
+            output.push(character);
+        }
+    }
+    flush(&mut output, &mut run);
+    output
 }
 
 #[cfg(test)]
@@ -555,17 +598,24 @@ mod tests {
     #[test]
     fn local_token_and_url_validation_never_accepts_path_or_query_injection() {
         let token = "a".repeat(64);
-        assert_eq!(validate_local_token(&token).expect("token"), token);
-        assert!(validate_local_token(&format!("{}?admin=1", "a".repeat(40))).is_err());
-
-        let url = local_websocket_url("127.0.0.1", 9_119, &"a b&c".repeat(10)).expect("URL");
+        let url = local_websocket_url("127.0.0.1", 9_119, &token).expect("URL");
         assert_eq!(url.path(), "/api/ws");
         assert_eq!(
             url.query_pairs()
                 .find(|(key, _)| key == "token")
                 .map(|(_, value)| value.into_owned()),
-            Some("a b&c".repeat(10))
+            Some(token)
         );
+        assert!(local_websocket_url("127.0.0.1", 9_119, &format!("{}?admin=1", "a".repeat(40))).is_err());
+    }
+
+    #[test]
+    fn diagnostics_redact_tokens_and_keep_errors_bounded() {
+        let token = "A".repeat(64);
+        let diagnostic = bounded_diagnostic(format!("authorization failed for token {token}").as_bytes());
+        assert!(!diagnostic.contains(&token));
+        assert!(diagnostic.contains("[REDACTED-LONG-VALUE]"));
+        assert!(diagnostic.len() <= MAX_DIAGNOSTIC_BYTES);
     }
 
     #[test]
