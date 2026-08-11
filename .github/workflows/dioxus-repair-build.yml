@@ -1,0 +1,67 @@
+name: Dioxus native SSH build repair
+
+on:
+  push:
+    branches:
+      - refactor/dioxus-rust-client
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dioxus-native-ssh-repair
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/dioxus-rust-client
+          fetch-depth: 0
+      - name: Repair Desktop dependency declaration and token handling
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          cargo = Path('apps/desktop/Cargo.toml')
+          text = cargo.read_text(encoding='utf-8')
+          marker = 'hermes-ui = { path = "../../crates/hermes-ui" }\n'
+          additions = (
+              'reqwest = { workspace = true, features = ["json", "rustls"] }\n'
+              'serde.workspace = true\n'
+              'sha2.workspace = true\n'
+          )
+          if 'reqwest = { workspace = true' not in text:
+              text = text.replace(marker, marker + additions)
+          if 'uuid = { workspace = true, features = ["v4"] }' not in text:
+              text = text.replace('url.workspace = true\n', 'url.workspace = true\nuuid = { workspace = true, features = ["v4"] }\n')
+          target = '\n[target.\'cfg(windows)\'.dependencies]\nkeyring = { workspace = true, features = ["v1", "windows-native-keyring-store"] }\n'
+          if "[target.'cfg(windows)'.dependencies]" not in text:
+              text = text.replace('\n[lints]\n', target + '\n[lints]\n')
+          cargo.write_text(text, encoding='utf-8')
+
+          lifecycle = Path('apps/desktop/src/ssh_lifecycle.rs')
+          src = lifecycle.read_text(encoding='utf-8')
+          old = 'let reuse_token = load_reuse_token(ownership_id).unwrap_or_default();'
+          new = 'let reuse_token = load_reuse_token(ownership_id)?.unwrap_or_default();'
+          if old not in src and new not in src:
+              raise SystemExit('expected reuse_token line not found')
+          src = src.replace(old, new)
+          lifecycle.write_text(src, encoding='utf-8')
+          '@ | Set-Content -Encoding utf8 .repair_ssh.py
+          python .repair_ssh.py
+          Remove-Item .repair_ssh.py
+          cargo fmt --all
+          cargo generate-lockfile
+      - name: Commit repair
+        shell: pwsh
+        run: |
+          if (-not (git status --porcelain)) { exit 0 }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/desktop/Cargo.toml apps/desktop/src/ssh_lifecycle.rs Cargo.lock
+          git commit -m 'fix(ssh): restore native lifecycle build dependencies'
+          git push origin HEAD:refactor/dioxus-rust-client
