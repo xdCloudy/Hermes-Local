@@ -70,7 +70,8 @@ fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir)
         .join("Hermes Local");
-    let native = NativeApp::new(data_dir);
+    let mut native = NativeApp::new(data_dir);
+    startup::install_local_bootstrap(&mut native.services);
     let window = WindowBuilder::new()
         .with_title("Hermes Local")
         .with_inner_size(LogicalSize::new(1_280.0, 800.0))
