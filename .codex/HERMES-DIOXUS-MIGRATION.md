@@ -348,3 +348,14 @@ tests plus doc-tests.
 Exact next action: add folder picking and the remaining Project Centre RPCs,
 then extend the deterministic Agent harness through resume/event/interrupt and
 REST error mapping before moving to settings/theme parity.
+
+The deterministic Agent harness now also proves stored-to-runtime session
+resume identity, interleaved `message.delta` delivery through the application
+event stream, and `session.interrupt` targeting the resumed runtime. Separate
+HTTP peers prove that Agent 403 and 404 responses remain distinct typed
+permission and not-found failures. The workspace now passes 23 unit tests plus
+doc-tests without relying on a configured user Agent or external network.
+
+Exact next action: finish folder picking and the remaining Project Centre RPCs,
+then port settings and immediate light/dark/system theme application against the
+official source.

@@ -1313,4 +1313,143 @@ mod tests {
         assert_eq!(frames[2].method.as_deref(), Some("projects.delete"));
         assert_eq!(frames[2].params, Some(json!({ "id": "project-1" })));
     }
+
+    #[tokio::test]
+    async fn session_resume_stream_and_interrupt_share_the_official_runtime_identity() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let address = listener.local_addr().expect("address");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("connection");
+            let mut socket = accept_async(stream).await.expect("WebSocket");
+
+            let resume_message = socket.next().await.expect("resume").expect("frame");
+            let resume: hermes_protocol::JsonRpcFrame =
+                serde_json::from_str(resume_message.to_text().expect("text frame"))
+                    .expect("JSON-RPC");
+            socket
+                .send(Message::Text(
+                    json!({
+                        "jsonrpc": "2.0",
+                        "id": resume.id,
+                        "result": {
+                            "stored_session_id": "stored-1",
+                            "session_id": "runtime-9",
+                            "messages": [{ "id": "m1", "role": "user", "text": "hello" }],
+                            "running": true
+                        }
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .expect("resume response");
+            socket
+                .send(Message::Text(
+                    json!({
+                        "jsonrpc": "2.0",
+                        "method": "event",
+                        "params": {
+                            "type": "message.delta",
+                            "session_id": "runtime-9",
+                            "payload": { "text": "world" }
+                        }
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .expect("stream event");
+
+            let interrupt_message = socket.next().await.expect("interrupt").expect("frame");
+            let interrupt: hermes_protocol::JsonRpcFrame =
+                serde_json::from_str(interrupt_message.to_text().expect("text frame"))
+                    .expect("JSON-RPC");
+            socket
+                .send(Message::Text(
+                    json!({ "jsonrpc": "2.0", "id": interrupt.id, "result": { "ok": true } })
+                        .to_string()
+                        .into(),
+                ))
+                .await
+                .expect("interrupt response");
+            (resume, interrupt)
+        });
+        let client = GatewayClient::connect(
+            &format!("ws://{address}/api/ws"),
+            hermes_agent_client::GatewayOptions::default(),
+        )
+        .await
+        .expect("gateway");
+        let services = GatewayServices {
+            client: Arc::new(RwLock::new(Some(client))),
+            rest: Arc::new(RwLock::new(None)),
+        };
+        let mut events = SessionService::events(&services).expect("events");
+        let resumed = SessionService::resume(&services, "stored-1")
+            .await
+            .expect("resume");
+        assert_eq!(resumed.session_id, "runtime-9");
+        assert_eq!(resumed.stored_session_id.as_deref(), Some("stored-1"));
+        let event = events.next().await.expect("stream event");
+        assert_eq!(event.kind, "message.delta");
+        assert_eq!(event.session_id.as_deref(), Some("runtime-9"));
+        assert_eq!(event.payload, json!({ "text": "world" }));
+        SessionService::interrupt(&services, "runtime-9")
+            .await
+            .expect("interrupt");
+
+        let (resume, interrupt) = server.await.expect("server");
+        assert_eq!(resume.method.as_deref(), Some("session.resume"));
+        assert_eq!(resume.params, Some(json!({ "session_id": "stored-1" })));
+        assert_eq!(interrupt.method.as_deref(), Some("session.interrupt"));
+        assert_eq!(interrupt.params, Some(json!({ "session_id": "runtime-9" })));
+    }
+
+    #[tokio::test]
+    async fn rest_adapter_maps_permission_and_missing_responses() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let address = listener.local_addr().expect("address");
+        let server = tokio::spawn(async move {
+            for response in [
+                b"HTTP/1.1 403 Forbidden\r\nContent-Length: 9\r\nConnection: close\r\n\r\nforbidden"
+                    .as_slice(),
+                b"HTTP/1.1 404 Not Found\r\nContent-Length: 7\r\nConnection: close\r\n\r\nmissing"
+                    .as_slice(),
+            ] {
+                let (mut stream, _) = listener.accept().await.expect("connection");
+                let mut request = [0_u8; 2048];
+                let _ = stream.read(&mut request).await.expect("request");
+                stream.write_all(response).await.expect("response");
+            }
+        });
+        let rest = GatewayRest {
+            client: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .expect("client"),
+            base_url: url::Url::parse(&format!("http://{address}/")).expect("URL"),
+            session_token: None,
+        };
+        let forbidden = rest
+            .request(Method::GET, "/private", None)
+            .await
+            .expect_err("permission error");
+        assert!(matches!(
+            forbidden,
+            ServiceError::PermissionDenied(detail) if detail == "forbidden"
+        ));
+        let missing = rest
+            .request(Method::GET, "/missing", None)
+            .await
+            .expect_err("not found");
+        assert!(matches!(
+            missing,
+            ServiceError::NotFound(detail) if detail == "missing"
+        ));
+        server.await.expect("server");
+    }
 }
