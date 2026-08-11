@@ -292,7 +292,15 @@ mod tests {
         assert!(main.checked_out);
         assert!(main.is_default);
         assert!(feature.checked_out);
-        assert_eq!(feature.worktree_path.as_deref(), Some(worktree.as_path()));
+        assert_eq!(
+            feature
+                .worktree_path
+                .as_deref()
+                .expect("feature worktree")
+                .canonicalize()
+                .expect("canonical feature worktree"),
+            worktree.canonicalize().expect("canonical expected worktree")
+        );
 
         assert_eq!(service.switch(&root, "other").unwrap(), "other");
         let head = run_git(&root, &["branch", "--show-current"]).unwrap();

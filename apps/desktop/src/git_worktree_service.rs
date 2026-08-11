@@ -420,8 +420,18 @@ mod tests {
             .expect("create worktree");
         assert!(!created.is_main);
         assert_eq!(created.branch.as_deref(), Some("feature/one"));
-        assert!(created.path.starts_with(root.join(".worktrees")));
         assert!(created.path.is_dir());
+        assert!(
+            created
+                .path
+                .canonicalize()
+                .expect("canonical created worktree")
+                .starts_with(
+                    root.join(".worktrees")
+                        .canonicalize()
+                        .expect("canonical managed root")
+                )
+        );
 
         let listed = service.list(&root).expect("list worktrees");
         assert_eq!(listed.len(), 2);
