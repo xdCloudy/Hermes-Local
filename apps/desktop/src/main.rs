@@ -7,6 +7,7 @@ extern crate self as base64;
 
 mod ssh;
 mod ssh_lifecycle;
+mod ssh_native;
 mod ssh_service;
 mod startup;
 
