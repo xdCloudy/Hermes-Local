@@ -495,6 +495,61 @@ pub struct OAuthProvider {
     pub status: OAuthProviderStatus,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "flow", rename_all = "snake_case")]
+pub enum OAuthStart {
+    Pkce {
+        auth_url: String,
+        expires_in: u64,
+        session_id: String,
+    },
+    DeviceCode {
+        expires_in: u64,
+        poll_interval: u64,
+        session_id: String,
+        user_code: String,
+        verification_url: String,
+    },
+}
+
+impl OAuthStart {
+    pub fn session_id(&self) -> &str {
+        match self {
+            Self::Pkce { session_id, .. } | Self::DeviceCode { session_id, .. } => session_id,
+        }
+    }
+
+    pub fn browser_url(&self) -> &str {
+        match self {
+            Self::Pkce { auth_url, .. } => auth_url,
+            Self::DeviceCode {
+                verification_url, ..
+            } => verification_url,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct OAuthSubmit {
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub status: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct OAuthPoll {
+    #[serde(default)]
+    pub error_message: Option<String>,
+    #[serde(default)]
+    pub expires_at: Option<u64>,
+    pub session_id: String,
+    #[serde(default)]
+    pub status: String,
+}
+
 // These independent flags are the Agent's exact `/api/env` wire shape, not a
 // state machine that can be collapsed into a single enum.
 #[allow(clippy::struct_excessive_bools)]

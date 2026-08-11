@@ -734,3 +734,19 @@ no rendered-visual claim.
 Exact next action: add the typed OAuth session lifecycle and connect the account
 rows to the OG browser/device-code/external sign-in overlay, then port provider
 API-key groups.
+
+## Provider OAuth authority checkpoint (2026-08-11)
+
+`ProviderService` now owns the official profile-scoped OAuth session lifecycle:
+start, PKCE authorization-code submit, device-code poll, and session cancel.
+Typed protocol variants distinguish PKCE browser URLs from device verification
+URLs and user codes while retaining the shared session identity.
+
+The desktop adapter validates provider and session path segments and bounds
+authorization codes before transport. An in-process fixture pins all four HTTP
+methods, encoded profile queries, paths, JSON bodies, authentication headers,
+and response variants. The workspace passes 41 unit tests plus doc-tests.
+
+Exact next action: connect the Accounts rows to the OG sign-in overlay through
+this boundary, including browser opening, device polling, PKCE code submission,
+external CLI instructions, cancellation, and authoritative provider refresh.

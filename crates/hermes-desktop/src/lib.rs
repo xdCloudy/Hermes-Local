@@ -20,9 +20,10 @@ use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, AuxiliaryModels, ConfigSchemaResponse, ConnectionState,
     CustomEndpointUpdate, CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry,
     GitStatus, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse, ModelInfo, ModelOptions,
-    ModelSettingsSnapshot, OAuthProvider, ProjectFilesDeleteResult, ProjectSummary,
-    ProjectsSnapshot, ProviderActivation, RuntimeStatus, SessionCreateRequest,
-    SessionCreateResponse, SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
+    ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit,
+    ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation, RuntimeStatus,
+    SessionCreateRequest, SessionCreateResponse, SessionResumeResponse, SessionSummary,
+    TaskSummary, TrustSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use reqwest::Method;
@@ -741,6 +742,111 @@ impl ProviderService for GatewayServices {
                 )
                 .await?;
             decode_list(value, "providers")
+        })
+    }
+
+    fn start_oauth(
+        &self,
+        profile: Option<&str>,
+        provider_id: &str,
+    ) -> ServiceFuture<'_, OAuthStart> {
+        let profile = profile.map(str::to_owned);
+        let provider_id = provider_id.to_owned();
+        Box::pin(async move {
+            validate_path_id(&provider_id, "provider")?;
+            let value = self
+                .rest()?
+                .request(
+                    Method::POST,
+                    &profiled_path(
+                        &format!("/api/providers/oauth/{provider_id}/start"),
+                        profile.as_deref(),
+                    ),
+                    Some(json!({})),
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn submit_oauth(
+        &self,
+        profile: Option<&str>,
+        provider_id: &str,
+        session_id: &str,
+        code: &str,
+    ) -> ServiceFuture<'_, OAuthSubmit> {
+        let profile = profile.map(str::to_owned);
+        let provider_id = provider_id.to_owned();
+        let session_id = session_id.to_owned();
+        let code = code.to_owned();
+        Box::pin(async move {
+            validate_path_id(&provider_id, "provider")?;
+            validate_oauth_session(&session_id)?;
+            if code.trim().is_empty() || code.len() > 16_384 || code.chars().any(char::is_control) {
+                return Err(ServiceError::InvalidInput(
+                    "invalid authorization code".into(),
+                ));
+            }
+            let value = self
+                .rest()?
+                .request(
+                    Method::POST,
+                    &profiled_path(
+                        &format!("/api/providers/oauth/{provider_id}/submit"),
+                        profile.as_deref(),
+                    ),
+                    Some(json!({ "session_id": session_id, "code": code.trim() })),
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn poll_oauth(
+        &self,
+        profile: Option<&str>,
+        provider_id: &str,
+        session_id: &str,
+    ) -> ServiceFuture<'_, OAuthPoll> {
+        let profile = profile.map(str::to_owned);
+        let provider_id = provider_id.to_owned();
+        let session_id = session_id.to_owned();
+        Box::pin(async move {
+            validate_path_id(&provider_id, "provider")?;
+            validate_oauth_session(&session_id)?;
+            let value = self
+                .rest()?
+                .request(
+                    Method::GET,
+                    &profiled_path(
+                        &format!("/api/providers/oauth/{provider_id}/poll/{session_id}"),
+                        profile.as_deref(),
+                    ),
+                    None,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn cancel_oauth(&self, profile: Option<&str>, session_id: &str) -> ServiceFuture<'_, ()> {
+        let profile = profile.map(str::to_owned);
+        let session_id = session_id.to_owned();
+        Box::pin(async move {
+            validate_oauth_session(&session_id)?;
+            let value = self
+                .rest()?
+                .request(
+                    Method::DELETE,
+                    &profiled_path(
+                        &format!("/api/providers/oauth/sessions/{session_id}"),
+                        profile.as_deref(),
+                    ),
+                    None,
+                )
+                .await?;
+            require_confirmation(&value, "OAuth cancellation")
         })
     }
 
@@ -1576,6 +1682,18 @@ fn validate_env_key(key: &str) -> ServiceResult<()> {
     Ok(())
 }
 
+fn validate_oauth_session(session_id: &str) -> ServiceResult<()> {
+    if session_id.is_empty()
+        || session_id.len() > 512
+        || !session_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    {
+        return Err(ServiceError::InvalidInput("invalid OAuth session".into()));
+    }
+    Ok(())
+}
+
 fn validate_custom_endpoint(endpoint: &CustomEndpointUpdate) -> ServiceResult<()> {
     if endpoint.name.trim().is_empty()
         || endpoint.name.len() > 256
@@ -2125,6 +2243,121 @@ mod tests {
         assert_eq!(saved_endpoint["base_url"], "https://local.test/v1");
         assert_eq!(saved_endpoint["discover_models"], true);
         assert_eq!(saved_endpoint["make_default"], true);
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn provider_oauth_session_uses_the_official_start_submit_poll_and_cancel_contracts() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let address = listener.local_addr().expect("address");
+        let server = tokio::spawn(async move {
+            let responses = [
+                json!({
+                    "flow": "pkce",
+                    "auth_url": "https://auth.example/authorize",
+                    "expires_in": 600,
+                    "session_id": "session-1"
+                }),
+                json!({ "message": "Approved", "ok": true, "status": "approved" }),
+                json!({ "session_id": "session-1", "status": "approved" }),
+                json!({ "ok": true }),
+            ];
+            let mut requests = Vec::new();
+            for body in responses {
+                let (mut stream, _) = listener.accept().await.expect("connection");
+                let mut request = Vec::new();
+                let mut chunk = [0_u8; 4096];
+                loop {
+                    let count = stream.read(&mut chunk).await.expect("request bytes");
+                    if count == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&chunk[..count]);
+                    let text = String::from_utf8_lossy(&request);
+                    if let Some(headers_end) = text.find("\r\n\r\n") {
+                        let content_length = text[..headers_end]
+                            .lines()
+                            .find_map(|line| line.strip_prefix("content-length: "))
+                            .and_then(|value| value.parse::<usize>().ok())
+                            .unwrap_or_default();
+                        if request.len() >= headers_end + 4 + content_length {
+                            break;
+                        }
+                    }
+                }
+                let body = body.to_string();
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("response");
+                requests.push(String::from_utf8(request).expect("UTF-8 request"));
+            }
+            requests
+        });
+        let services = GatewayServices {
+            client: Arc::new(RwLock::new(None)),
+            rest: Arc::new(RwLock::new(Some(GatewayRest {
+                client: reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .build()
+                    .expect("client"),
+                base_url: url::Url::parse(&format!("http://{address}/hermes/")).expect("URL"),
+                session_token: Some("oauth-token".into()),
+            }))),
+        };
+
+        let start = ProviderService::start_oauth(&services, Some("work profile"), "openai-codex")
+            .await
+            .expect("start OAuth");
+        assert_eq!(start.session_id(), "session-1");
+        assert_eq!(start.browser_url(), "https://auth.example/authorize");
+        let submit = ProviderService::submit_oauth(
+            &services,
+            Some("work profile"),
+            "openai-codex",
+            "session-1",
+            "auth-code",
+        )
+        .await
+        .expect("submit OAuth");
+        assert!(submit.ok);
+        let poll = ProviderService::poll_oauth(
+            &services,
+            Some("work profile"),
+            "openai-codex",
+            "session-1",
+        )
+        .await
+        .expect("poll OAuth");
+        assert_eq!(poll.status, "approved");
+        ProviderService::cancel_oauth(&services, Some("work profile"), "session-1")
+            .await
+            .expect("cancel OAuth");
+
+        let requests = server.await.expect("server");
+        assert!(requests[0].starts_with(
+            "POST /hermes/api/providers/oauth/openai-codex/start?profile=work+profile "
+        ));
+        assert!(requests[0].ends_with("{}"));
+        assert!(requests[1].starts_with(
+            "POST /hermes/api/providers/oauth/openai-codex/submit?profile=work+profile "
+        ));
+        assert!(requests[1].ends_with("{\"code\":\"auth-code\",\"session_id\":\"session-1\"}"));
+        assert!(requests[2].starts_with(
+            "GET /hermes/api/providers/oauth/openai-codex/poll/session-1?profile=work+profile "
+        ));
+        assert!(requests[3].starts_with(
+            "DELETE /hermes/api/providers/oauth/sessions/session-1?profile=work+profile "
+        ));
+        for request in requests {
+            assert!(request.contains("x-hermes-session-token: oauth-token"));
+        }
     }
 
     #[test]

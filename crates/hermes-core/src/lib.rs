@@ -12,9 +12,9 @@ use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, ChatMessage, ConnectionState, CustomEndpointUpdate,
     CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry, GatewayEvent,
     GitStatus, MessageRole, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse,
-    ModelSettingsSnapshot, OAuthProvider, ProjectFilesDeleteResult, ProjectSummary,
-    ProjectsSnapshot, ProviderActivation, RuntimeStatus, SessionCreateRequest,
-    SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
+    ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit,
+    ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation, RuntimeStatus,
+    SessionCreateRequest, SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -372,6 +372,25 @@ pub trait ModelService: Send + Sync {
 
 pub trait ProviderService: Send + Sync {
     fn list_oauth(&self, profile: Option<&str>) -> ServiceFuture<'_, Vec<OAuthProvider>>;
+    fn start_oauth(
+        &self,
+        profile: Option<&str>,
+        provider_id: &str,
+    ) -> ServiceFuture<'_, OAuthStart>;
+    fn submit_oauth(
+        &self,
+        profile: Option<&str>,
+        provider_id: &str,
+        session_id: &str,
+        code: &str,
+    ) -> ServiceFuture<'_, OAuthSubmit>;
+    fn poll_oauth(
+        &self,
+        profile: Option<&str>,
+        provider_id: &str,
+        session_id: &str,
+    ) -> ServiceFuture<'_, OAuthPoll>;
+    fn cancel_oauth(&self, profile: Option<&str>, session_id: &str) -> ServiceFuture<'_, ()>;
     fn disconnect_oauth(&self, profile: Option<&str>, provider_id: &str) -> ServiceFuture<'_, ()>;
     fn env(
         &self,
