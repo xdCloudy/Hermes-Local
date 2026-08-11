@@ -33,7 +33,7 @@ impl ClipboardService {
 
         #[cfg(windows)]
         {
-            return write_text_windows(text);
+            write_text_windows(text)
         }
 
         #[cfg(not(windows))]
@@ -45,7 +45,7 @@ impl ClipboardService {
     pub fn read_text(&self) -> Result<String, String> {
         #[cfg(windows)]
         {
-            return read_text_windows();
+            read_text_windows()
         }
 
         #[cfg(not(windows))]
@@ -61,7 +61,7 @@ impl ClipboardService {
 
         #[cfg(windows)]
         {
-            return save_image_windows(destination);
+            save_image_windows(destination)
         }
 
         #[cfg(not(windows))]
