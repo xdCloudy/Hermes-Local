@@ -382,7 +382,8 @@ fn redact_credentialed_urls(input: &str) -> String {
         }
         let authority = &bytes[authority_start..authority_end];
         let at = authority.iter().position(|byte| *byte == b'@');
-        let userinfo_colon = at.and_then(|at| authority[..at].iter().position(|byte| *byte == b':'));
+        let userinfo_colon =
+            at.and_then(|at| authority[..at].iter().position(|byte| *byte == b':'));
         if let (Some(at), Some(_)) = (at, userinfo_colon) {
             output.push_str(&input[copied..authority_start]);
             output.push_str(REDACTED);
@@ -629,7 +630,10 @@ mod tests {
             private_root,
             opaque.as_str(),
         ] {
-            assert!(!redacted.contains(secret), "private value remained: {secret}");
+            assert!(
+                !redacted.contains(secret),
+                "private value remained: {secret}"
+            );
         }
         assert!(redacted.contains("http://visible.example/path"));
         assert!(redacted.contains("8.8.8.8"));
@@ -709,7 +713,10 @@ mod tests {
             opaque.as_str(),
             data_text.as_str(),
         ] {
-            assert!(!text.contains(private), "private export value remained: {private}");
+            assert!(
+                !text.contains(private),
+                "private export value remained: {private}"
+            );
         }
         assert!(!text.contains("pathEntries\""));
         assert!(text.contains("pathEntryCount"));
