@@ -17,6 +17,7 @@ mod ssh_service;
 #[cfg(windows)]
 mod ssh_windows;
 mod startup;
+mod update_activation;
 
 use std::path::PathBuf;
 
@@ -84,6 +85,18 @@ fn desktop_root() -> Element {
 }
 
 fn main() {
+    if let Some(result) = update_activation::run_helper_if_requested() {
+        if let Err(error) = result {
+            eprintln!("Hermes Local update helper failed: {error}");
+        }
+        return;
+    }
+    match update_activation::activate_pending_on_startup() {
+        Ok(true) => return,
+        Ok(false) => {}
+        Err(error) => eprintln!("Hermes Local pending update was not activated: {error}"),
+    }
+
     let data_dir = std::env::var_os("APPDATA")
         .map_or_else(std::env::temp_dir, PathBuf::from)
         .join("Hermes Local");
