@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `b14ad991064dd06903b5370ad55dd9fb749c761a` (2026-08-11)  
+> **Implementation audit checkpoint:** `5e05f7198b76b01a91601e812e0c0f840b21802e` (2026-08-11)  
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -53,23 +53,25 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 72 | Largest remaining implementation backlog. |
-| A2 Service | 10 | Native/core foundations exist; UI/parity work remains. |
+| A1 Designed | 64 | Largest remaining implementation backlog. |
+| A2 Service | 16 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 6 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 37 | Automated slice is green; human/live acceptance still required. |
+| A4 Auto-verified | 39 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 1 | Named external validation blocker. |
 | **Total** | **127** | Every row must end at A6 or be explicitly retired with product-owner approval. |
 
 Current CI at this checkpoint is green for Documentation validation, the Hermes
-Agent harness/native-client boundary workflow, and Dioxus Rust validation.
-The Rust validation gate includes architecture enforcement, rustfmt,
+Agent harness/native-client boundary workflow, Dioxus Rust validation, Windows
+installer/portable packaging and artifact-footprint regression. The Rust
+validation gate includes architecture enforcement, rustfmt,
 `cargo check --workspace --all-targets`, shared-UI WASM compilation, workspace
 tests, Clippy, optimized Windows release build, resolved Cargo CycloneDX SBOM,
-release-manifest/SHA-256 generation and artifact upload. Trusted non-PR runs
-additionally mint and verify GitHub artifact attestations. This is evidence for
-applicable A4 rows only; it is not a substitute for A5 or A6.
+release-manifest/SHA-256 generation and artifact upload. Windows distribution CI
+also exercises silent install/uninstall, package identity and data-preserving
+repair. This is evidence for applicable A4 rows only; it is not a substitute for
+A5 or A6.
 
 ## Roadmap waves
 
@@ -90,32 +92,33 @@ are already available, but its acceptance gate remains explicit.
 
 ### Current critical path
 
-1. Finish OG SSH config-host discovery/`ssh -G` enrichment and execute the real
-   SSH-host interoperability matrix.
+1. Wire native SSH config-host discovery into the Dioxus Gateway selector and
+   execute the real SSH-host interoperability matrix.
 2. Port Hermes Cloud discovery/org/agent connection and finish complete Gateway
    re-home behavior.
 3. Finish rich chat/composer parity.
 4. Turn the existing File/Git/PTY native service foundations into complete
    Dioxus workspace tools.
-5. Port Workstation/Agent surfaces, then native Windows integration.
-6. Build installer/updater/cutover, remove Electron/React/Node from production,
-   and run the full human acceptance pass.
+5. Port Workstation/Agent surfaces, then finish native Windows integration.
+6. Finish updater/cutover, remove Electron/React/Node from production, and run
+   the full human acceptance pass.
 
 ## Known blockers and deliberate debt
 
 - **Real SSH-host validation:** POSIX and Windows owned lifecycle code is
   auto-verified, but live Linux/macOS/Windows interoperability has not yet been
   executed (`SS-05`).
-- **SSH settings parity:** OG `~/.ssh/config` host suggestions, `Include`
-  traversal and `ssh -G` enrichment remain to be ported (`SS-01`).
+- **SSH settings parity:** native `Host`/`Include` discovery and bounded `ssh -G`
+  enrichment now exist, but the Dioxus Gateway host-suggestion selector is not
+  wired to that discovery service yet (`SS-01`).
 - **Hermes Cloud:** discovery/org selection/agent connection is not yet ported
   (`CN-06`).
 - **Rendered native QA:** earlier migration checkpoints recorded an intermittent
   missing top-level native window during some automated visual runs. It must be
   re-proven before rows depending on visual evidence can move to A5.
-- **Distribution/cutover:** the optimized Rust EXE builds successfully, but the
-  production installer/updater/cutover is not complete. Electron/React remains
-  intentionally present as the oracle and current production path.
+- **Distribution/cutover:** verified Rust installer and portable distributions
+  now exist, but production updater/cutover is not complete. Electron/React
+  remains intentionally present as the oracle and current production path.
 - **Clippy debt:** CI passes, but non-fatal pedantic/dead-code warnings remain.
   They should be reduced as touched code is modularized rather than normalized
   into permanent warning debt.
@@ -210,7 +213,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | TM-01 | PTY/ConPTY lifecycle service | `TerminalService` | terminal | A2 Service | Native `portable-pty` start/write/read/resize/dispose exists behind typed service; Dioxus terminal is placeholder. | After renderer lands: start shell in project cwd, type/resize, run long/interactive commands, exit/dispose and verify no orphan processes. | ⬜ |
 | TM-02 | Terminal ANSI rendering, scrollback and persistence | terminal read model | terminal pane | A1 Designed | Not ported. | Stress ANSI/Unicode/large output, scrollback, hidden/reopened panes and memory/CPU. | ⬜ |
 | TM-03 | Remote/SSH terminal behavior | `TerminalService` + SSH transport | terminal pane | A1 Designed | SSH Agent tunnel exists but interactive terminal parity is not integrated. | Connect to real SSH target, verify cwd, resize, reconnect, auth-agent use and cleanup. | ⬜ |
-| SS-01 | SSH config Host suggestions, Include traversal and `ssh -G` enrichment | `ConnectionService`/SSH helper | Settings → Gateway | A1 Designed | OG parses `~/.ssh/config`, traverses `Include` and enriches user/port/identity file; Rust UI does not yet reproduce this. | Use aliases, Includes, wildcard exclusions and custom/raw hosts; verify resolved fields match `ssh -G` and manual values are not overwritten. | ⬜ |
+| SS-01 | SSH config Host suggestions, Include traversal and `ssh -G` enrichment | `ConnectionService`/SSH helper | Settings → Gateway | A2 Service | Native `Host`/`Include` discovery, bounded glob/cycle traversal and 5-second `ssh -G` enrichment are implemented with parity tests; manual user/port/key values are never overwritten. Dioxus host suggestions are not wired yet. | Use aliases, Includes, wildcard exclusions and custom/raw hosts; verify resolved fields match `ssh -G` and manual values are not overwritten. | ⬜ |
 | SS-02 | SSH probe/discovery and actionable failure classification | native OpenSSH transport | Settings → Gateway | A4 Auto-verified | System OpenSSH argv, Linux/macOS/Windows Hermes discovery, ownership-capability checks and auth/host-key/network classification are unit-tested. | Test real hosts with success, bad auth, changed host key, timeout, unreachable and missing/old Hermes. | ⬜ |
 | SS-03 | POSIX SSH owned backend lifecycle and tunnel reuse | native SSH lifecycle | connection runtime | A4 Auto-verified | Profile-scoped ownership, secure token upload, lock/protocol, owned spawn, readiness, loopback forward, authenticated reuse and safe stale cleanup are implemented/tested. | On real Linux/macOS host: connect, reuse, restart desktop, interrupt network, stale lock/process, remote upgrade and quit cleanup. | ⬜ |
 | SS-04 | Windows SSH owned backend lifecycle and tunnel reuse | native Windows SSH lifecycle | connection runtime | A4 Auto-verified | Canonical `hermes_cli.windows_ssh_runtime` helper is used; ownership binds PID + creation time + Hermes path + spawn nonce and reuse requires matching profile/token/path/home. | On real Windows SSH host: same lifecycle matrix as SS-03, including process identity changes and PowerShell/helper failures. | ⬜ |
@@ -272,24 +275,24 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | DI-02 | Clipboard text/images and save dialogs | future Clipboard/File services | chat/context actions | A1 Designed | Not ported as complete OG functionality. | Copy/paste text/images, WSL edge cases, save dialogs, unsupported formats and size limits. | ⬜ |
 | DI-03 | Camera/microphone/media permissions | future `MediaService` | permission surfaces | A1 Designed | Not ported. | Grant/deny/revoke permissions, restart and verify only trusted app origin receives media capability. | ⬜ |
 | DI-04 | External browser opening and safe link policy | `PlatformService` | links/preview | A2 Service | Typed external URL opener allowlists schemes; link-title/SSRF/full rich-link UX remains incomplete. | Open allowed HTTP(S) links, reject unsafe schemes/credentialed/private targets where policy applies and verify no in-app navigation escape. | ⬜ |
-| DI-05 | Deep links and protocol registration | future `DeepLinkService` | routed surfaces | A1 Designed | Not ported. | Register/use protocol from cold/running app, malformed payloads, duplicate instance and route/state handling. | ⬜ |
+| DI-05 | Deep links and protocol registration | native deep-link service | routed surfaces | A2 Service | Native `hermes://` parsing and per-user Windows protocol registration exist with exact executable command identity and deterministic malformed-input tests; running-instance/single-instance Dioxus delivery is incomplete. | Register/use protocol from cold/running app, malformed payloads, duplicate instance and route/state handling. | ⬜ |
 | DI-06 | Session and secondary app windows | future `WindowService` | shared Dioxus roots | A1 Designed | Not ported. | Open multiple session windows, focus/reuse/close/restore and test bounds across monitors/DPI. | ⬜ |
 | DI-07 | Quick Entry global shortcut/window | Shortcut + Window services | Quick Entry | A1 Designed | Not ported. | Register shortcut, summon/dismiss across apps, submit, move monitors and restart. | ⬜ |
 | DI-08 | Pet overlay and generator | `WindowService` | pet roots | A1 Designed | Not ported. | Generate/show/hide/move pet, focus/input behavior and persistence. | ⬜ |
 | DI-09 | Wake indicator | `WindowService` | wake root | A1 Designed | Not ported. | Trigger/show/hide/reposition indicator and verify lifecycle. | ⬜ |
-| DI-10 | Keep-awake, battery and resume | future `PowerService` | settings/status | A1 Designed | Not ported. | Start/stop blocker, sleep/resume laptop, battery/power changes and no leaked blocker. | ⬜ |
-| DI-11 | Login item/startup | future `InstallService` | startup settings | A1 Designed | Not ported. | Enable/disable per-user startup, reboot/sign-in and verify correct executable/arguments. | ⬜ |
-| DI-12 | Bootstrap, install and uninstall | future `InstallService` | onboarding/uninstall | A1 Designed | Rust production installer is not complete; old Electron packaging remains authoritative. | Clean install, upgrade, repair, uninstall choices and data preservation on a disposable Windows user/VM. | ⬜ |
+| DI-10 | Keep-awake, battery and resume | native power service | settings/status | A2 Service | Dedicated Windows helper holds `ES_CONTINUOUS | ES_SYSTEM_REQUIRED` without forcing the display awake; idempotent enable/disable/drop behavior is covered by the composed Rust/Windows gate. Battery/resume/settings integration remains. | Start/stop blocker, sleep/resume laptop, battery/power changes and no leaked blocker. | ⬜ |
+| DI-11 | Login item/startup | native login-item service | startup settings | A2 Service | Current-user Run-key service binds the exact executable plus `--hermes-local-autostart`, uses trusted explicit registry argv, verifies read-back state and has deterministic negative tests. Settings UI/startup UX is not wired. | Enable/disable per-user startup, reboot/sign-in and verify correct executable/arguments. | ⬜ |
+| DI-12 | Bootstrap, install and uninstall | Rust/Inno install tooling | onboarding/uninstall | A4 Auto-verified | Windows CI verifies clean per-user install, exact payload identity, same-version repair/reinstall, uninstall cleanup and byte-preserving `%APPDATA%\Hermes Local` user data. Older-version upgrade/manual clean-VM review remains. | Clean install, upgrade, repair, uninstall choices and data preservation on a disposable Windows user/VM. | ⬜ |
 | DI-13 | Desktop update, stage, promote and rollback | future `UpdateService` | updates/recovery | A1 Designed | Rust updater lifecycle is not ported; existing proven Electron updater remains oracle. | Test update available/no-update, interrupted download/apply, locked files, rollback, relaunch and data preservation. | ⬜ |
-| DI-14 | Crash forensics and recovery | future `DiagnosticsService` | boot/recovery | A1 Designed | Not ported. | Force renderer/native/runtime crashes/corrupt state; verify bounded diagnostics, recovery and no secret leakage. | ⬜ |
-| DI-15 | Windows environment, PATH, CA and platform recovery | `PlatformService` | no direct surface | A1 Designed | Only slices needed for current startup/SSH are ported; full OG Windows recovery surface is not. | Test unusual PATH, user env, custom CA/proxy, WSL/remote display and representative broken-install recovery. | ⬜ |
+| DI-14 | Crash forensics and recovery | native crash diagnostics | boot/recovery | A2 Service | Native startup panic hook writes bounded timestamp/version/location plus a panic SHA-256 without persisting raw panic text, env, argv or tokens; replacement/redaction tests pass. Renderer/runtime crash capture and recovery UI remain. | Force renderer/native/runtime crashes/corrupt state; verify bounded diagnostics, recovery and no secret leakage. | ⬜ |
+| DI-15 | Windows environment, PATH, CA and platform recovery | native platform diagnostics | no direct surface | A2 Service | Privacy-safe diagnostics normalize/dedupe PATH and report only presence for proxy/CA/WSL/display/app-data state; tests prove sensitive values are not retained. Recovery actions/UI remain incomplete. | Test unusual PATH, user env, custom CA/proxy, WSL/remote display and representative broken-install recovery. | ⬜ |
 | DI-16 | Optimized Windows Rust executable build | Rust/Dioxus release tooling | release artifact | A4 Auto-verified | CI builds `hermes-local.exe` with pinned Rust 1.97.1, architecture/WASM/tests/Clippy gates and uploads a Windows x64 artifact. | Run the exact CI artifact on the target Windows machine, verify launch/identity/icon/version and basic navigation. | ⬜ |
-| DI-17 | Installer/portable package, install stamp and artifact identity | Rust/Dioxus packaging | installer/portable | A1 Designed | Release EXE exists; production installer/portable/package identity and install stamp are not complete. | Install both supported distribution forms on clean Windows; verify paths, shortcuts, icon, version, uninstall registration and no Electron runtime. | ⬜ |
+| DI-17 | Installer/portable package, install stamp and artifact identity | Rust/Dioxus packaging | installer/portable | A4 Auto-verified | Windows CI builds a per-user Inno installer and exact portable ZIP, verifies install stamp/payload hashes, Start Menu/uninstall registration, silent install/uninstall cleanup and package identity. Trusted attestation wiring exists; no human package review is recorded. | Install both supported distribution forms on clean Windows; verify paths, shortcuts, icon, version, uninstall registration and no Electron runtime. | ⬜ |
 | DI-18 | SBOM, hashes and release provenance | release tooling | About/update | A4 Auto-verified | PR #140 / Dioxus Rust validation run #150 passed the optimized Windows build, resolved Cargo CycloneDX generation, SHA-256 release manifest/checksums, focused SBOM tests and artifact upload. Trusted-run attestation wiring is implemented; no human provenance/package review has been recorded. | Verify SBOM/hashes/signatures/version provenance against exact packaged binaries and dependencies. | ⬜ |
 | DI-19 | Production script/launcher cutover to Rust | build/setup/launcher tooling | product entry points | A1 Designed | Electron/React scripts remain production-authoritative while migration is in progress. | Run every official install/start/update/repair entry point and prove it launches only Rust client plus intended Agent/runtime children. | ⬜ |
 | DI-20 | Remove Electron/React/Node production runtime | repository/build tooling | n/a | A1 Designed | Legacy client intentionally remains as oracle; no production-runtime deletion has happened. | Inspect package/build/install outputs and process tree; prove Electron/Chromium/Node/React client code is absent from production artifacts. | ⬜ |
 | DI-21 | Clean-clone, package and full release regression | release/QA | whole product | A1 Designed | Not possible until feature/cutover waves are complete. | From clean clone/clean VM: build, package, install, run full automated suite and execute the human regression plan. | ⬜ |
-| DI-22 | Performance and footprint acceptance | release/QA | whole product | A2 Service | Early native checkpoints measured ~34–35 MiB working set; Electron baseline captured; current optimized artifact is built, but packaged startup/RAM/CPU comparisons are incomplete. | Measure packaged cold/warm start, first usable window, idle/active RAM/CPU, process count and disk size on same host; compare against OG baseline and investigate regressions. | ⬜ |
+| DI-22 | Performance and footprint acceptance | release/QA | whole product | A2 Service | Dedicated footprint CI measures the optimized EXE at 14.61 MiB and portable ZIP at 5.09 MiB, both below 64 MiB regression ceilings. Live packaged startup, RAM/CPU and process-count comparison remains incomplete. | Measure packaged cold/warm start, first usable window, idle/active RAM/CPU, process count and disk size on same host; compare against OG baseline and investigate regressions. | ⬜ |
 
 ### Contributions and plugins
 
