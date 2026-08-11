@@ -1,0 +1,56 @@
+name: Dioxus Rust validation
+
+on:
+  push:
+    branches:
+      - refactor/dioxus-rust-client
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "rust-toolchain.toml"
+      - "apps/desktop/**"
+      - "crates/**"
+      - ".github/workflows/dioxus-rust.yml"
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "rust-toolchain.toml"
+      - "apps/desktop/**"
+      - "crates/**"
+      - ".github/workflows/dioxus-rust.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dioxus-rust-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust workspace
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show pinned toolchain
+        shell: pwsh
+        run: |
+          rustup show
+          rustc --version
+          cargo --version
+
+      - name: Verify formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check all targets
+        run: cargo check --workspace --all-targets --locked
+
+      - name: Run Rust tests
+        run: cargo test --workspace --locked
+
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --locked
