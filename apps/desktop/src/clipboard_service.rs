@@ -1,6 +1,9 @@
 #![allow(dead_code)] // DI-02 service foundation; Dioxus consumers are a later stage.
 
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 #[cfg(windows)]
 use std::{
@@ -133,8 +136,7 @@ fn read_text_windows() -> Result<String, String> {
         .output()
         .map_err(|error| format!("Could not run clipboard reader: {error}"))?;
     check_helper_output("Clipboard reader", &output, true)?;
-    String::from_utf8(output.stdout)
-        .map_err(|_| "Clipboard text was not valid UTF-8.".to_owned())
+    String::from_utf8(output.stdout).map_err(|_| "Clipboard text was not valid UTF-8.".to_owned())
 }
 
 #[cfg(windows)]
@@ -230,8 +232,8 @@ fn verify_png(path: &Path) -> Result<(), String> {
             MAX_IMAGE_BYTES / (1024 * 1024)
         ));
     }
-    let bytes = fs::read(path)
-        .map_err(|error| format!("Could not verify clipboard image: {error}"))?;
+    let bytes =
+        fs::read(path).map_err(|error| format!("Could not verify clipboard image: {error}"))?;
     if !bytes.starts_with(&PNG_MAGIC) {
         return Err("Clipboard image export was not a PNG file.".to_owned());
     }
