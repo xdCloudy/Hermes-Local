@@ -299,7 +299,9 @@ mod tests {
                 .expect("feature worktree")
                 .canonicalize()
                 .expect("canonical feature worktree"),
-            worktree.canonicalize().expect("canonical expected worktree")
+            worktree
+                .canonicalize()
+                .expect("canonical expected worktree")
         );
 
         assert_eq!(service.switch(&root, "other").unwrap(), "other");
