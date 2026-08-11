@@ -126,7 +126,22 @@ impl ConnectionService for LocalBootstrapConnection {
 
             let config = self.inner.save_config(&input).await?;
             self.inner.disconnect().await?;
-            self.connect_local().await?;
+
+            if input.profile.is_none() {
+                self.connect_local().await?;
+                return Ok(config);
+            }
+
+            // Per-profile Local means "use the default gateway", not "force the
+            // machine-local gateway". Re-resolve the global/default connection
+            // exactly as the OG client does, while still filling the missing
+            // local bootstrap rung when that default is Local.
+            let global = self.inner.config(None).await?;
+            if global.env_override || global.mode != ConnectionMode::Local {
+                self.inner.initialize().await?;
+            } else {
+                self.connect_local().await?;
+            }
             Ok(config)
         })
     }
