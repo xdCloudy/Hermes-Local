@@ -11,6 +11,7 @@ mod deep_link;
 mod git_branch_service;
 mod git_discard_service;
 mod git_repo_scan_service;
+mod git_ship_service;
 mod git_worktree_service;
 mod login_item;
 mod notification_service;
