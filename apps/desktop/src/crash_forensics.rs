@@ -125,6 +125,15 @@ mod tests {
     }
 
     #[test]
+    fn non_string_panic_payload_uses_stable_non_sensitive_marker() {
+        let payload = 42_u32;
+        assert_eq!(
+            panic_payload_hash(&payload),
+            "8d87176b338a61bfe6199d45594bc47fa47a88d52b917e3e3dc0937d0091bf6a"
+        );
+    }
+
+    #[test]
     fn location_is_bounded_on_utf8_boundary() {
         let input = format!("{}é", "x".repeat(MAX_LOCATION_BYTES));
         let bounded = bounded_location(&input);
