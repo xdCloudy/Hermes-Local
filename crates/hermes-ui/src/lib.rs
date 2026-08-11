@@ -1818,6 +1818,8 @@ fn SettingsOverlay(initial: &'static str) -> Element {
                         AgentConfigPanel { section: "workspace", icon: "desktop-download", label: "Workspace" }
                     } else if active() == "safety" {
                         AgentConfigPanel { section: "safety", icon: "lock", label: "Safety" }
+                    } else if active() == "memory" {
+                        AgentConfigPanel { section: "memory", icon: "database", label: "Memory & Context" }
                     } else {
                         section { class: "settings-placeholder",
                             div { class: "settings-section-title", Codicon { name: active_icon } h1 { "{active_label}" } }
@@ -1903,6 +1905,8 @@ fn AgentConfigPanel(section: &'static str, icon: &'static str, label: &'static s
                     "Choose the default tool workspace, repository discovery policy, and execution boundaries for new sessions."
                 } else if section == "safety" {
                     "Control approvals, private-network access, secret redaction, and rollback checkpoints."
+                } else if section == "memory" {
+                    "Choose what Hermes remembers and how long conversations are compressed near the context limit."
                 } else {
                     "Choose how new chats behave and how model output is presented."
                 }
@@ -1944,8 +1948,16 @@ fn AgentConfigPanel(section: &'static str, icon: &'static str, label: &'static s
                             saving,
                             error,
                         }
-                    } else {
+                    } else if section == "safety" {
                         SafetyConfigFields {
+                            snapshot,
+                            loaded,
+                            profile: profile.clone(),
+                            saving,
+                            error,
+                        }
+                    } else {
+                        MemoryConfigFields {
                             snapshot,
                             loaded,
                             profile: profile.clone(),
@@ -3064,6 +3076,39 @@ const SAFETY_FIELDS: &[(&str, &str, &str)] = &[
     ),
 ];
 
+const MEMORY_FIELDS: &[(&str, &str, &str)] = &[
+    (
+        "memory.memory_enabled",
+        "Persistent Memory",
+        "Save durable memories that can help future sessions.",
+    ),
+    (
+        "memory.user_profile_enabled",
+        "User Profile",
+        "Maintain a compact profile of user preferences.",
+    ),
+    ("memory.memory_char_limit", "Memory Budget", ""),
+    ("memory.user_char_limit", "Profile Budget", ""),
+    ("memory.provider", "Memory Provider", ""),
+    (
+        "context.engine",
+        "Context Engine",
+        "Strategy for managing long conversations near the context limit.",
+    ),
+    (
+        "compression.enabled",
+        "Auto-Compression",
+        "Summarize older context when conversations get large.",
+    ),
+    ("compression.threshold", "Compression Threshold", ""),
+    ("compression.target_ratio", "Compression Target", ""),
+    (
+        "compression.protect_last_n",
+        "Protected Recent Messages",
+        "",
+    ),
+];
+
 #[component]
 fn WorkspaceConfigFields(
     snapshot: Signal<Option<AgentConfigSnapshot>>,
@@ -3099,6 +3144,31 @@ fn SafetyConfigFields(
 ) -> Element {
     rsx! {
         for (path, title, description) in SAFETY_FIELDS {
+            CuratedConfigField {
+                key: "{path}",
+                snapshot,
+                loaded: loaded.clone(),
+                profile: profile.clone(),
+                saving,
+                error,
+                path,
+                title,
+                description,
+            }
+        }
+    }
+}
+
+#[component]
+fn MemoryConfigFields(
+    snapshot: Signal<Option<AgentConfigSnapshot>>,
+    loaded: AgentConfigSnapshot,
+    profile: Option<String>,
+    saving: Signal<bool>,
+    error: Signal<Option<String>>,
+) -> Element {
+    rsx! {
+        for (path, title, description) in MEMORY_FIELDS {
             CuratedConfigField {
                 key: "{path}",
                 snapshot,
@@ -3268,6 +3338,7 @@ fn curated_config_options(path: &str, current: &str, schema_options: &[Value]) -
     let mut options = match path {
         "approvals.mode" => vec![json!("manual"), json!("smart"), json!("off")],
         "code_execution.mode" => vec![json!("project"), json!("strict")],
+        "context.engine" => vec![json!("compressor"), json!("default"), json!("custom")],
         _ => schema_options.to_vec(),
     };
     if !options.is_empty()
@@ -3735,6 +3806,18 @@ mod tests {
         );
         assert!(curated_config_options("approvals.timeout", "120", &[]).is_empty());
         assert!(curated_config_options("command_allowlist", "git status", &[]).is_empty());
+        assert_eq!(
+            curated_config_options(
+                "memory.provider",
+                "hindsight",
+                &[json!("builtin"), json!("honcho"), json!("hindsight")],
+            ),
+            [json!("builtin"), json!("honcho"), json!("hindsight")]
+        );
+        assert_eq!(
+            curated_config_options("context.engine", "default", &[json!("stale")]),
+            [json!("compressor"), json!("default"), json!("custom")]
+        );
     }
 
     #[test]

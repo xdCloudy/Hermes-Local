@@ -582,3 +582,26 @@ passes 32 unit tests plus doc-tests.
 Exact next action: port the OG Memory & Context section, preserving dynamic
 provider schema options while adding the built-in memory, profile, context, and
 compression controls.
+
+## Memory and context settings checkpoint (2026-08-11)
+
+Memory & Context now follows the official ten-field order: Persistent Memory,
+User Profile, both character budgets, Memory Provider, Context Engine,
+Auto-Compression, threshold, target ratio, and protected recent messages.
+Schema descriptions fill the fields where the curated OG copy intentionally
+has no override.
+
+Memory Provider consumes the Agent's live schema options unchanged, so
+installed providers such as `honcho` and `hindsight` remain visible without a
+stale Rust catalog shadowing backend discovery. Context Engine keeps the
+source's explicit `compressor / default / custom` choices and safely retains an
+unknown active legacy value. Focused coverage proves both behaviors.
+
+Maximized 1296x809 QA covers the complete scrollable surface with a dynamically
+supplied `hindsight` provider. A real WebView Persistent Memory toggle persisted
+`true → false`, remounted the pane, and reloaded as `false`. The workspace still
+passes 32 unit tests plus doc-tests.
+
+Exact next action: port the OG Voice section with provider-dependent field
+visibility so users see only the active TTS/STT backend rather than the full
+multi-provider field wall.
