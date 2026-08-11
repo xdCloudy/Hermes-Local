@@ -47,17 +47,16 @@ pub async fn prepare_local_agent(services: &AppServices) -> Result<(), String> {
         .connection
         .connect(websocket.as_str())
         .await
-        .map_err(|error| format!("Hermes Agent started but the Desktop connection failed: {error}"))?;
+        .map_err(|error| {
+            format!("Hermes Agent started but the Desktop connection failed: {error}")
+        })?;
     Ok(())
 }
 
 fn environment_connection_override() -> bool {
-    [
-        "HERMES_DESKTOP_GATEWAY_WS_URL",
-        "HERMES_DESKTOP_REMOTE_URL",
-    ]
-    .into_iter()
-    .any(|name| env::var(name).is_ok_and(|value| !value.trim().is_empty()))
+    ["HERMES_DESKTOP_GATEWAY_WS_URL", "HERMES_DESKTOP_REMOTE_URL"]
+        .into_iter()
+        .any(|name| env::var(name).is_ok_and(|value| !value.trim().is_empty()))
 }
 
 fn resolve_project_root() -> Result<PathBuf, String> {
@@ -105,9 +104,15 @@ fn walk_for_root(seed: &Path, max_parents: usize) -> Option<PathBuf> {
 
 fn canonical_root(candidate: &Path) -> Option<PathBuf> {
     let valid = candidate.join("VERSION.json").is_file()
-        && candidate.join("scripts").join("Common-Hermes.psm1").is_file();
-    valid
-        .then(|| candidate.canonicalize().unwrap_or_else(|_| candidate.to_owned()))
+        && candidate
+            .join("scripts")
+            .join("Common-Hermes.psm1")
+            .is_file();
+    valid.then(|| {
+        candidate
+            .canonicalize()
+            .unwrap_or_else(|_| candidate.to_owned())
+    })
 }
 
 fn resolve_powershell() -> Result<PathBuf, String> {
@@ -161,7 +166,14 @@ async fn start_local_stack(powershell: &Path, root: &Path) -> Result<(), String>
     let mut command = Command::new(powershell);
     command
         .current_dir(root)
-        .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+        ])
         .arg(&script)
         .arg("-NonInteractive")
         .kill_on_drop(true)
@@ -171,7 +183,9 @@ async fn start_local_stack(powershell: &Path, root: &Path) -> Result<(), String>
 
     let output = tokio::time::timeout(START_TIMEOUT, command.output())
         .await
-        .map_err(|_| "Timed out waiting for the Hermes Local supervisor to become ready.".to_owned())?
+        .map_err(|_| {
+            "Timed out waiting for the Hermes Local supervisor to become ready.".to_owned()
+        })?
         .map_err(|error| format!("Could not start Hermes Local: {error}"))?;
     if output.status.success() {
         return Ok(());
@@ -181,7 +195,10 @@ async fn start_local_stack(powershell: &Path, root: &Path) -> Result<(), String>
     Err(if diagnostic.is_empty() {
         format!("Hermes Local startup failed with {}.", output.status)
     } else {
-        format!("Hermes Local startup failed with {}: {diagnostic}", output.status)
+        format!(
+            "Hermes Local startup failed with {}: {diagnostic}",
+            output.status
+        )
     })
 }
 
@@ -200,7 +217,14 @@ async fn read_local_token(powershell: &Path, root: &Path) -> Result<String, Stri
     let mut command = Command::new(powershell);
     command
         .current_dir(root)
-        .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+        ])
         .arg(&script)
         .kill_on_drop(true)
         .stdin(Stdio::null())
@@ -268,14 +292,16 @@ fn read_local_endpoint(root: &Path) -> Result<(String, u16), String> {
 
     let host = normalize_loopback_host(&host)?;
     if !(1_024..=65_535).contains(&port) {
-        return Err(format!("Invalid Hermes Agent port in workstation configuration: {port}"));
+        return Err(format!(
+            "Invalid Hermes Agent port in workstation configuration: {port}"
+        ));
     }
     Ok((host, u16::try_from(port).expect("validated port fits u16")))
 }
 
 fn read_json(path: &Path) -> Result<Value, String> {
-    let bytes = fs::read(path)
-        .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
+    let bytes =
+        fs::read(path).map_err(|error| format!("Could not read {}: {error}", path.display()))?;
     serde_json::from_slice(&bytes)
         .map_err(|error| format!("Invalid JSON in {}: {error}", path.display()))
 }
@@ -329,7 +355,10 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("clock")
             .as_nanos();
-        env::temp_dir().join(format!("hermes-local-startup-{name}-{}-{nonce}", std::process::id()))
+        env::temp_dir().join(format!(
+            "hermes-local-startup-{name}-{}-{nonce}",
+            std::process::id()
+        ))
     }
 
     #[test]
@@ -361,7 +390,10 @@ mod tests {
         )
         .expect("user JSON");
 
-        assert_eq!(read_local_endpoint(&root).expect("endpoint"), ("127.0.0.1".into(), 9_123));
+        assert_eq!(
+            read_local_endpoint(&root).expect("endpoint"),
+            ("127.0.0.1".into(), 9_123)
+        );
         assert!(normalize_loopback_host("192.168.1.10").is_err());
         fs::remove_dir_all(root).expect("cleanup");
     }
@@ -372,11 +404,12 @@ mod tests {
         assert_eq!(validate_local_token(&token).expect("token"), token);
         assert!(validate_local_token(&format!("{}?admin=1", "a".repeat(40))).is_err());
 
-        let url = local_websocket_url("127.0.0.1", 9_119, &"a b&c".repeat(10))
-            .expect("URL");
+        let url = local_websocket_url("127.0.0.1", 9_119, &"a b&c".repeat(10)).expect("URL");
         assert_eq!(url.path(), "/api/ws");
         assert_eq!(
-            url.query_pairs().find(|(key, _)| key == "token").map(|(_, value)| value.into_owned()),
+            url.query_pairs()
+                .find(|(key, _)| key == "token")
+                .map(|(_, value)| value.into_owned()),
             Some("a b&c".repeat(10))
         );
     }
