@@ -8,8 +8,13 @@ repository.workspace = true
 
 [dependencies]
 dioxus = { workspace = true, features = ["desktop", "launch"] }
+hermes-core = { path = "../../crates/hermes-core" }
 hermes-desktop = { path = "../../crates/hermes-desktop" }
+hermes-protocol = { path = "../../crates/hermes-protocol" }
 hermes-ui = { path = "../../crates/hermes-ui" }
+serde_json.workspace = true
+tokio = { workspace = true, features = ["io-util", "process", "rt", "time"] }
+url.workspace = true
 
 [lints]
 workspace = true
