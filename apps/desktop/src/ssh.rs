@@ -116,13 +116,17 @@ pub async fn test_connection(config: &SshConfig) -> ConnectionTestResult {
 }
 
 async fn probe_runtime(config: &SshConfig) -> Result<RemoteRuntime, SshFailure> {
-    // A no-op first keeps auth/host-key/network failures distinct from platform
-    // detection failures and mirrors the old probe's non-interactive contract.
-    exec(config, "true", CONNECT_TIMEOUT).await?;
+    // `exit 0` is understood by POSIX login shells and Windows PowerShell/cmd.
+    // Doing this first keeps auth/host-key/network failures distinct from the
+    // expected `uname` failure on a Windows SSH host.
+    exec(config, "exit 0", CONNECT_TIMEOUT).await?;
 
     match exec(config, "uname -s; uname -m", EXEC_TIMEOUT).await {
         Ok(output) => {
-            let mut lines = output.lines().map(str::trim).filter(|line| !line.is_empty());
+            let mut lines = output
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty());
             let os = lines.next().unwrap_or_default();
             let arch = lines.next().unwrap_or_default();
             if matches!(os, "Linux" | "Darwin") {
@@ -146,39 +150,20 @@ async fn probe_unix_runtime(
         let command = format!("[ -x {expanded} ] && printf '%s' {expanded} || exit 44");
         exec(config, &command, EXEC_TIMEOUT)
             .await
-            .map_err(|error| {
-                if error.kind == SshErrorKind::Unknown {
-                    SshFailure {
-                        kind: SshErrorKind::HermesNotFound,
-                        message: format!(
-                            "The configured Hermes path is not executable on the remote host: {explicit}"
-                        ),
-                    }
-                } else {
-                    error
-                }
-            })?
+            .map_err(|error| map_missing_hermes(error, explicit))?
             .trim()
             .to_owned()
     } else {
         let command = concat!(
             "p=$(bash -lc 'command -v hermes' 2>/dev/null || true); ",
             "if [ -n \"$p\" ] && [ -x \"$p\" ]; then printf '%s' \"$p\"; exit 0; fi; ",
-            "for p in \"$HOME/.local/bin/hermes\" /usr/local/bin/hermes \"$HOME/.hermes/hermes-agent/venv/bin/hermes\"; do ",
+            "for p in \"$HOME/.local/bin/hermes\" /usr/local/bin/hermes ",
+            "\"$HOME/.hermes/hermes-agent/venv/bin/hermes\"; do ",
             "if [ -x \"$p\" ]; then printf '%s' \"$p\"; exit 0; fi; done; exit 44"
         );
         exec(config, command, EXEC_TIMEOUT)
             .await
-            .map_err(|error| {
-                if error.kind == SshErrorKind::Unknown {
-                    SshFailure {
-                        kind: SshErrorKind::HermesNotFound,
-                        message: "Hermes is not installed on the remote host or could not be found in the remote login environment.".into(),
-                    }
-                } else {
-                    error
-                }
-            })?
+            .map_err(|error| map_missing_hermes(error, "auto-detected Hermes"))?
             .trim()
             .to_owned()
     };
@@ -224,6 +209,17 @@ async fn probe_unix_runtime(
     })
 }
 
+fn map_missing_hermes(error: SshFailure, path: &str) -> SshFailure {
+    if error.kind == SshErrorKind::Unknown {
+        SshFailure {
+            kind: SshErrorKind::HermesNotFound,
+            message: format!("Hermes is not installed or executable on the remote host ({path})."),
+        }
+    } else {
+        error
+    }
+}
+
 async fn probe_windows_runtime(config: &SshConfig) -> Result<RemoteRuntime, SshFailure> {
     let explicit = config.remote_hermes_path.as_deref().unwrap_or_default();
     let script = format!(
@@ -249,21 +245,9 @@ async fn probe_windows_runtime(config: &SshConfig) -> Result<RemoteRuntime, SshF
         explicit = ps_literal(explicit),
     );
     let command = encoded_powershell(&script);
-    let output = exec(config, &command, EXEC_TIMEOUT).await.map_err(|mut error| {
-        if error.kind == SshErrorKind::Unknown {
-            if error.message.contains("UPDATE_REQUIRED") {
-                error.kind = SshErrorKind::UpdateRequired;
-                error.message = "The remote Hermes install does not support Desktop SSH ownership tokens. Update Hermes on the remote host before connecting.".into();
-            } else {
-                error.kind = SshErrorKind::UnsupportedPlatform;
-                error.message = format!(
-                    "The remote operating system or Hermes installation is not supported by Desktop SSH. {}",
-                    sanitize_remote_text(&error.message)
-                );
-            }
-        }
-        error
-    })?;
+    let output = exec(config, &command, EXEC_TIMEOUT)
+        .await
+        .map_err(map_windows_probe_error)?;
     let value: Value = serde_json::from_str(output.trim()).map_err(|_| SshFailure {
         kind: SshErrorKind::UnsupportedPlatform,
         message: "The remote Windows probe returned an invalid response.".into(),
@@ -295,7 +279,36 @@ async fn probe_windows_runtime(config: &SshConfig) -> Result<RemoteRuntime, SshF
     })
 }
 
-async fn exec(config: &SshConfig, remote_command: &str, timeout: Duration) -> Result<String, SshFailure> {
+fn map_windows_probe_error(mut error: SshFailure) -> SshFailure {
+    if error.kind != SshErrorKind::Unknown {
+        return error;
+    }
+    if error.message.contains("UPDATE_REQUIRED") {
+        error.kind = SshErrorKind::UpdateRequired;
+        error.message = "The remote Hermes install does not support Desktop SSH ownership tokens. Update Hermes on the remote host before connecting.".into();
+    } else if error.message.to_ascii_lowercase().contains("hermes is not installed")
+        || error
+            .message
+            .to_ascii_lowercase()
+            .contains("configured hermes path")
+    {
+        error.kind = SshErrorKind::HermesNotFound;
+        error.message = sanitize_remote_text(&error.message);
+    } else {
+        error.kind = SshErrorKind::UnsupportedPlatform;
+        error.message = format!(
+            "The remote operating system or Hermes installation is not supported by Desktop SSH. {}",
+            sanitize_remote_text(&error.message)
+        );
+    }
+    error
+}
+
+async fn exec(
+    config: &SshConfig,
+    remote_command: &str,
+    timeout: Duration,
+) -> Result<String, SshFailure> {
     let ssh = resolve_ssh_executable().map_err(|message| SshFailure {
         kind: SshErrorKind::Unreachable,
         message,
@@ -365,8 +378,8 @@ fn resolve_ssh_executable() -> Result<PathBuf, String> {
         return Err("HERMES_LOCAL_SSH must point to an absolute OpenSSH executable.".into());
     }
     if cfg!(windows) {
-        let system_root = env::var_os("SystemRoot")
-            .map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        let system_root =
+            env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
         let native = system_root.join("System32/OpenSSH/ssh.exe");
         if native.is_file() {
             return Ok(native);
@@ -387,8 +400,6 @@ fn resolve_ssh_executable() -> Result<PathBuf, String> {
         }
         return Err("Windows OpenSSH client was not found.".into());
     }
-    // On POSIX, /usr/bin/ssh is the standard system client. Fall back to a
-    // small fixed set rather than invoking a shell or trusting an arbitrary cwd.
     ["/usr/bin/ssh", "/usr/local/bin/ssh"]
         .into_iter()
         .map(PathBuf::from)
@@ -419,8 +430,13 @@ fn validate_key_path(path: &Path) -> Result<(), String> {
 
 fn validate_remote_path(path: &str) -> Result<(), String> {
     if path.is_empty()
-        || path.chars().any(|character| matches!(character, '\0' | '\n' | '\r'))
-        || !(path == "~" || path.starts_with("~/") || path.starts_with('/') || is_windows_absolute(path))
+        || path
+            .chars()
+            .any(|character| matches!(character, '\0' | '\n' | '\r'))
+        || !(path == "~"
+            || path.starts_with("~/")
+            || path.starts_with('/')
+            || is_windows_absolute(path))
     {
         return Err("Remote Hermes path must be absolute or start with ~/.".into());
     }
@@ -506,9 +522,9 @@ fn error_message(kind: SshErrorKind, config: &SshConfig, stderr: &str) -> String
         SshErrorKind::AuthFailed => format!(
             "SSH authentication to {target} failed. Hermes Local uses BatchMode; load passphrase-protected or interactive credentials into ssh-agent first. {stderr}"
         ),
-        SshErrorKind::Unreachable => format!(
-            "Could not reach {target} over SSH. Check the host, port and network. {stderr}"
-        ),
+        SshErrorKind::Unreachable => {
+            format!("Could not reach {target} over SSH. Check the host, port and network. {stderr}")
+        }
         SshErrorKind::Timeout => format!("SSH operation to {target} timed out."),
         _ => format!("SSH error connecting to {target}: {stderr}"),
     }
@@ -562,15 +578,20 @@ mod tests {
         assert!(SshConfig::new("host\nProxyCommand evil", None, None, None, None).is_err());
         assert!(SshConfig::new("host", Some("-F"), None, None, None).is_err());
         assert!(SshConfig::new("host", None, None, Some("-bad"), None).is_err());
-        assert!(SshConfig::new("host", None, None, None, Some("relative/hermes")).is_err());
+        assert!(
+            SshConfig::new("host", None, None, None, Some("relative/hermes")).is_err()
+        );
     }
 
     #[test]
     fn ssh_argv_keeps_user_values_out_of_options() {
-        let args = ssh_args(&config(), "true");
-        assert_eq!(args.last().map(String::as_str), Some("true"));
+        let args = ssh_args(&config(), "exit 0");
+        assert_eq!(args.last().map(String::as_str), Some("exit 0"));
         assert!(args.windows(2).any(|pair| pair == ["-p", "2222"]));
-        assert!(args.windows(2).any(|pair| pair[0] == "-i" && pair[1] == r"C:\keys\id_ed25519"));
+        assert!(
+            args.windows(2)
+                .any(|pair| pair[0] == "-i" && pair[1] == r"C:\keys\id_ed25519")
+        );
         let separator = args.iter().position(|arg| arg == "--").expect("separator");
         assert_eq!(args[separator + 1], "cloudy@example.test");
     }
