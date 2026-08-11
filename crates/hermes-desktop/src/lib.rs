@@ -1197,6 +1197,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn settings_round_trip_theme_mode_and_skin_atomically() {
+        let directory =
+            std::env::temp_dir().join(format!("hermes-settings-test-{}", Uuid::new_v4().simple()));
+        let path = directory.join("settings.json");
+        let store = JsonSettings::new(path.clone());
+        let expected = AppSettings {
+            theme: hermes_protocol::ThemeMode::Dark,
+            theme_name: Some("midnight".into()),
+            notifications: true,
+            ..AppSettings::default()
+        };
+        SettingsService::save(&store, &expected)
+            .await
+            .expect("save settings");
+        assert!(!path.with_extension("json.tmp").exists());
+        let actual = SettingsService::load(&store).await.expect("load settings");
+        assert_eq!(actual, expected);
+        fs::remove_file(path).expect("remove test settings");
+        fs::remove_dir(directory).expect("remove test directory");
+    }
+
+    #[tokio::test]
     async fn rest_adapter_preserves_base_path_auth_and_json_body() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await

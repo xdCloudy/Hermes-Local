@@ -372,3 +372,28 @@ and the clone dialog has a native 1296x809 dark-mode regression capture.
 Exact next action: add the typed native folder picker and repair/delete-files
 Project Centre flows, then port settings and immediate light/dark/system theme
 application against the official source.
+
+## Settings and theme checkpoint (2026-08-11)
+
+Settings now opens in the OG overlay geometry instead of a generic routed card:
+an inset full-height panel, compact 208px navigation rail, close affordance,
+footer actions and a scrollable content pane. The complete official settings
+navigation taxonomy is represented, while Appearance is the first connected
+feature slice. Its mode control, installed-theme grid, UI-scale row and compact
+settings dividers follow the source hierarchy and density. The Codicon sprite
+was regenerated from the pinned official `@vscode/codicons` package so every
+new control uses source SVG paths rather than missing glyphs or text symbols.
+
+App settings load once into shared Dioxus state. Light, dark and system modes
+apply immediately at the application root, persist through an atomic native
+JSON replace, survive restart, and roll back on a failed save. The selected
+skin identity is persisted in the same typed settings object; full per-skin
+palette projection and the non-Appearance settings services remain outstanding.
+Native 1296x809 captures cover both dark and light Appearance surfaces; the
+light capture caught and fixed inherited dark text before this checkpoint.
+`cargo test --workspace` passes 25 unit tests plus doc-tests, including an
+atomic theme mode/skin persistence round trip.
+
+Exact next action: connect the Model and Chat settings sections and OG config
+contracts, then return to the typed folder picker and remaining destructive
+Project Centre confirmations.

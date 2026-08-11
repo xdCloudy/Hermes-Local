@@ -294,6 +294,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub theme: ThemeMode,
     #[serde(default)]
+    pub theme_name: Option<String>,
+    #[serde(default)]
     pub profile: Option<String>,
     #[serde(default)]
     pub gateway_url: Option<String>,

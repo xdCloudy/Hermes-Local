@@ -123,7 +123,7 @@ updater work itself.
 
 | Old capability | New Rust owner | New Dioxus surface | Coverage required | Status |
 | --- | --- | --- | --- | --- |
-| Settings and per-scope persistence | `SettingsService` | settings overlay | schema/scope/migration tests | Designed |
+| Settings and per-scope persistence | `SettingsService` | settings overlay | schema/scope/migration tests | Ported |
 | Local/remote/cloud connection profiles | `ConnectionService` | settings/profiles | soft/hard/live re-home tests | Designed |
 | OAuth login/logout and callbacks | `AuthService` | settings/recovery | RFC 8252/state/origin/token tests | Designed |
 | Hermes Cloud discovery/sign-in | `AuthService` | settings/profile menu | auth/connectivity separation tests | Designed |

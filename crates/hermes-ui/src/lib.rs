@@ -3,7 +3,9 @@
 use dioxus::prelude::*;
 use futures_util::StreamExt;
 use hermes_core::{AppServices, SessionTranscript};
-use hermes_protocol::{MessageRole, ProjectsSnapshot, SessionCreateRequest, SessionSummary};
+use hermes_protocol::{
+    AppSettings, MessageRole, ProjectsSnapshot, SessionCreateRequest, SessionSummary, ThemeMode,
+};
 
 const APP_CSS: &str = include_str!("../assets/app.css");
 const CODICON_SPRITE: &str = include_str!("../assets/codicon-sprite.svg");
@@ -25,6 +27,13 @@ struct ProjectUiState {
     loading: Signal<bool>,
     error: Signal<Option<String>>,
     refresh: Signal<u64>,
+}
+
+#[derive(Clone, Copy)]
+struct SettingsUiState {
+    settings: Signal<AppSettings>,
+    loading: Signal<bool>,
+    error: Signal<Option<String>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Routable)]
@@ -119,15 +128,47 @@ pub enum Route {
 pub fn App() -> Element {
     let services = use_context::<AppServices>();
     let connection = services.connection.clone();
+    let settings_service = services.settings.clone();
+    let mut app_settings = use_signal(AppSettings::default);
+    let mut settings_loading = use_signal(|| true);
+    let mut settings_error = use_signal(|| None::<String>);
     let boot = use_resource(move || {
         let connection = connection.clone();
         async move { connection.initialize().await }
     });
     use_context_provider(|| boot);
+    let _settings = use_resource(move || {
+        let settings_service = settings_service.clone();
+        async move {
+            settings_loading.set(true);
+            match settings_service.load().await {
+                Ok(settings) => {
+                    app_settings.set(settings);
+                    settings_error.set(None);
+                }
+                Err(error) => settings_error.set(Some(error.to_string())),
+            }
+            settings_loading.set(false);
+        }
+    });
+    use_context_provider(|| SettingsUiState {
+        settings: app_settings,
+        loading: settings_loading,
+        error: settings_error,
+    });
+    let theme_class = match app_settings().theme {
+        ThemeMode::Dark => " theme-dark",
+        ThemeMode::Light => " theme-light",
+        ThemeMode::System => "",
+    };
+    let skin_class = format!(
+        " skin-{}",
+        app_settings().theme_name.as_deref().unwrap_or("nous")
+    );
     rsx! {
         style { dangerous_inner_html: APP_CSS }
         div { class: "icon-sprite", aria_hidden: "true", dangerous_inner_html: CODICON_SPRITE }
-        div { class: "window-root",
+        div { class: "window-root{theme_class}{skin_class}",
             Titlebar {}
             Router::<Route> {}
             footer { class: "connection-state",
@@ -1172,12 +1213,6 @@ simple_surface!(
     "Start a thought from anywhere."
 );
 simple_surface!(
-    Appearance,
-    "Preferences",
-    "Appearance",
-    "Choose theme, density, and motion."
-);
-simple_surface!(
     GeneralSettings,
     "Preferences",
     "General",
@@ -1520,72 +1555,184 @@ fn Projects() -> Element {
 
 #[component]
 fn Settings() -> Element {
-    let services = use_context::<AppServices>();
-    let load_service = services.settings.clone();
-    let save_service = services.settings.clone();
-    let mut revision = use_signal(|| 0_u64);
-    let settings = use_resource(move || {
-        revision();
-        let load_service = load_service.clone();
-        async move { load_service.load().await }
-    });
-    let mut save_error = use_signal(|| None::<String>);
+    rsx! { SettingsOverlay { initial: "model" } }
+}
+
+#[component]
+fn Appearance() -> Element {
+    rsx! { SettingsOverlay { initial: "appearance" } }
+}
+
+#[component]
+fn SettingsOverlay(initial: &'static str) -> Element {
+    let navigator = use_navigator();
+    let mut active = use_signal(|| initial.to_owned());
+    let sections = [
+        ("model", "hubot", "Model"),
+        ("chat", "comment-discussion", "Chat"),
+        ("appearance", "symbol-color", "Appearance"),
+        ("workspace", "desktop-download", "Workspace"),
+        ("safety", "lock", "Safety"),
+        ("memory", "database", "Memory & Context"),
+        ("voice", "unmute", "Voice"),
+        ("advanced", "tools", "Advanced"),
+        ("notifications", "bell", "Notifications"),
+        ("providers", "plug", "Providers"),
+        ("gateway", "globe", "Gateway"),
+        ("keybinds", "symbol-key", "Keybindings"),
+        ("keys", "key", "API Keys"),
+        ("plugins", "extensions", "Plugins"),
+        ("sessions", "archive", "Archived Chats"),
+        ("startup", "rocket", "Startup"),
+        ("about", "info", "About"),
+    ];
+    let active_section = active();
+    let active_icon = sections
+        .iter()
+        .find(|item| item.0 == active_section)
+        .map_or("settings-gear", |item| item.1);
+    let active_label = sections
+        .iter()
+        .find(|item| item.0 == active_section)
+        .map_or("Settings", |item| item.2);
     rsx! {
-        Surface { eyebrow: "Preferences", title: "Settings", subtitle: "Make Hermes feel at home on this device.",
-            match &*settings.read_unchecked() {
-                Some(Ok(current)) => {
-                    let current = current.clone();
-                    rsx! {
-                        div { class: "settings-stack",
-                            section { class: "settings-card",
-                                div {
-                                    h2 { "Appearance" }
-                                    p { "Follow the system, or pin a light or dark theme." }
-                                }
-                                div { class: "segmented",
-                                    for (mode, label) in [
-                                        (hermes_protocol::ThemeMode::System, "System"),
-                                        (hermes_protocol::ThemeMode::Dark, "Dark"),
-                                        (hermes_protocol::ThemeMode::Light, "Light"),
-                                    ] {
-                                        button {
-                                            class: if current.theme == mode { "selected" } else { "" },
-                                            onclick: {
-                                                let service = save_service.clone();
-                                                let mut next = current.clone();
-                                                let mode = mode.clone();
-                                                move |_| {
-                                                    next.theme = mode.clone();
-                                                    let next = next.clone();
-                                                    let service = service.clone();
-                                                    spawn(async move {
-                                                        match service.save(&next).await {
-                                                            Ok(()) => revision += 1,
-                                                            Err(error) => save_error.set(Some(error.to_string())),
-                                                        }
-                                                    });
+        div { class: "settings-overlay", role: "dialog", aria_modal: "true", aria_label: "Settings",
+            div { class: "settings-window",
+                button { class: "settings-close", aria_label: "Close settings", title: "Close settings", onclick: move |_| navigator.go_back(), Codicon { name: "close" } }
+                aside { class: "settings-rail", aria_label: "Settings sections",
+                    for (id, icon, label) in sections {
+                        button { class: if active() == id { "active" } else { "" }, onclick: move |_| active.set(id.to_owned()),
+                            Codicon { name: icon }
+                            span { "{label}" }
+                        }
+                    }
+                    div { class: "settings-rail-footer",
+                        button { aria_label: "Export config", title: "Export config", Codicon { name: "export" } }
+                        button { aria_label: "Import config", title: "Import config", Codicon { name: "cloud-download" } }
+                        button { aria_label: "Reset to defaults", title: "Reset to defaults", Codicon { name: "refresh" } }
+                    }
+                }
+                main { class: "settings-main",
+                    if active() == "appearance" {
+                        AppearanceSettingsPanel {}
+                    } else {
+                        section { class: "settings-placeholder",
+                            div { class: "settings-section-title", Codicon { name: active_icon } h1 { "{active_label}" } }
+                            p { "This section is being connected to its typed Rust service without changing the OG Hermes layout." }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn AppearanceSettingsPanel() -> Element {
+    let services = use_context::<AppServices>();
+    let state = use_context::<SettingsUiState>();
+    let save_service = services.settings.clone();
+    let current = (state.settings)();
+    let themes = [
+        ("nous", "Nous", "Glass neutrals with Nous blue accents"),
+        ("midnight", "Midnight", "Deep blue-violet with cool accents"),
+        ("ember", "Ember", "Warm crimson and bronze — forge vibes"),
+        ("mono", "Mono", "Clean grayscale — minimal and focused"),
+        (
+            "cyberpunk",
+            "Cyberpunk",
+            "Neon green on black — matrix terminal",
+        ),
+        (
+            "slate",
+            "Slate",
+            "Cool slate blue — focused developer theme",
+        ),
+    ];
+    rsx! {
+        section { class: "appearance-settings",
+            div { class: "settings-section-title", Codicon { name: "symbol-color" } h1 { "Appearance" } }
+            p { class: "settings-intro", "Choose how Hermes looks and feels. Theme changes apply immediately and stay with this workstation." }
+            if (state.loading)() {
+                p { class: "settings-intro", "Loading appearance…" }
+            } else {
+                section { class: "settings-list-row wide",
+                    div { class: "settings-row-copy",
+                        div { class: "settings-row-heading",
+                            strong { "Theme" }
+                            div { class: "settings-mode-control",
+                                for (mode, label, icon) in [
+                                    (ThemeMode::Light, "Light", "color-mode"),
+                                    (ThemeMode::Dark, "Dark", "color-mode"),
+                                    (ThemeMode::System, "System", "desktop-download"),
+                                ] {
+                                    button { class: if current.theme == mode { "selected" } else { "" }, onclick: {
+                                        let service = save_service.clone();
+                                        let before = current.clone();
+                                        let mut next = current.clone();
+                                        let mode = mode.clone();
+                                        move |_| {
+                                            next.theme = mode.clone();
+                                            let committed = next.clone();
+                                            let mut settings_signal = state.settings;
+                                            let mut error_signal = state.error;
+                                            settings_signal.set(committed.clone());
+                                            let service = service.clone();
+                                            let before = before.clone();
+                                            spawn(async move {
+                                                if let Err(error) = service.save(&committed).await {
+                                                    settings_signal.set(before);
+                                                    error_signal.set(Some(error.to_string()));
                                                 }
-                                            },
-                                            "{label}"
+                                            });
                                         }
-                                    }
+                                    }, Codicon { name: icon } "{label}" }
                                 }
                             }
-                            section { class: "settings-card",
-                                div {
-                                    h2 { "Local privacy" }
-                                    p { "Native authority remains behind typed Rust services; the WebView receives no shell or filesystem bridge." }
+                        }
+                        p { "Pick a built-in Hermes theme, then choose Light, Dark, or your system setting." }
+                    }
+                    div { class: "theme-search", Codicon { name: "search" } input { placeholder: "Search your themes or the VS Code Marketplace…", disabled: true } }
+                    div { class: "theme-grid",
+                        for (name, label, description) in themes {
+                            button { class: if current.theme_name.as_deref().unwrap_or("nous") == name { "theme-card active" } else { "theme-card" }, onclick: {
+                                let service = save_service.clone();
+                                let before = current.clone();
+                                let mut next = current.clone();
+                                move |_| {
+                                    next.theme_name = Some(name.to_owned());
+                                    let committed = next.clone();
+                                    let mut settings_signal = state.settings;
+                                    let mut error_signal = state.error;
+                                    settings_signal.set(committed.clone());
+                                    let service = service.clone();
+                                    let before = before.clone();
+                                    spawn(async move {
+                                        if let Err(error) = service.save(&committed).await {
+                                            settings_signal.set(before);
+                                            error_signal.set(Some(error.to_string()));
+                                        }
+                                    });
                                 }
-                                span { class: "privacy-pill", "● Enforced" }
-                            }
-                            if let Some(error) = save_error() {
-                                p { class: "inline-error", role: "alert", "{error}" }
+                            },
+                                div { class: "theme-preview {name}", div { class: "theme-preview-rail" } div { class: "theme-preview-content", i {} i {} span {} } }
+                                strong { "{label}" }
+                                small { "{description}" }
                             }
                         }
                     }
-                },
-                Some(Err(error)) => rsx! { ErrorState { error: error.to_string() } },
-                None => rsx! { LoadingState { label: "Loading preferences" } },
+                }
+                section { class: "settings-list-row",
+                    div { class: "settings-row-copy", strong { "UI scale" } p { "Scale the desktop interface. Current size: 100%." } }
+                    div { class: "settings-mode-control compact", button { "90%" } button { class: "selected", "100%" } button { "110%" } button { "125%" } }
+                }
+                section { class: "settings-list-row",
+                    div { class: "settings-row-copy", strong { "Local privacy" } p { "Native authority stays behind typed Rust services; the WebView receives no generic shell bridge." } }
+                    span { class: "privacy-pill", "● Enforced" }
+                }
+                if let Some(error) = (state.error)() {
+                    p { class: "inline-error", role: "alert", "{error}" }
+                }
             }
         }
     }
