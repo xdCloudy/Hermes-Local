@@ -488,10 +488,13 @@ fn local_websocket_url(host: &str, port: u16, token: &str) -> Result<Url, String
 
 fn bounded_diagnostic(bytes: &[u8]) -> String {
     let mut text = String::from_utf8_lossy(bytes).into_owned();
-    for private_path in [env::var("USERPROFILE").ok(), env::var("HERMES_LOCAL_ROOT").ok()]
-        .into_iter()
-        .flatten()
-        .filter(|value| !value.is_empty())
+    for private_path in [
+        env::var("USERPROFILE").ok(),
+        env::var("HERMES_LOCAL_ROOT").ok(),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|value| !value.is_empty())
     {
         text = text.replace(&private_path, "[PRIVATE-PATH]");
         text = text.replace(&private_path.replace('\\', "/"), "[PRIVATE-PATH]");
@@ -606,13 +609,17 @@ mod tests {
                 .map(|(_, value)| value.into_owned()),
             Some(token)
         );
-        assert!(local_websocket_url("127.0.0.1", 9_119, &format!("{}?admin=1", "a".repeat(40))).is_err());
+        assert!(
+            local_websocket_url("127.0.0.1", 9_119, &format!("{}?admin=1", "a".repeat(40)))
+                .is_err()
+        );
     }
 
     #[test]
     fn diagnostics_redact_tokens_and_keep_errors_bounded() {
         let token = "A".repeat(64);
-        let diagnostic = bounded_diagnostic(format!("authorization failed for token {token}").as_bytes());
+        let diagnostic =
+            bounded_diagnostic(format!("authorization failed for token {token}").as_bytes());
         assert!(!diagnostic.contains(&token));
         assert!(diagnostic.contains("[REDACTED-LONG-VALUE]"));
         assert!(diagnostic.len() <= MAX_DIAGNOSTIC_BYTES);
