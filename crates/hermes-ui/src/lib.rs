@@ -7,8 +7,8 @@ use futures_util::StreamExt;
 use hermes_core::{AgentConfigService, AppServices, ModelService, SessionTranscript};
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, MessageRole, MoaConfig, ModelAssignmentRequest,
-    ModelProvider, ModelSettingsSnapshot, NativeNotificationKind, OAuthProvider, ProjectFolder,
-    ProjectsSnapshot, SessionCreateRequest, SessionSummary, ThemeMode,
+    ModelProvider, ModelSettingsSnapshot, NativeNotificationKind, OAuthProvider, OAuthStart,
+    ProjectFolder, ProjectsSnapshot, SessionCreateRequest, SessionSummary, ThemeMode,
 };
 use serde_json::{Map, Value, json};
 
@@ -3966,6 +3966,117 @@ fn provider_flow_subtitle(flow: &str) -> &'static str {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+enum ProviderAuthFlow {
+    Starting(OAuthProvider),
+    External(OAuthProvider),
+    Pkce {
+        code: String,
+        provider: OAuthProvider,
+        start: OAuthStart,
+        submitting: bool,
+    },
+    Device {
+        provider: OAuthProvider,
+        start: OAuthStart,
+    },
+    Success(OAuthProvider),
+    Error {
+        message: String,
+        provider: OAuthProvider,
+        session_id: Option<String>,
+    },
+}
+
+impl ProviderAuthFlow {
+    fn provider(&self) -> &OAuthProvider {
+        match self {
+            Self::Starting(provider)
+            | Self::External(provider)
+            | Self::Success(provider)
+            | Self::Error { provider, .. }
+            | Self::Pkce { provider, .. }
+            | Self::Device { provider, .. } => provider,
+        }
+    }
+
+    fn session_id(&self) -> Option<&str> {
+        match self {
+            Self::Pkce { start, .. } | Self::Device { start, .. } => Some(start.session_id()),
+            Self::Error {
+                session_id: Some(session_id),
+                ..
+            } => Some(session_id),
+            _ => None,
+        }
+    }
+}
+
+async fn poll_provider_oauth(
+    service: Arc<dyn hermes_core::ProviderService>,
+    profile: Option<String>,
+    provider: OAuthProvider,
+    start: OAuthStart,
+    mut flow: Signal<Option<ProviderAuthFlow>>,
+    mut refresh: Signal<u64>,
+) {
+    let OAuthStart::DeviceCode {
+        expires_in,
+        poll_interval,
+        session_id,
+        ..
+    } = &start
+    else {
+        return;
+    };
+    let session_id = session_id.clone();
+    let poll_seconds = (*poll_interval).clamp(1, 30);
+    let attempts = (*expires_in / poll_seconds).clamp(1, 600);
+    for _ in 0..attempts {
+        tokio::time::sleep(std::time::Duration::from_secs(poll_seconds)).await;
+        let still_active = flow().is_some_and(|current| {
+            matches!(current, ProviderAuthFlow::Device { start, .. } if start.session_id() == session_id)
+        });
+        if !still_active {
+            return;
+        }
+        match service
+            .poll_oauth(profile.as_deref(), &provider.id, &session_id)
+            .await
+        {
+            Ok(result) if result.status == "approved" => {
+                flow.set(Some(ProviderAuthFlow::Success(provider)));
+                refresh += 1;
+                return;
+            }
+            Ok(result) if result.status == "pending" => {}
+            Ok(result) => {
+                flow.set(Some(ProviderAuthFlow::Error {
+                    message: result
+                        .error_message
+                        .unwrap_or_else(|| format!("Sign-in {}.", result.status)),
+                    provider,
+                    session_id: Some(session_id),
+                }));
+                return;
+            }
+            Err(problem) => {
+                flow.set(Some(ProviderAuthFlow::Error {
+                    message: format!("Polling failed: {problem}"),
+                    provider,
+                    session_id: Some(session_id),
+                }));
+                return;
+            }
+        }
+    }
+    flow.set(Some(ProviderAuthFlow::Error {
+        message: "Sign-in expired. Try again.".into(),
+        provider,
+        session_id: Some(session_id),
+    }));
+}
+
 #[component]
 fn ProviderAccountsPanel(on_want_api_key: Callback<()>) -> Element {
     let services = use_context::<AppServices>();
@@ -3979,6 +4090,7 @@ fn ProviderAccountsPanel(on_want_api_key: Callback<()>) -> Element {
     let mut show_all = use_signal(|| false);
     let mut disconnect_target = use_signal(|| None::<OAuthProvider>);
     let mut disconnecting = use_signal(|| None::<String>);
+    let mut auth_flow = use_signal(|| None::<ProviderAuthFlow>);
     let load_profile = profile.clone();
     let _load = use_resource(move || {
         let service = load_service.clone();
@@ -4022,6 +4134,59 @@ fn ProviderAccountsPanel(on_want_api_key: Callback<()>) -> Element {
         .filter(|provider| !provider.status.logged_in)
         .cloned()
         .collect::<Vec<_>>();
+    let auth_service = services.providers.clone();
+    let auth_platform = services.platform.clone();
+    let auth_profile = profile.clone();
+    let start_auth = Callback::new(move |provider: OAuthProvider| {
+        if provider.flow == "external" {
+            auth_flow.set(Some(ProviderAuthFlow::External(provider)));
+            return;
+        }
+        auth_flow.set(Some(ProviderAuthFlow::Starting(provider.clone())));
+        let service = auth_service.clone();
+        let platform = auth_platform.clone();
+        let profile = auth_profile.clone();
+        spawn(async move {
+            let start = match service.start_oauth(profile.as_deref(), &provider.id).await {
+                Ok(start) => start,
+                Err(problem) => {
+                    auth_flow.set(Some(ProviderAuthFlow::Error {
+                        message: format!("Could not start sign-in: {problem}"),
+                        provider,
+                        session_id: None,
+                    }));
+                    return;
+                }
+            };
+            if let Err(problem) = platform.open_external(start.browser_url()).await {
+                let _ = service
+                    .cancel_oauth(profile.as_deref(), start.session_id())
+                    .await;
+                auth_flow.set(Some(ProviderAuthFlow::Error {
+                    message: format!("Could not open the sign-in page: {problem}"),
+                    provider,
+                    session_id: None,
+                }));
+                return;
+            }
+            match &start {
+                OAuthStart::Pkce { .. } => auth_flow.set(Some(ProviderAuthFlow::Pkce {
+                    code: String::new(),
+                    provider,
+                    start,
+                    submitting: false,
+                })),
+                OAuthStart::DeviceCode { .. } => {
+                    auth_flow.set(Some(ProviderAuthFlow::Device {
+                        provider: provider.clone(),
+                        start: start.clone(),
+                    }));
+                    poll_provider_oauth(service, profile, provider, start, auth_flow, refresh)
+                        .await;
+                }
+            }
+        });
+    });
 
     rsx! {
         section { class: "provider-settings",
@@ -4046,7 +4211,7 @@ fn ProviderAccountsPanel(on_want_api_key: Callback<()>) -> Element {
             } else {
                 div { class: "provider-list",
                     if let Some(provider) = featured {
-                        ProviderAccountRow { provider, featured: true, disconnecting: false, on_disconnect: move |_| {} }
+                        ProviderAccountRow { provider, featured: true, disconnecting: false, on_disconnect: move |_| {}, on_select: start_auth }
                     }
                     ProviderKeyShortcut { title: "Fireworks AI", description: "Fast open models through a Fireworks API key", on_select: move |()| on_want_api_key.call(()) }
                     if !connected.is_empty() {
@@ -4057,6 +4222,7 @@ fn ProviderAccountsPanel(on_want_api_key: Callback<()>) -> Element {
                                 provider,
                                 featured: false,
                                 on_disconnect: move |provider| disconnect_target.set(Some(provider)),
+                                on_select: start_auth,
                             }
                         }
                     }
@@ -4065,7 +4231,7 @@ fn ProviderAccountsPanel(on_want_api_key: Callback<()>) -> Element {
                             p { class: "provider-group-label", "Other providers" }
                         }
                         for provider in others.clone() {
-                            ProviderAccountRow { provider, featured: false, disconnecting: false, on_disconnect: move |_| {} }
+                            ProviderAccountRow { provider, featured: false, disconnecting: false, on_disconnect: move |_| {}, on_select: start_auth }
                         }
                         ProviderKeyShortcut { title: "OpenRouter", description: "One API key for models from many providers", on_select: move |()| on_want_api_key.call(()) }
                     }
@@ -4109,6 +4275,9 @@ fn ProviderAccountsPanel(on_want_api_key: Callback<()>) -> Element {
                     }
                 }
             }
+            if auth_flow().is_some() {
+                ProviderOAuthOverlay { flow: auth_flow, profile: profile.clone(), refresh }
+            }
         }
     }
 }
@@ -4133,6 +4302,7 @@ fn ProviderAccountRow(
     featured: bool,
     disconnecting: bool,
     on_disconnect: Callback<OAuthProvider>,
+    on_select: Callback<OAuthProvider>,
 ) -> Element {
     let title = provider_title(&provider);
     let can_disconnect = provider
@@ -4146,7 +4316,10 @@ fn ProviderAccountRow(
     };
     rsx! {
         div { class: "provider-row-shell",
-            button { class: row_class, disabled: provider.status.logged_in,
+            button { class: row_class, disabled: provider.status.logged_in, onclick: {
+                    let provider = provider.clone();
+                    move |_| on_select.call(provider.clone())
+                },
                 div {
                     div { class: "provider-title-line",
                         strong { "{title}" }
@@ -4169,6 +4342,183 @@ fn ProviderAccountRow(
                         move |_| on_disconnect.call(provider.clone())
                     },
                     Codicon { name: if disconnecting { "loading" } else { "trash" } }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ProviderOAuthOverlay(
+    mut flow: Signal<Option<ProviderAuthFlow>>,
+    profile: Option<String>,
+    mut refresh: Signal<u64>,
+) -> Element {
+    let services = use_context::<AppServices>();
+    let Some(current) = flow() else {
+        return rsx! {};
+    };
+    let title = provider_title(current.provider());
+    let session_id = current.session_id().map(str::to_owned);
+    let close_service = services.providers.clone();
+    let close_profile = profile.clone();
+    let close = Callback::new(move |()| {
+        flow.set(None);
+        if let Some(session_id) = session_id.clone() {
+            let service = close_service.clone();
+            let profile = close_profile.clone();
+            spawn(async move {
+                let _ = service.cancel_oauth(profile.as_deref(), &session_id).await;
+            });
+        }
+    });
+
+    rsx! {
+        div { class: "dialog-backdrop provider-auth-backdrop", role: "presentation",
+            section { class: "hermes-dialog provider-auth-dialog", role: "dialog", aria_modal: "true", aria_label: "Sign in with {title}",
+                match current {
+                    ProviderAuthFlow::Starting(_) => rsx! {
+                        div { class: "provider-auth-state starting",
+                            Codicon { name: "loading" }
+                            h2 { "Starting sign-in for {title}…" }
+                            p { "Preparing a secure authorization session with the connected Agent." }
+                        }
+                    },
+                    ProviderAuthFlow::External(provider) => {
+                        let check_service = services.providers.clone();
+                        let check_profile = profile.clone();
+                        rsx! {
+                            header { h2 { "Sign in with {title}" } p { "{title} signs in through its own CLI. Run this command in a terminal, then come back and check the connection." } }
+                            code { class: "provider-auth-command", "{provider.cli_command}" }
+                            footer {
+                                button { class: "button", onclick: move |_| close.call(()), "Cancel" }
+                                button { class: "button primary", onclick: move |_| {
+                                    let service = check_service.clone();
+                                    let profile = check_profile.clone();
+                                    let provider = provider.clone();
+                                    spawn(async move {
+                                        match service.list_oauth(profile.as_deref()).await {
+                                            Ok(rows) if rows.iter().any(|row| row.id == provider.id && row.status.logged_in) => {
+                                                flow.set(Some(ProviderAuthFlow::Success(provider)));
+                                                refresh += 1;
+                                            }
+                                            Ok(_) => flow.set(Some(ProviderAuthFlow::Error {
+                                                message: "Hermes cannot see that account yet. Complete the CLI sign-in, then try again.".into(),
+                                                provider,
+                                                session_id: None,
+                                            })),
+                                            Err(problem) => flow.set(Some(ProviderAuthFlow::Error {
+                                                message: format!("Could not check sign-in: {problem}"),
+                                                provider,
+                                                session_id: None,
+                                            })),
+                                        }
+                                    });
+                                }, "I've signed in" }
+                            }
+                        }
+                    },
+                    ProviderAuthFlow::Pkce { code, provider, start, submitting } => {
+                        let OAuthStart::Pkce { auth_url, session_id, .. } = &start else { unreachable!() };
+                        let reopen_platform = services.platform.clone();
+                        let reopen_url = auth_url.clone();
+                        let submit_service = services.providers.clone();
+                        let submit_profile = profile.clone();
+                        let submit_provider = provider.clone();
+                        let submit_start = start.clone();
+                        let submit_session = session_id.clone();
+                        let submit_code = code.clone();
+                        rsx! {
+                            header { h2 { "We opened {title} in your browser." } p { "Authorize Hermes there. Copy the authorization code and paste it below." } }
+                            label { class: "dialog-field provider-auth-code", span { "Authorization code" }
+                                input {
+                                    autofocus: true,
+                                    placeholder: "Paste authorization code",
+                                    value: "{code}",
+                                    disabled: submitting,
+                                    oninput: move |event| flow.set(Some(ProviderAuthFlow::Pkce {
+                                        code: event.value(),
+                                        provider: provider.clone(),
+                                        start: start.clone(),
+                                        submitting,
+                                    }))
+                                }
+                            }
+                            button { class: "provider-reopen", onclick: move |_| {
+                                let platform = reopen_platform.clone();
+                                let url = reopen_url.clone();
+                                spawn(async move { let _ = platform.open_external(&url).await; });
+                            }, Codicon { name: "link-external" } "Re-open authorization page" }
+                            footer {
+                                button { class: "button", disabled: submitting, onclick: move |_| close.call(()), "Cancel" }
+                                button { class: "button primary", disabled: submitting || submit_code.trim().is_empty(), onclick: move |_| {
+                                    flow.set(Some(ProviderAuthFlow::Pkce {
+                                        code: submit_code.clone(),
+                                        provider: submit_provider.clone(),
+                                        start: submit_start.clone(),
+                                        submitting: true,
+                                    }));
+                                    let service = submit_service.clone();
+                                    let profile = submit_profile.clone();
+                                    let provider = submit_provider.clone();
+                                    let session = submit_session.clone();
+                                    let code = submit_code.clone();
+                                    spawn(async move {
+                                        match service.submit_oauth(profile.as_deref(), &provider.id, &session, &code).await {
+                                            Ok(result) if result.ok && result.status == "approved" => {
+                                                flow.set(Some(ProviderAuthFlow::Success(provider)));
+                                                refresh += 1;
+                                            }
+                                            Ok(result) => flow.set(Some(ProviderAuthFlow::Error {
+                                                message: result.message.unwrap_or_else(|| "Token exchange failed.".into()),
+                                                provider,
+                                                session_id: Some(session),
+                                            })),
+                                            Err(problem) => flow.set(Some(ProviderAuthFlow::Error {
+                                                message: problem.to_string(),
+                                                provider,
+                                                session_id: Some(session),
+                                            })),
+                                        }
+                                    });
+                                }, if submitting { "Verifying…" } else { "Connect" } }
+                            }
+                        }
+                    },
+                    ProviderAuthFlow::Device { provider: _, start } => {
+                        let OAuthStart::DeviceCode { user_code, verification_url, .. } = start else { unreachable!() };
+                        let reopen_platform = services.platform.clone();
+                        rsx! {
+                            header { h2 { "We opened {title} in your browser." } p { "Enter this code there. Hermes will connect automatically after you authorize." } }
+                            div { class: "provider-device-code", "{user_code}" }
+                            button { class: "provider-reopen", onclick: move |_| {
+                                let platform = reopen_platform.clone();
+                                let url = verification_url.clone();
+                                spawn(async move { let _ = platform.open_external(&url).await; });
+                            }, Codicon { name: "link-external" } "Re-open verification page" }
+                            div { class: "provider-auth-waiting", Codicon { name: "loading" } "Waiting for you to authorize…" }
+                            footer { button { class: "button", onclick: move |_| close.call(()), "Cancel" } }
+                        }
+                    },
+                    ProviderAuthFlow::Success(_) => rsx! {
+                        div { class: "provider-auth-state success",
+                            Codicon { name: "check" }
+                            h2 { "{title} connected" }
+                            p { "The account is available to the active Hermes profile." }
+                            button { class: "button primary", onclick: move |_| flow.set(None), "Done" }
+                        }
+                    },
+                    ProviderAuthFlow::Error { message, .. } => rsx! {
+                        div { class: "provider-auth-state error",
+                            Codicon { name: "warning" }
+                            h2 { "Sign-in failed" }
+                            p { "{message}" }
+                            div { class: "provider-auth-error-actions",
+                                button { class: "button", onclick: move |_| close.call(()), "Close" }
+                                button { class: "button primary", onclick: move |_| close.call(()), "Pick a different provider" }
+                            }
+                        }
+                    },
                 }
             }
         }
@@ -4708,13 +5058,13 @@ fn ErrorState(error: String) -> Element {
 
 #[cfg(test)]
 mod tests {
-    use hermes_protocol::{MoaConfig, MoaModelSlot, MoaPreset, OAuthProvider};
+    use hermes_protocol::{MoaConfig, MoaModelSlot, MoaPreset, OAuthProvider, OAuthStart};
     use serde_json::json;
 
     use super::{
-        completion_sound_data_uri, completion_sound_variant_id, config_display_value, config_value,
-        curated_config_options, moa_complete, provider_order, provider_title, set_config_value,
-        voice_config_field_visible, voice_free_input_field,
+        ProviderAuthFlow, completion_sound_data_uri, completion_sound_variant_id,
+        config_display_value, config_value, curated_config_options, moa_complete, provider_order,
+        provider_title, set_config_value, voice_config_field_visible, voice_free_input_field,
     };
 
     #[test]
@@ -4873,6 +5223,33 @@ mod tests {
             provider_title(&provider("future-provider", "Future")),
             "Future"
         );
+    }
+
+    #[test]
+    fn provider_auth_flow_retains_the_session_needed_for_cancellation() {
+        let provider = OAuthProvider {
+            id: "nous".into(),
+            name: "Nous".into(),
+            ..OAuthProvider::default()
+        };
+        let start = OAuthStart::DeviceCode {
+            expires_in: 600,
+            poll_interval: 5,
+            session_id: "session-1".into(),
+            user_code: "ABCD-EFGH".into(),
+            verification_url: "https://auth.example/device".into(),
+        };
+        let active = ProviderAuthFlow::Device {
+            provider: provider.clone(),
+            start,
+        };
+        assert_eq!(active.session_id(), Some("session-1"));
+        let failed = ProviderAuthFlow::Error {
+            message: "network".into(),
+            provider,
+            session_id: Some("session-1".into()),
+        };
+        assert_eq!(failed.session_id(), Some("session-1"));
     }
 
     #[test]

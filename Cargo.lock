@@ -2083,6 +2083,7 @@ dependencies = [
  "hermes-core",
  "hermes-protocol",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

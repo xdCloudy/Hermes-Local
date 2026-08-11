@@ -750,3 +750,24 @@ and response variants. The workspace passes 41 unit tests plus doc-tests.
 Exact next action: connect the Accounts rows to the OG sign-in overlay through
 this boundary, including browser opening, device polling, PKCE code submission,
 external CLI instructions, cancellation, and authoritative provider refresh.
+
+## Provider OAuth UI checkpoint (2026-08-11)
+
+Unconnected account rows now open the OG flow-specific sign-in overlay. PKCE
+starts through the Agent, opens the authorization page through
+`PlatformService`, accepts and submits the returned code, and refreshes account
+status on success. Device-code flows show the user code, open and re-open the
+verification page, poll at the backend-provided bounded interval, and settle on
+approved, rejected, expired, or transport-error states. External providers show
+their visible CLI command and re-check Agent-owned status on demand.
+
+Closing an active or failed session cancels it through `ProviderService`; the UI
+does not strand an Agent OAuth session. A focused state test proves the session
+identity survives both active and error states for cleanup. The workspace passes
+42 unit tests plus doc-tests, with no new Clippy warnings. Rendered visual QA
+remains blocked by the already-recorded missing native top-level window rather
+than this overlay.
+
+Exact next action: port Providers → API Keys with the backend provider grouping
+metadata, OG prefix fallback, masked inline editing, removal confirmation, and
+the Local / custom endpoint entry point.
