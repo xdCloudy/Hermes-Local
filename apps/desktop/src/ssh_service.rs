@@ -11,8 +11,25 @@ use hermes_protocol::{
 
 use crate::{
     ssh::{self, SshConfig},
-    ssh_lifecycle::{self, SshLease, SshLifecycleConfig},
+    ssh_lifecycle::{self, SshLifecycleConfig},
 };
+
+#[derive(Debug)]
+enum NativeSshLease {
+    Unix(ssh_lifecycle::SshLease),
+    #[cfg(windows)]
+    Windows(crate::ssh_windows::WindowsSshLease),
+}
+
+impl NativeSshLease {
+    fn websocket_url(&self) -> ServiceResult<String> {
+        match self {
+            Self::Unix(lease) => lease.websocket_url(),
+            #[cfg(windows)]
+            Self::Windows(lease) => lease.websocket_url(),
+        }
+    }
+}
 
 /// Install the native SSH connection boundary without exposing process or token
 /// authority to shared Dioxus UI code. SSH probes and owned remote lifecycle
@@ -29,7 +46,7 @@ pub fn install_ssh_probe(services: &mut AppServices, data_dir: PathBuf) {
 struct SshProbeConnection {
     inner: Arc<dyn ConnectionService>,
     data_dir: PathBuf,
-    active_lease: Mutex<Option<SshLease>>,
+    active_lease: Mutex<Option<NativeSshLease>>,
 }
 
 impl SshProbeConnection {
@@ -74,7 +91,7 @@ impl SshProbeConnection {
         Ok(())
     }
 
-    fn store_lease(&self, lease: SshLease) -> ServiceResult<()> {
+    fn store_lease(&self, lease: NativeSshLease) -> ServiceResult<()> {
         self.active_lease
             .lock()
             .map_err(|_| ServiceError::Platform("SSH lease lock was poisoned".into()))?
@@ -82,20 +99,73 @@ impl SshProbeConnection {
         Ok(())
     }
 
+    async fn open_native_lease(
+        &self,
+        ssh: SshConfig,
+        profile_scope: String,
+        remote_profile: String,
+    ) -> ServiceResult<NativeSshLease> {
+        let probe = ssh::test_connection(&ssh).await;
+        if probe.ok != Some(true) || probe.reachable != Some(true) {
+            return Err(ServiceError::Transport(
+                probe.error.unwrap_or_else(|| "SSH remote probe failed".into()),
+            ));
+        }
+        let platform = probe.remote_platform.as_deref().ok_or_else(|| {
+            ServiceError::Transport("SSH probe did not report a remote platform".into())
+        })?;
+
+        if platform.starts_with("Windows/") || platform == "Windows" {
+            #[cfg(windows)]
+            {
+                return crate::ssh_windows::connect(
+                    &ssh,
+                    &profile_scope,
+                    &remote_profile,
+                    &self.data_dir,
+                )
+                .await
+                .map(NativeSshLease::Windows);
+            }
+            #[cfg(not(windows))]
+            {
+                return Err(ServiceError::Unavailable(
+                    "Windows-host SSH lifecycle requires the Windows Desktop build".into(),
+                ));
+            }
+        }
+
+        if platform.starts_with("Linux/")
+            || platform == "Linux"
+            || platform.starts_with("Darwin/")
+            || platform == "Darwin"
+        {
+            return ssh_lifecycle::connect(&SshLifecycleConfig {
+                ssh,
+                profile_scope,
+                remote_profile,
+                data_dir: self.data_dir.clone(),
+            })
+            .await
+            .map(NativeSshLease::Unix);
+        }
+
+        Err(ServiceError::Unavailable(format!(
+            "unsupported SSH remote platform: {platform}"
+        )))
+    }
+
     async fn apply_ssh(&self, input: &ConnectionConfigInput) -> ServiceResult<ConnectionConfig> {
         let ssh = self.ssh_config(input).await?;
         let remote_profile = self.remote_profile(input).await?;
+        let profile_scope = input.profile.clone().unwrap_or_default();
         let saved = self.inner.save_config(input).await?;
         self.inner.disconnect().await?;
         self.clear_lease()?;
 
-        let lease = ssh_lifecycle::connect(&SshLifecycleConfig {
-            ssh,
-            profile_scope: input.profile.clone().unwrap_or_default(),
-            remote_profile,
-            data_dir: self.data_dir.clone(),
-        })
-        .await?;
+        let lease = self
+            .open_native_lease(ssh, profile_scope, remote_profile)
+            .await?;
         let websocket_url = lease.websocket_url()?;
         if let Err(error) = self.inner.connect(&websocket_url).await {
             drop(lease);
