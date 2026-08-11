@@ -1210,8 +1210,10 @@ fn Projects() -> Element {
     let mut query = use_signal(String::new);
     let mut filter = use_signal(|| "all".to_owned());
     let mut create_open = use_signal(|| false);
+    let mut create_mode = use_signal(|| "empty".to_owned());
     let mut project_name = use_signal(String::new);
     let mut project_path = use_signal(String::new);
+    let mut repository_url = use_signal(String::new);
     let mut creating = use_signal(|| false);
     let mut remove_target = use_signal(|| None::<String>);
 
@@ -1222,6 +1224,7 @@ fn Projects() -> Element {
         .filter(|project| match filter().as_str() {
             "active" => !project.archived,
             "archived" => project.archived,
+            "pinned" => snapshot.pinned_ids.contains(&project.id),
             _ => true,
         })
         .filter(|project| {
@@ -1262,7 +1265,7 @@ fn Projects() -> Element {
                     }
                 }
                 div { class: "project-filters", aria_label: "Project filters",
-                    for (id, label) in [("all", "All"), ("active", "Active"), ("archived", "Archived")] {
+                    for (id, label) in [("all", "All"), ("active", "Active"), ("archived", "Archived"), ("pinned", "Pinned")] {
                         button {
                             class: if filter() == id { "selected" } else { "" },
                             onclick: move |_| filter.set(id.to_owned()),
@@ -1293,6 +1296,35 @@ fn Projects() -> Element {
                                             if let Some(path) = &project.primary_path { "{path}" } else { "No folder attached" }
                                         }
                                         small { "{project.folders.len()} registered folder(s)" }
+                                    }
+                                    button {
+                                        class: "icon-button",
+                                        aria_label: if snapshot.pinned_ids.contains(&project.id) { "Unpin project" } else { "Pin project" },
+                                        title: if snapshot.pinned_ids.contains(&project.id) { "Unpin project" } else { "Pin project" },
+                                        onclick: {
+                                            let service = services.projects.clone();
+                                            let id = project.id.clone();
+                                            let before = snapshot.clone();
+                                            let pinned = snapshot.pinned_ids.contains(&project.id);
+                                            move |_| {
+                                                let mut next = before.clone();
+                                                if pinned { next.pinned_ids.retain(|candidate| candidate != &id); }
+                                                else if !next.pinned_ids.contains(&id) { next.pinned_ids.push(id.clone()); }
+                                                let mut snapshot_signal = state.snapshot;
+                                                let mut error_signal = state.error;
+                                                snapshot_signal.set(next);
+                                                let service = service.clone();
+                                                let before = before.clone();
+                                                let id = id.clone();
+                                                spawn(async move {
+                                                    match service.set_pinned(&id, !pinned).await {
+                                                        Ok(authoritative) => snapshot_signal.set(authoritative),
+                                                        Err(error) => { snapshot_signal.set(before); error_signal.set(Some(error.to_string())); }
+                                                    }
+                                                });
+                                            }
+                                        },
+                                        Codicon { name: if snapshot.pinned_ids.contains(&project.id) { "pinned-dirty" } else { "pin" } }
                                     }
                                     if !project.archived && snapshot.active_id.as_deref() != Some(project.id.as_str()) {
                                         button {
@@ -1327,6 +1359,33 @@ fn Projects() -> Element {
                                 div { class: "project-row-actions",
                                     Link { class: "project-action", to: Route::Project { id: project.id.clone() }, "Open" }
                                     button {
+                                        class: "project-action",
+                                        onclick: {
+                                            let service = services.projects.clone();
+                                            let id = project.id.clone();
+                                            let archived = !project.archived;
+                                            let before = snapshot.clone();
+                                            move |_| {
+                                                let mut next = before.clone();
+                                                if let Some(row) = next.projects.iter_mut().find(|row| row.id == id) { row.archived = archived; }
+                                                if archived && next.active_id.as_deref() == Some(id.as_str()) { next.active_id = None; }
+                                                let mut snapshot_signal = state.snapshot;
+                                                let mut error_signal = state.error;
+                                                snapshot_signal.set(next);
+                                                let service = service.clone();
+                                                let before = before.clone();
+                                                let id = id.clone();
+                                                spawn(async move {
+                                                    match service.set_archived(&id, archived).await {
+                                                        Ok(authoritative) => snapshot_signal.set(authoritative),
+                                                        Err(error) => { snapshot_signal.set(before); error_signal.set(Some(error.to_string())); }
+                                                    }
+                                                });
+                                            }
+                                        },
+                                        if project.archived { "Restore" } else { "Archive" }
+                                    }
+                                    button {
                                         class: "project-action danger",
                                         onclick: { let id = project.id.clone(); move |_| remove_target.set(Some(id.clone())) },
                                         "Remove registration"
@@ -1343,24 +1402,45 @@ fn Projects() -> Element {
             if create_open() {
                 div { class: "dialog-backdrop", role: "presentation",
                     section { class: "hermes-dialog", role: "dialog", aria_modal: "true", aria_label: "Create project",
-                        header { h2 { "Create project" } p { "Create a stable project with an optional local folder." } }
+                        header { h2 { "Create project" } p {
+                            if create_mode() == "empty" { "Create a stable project without a folder or Git repository." }
+                            else if create_mode() == "attach" { "Register an existing local folder as a stable project." }
+                            else { "Clone a repository into a chosen parent folder and register it." }
+                        } }
+                        div { class: "project-create-modes",
+                            for (id, label) in [("empty", "Empty"), ("attach", "Attach folder"), ("clone", "Clone Git")] {
+                                button { class: if create_mode() == id { "selected" } else { "" }, onclick: move |_| create_mode.set(id.to_owned()), "{label}" }
+                            }
+                        }
                         label { class: "dialog-field", span { "Project name" }
                             input { autofocus: true, placeholder: "Project name", value: "{project_name}", oninput: move |event| project_name.set(event.value()) }
                         }
-                        label { class: "dialog-field", span { "Folder (optional)" }
-                            input { placeholder: "C:\\path\\to\\project", value: "{project_path}", oninput: move |event| project_path.set(event.value()) }
+                        if create_mode() == "clone" {
+                            label { class: "dialog-field", span { "Repository URL" }
+                                input { placeholder: "HTTPS or SSH repository URL", value: "{repository_url}", oninput: move |event| repository_url.set(event.value()) }
+                            }
                         }
-                        p { class: "dialog-hint", "Leave the folder empty to create a stable project identity first. You can attach a folder later." }
+                        if create_mode() != "empty" {
+                            label { class: "dialog-field", span { if create_mode() == "clone" { "Clone destination parent folder" } else { "Folder to attach" } }
+                                input { placeholder: "C:\\path\\to\\folder", value: "{project_path}", oninput: move |event| project_path.set(event.value()) }
+                            }
+                        } else {
+                            p { class: "dialog-hint", "This project starts without a filesystem location. You can attach a folder later without changing its project identity." }
+                        }
                         footer {
                             button { class: "button", disabled: creating(), onclick: move |_| create_open.set(false), "Cancel" }
                             button {
                                 class: "button primary",
-                                disabled: creating() || project_name().trim().is_empty(),
+                                disabled: creating() || project_name().trim().is_empty()
+                                    || (create_mode() == "attach" && project_path().trim().is_empty())
+                                    || (create_mode() == "clone" && (project_path().trim().is_empty() || repository_url().trim().is_empty())),
                                 onclick: {
                                     let service = services.projects.clone();
                                     move |_| {
                                         let name = project_name().trim().to_owned();
                                         let path = project_path().trim().to_owned();
+                                        let url = repository_url().trim().to_owned();
+                                        let mode = create_mode();
                                         if name.is_empty() || creating() { return; }
                                         creating.set(true);
                                         let folders = if path.is_empty() { Vec::new() } else { vec![path] };
@@ -1369,8 +1449,12 @@ fn Projects() -> Element {
                                         let mut error = state.error;
                                         spawn(async move {
                                             let result = async {
-                                                let project = service.create(&name, &folders).await?;
-                                                service.set_active(Some(&project.id)).await?;
+                                                let project = if mode == "clone" {
+                                                    service.clone_repository(&name, &url, folders.first().map_or("", String::as_str)).await?
+                                                } else {
+                                                    service.create(&name, &folders).await?
+                                                };
+                                                if mode != "clone" { service.set_active(Some(&project.id)).await?; }
                                                 Ok::<_, hermes_core::ServiceError>(())
                                             }.await;
                                             creating.set(false);
@@ -1378,6 +1462,8 @@ fn Projects() -> Element {
                                                 Ok(()) => {
                                                     project_name.set(String::new());
                                                     project_path.set(String::new());
+                                                    repository_url.set(String::new());
+                                                    create_mode.set("empty".to_owned());
                                                     create_open.set(false);
                                                     refresh += 1;
                                                 }

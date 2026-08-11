@@ -312,7 +312,15 @@ pub trait ConnectionService: Send + Sync {
 pub trait ProjectService: Send + Sync {
     fn snapshot(&self) -> ServiceFuture<'_, ProjectsSnapshot>;
     fn create(&self, name: &str, folders: &[String]) -> ServiceFuture<'_, ProjectSummary>;
+    fn clone_repository(
+        &self,
+        name: &str,
+        repository_url: &str,
+        parent_path: &str,
+    ) -> ServiceFuture<'_, ProjectSummary>;
     fn set_active(&self, id: Option<&str>) -> ServiceFuture<'_, ()>;
+    fn set_pinned(&self, id: &str, pinned: bool) -> ServiceFuture<'_, ProjectsSnapshot>;
+    fn set_archived(&self, id: &str, archived: bool) -> ServiceFuture<'_, ProjectsSnapshot>;
     fn remove(&self, id: &str) -> ServiceFuture<'_, ()>;
 }
 

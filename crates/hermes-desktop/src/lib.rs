@@ -358,7 +358,7 @@ impl ProjectService for GatewayServices {
         Box::pin(async move {
             let value: Value = self
                 .client()?
-                .request("projects.list", json!({}))
+                .request("projects.centre", json!({}))
                 .await
                 .map_err(transport)?;
             serde_json::from_value(value).map_err(protocol)
@@ -387,6 +387,39 @@ impl ProjectService for GatewayServices {
         })
     }
 
+    fn clone_repository(
+        &self,
+        name: &str,
+        repository_url: &str,
+        parent_path: &str,
+    ) -> ServiceFuture<'_, ProjectSummary> {
+        let name = name.to_owned();
+        let repository_url = repository_url.to_owned();
+        let parent_path = parent_path.to_owned();
+        Box::pin(async move {
+            validate_identifier(&name, "project name")?;
+            if repository_url.trim().is_empty() || parent_path.trim().is_empty() {
+                return Err(ServiceError::InvalidInput(
+                    "repository URL and parent folder are required".into(),
+                ));
+            }
+            let value: Value = self
+                .client()?
+                .request(
+                    "projects.clone",
+                    json!({
+                        "name": name,
+                        "repository_url": repository_url,
+                        "parent_path": parent_path,
+                        "use": true
+                    }),
+                )
+                .await
+                .map_err(transport)?;
+            serde_json::from_value(value.get("project").cloned().unwrap_or(value)).map_err(protocol)
+        })
+    }
+
     fn set_active(&self, id: Option<&str>) -> ServiceFuture<'_, ()> {
         let id = id.map(str::to_owned);
         Box::pin(async move {
@@ -402,13 +435,42 @@ impl ProjectService for GatewayServices {
         })
     }
 
+    fn set_pinned(&self, id: &str, pinned: bool) -> ServiceFuture<'_, ProjectsSnapshot> {
+        let id = id.to_owned();
+        Box::pin(async move {
+            validate_identifier(&id, "project")?;
+            let value: Value = self
+                .client()?
+                .request("projects.pin", json!({ "id": id, "pinned": pinned }))
+                .await
+                .map_err(transport)?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn set_archived(&self, id: &str, archived: bool) -> ServiceFuture<'_, ProjectsSnapshot> {
+        let id = id.to_owned();
+        Box::pin(async move {
+            validate_identifier(&id, "project")?;
+            let value: Value = self
+                .client()?
+                .request(
+                    "projects.archive",
+                    json!({ "id": id, "restore": !archived }),
+                )
+                .await
+                .map_err(transport)?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
     fn remove(&self, id: &str) -> ServiceFuture<'_, ()> {
         let id = id.to_owned();
         Box::pin(async move {
             validate_identifier(&id, "project")?;
             let _: Value = self
                 .client()?
-                .request("projects.delete", json!({ "id": id }))
+                .request("projects.remove", json!({ "id": id }))
                 .await
                 .map_err(transport)?;
             Ok(())
@@ -1310,7 +1372,7 @@ mod tests {
         );
         assert_eq!(frames[1].method.as_deref(), Some("projects.set_active"));
         assert_eq!(frames[1].params, Some(json!({ "id": "project-1" })));
-        assert_eq!(frames[2].method.as_deref(), Some("projects.delete"));
+        assert_eq!(frames[2].method.as_deref(), Some("projects.remove"));
         assert_eq!(frames[2].params, Some(json!({ "id": "project-1" })));
     }
 
@@ -1405,6 +1467,97 @@ mod tests {
         assert_eq!(resume.params, Some(json!({ "session_id": "stored-1" })));
         assert_eq!(interrupt.method.as_deref(), Some("session.interrupt"));
         assert_eq!(interrupt.params, Some(json!({ "session_id": "runtime-9" })));
+    }
+
+    #[tokio::test]
+    async fn project_centre_clone_pin_and_archive_match_the_source_contracts() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let address = listener.local_addr().expect("address");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("connection");
+            let mut socket = accept_async(stream).await.expect("WebSocket");
+            let snapshot = json!({
+                "projects": [{ "id": "project-2", "name": "Clone" }],
+                "active_id": "project-2",
+                "pinned_ids": ["project-2"]
+            });
+            let mut frames = Vec::new();
+            for result in [
+                snapshot.clone(),
+                json!({ "project": { "id": "project-2", "name": "Clone" } }),
+                snapshot.clone(),
+                snapshot,
+            ] {
+                let message = socket.next().await.expect("request").expect("frame");
+                let frame: hermes_protocol::JsonRpcFrame =
+                    serde_json::from_str(message.to_text().expect("text frame")).expect("JSON-RPC");
+                socket
+                    .send(Message::Text(
+                        json!({ "jsonrpc": "2.0", "id": frame.id, "result": result })
+                            .to_string()
+                            .into(),
+                    ))
+                    .await
+                    .expect("response");
+                frames.push(frame);
+            }
+            frames
+        });
+        let client = GatewayClient::connect(
+            &format!("ws://{address}/api/ws"),
+            hermes_agent_client::GatewayOptions::default(),
+        )
+        .await
+        .expect("gateway");
+        let services = GatewayServices {
+            client: Arc::new(RwLock::new(Some(client))),
+            rest: Arc::new(RwLock::new(None)),
+        };
+        let snapshot = ProjectService::snapshot(&services)
+            .await
+            .expect("Project Centre");
+        assert_eq!(snapshot.pinned_ids, ["project-2"]);
+        let cloned = ProjectService::clone_repository(
+            &services,
+            "Clone",
+            "git@github.com:example/clone.git",
+            r"C:\Code",
+        )
+        .await
+        .expect("clone project");
+        assert_eq!(cloned.id, "project-2");
+        ProjectService::set_pinned(&services, "project-2", true)
+            .await
+            .expect("pin");
+        ProjectService::set_archived(&services, "project-2", false)
+            .await
+            .expect("restore");
+
+        let frames = server.await.expect("server");
+        assert_eq!(frames[0].method.as_deref(), Some("projects.centre"));
+        assert_eq!(frames[0].params, Some(json!({})));
+        assert_eq!(frames[1].method.as_deref(), Some("projects.clone"));
+        assert_eq!(
+            frames[1].params,
+            Some(json!({
+                "name": "Clone",
+                "repository_url": "git@github.com:example/clone.git",
+                "parent_path": r"C:\Code",
+                "use": true
+            }))
+        );
+        assert_eq!(frames[2].method.as_deref(), Some("projects.pin"));
+        assert_eq!(
+            frames[2].params,
+            Some(json!({ "id": "project-2", "pinned": true }))
+        );
+        assert_eq!(frames[3].method.as_deref(), Some("projects.archive"));
+        assert_eq!(
+            frames[3].params,
+            Some(json!({ "id": "project-2", "restore": true }))
+        );
     }
 
     #[tokio::test]

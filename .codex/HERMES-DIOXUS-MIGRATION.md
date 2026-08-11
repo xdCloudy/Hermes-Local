@@ -334,8 +334,8 @@ geometry, compact project rows, active state, creation overlay and explicit
 registration-only removal confirmation. Creation and removal refresh or update
 the same shared snapshot used by the composer, so scope state cannot diverge
 between surfaces. Folder attachment currently accepts an explicit local path;
-the native folder picker, clone mode, pin/archive writes and repair/delete-files
-flows remain required before final Project Centre parity.
+the native folder picker and repair/delete-files flows remain required before
+final Project Centre parity.
 
 The Rust gateway adapter was corrected to the official source contracts:
 `projects.create` sends `primary_path` and `use` and decodes the nested
@@ -359,3 +359,16 @@ doc-tests without relying on a configured user Agent or external network.
 Exact next action: finish folder picking and the remaining Project Centre RPCs,
 then port settings and immediate light/dark/system theme application against the
 official source.
+
+Project Centre parity now includes the source's Empty, Attach folder and Clone
+Git creation modes, pinned filtering and project pin/unpin and archive/restore
+actions. The adapter uses `projects.centre`, `projects.clone`, `projects.pin`,
+`projects.archive` and registration-only `projects.remove`; the latter replaces
+the broader legacy delete call for the Project Centre confirmation. A new
+compatibility fixture proves all method names, `restore` polarity, clone fields
+and pinned snapshot decoding. The workspace passes 24 unit tests plus doc-tests,
+and the clone dialog has a native 1296x809 dark-mode regression capture.
+
+Exact next action: add the typed native folder picker and repair/delete-files
+Project Centre flows, then port settings and immediate light/dark/system theme
+application against the official source.

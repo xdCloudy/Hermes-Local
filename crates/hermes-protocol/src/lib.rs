@@ -276,6 +276,8 @@ pub struct ProjectsSnapshot {
     pub projects: Vec<ProjectSummary>,
     #[serde(default)]
     pub active_id: Option<String>,
+    #[serde(default)]
+    pub pinned_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
