@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+bundle = []
+
 [dependencies]
 dioxus = { workspace = true, features = ["desktop", "launch"] }
 hermes-core = { path = "../../crates/hermes-core" }
