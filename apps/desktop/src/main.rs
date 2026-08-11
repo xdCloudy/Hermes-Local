@@ -1,7 +1,10 @@
+mod startup;
+
 use std::path::PathBuf;
 
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder};
 use dioxus::prelude::*;
+use hermes_core::AppServices;
 use hermes_desktop::NativeApp;
 
 fn desktop_root() -> Element {
@@ -21,7 +24,36 @@ fn desktop_root() -> Element {
         },
         close: Callback::new(move |()| desktop.close()),
     });
-    rsx! { hermes_ui::App {} }
+
+    let services = use_context::<AppServices>();
+    let startup_services = services.clone();
+    let local_startup = use_resource(move || {
+        let services = startup_services.clone();
+        async move { startup::prepare_local_agent(&services).await }
+    });
+
+    match &*local_startup.read() {
+        None => rsx! {
+            div {
+                style: "height:100vh;display:grid;place-items:center;background:rgb(9 11 16);color:rgb(229 231 235);font:13px system-ui,sans-serif;",
+                div { style: "display:grid;gap:8px;text-align:center;",
+                    strong { "Starting Hermes Local" }
+                    span { style: "color:rgb(148 163 184);", "Preparing the local Agent runtime…" }
+                }
+            }
+        },
+        Some(Ok(())) => rsx! { hermes_ui::App {} },
+        Some(Err(error)) => rsx! {
+            div {
+                style: "height:100vh;display:grid;place-items:center;background:rgb(9 11 16);color:rgb(229 231 235);font:13px system-ui,sans-serif;padding:32px;box-sizing:border-box;",
+                div { style: "display:grid;gap:10px;max-width:680px;",
+                    strong { "Hermes Local could not start" }
+                    p { style: "margin:0;color:rgb(203 213 225);line-height:1.5;", "{error}" }
+                    p { style: "margin:0;color:rgb(148 163 184);font-size:12px;", "Close the window after fixing the runtime problem, then launch Hermes Local again." }
+                }
+            }
+        },
+    }
 }
 
 fn main() {
