@@ -1,4 +1,7 @@
-use std::{path::PathBuf, sync::{Arc, Mutex}};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use hermes_core::{AppServices, ConnectionService, ServiceError, ServiceFuture, ServiceResult};
 use hermes_protocol::{
