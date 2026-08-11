@@ -16,9 +16,16 @@ hermes-core = { path = "../../crates/hermes-core" }
 hermes-desktop = { path = "../../crates/hermes-desktop" }
 hermes-protocol = { path = "../../crates/hermes-protocol" }
 hermes-ui = { path = "../../crates/hermes-ui" }
+reqwest = { workspace = true, features = ["json", "rustls"] }
+serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 tokio = { workspace = true, features = ["io-util", "process", "rt", "time"] }
 url.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+
+[target.'cfg(windows)'.dependencies]
+keyring = { workspace = true, features = ["v1", "windows-native-keyring-store"] }
 
 [lints]
 workspace = true
