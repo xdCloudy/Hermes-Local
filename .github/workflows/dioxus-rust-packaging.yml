@@ -122,10 +122,19 @@ jobs:
           Remove-Item -Recurse -Force -LiteralPath $installRoot -ErrorAction SilentlyContinue
           Remove-Item -Force -LiteralPath $installLog,$uninstallLog -ErrorAction SilentlyContinue
 
-          & ".\build\rust-packages\Hermes-Local-Setup.exe" `
-            /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCANCEL /SP- `
-            "/DIR=$installRoot" "/LOG=$installLog"
-          $installExit = $LASTEXITCODE
+          $installer = (Resolve-Path -LiteralPath ".\build\rust-packages\Hermes-Local-Setup.exe").Path
+          $installProcess = Start-Process -FilePath $installer `
+            -ArgumentList @(
+              "/VERYSILENT",
+              "/SUPPRESSMSGBOXES",
+              "/NORESTART",
+              "/NOCANCEL",
+              "/SP-",
+              "/DIR=$installRoot",
+              "/LOG=$installLog"
+            ) `
+            -Wait -PassThru
+          $installExit = $installProcess.ExitCode
           if ($installExit -ne 0) {
             Write-Host "Inno Setup exited with code $installExit"
             if (Test-Path -LiteralPath $installLog) {
@@ -159,8 +168,15 @@ jobs:
           if (-not (Test-Path -LiteralPath $uninstaller)) {
             throw "Hermes Local uninstaller was not created."
           }
-          & $uninstaller /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/LOG=$uninstallLog"
-          $uninstallExit = $LASTEXITCODE
+          $uninstallProcess = Start-Process -FilePath $uninstaller `
+            -ArgumentList @(
+              "/VERYSILENT",
+              "/SUPPRESSMSGBOXES",
+              "/NORESTART",
+              "/LOG=$uninstallLog"
+            ) `
+            -Wait -PassThru
+          $uninstallExit = $uninstallProcess.ExitCode
           if ($uninstallExit -ne 0) {
             Write-Host "Inno Uninstall exited with code $uninstallExit"
             if (Test-Path -LiteralPath $uninstallLog) {
