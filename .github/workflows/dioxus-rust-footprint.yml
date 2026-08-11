@@ -1,0 +1,95 @@
+name: Dioxus Rust footprint
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - refactor/dioxus-rust-client
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "VERSION.json"
+      - "rust-toolchain.toml"
+      - "apps/desktop/**"
+      - "crates/**"
+      - "scripts/ci/rust_performance_budget.py"
+      - "scripts/ci/rust_windows_package.py"
+      - "tests/test_rust_performance_budget.py"
+      - ".github/workflows/dioxus-rust-footprint.yml"
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "VERSION.json"
+      - "rust-toolchain.toml"
+      - "apps/desktop/**"
+      - "crates/**"
+      - "scripts/ci/rust_performance_budget.py"
+      - "scripts/ci/rust_windows_package.py"
+      - "tests/test_rust_performance_budget.py"
+      - ".github/workflows/dioxus-rust-footprint.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dioxus-rust-footprint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  footprint:
+    name: Windows artifact footprint
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Test footprint budget tooling
+        run: python -m unittest discover -s tests -p "test_rust_performance_budget.py" -v
+
+      - name: Build optimized Windows client
+        run: cargo build -p hermes-local --release --locked --features bundle
+
+      - name: Prepare portable payload
+        shell: pwsh
+        run: |
+          python ".\scripts\ci\rust_windows_package.py" prepare `
+            --binary ".\target\release\hermes-local.exe" `
+            --version-manifest ".\VERSION.json" `
+            --work-root ".\build\rust-footprint-package" `
+            --output-root ".\build\rust-footprint" `
+            --source-commit $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) {
+            throw "Portable footprint payload generation failed."
+          }
+
+      - name: Enforce footprint budgets
+        shell: pwsh
+        run: |
+          python ".\scripts\ci\rust_performance_budget.py" `
+            --binary ".\target\release\hermes-local.exe" `
+            --portable ".\build\rust-footprint\Hermes-Local-Portable-x64.zip" `
+            --max-binary-mib 64 `
+            --max-portable-mib 64 `
+            --output ".\build\rust-footprint\footprint-report.json"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Rust artifact footprint exceeded its regression budget."
+          }
+
+      - name: Record footprint
+        shell: pwsh
+        run: |
+          $report = Get-Content -Raw -LiteralPath ".\build\rust-footprint\footprint-report.json" | ConvertFrom-Json
+          "### Rust artifact footprint" >> $env:GITHUB_STEP_SUMMARY
+          "- Optimized EXE: $($report.binary.sizeMiB) MiB / 64 MiB budget" >> $env:GITHUB_STEP_SUMMARY
+          "- Portable ZIP: $($report.portable.sizeMiB) MiB / 64 MiB budget" >> $env:GITHUB_STEP_SUMMARY
+          "- Status: $($report.status)" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload footprint evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-local-rust-footprint
+          path: build/rust-footprint/footprint-report.json
+          if-no-files-found: error
+          retention-days: 14
