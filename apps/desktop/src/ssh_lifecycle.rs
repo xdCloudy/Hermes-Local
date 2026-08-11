@@ -304,10 +304,7 @@ async fn connect_unix(
     result
 }
 
-async fn read_unix_lock(
-    config: &SshConfig,
-    ownership_id: &str,
-) -> ServiceResult<Option<UnixLock>> {
+async fn read_unix_lock(config: &SshConfig, ownership_id: &str) -> ServiceResult<Option<UnixLock>> {
     validate_ownership_id(ownership_id)?;
     let path = lockfile_path(ownership_id)?;
     let expanded = expand_unix_path(&path)?;
@@ -696,11 +693,7 @@ async fn wait_for_dashboard(base_url: &str, token: &str) -> ServiceResult<()> {
     ))
 }
 
-async fn probe_reuse_proof(
-    base_url: &str,
-    token: &str,
-    spawn_nonce: &str,
-) -> ServiceResult<bool> {
+async fn probe_reuse_proof(base_url: &str, token: &str, spawn_nonce: &str) -> ServiceResult<bool> {
     validate_spawn_nonce(spawn_nonce)?;
     let response = loopback_client()?
         .get(format!("{base_url}/api/ssh/ownership"))
@@ -1088,10 +1081,7 @@ fn load_or_create_installation_id(path: &Path) -> ServiceResult<String> {
         .parent()
         .ok_or_else(|| ServiceError::Platform("installation id path has no parent".into()))?;
     fs::create_dir_all(parent).map_err(platform)?;
-    let id = Uuid::new_v4()
-        .hyphenated()
-        .to_string()
-        .to_ascii_lowercase();
+    let id = Uuid::new_v4().hyphenated().to_string().to_ascii_lowercase();
     let temporary = path.with_extension(format!("json.{}.tmp", random_hex(8)));
     let payload = serde_json::json!({ "installationId": id });
     let mut file = OpenOptions::new()
@@ -1133,9 +1123,7 @@ fn read_installation_id(path: &Path) -> ServiceResult<Option<String>> {
         Ok(parsed) if parsed.get_version_num() == 4 => parsed,
         _ => return Ok(None),
     };
-    Ok(Some(
-        parsed.hyphenated().to_string().to_ascii_lowercase(),
-    ))
+    Ok(Some(parsed.hyphenated().to_string().to_ascii_lowercase()))
 }
 
 #[cfg(windows)]
@@ -1158,9 +1146,7 @@ fn load_reuse_token(_ownership_id: &str) -> ServiceResult<Option<String>> {
 fn store_reuse_token(ownership_id: &str, token: &str) -> ServiceResult<()> {
     validate_ownership_id(ownership_id)?;
     if token.is_empty() || token.len() > 4_096 {
-        return Err(ServiceError::InvalidInput(
-            "invalid SSH reuse token".into(),
-        ));
+        return Err(ServiceError::InvalidInput("invalid SSH reuse token".into()));
     }
     keyring::Entry::new("Hermes Local SSH", ownership_id)
         .map_err(platform)?
