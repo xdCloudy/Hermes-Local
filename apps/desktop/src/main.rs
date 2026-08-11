@@ -5,6 +5,7 @@ mod base64_impl;
 pub use base64_impl::{Engine, engine};
 extern crate self as base64;
 
+mod login_item;
 mod ssh;
 mod ssh_lifecycle;
 mod ssh_service;
