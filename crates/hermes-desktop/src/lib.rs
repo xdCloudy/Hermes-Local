@@ -17,9 +17,9 @@ use hermes_core::{
     validate_relative_path,
 };
 use hermes_protocol::{
-    AppSettings, ChatMessage, ConnectionState, FileEntry, GitStatus, ProjectSummary,
-    ProjectsSnapshot, RuntimeStatus, SessionCreateRequest, SessionCreateResponse, SessionSummary,
-    TaskSummary, TrustSnapshot,
+    AppSettings, ConnectionState, FileEntry, GitStatus, ProjectSummary, ProjectsSnapshot,
+    RuntimeStatus, SessionCreateRequest, SessionCreateResponse, SessionResumeResponse,
+    SessionSummary, TaskSummary, TrustSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use reqwest::Method;
@@ -209,16 +209,14 @@ impl SessionService for GatewayServices {
         })
     }
 
-    fn resume(&self, session_id: &str) -> ServiceFuture<'_, Vec<ChatMessage>> {
+    fn resume(&self, session_id: &str) -> ServiceFuture<'_, SessionResumeResponse> {
         let session_id = session_id.to_owned();
         Box::pin(async move {
             validate_identifier(&session_id, "session")?;
-            let value: Value = self
-                .client()?
+            self.client()?
                 .request("session.resume", json!({ "session_id": session_id }))
                 .await
-                .map_err(transport)?;
-            decode_list(value, "messages")
+                .map_err(transport)
         })
     }
 
@@ -232,9 +230,10 @@ impl SessionService for GatewayServices {
             }
             let _: Value = self
                 .client()?
-                .request(
+                .request_with_timeout(
                     "prompt.submit",
-                    json!({ "session_id": session_id, "prompt": text }),
+                    json!({ "session_id": session_id, "text": text }),
+                    std::time::Duration::from_mins(30),
                 )
                 .await
                 .map_err(transport)?;

@@ -8,8 +8,10 @@ repository.workspace = true
 
 [dependencies]
 dioxus = { workspace = true, features = ["asset", "document", "hooks", "html", "macro", "router", "signals"] }
+futures-util.workspace = true
 hermes-core = { path = "../hermes-core" }
 hermes-protocol = { path = "../hermes-protocol" }
+serde_json.workspace = true
 
 [lints]
 workspace = true

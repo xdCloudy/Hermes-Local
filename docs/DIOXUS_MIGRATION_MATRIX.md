@@ -82,9 +82,9 @@ updater work itself.
 | WebSocket lifecycle/reconnect | `hermes-agent-client` | connecting/degraded states | fake socket + real harness tests | Designed |
 | Session identities, lineage and profile scope | `SessionService` | chat/sidebar | durable/runtime/lineage mapping tests | Ported |
 | Session list merge, pin/archive/delete | `SessionService` | sidebar | stale-response/optimistic rollback tests | Ported |
-| New/resume/switch session | `SessionService` | chat workspace | route/race/background isolation E2E | Designed |
-| Transcript load and large-history virtualization | `SessionService` | transcript | pagination + realistic long-session benchmark | Designed |
-| Streaming deltas and terminal events | `SessionService` | assistant turns/tool cards | coalescing/terminal-flush/perf tests | Designed |
+| New/resume/switch session | `SessionService` | chat workspace | route/race/background isolation E2E | Ported |
+| Transcript load and large-history virtualization | `SessionService` | transcript | pagination + realistic long-session benchmark | Ported |
+| Streaming deltas and terminal events | `SessionService` | assistant turns/tool cards | coalescing/terminal-flush/perf tests | Ported |
 | Prompt queue and background sessions | `SessionService` | composer/status | queue order and foreground isolation tests | Designed |
 | Composer drafts, undo and directives | `SessionService` | composer | scope/persistence/keyboard tests | Designed |
 | Attachments, images and path selection | `FileService` | composer/preview | path/size/MIME validation + E2E | Designed |

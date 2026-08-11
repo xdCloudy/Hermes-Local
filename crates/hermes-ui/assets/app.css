@@ -243,16 +243,31 @@ h1 { margin-top: 4px !important; margin-bottom: 0 !important; font-size: 1.25rem
 .connection-state .online { color: var(--green); }
 .connection-state .offline { color: var(--amber); }
 
-.chat-watermark { display: grid; min-height: 42vh; place-items: center; color: color-mix(in srgb, var(--text-1) 5%, transparent); font: 700 clamp(44px, 7vw, 92px)/1 Georgia, "Times New Roman", serif; letter-spacing: .06em; }
-.composer-card { padding: 9px 11px; border: 1px solid var(--stroke-1); border-radius: 12px; background: var(--panel-bg); box-shadow: 0 1px 3px #00000010; }
+.new-chat-surface { display: grid; width: 100%; height: 100%; min-height: 0; grid-template-rows: minmax(0, 1fr) auto; overflow: hidden; background: var(--content-bg); }
+.new-chat-hero { display: grid; min-height: 0; place-content: center; justify-items: center; padding: 20px; text-align: center; }
+.new-chat-hero h1 { margin: 0 !important; color: color-mix(in srgb, var(--text-1) 72%, transparent); font: 700 clamp(44px, 5vw, 66px)/.95 Georgia, "Times New Roman", serif; letter-spacing: -.04em; }
+.new-chat-hero p { max-width: 520px; margin: 9px 0 0; color: var(--text-4); font-size: .6875rem; line-height: 1.45; }
+.chat-composer-dock, .session-composer-dock { width: min(590px, calc(100% - 32px)); margin: 0 auto 14px; }
+.composer-project { display: flex; height: 24px; align-items: center; gap: 6px; border: 1px solid var(--stroke-1); border-radius: 6px 6px 0 0; padding: 0 10px; background: var(--panel-bg); color: var(--text-3); font-size: .6875rem; }
+.composer-project .codicon { width: 13px; height: 13px; }
+.composer-card { display: flex; min-height: 34px; align-items: center; gap: 3px; padding: 2px 5px; border: 1px solid var(--stroke-1); border-radius: 7px; background: var(--panel-bg); box-shadow: 0 1px 3px #00000010; }
+.chat-composer-dock .composer-card { margin-top: -1px; border-radius: 0 0 6px 6px; }
 .surface > .composer-card { max-width: 590px; }
-.composer-card textarea { width: 100%; resize: none; border: 0; outline: 0; padding: 4px; background: transparent; font-size: .8125rem; line-height: 1.45; }
+.composer-card textarea { width: 100%; min-width: 0; height: 28px; flex: 1; resize: none; border: 0; outline: 0; padding: 5px 4px 3px; background: transparent; font-size: .75rem; line-height: 1.45; }
 .composer-card textarea::placeholder { color: var(--text-4); }
-.composer-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
+.composer-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 3px; }
+.composer-spacer { flex: 1; }
+.composer-model { color: var(--text-3); font-size: .625rem; }
+.composer-tool { display: grid; width: 24px; height: 24px; place-items: center; border: 0; border-radius: 5px; padding: 0; background: transparent; color: var(--text-3); }
+.composer-tool:hover { background: var(--hover); color: var(--text-1); }
+.composer-tool .codicon { width: 13px; height: 13px; }
 .privacy-pill { color: var(--text-3); font-size: .6875rem; }
 .send-button { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 7px; background: var(--accent); color: #fff; }
+.send-button.stop { background: var(--active); color: var(--text-2); }
+.send-button .codicon { width: 12px; height: 12px; }
 .send-button:disabled { opacity: .35; cursor: default; }
 .inline-error { margin: 6px 4px 0; color: var(--red); font-size: .6875rem; }
+.composer-error { text-align: left; }
 
 .empty-state { display: grid; min-height: 300px; place-content: center; justify-items: center; margin-top: 20px; border: 1px solid var(--stroke-2); border-radius: 12px; background: var(--panel-bg); text-align: center; }
 .empty-orbit { display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid var(--stroke-1); border-radius: 9px; color: var(--accent); }
@@ -267,12 +282,37 @@ h1 { margin-top: 4px !important; margin-bottom: 0 !important; font-size: 1.25rem
 .segmented { display: flex; padding: 2px; border-radius: 7px; background: var(--active); }
 .segmented button { border: 0; border-radius: 5px; padding: 6px 9px; background: transparent; color: var(--text-3); }
 .segmented button.selected { background: var(--panel-bg); color: var(--text-1); }
-.transcript { display: grid; gap: 10px; margin-top: 20px; }
-.message { max-width: 82%; border: 1px solid var(--stroke-2); border-radius: 10px; padding: 12px 14px; background: var(--panel-bg); }
-.message.user { margin-left: auto; background: var(--active); }
+.conversation-surface { display: grid; width: 100%; height: 100%; min-height: 0; grid-template-rows: 34px minmax(0, 1fr) auto; overflow: hidden; background: var(--content-bg); }
+.conversation-header { display: flex; min-width: 0; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--stroke-2); padding: 0 12px; }
+.conversation-header > div { display: flex; min-width: 0; align-items: center; gap: 7px; }
+.conversation-header strong { font-size: .75rem; font-weight: 600; }
+.conversation-header small { min-width: 0; overflow: hidden; color: var(--text-4); font: .625rem ui-monospace, Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.stop-button { display: flex; height: 24px; align-items: center; gap: 5px; border: 1px solid var(--stroke-2); border-radius: 5px; padding: 0 8px; background: transparent; color: var(--text-3); font-size: .6875rem; }
+.stop-button:hover { background: var(--hover); color: var(--text-1); }
+.stop-button .codicon { width: 11px; height: 11px; }
+.conversation-scroll { min-height: 0; overflow: hidden auto; scrollbar-gutter: stable; }
+.transcript { display: grid; width: min(760px, calc(100% - 40px)); gap: 14px; margin: 22px auto; padding-bottom: 12px; }
+.conversation-empty { display: grid; min-height: 45vh; place-items: center; color: var(--text-4); font-size: .75rem; text-align: center; }
+.message { max-width: 88%; padding: 3px 0; }
+.message.user { margin-left: auto; border: 1px solid var(--stroke-2); border-radius: 10px; padding: 10px 13px; background: var(--active); }
+.message.assistant { margin-right: auto; }
 .message-role { margin-bottom: 5px; color: var(--accent); font-size: .625rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .message p { margin: 0; white-space: pre-wrap; line-height: 1.55; }
-.session-composer { position: sticky; bottom: 0; margin-top: 16px !important; }
+.reasoning { margin: 0 0 7px; border-left: 2px solid var(--stroke-1); padding-left: 9px; color: var(--text-3); font-size: .75rem; }
+.reasoning summary { cursor: pointer; color: var(--text-3); font-size: .6875rem; }
+.reasoning p { margin-top: 6px; color: var(--text-3); }
+.tool-message { overflow: hidden; border: 1px solid var(--stroke-2); border-radius: 7px; background: var(--panel-bg); }
+.tool-message-head { display: flex; height: 30px; align-items: center; gap: 7px; border-bottom: 1px solid var(--stroke-3); padding: 0 9px; }
+.tool-message-head .codicon { width: 13px; height: 13px; color: var(--accent); }
+.tool-message-head strong { font: 600 .6875rem ui-monospace, Consolas, monospace; }
+.tool-message-head span { margin-left: auto; color: var(--text-4); font-size: .625rem; }
+.tool-message pre { max-height: 220px; margin: 0; overflow: auto; padding: 8px 10px; color: var(--text-2); font: .6875rem/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; }
+.stream-cursor { display: inline-block; width: 5px; height: 12px; margin-left: 2px; background: var(--accent); animation: stream-blink 900ms steps(1) infinite; vertical-align: -2px; }
+.needs-input { display: flex; align-items: center; gap: 7px; border: 1px solid color-mix(in srgb, var(--amber) 32%, transparent); border-radius: 7px; padding: 9px 11px; background: color-mix(in srgb, var(--amber) 7%, transparent); color: var(--amber); font-size: .75rem; }
+.needs-input .codicon { width: 14px; height: 14px; }
+.transcript-error { justify-self: start; }
+.session-composer-dock { margin-bottom: 14px; }
+@keyframes stream-blink { 50% { opacity: .15; } }
 .loading-state, .error-state { display: grid; min-height: 240px; place-content: center; color: var(--text-3); text-align: center; }
 .error-state h2 { margin: 0 0 5px; font-size: .875rem; }
 .error-state p { margin: 0; color: var(--red); }

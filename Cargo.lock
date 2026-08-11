@@ -2067,8 +2067,10 @@ name = "hermes-ui"
 version = "0.18.62"
 dependencies = [
  "dioxus",
+ "futures-util",
  "hermes-core",
  "hermes-protocol",
+ "serde_json",
 ]
 
 [[package]]

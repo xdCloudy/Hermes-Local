@@ -111,11 +111,18 @@ pub enum MessageRole {
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct ChatMessage {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_stringish")]
     pub id: String,
     pub role: MessageRole,
-    #[serde(default, alias = "content")]
+    #[serde(default, deserialize_with = "deserialize_textish")]
     pub text: String,
+    #[serde(
+        default,
+        rename = "content",
+        deserialize_with = "deserialize_textish",
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub content_text: String,
     #[serde(default)]
     pub timestamp: Option<f64>,
     #[serde(default)]
@@ -123,7 +130,49 @@ pub struct ChatMessage {
     #[serde(default)]
     pub tool_name: Option<String>,
     #[serde(default)]
+    pub tool_call_id: Option<String>,
+    #[serde(default)]
+    pub reasoning: Option<String>,
+    #[serde(default)]
     pub metadata: BTreeMap<String, Value>,
+}
+
+fn deserialize_stringish<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    Ok(match value {
+        Value::String(value) => value,
+        Value::Number(value) => value.to_string(),
+        _ => String::new(),
+    })
+}
+
+fn deserialize_textish<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    fn collect(value: &Value, output: &mut String) {
+        match value {
+            Value::String(value) => output.push_str(value),
+            Value::Array(values) => {
+                for value in values {
+                    collect(value, output);
+                }
+            }
+            Value::Object(value) => {
+                if let Some(text) = value.get("text").or_else(|| value.get("content")) {
+                    collect(text, output);
+                }
+            }
+            _ => {}
+        }
+    }
+    let value = Value::deserialize(deserializer)?;
+    let mut output = String::new();
+    collect(&value, &mut output);
+    Ok(output)
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -166,6 +215,29 @@ pub struct SessionCreateResponse {
     pub session_id: String,
     #[serde(default)]
     pub session_key: Option<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct SessionResumeResponse {
+    #[serde(default, alias = "resumed")]
+    pub stored_session_id: Option<String>,
+    pub session_id: String,
+    #[serde(default)]
+    pub messages: Vec<ChatMessage>,
+    #[serde(default)]
+    pub running: bool,
+    #[serde(default)]
+    pub message_count: usize,
+    #[serde(default)]
+    pub messages_omitted: bool,
+    #[serde(default)]
+    pub inflight: Option<Value>,
+    #[serde(default)]
+    pub queued: Option<Value>,
+    #[serde(default)]
+    pub info: Option<Value>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
@@ -332,6 +404,21 @@ mod tests {
         .expect("valid event");
         assert_eq!(event.kind, "future.event");
         assert_eq!(event.extra.get("future"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn tolerates_numeric_ids_and_structured_message_content() {
+        let message: ChatMessage = serde_json::from_value(serde_json::json!({
+            "id": 42,
+            "role": "assistant",
+            "content": [
+                { "type": "text", "text": "hello " },
+                { "type": "text", "text": "world" }
+            ]
+        }))
+        .expect("message");
+        assert_eq!(message.id, "42");
+        assert_eq!(message.content_text, "hello world");
     }
 
     #[test]

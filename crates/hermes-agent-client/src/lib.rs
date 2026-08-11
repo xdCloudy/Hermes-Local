@@ -13,7 +13,7 @@ use tracing::{debug, warn};
 use url::Url;
 
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
-const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_mins(2);
 const COMMAND_CAPACITY: usize = 128;
 const EVENT_CAPACITY: usize = 512;
 
@@ -119,6 +119,20 @@ impl GatewayClient {
         P: Serialize,
         R: DeserializeOwned,
     {
+        self.request_with_timeout(method, params, self.request_timeout)
+            .await
+    }
+
+    pub async fn request_with_timeout<P, R>(
+        &self,
+        method: &str,
+        params: P,
+        timeout: Duration,
+    ) -> Result<R, GatewayError>
+    where
+        P: Serialize,
+        R: DeserializeOwned,
+    {
         let params = serde_json::to_value(params)
             .map_err(|error| GatewayError::Protocol(error.to_string()))?;
         let id = RpcId::String(format!(
@@ -137,7 +151,7 @@ impl GatewayClient {
             .await
             .map_err(|_| GatewayError::Closed)?;
 
-        let value = match tokio::time::timeout(self.request_timeout, receiver).await {
+        let value = match tokio::time::timeout(timeout, receiver).await {
             Ok(Ok(result)) => result?,
             Ok(Err(_)) => return Err(GatewayError::Closed),
             Err(_) => {

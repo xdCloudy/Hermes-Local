@@ -278,3 +278,36 @@ documented pedantic-warning backlog rather than denied correctness lints.
 Exact next action: port the OG chat/session transcript state machine and
 streaming event reconciliation, then exercise sidebar actions against a live
 Agent fixture before marking the session slice validated.
+
+## Chat and transcript checkpoint (2026-08-11)
+
+The new-chat route now reproduces the OG empty-chat composition rather than a
+generic application page: the centred Hermes Agent wordmark and source copy sit
+above the compact two-tier bottom composer, with project scope, attach, model,
+voice and send affordances in the original hierarchy. A standard-size native
+capture at 1296x809 is retained in the migration work area. This checkpoint
+used about 35.0 MiB working set and 6.9 MiB private memory.
+
+Session resume now returns a typed response containing the stored/runtime
+identity, messages, running state and forward-compatible metadata. Persisted
+messages tolerate numeric row IDs and structured content arrays without losing
+text. `SessionTranscript` owns foreground reconciliation outside Dioxus: it
+isolates runtime events, coalesces message and reasoning deltas, settles interim
+responses without duplication, upserts tool progress, clears stranded streams
+on `running=false`, flags blocking input requests and records terminal errors.
+
+The Dioxus session surface loads that state, subscribes to the typed event
+stream, renders user/assistant/reasoning/tool states, optimistically submits,
+restores both transcript and draft on failure, and exposes interruption from
+the header and composer. Gateway submission now matches the official source
+contract (`text`, not `prompt`) and uses the source's 30-minute acknowledgement
+window while normal RPCs keep the short default timeout.
+
+`cargo test --workspace` passes 18 unit tests plus doc-tests, including stream
+isolation, tool upsert, interim settlement and structured stored-message
+fixtures. `cargo clippy --workspace --all-targets` passes with only the existing
+pedantic documentation/style warning backlog.
+
+Exact next action: add a deterministic live Agent HTTP/WebSocket harness for
+resume, streaming, submit, interrupt and sidebar mutations, then port project
+scope and the remaining OG chat composer controls.
