@@ -1816,6 +1816,8 @@ fn SettingsOverlay(initial: &'static str) -> Element {
                         AgentConfigPanel { section: "chat", icon: "comment-discussion", label: "Chat" }
                     } else if active() == "workspace" {
                         AgentConfigPanel { section: "workspace", icon: "desktop-download", label: "Workspace" }
+                    } else if active() == "safety" {
+                        AgentConfigPanel { section: "safety", icon: "lock", label: "Safety" }
                     } else {
                         section { class: "settings-placeholder",
                             div { class: "settings-section-title", Codicon { name: active_icon } h1 { "{active_label}" } }
@@ -1899,6 +1901,8 @@ fn AgentConfigPanel(section: &'static str, icon: &'static str, label: &'static s
                     "Configure the context window and the fallback models Hermes tries when the default model is unavailable."
                 } else if section == "workspace" {
                     "Choose the default tool workspace, repository discovery policy, and execution boundaries for new sessions."
+                } else if section == "safety" {
+                    "Control approvals, private-network access, secret redaction, and rollback checkpoints."
                 } else {
                     "Choose how new chats behave and how model output is presented."
                 }
@@ -1932,8 +1936,16 @@ fn AgentConfigPanel(section: &'static str, icon: &'static str, label: &'static s
                             saving,
                             error,
                         }
-                    } else {
+                    } else if section == "workspace" {
                         WorkspaceConfigFields {
+                            snapshot,
+                            loaded,
+                            profile: profile.clone(),
+                            saving,
+                            error,
+                        }
+                    } else {
+                        SafetyConfigFields {
                             snapshot,
                             loaded,
                             profile: profile.clone(),
@@ -3020,6 +3032,38 @@ const WORKSPACE_FIELDS: &[(&str, &str, &str)] = &[
     ),
 ];
 
+const SAFETY_FIELDS: &[(&str, &str, &str)] = &[
+    (
+        "approvals.mode",
+        "Approval Mode",
+        "How Hermes handles commands that need explicit approval.",
+    ),
+    (
+        "approvals.timeout",
+        "Approval Timeout",
+        "How long approval prompts wait before timing out.",
+    ),
+    ("approvals.mcp_reload_confirm", "Confirm MCP Reloads", ""),
+    ("command_allowlist", "Command Allowlist", ""),
+    (
+        "security.redact_secrets",
+        "Redact Secrets",
+        "Hide detected secrets from model-visible content when possible.",
+    ),
+    ("security.allow_private_urls", "Allow Private URLs", ""),
+    ("browser.allow_private_urls", "Browser Private URLs", ""),
+    (
+        "browser.auto_local_for_private_urls",
+        "Local Browser For Private URLs",
+        "",
+    ),
+    (
+        "checkpoints.enabled",
+        "File Checkpoints",
+        "Create rollback snapshots before file edits.",
+    ),
+];
+
 #[component]
 fn WorkspaceConfigFields(
     snapshot: Signal<Option<AgentConfigSnapshot>>,
@@ -3030,6 +3074,31 @@ fn WorkspaceConfigFields(
 ) -> Element {
     rsx! {
         for (path, title, description) in WORKSPACE_FIELDS {
+            CuratedConfigField {
+                key: "{path}",
+                snapshot,
+                loaded: loaded.clone(),
+                profile: profile.clone(),
+                saving,
+                error,
+                path,
+                title,
+                description,
+            }
+        }
+    }
+}
+
+#[component]
+fn SafetyConfigFields(
+    snapshot: Signal<Option<AgentConfigSnapshot>>,
+    loaded: AgentConfigSnapshot,
+    profile: Option<String>,
+    saving: Signal<bool>,
+    error: Signal<Option<String>>,
+) -> Element {
+    rsx! {
+        for (path, title, description) in SAFETY_FIELDS {
             CuratedConfigField {
                 key: "{path}",
                 snapshot,
@@ -3076,16 +3145,31 @@ fn CuratedConfigField(
             }
             .to_owned()
         });
-    let options = schema
-        .as_ref()
-        .map(|field| field.options.clone())
-        .unwrap_or_default();
     let current_text = config_display_value(&value);
+    let options = curated_config_options(
+        path,
+        &current_text,
+        schema
+            .as_ref()
+            .map(|field| field.options.as_slice())
+            .unwrap_or_default(),
+    );
+    let description = if description.is_empty() {
+        schema
+            .as_ref()
+            .and_then(|field| field.description.clone())
+            .unwrap_or_default()
+    } else {
+        description.to_owned()
+    };
     let mut draft = use_signal(|| current_text.clone());
 
     rsx! {
         section { class: "settings-list-row",
-            div { class: "settings-row-copy", strong { "{title}" } p { "{description}" } }
+            div { class: "settings-row-copy",
+                strong { "{title}" }
+                if !description.is_empty() { p { "{description}" } }
+            }
             div { class: "settings-row-action",
                 if field_type == "boolean" {
                     label { class: "settings-switch",
@@ -3178,6 +3262,23 @@ fn config_display_value(value: &Value) -> String {
             .join(", "),
         _ => value.to_string(),
     }
+}
+
+fn curated_config_options(path: &str, current: &str, schema_options: &[Value]) -> Vec<Value> {
+    let mut options = match path {
+        "approvals.mode" => vec![json!("manual"), json!("smart"), json!("off")],
+        "code_execution.mode" => vec![json!("project"), json!("strict")],
+        _ => schema_options.to_vec(),
+    };
+    if !options.is_empty()
+        && !current.is_empty()
+        && !options
+            .iter()
+            .any(|option| config_display_value(option) == current)
+    {
+        options.push(json!(current));
+    }
+    options
 }
 
 #[component]
@@ -3618,7 +3719,23 @@ mod tests {
     use hermes_protocol::{MoaConfig, MoaModelSlot, MoaPreset};
     use serde_json::json;
 
-    use super::{config_display_value, config_value, moa_complete, set_config_value};
+    use super::{
+        config_display_value, config_value, curated_config_options, moa_complete, set_config_value,
+    };
+
+    #[test]
+    fn safety_and_workspace_enum_overrides_match_the_source() {
+        assert_eq!(
+            curated_config_options("approvals.mode", "smart", &[]),
+            [json!("manual"), json!("smart"), json!("off")]
+        );
+        assert_eq!(
+            curated_config_options("code_execution.mode", "legacy", &[]),
+            [json!("project"), json!("strict"), json!("legacy")]
+        );
+        assert!(curated_config_options("approvals.timeout", "120", &[]).is_empty());
+        assert!(curated_config_options("command_allowlist", "git status", &[]).is_empty());
+    }
 
     #[test]
     fn workspace_config_edits_preserve_unrelated_nested_keys() {

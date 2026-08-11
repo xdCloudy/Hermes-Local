@@ -559,3 +559,26 @@ backlog only.
 Exact next action: port the OG Safety config section with the same schema-aware
 whole-record guarantees, including approval modes, URL policy, command allowlist,
 and checkpoints.
+
+## Safety settings checkpoint (2026-08-11)
+
+The official Safety whitelist is connected: Approval Mode, Approval Timeout,
+Confirm MCP Reloads, Command Allowlist, Redact Secrets, both general and browser
+private-URL policies, automatic local-browser routing for private URLs, and File
+Checkpoints. Unsupported keys remain absent even if a future schema grows,
+keeping security-surface expansion explicit and reviewable.
+
+Approval Mode uses the OG `manual / smart / off` override even when the backend
+declares only a string. The same enum path now correctly preserves an unknown
+active legacy option without turning ordinary numeric or list values into
+one-option selects. Maximized QA caught that generic-control defect in Approval
+Timeout and Command Allowlist; a focused regression test now guards it.
+
+The corrected 1296x809 native pass covers the full nine-row surface. A real
+WebView Redact Secrets toggle persisted `true → false`, remounted the pane, and
+reloaded as `false` while the fixture retained unrelated config. The workspace
+passes 32 unit tests plus doc-tests.
+
+Exact next action: port the OG Memory & Context section, preserving dynamic
+provider schema options while adding the built-in memory, profile, context, and
+compression controls.
