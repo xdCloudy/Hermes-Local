@@ -69,8 +69,7 @@ fn desktop_root() -> Element {
 
 fn main() {
     let data_dir = std::env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
+        .map_or_else(std::env::temp_dir, PathBuf::from)
         .join("Hermes Local");
     let mut native = NativeApp::new(data_dir);
     startup::install_local_bootstrap(&mut native.services);
