@@ -131,6 +131,7 @@ updater work itself.
 | Memory and context Agent configuration | `AgentConfigService` | Memory & Context settings | dynamic provider options + compression controls + rendered save/reload | Validated |
 | Voice Agent configuration | `AgentConfigService` | Voice settings | provider visibility + open identifiers + rendered switching E2E | Validated |
 | Advanced Agent configuration | `AgentConfigService` | Advanced settings | curated enum fixtures + whole-record preservation + rendered save/reload | Validated |
+| Per-device notification preferences and sound preview | `SettingsService` + `PlatformService` | Notifications settings | preference round-trip + sound fixture + native toast integration | Ported |
 | Main and auxiliary model configuration | `ModelService` | Model settings | provider/catalog/assignment fixtures + interaction E2E | Ported |
 | Mixture-of-Agents model configuration | `ModelService` | Model settings | preset/slot round-trip + interaction E2E | Ported |
 | Local/remote/cloud connection profiles | `ConnectionService` | settings/profiles | soft/hard/live re-home tests | Designed |

@@ -7,8 +7,8 @@ use futures_util::StreamExt;
 use hermes_core::{AgentConfigService, AppServices, ModelService, SessionTranscript};
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, MessageRole, MoaConfig, ModelAssignmentRequest,
-    ModelProvider, ModelSettingsSnapshot, ProjectFolder, ProjectsSnapshot, SessionCreateRequest,
-    SessionSummary, ThemeMode,
+    ModelProvider, ModelSettingsSnapshot, NativeNotificationKind, ProjectFolder, ProjectsSnapshot,
+    SessionCreateRequest, SessionSummary, ThemeMode,
 };
 use serde_json::{Map, Value, json};
 
@@ -1824,6 +1824,8 @@ fn SettingsOverlay(initial: &'static str) -> Element {
                         AgentConfigPanel { section: "voice", icon: "unmute", label: "Voice" }
                     } else if active() == "advanced" {
                         AgentConfigPanel { section: "advanced", icon: "tools", label: "Advanced" }
+                    } else if active() == "notifications" {
+                        NotificationsSettingsPanel {}
                     } else {
                         section { class: "settings-placeholder",
                             div { class: "settings-section-title", Codicon { name: active_icon } h1 { "{active_label}" } }
@@ -3905,6 +3907,327 @@ fn AppearanceSettingsPanel() -> Element {
     }
 }
 
+const NOTIFICATION_KINDS: &[(NativeNotificationKind, &str, &str)] = &[
+    (
+        NativeNotificationKind::Approval,
+        "Approval needed",
+        "A command is waiting for you to approve or reject it.",
+    ),
+    (
+        NativeNotificationKind::Input,
+        "Input needed",
+        "Hermes asked a question or needs a password or secret.",
+    ),
+    (
+        NativeNotificationKind::TurnDone,
+        "Response ready",
+        "A turn finished while Hermes was in the background.",
+    ),
+    (
+        NativeNotificationKind::TurnError,
+        "Turn failed",
+        "Background turn errors.",
+    ),
+    (
+        NativeNotificationKind::BackgroundDone,
+        "Background task finished",
+        "A backgrounded terminal command completed.",
+    ),
+    (
+        NativeNotificationKind::Credits,
+        "Credit alerts",
+        "Credit access is paused or restored.",
+    ),
+];
+
+const COMPLETION_SOUND_VARIANTS: &[(u8, &str)] = &[
+    (1, "Two-note comfort"),
+    (2, "Glass ping"),
+    (3, "Soft marimba"),
+    (4, "Tri-tone message"),
+    (5, "Airy whoosh"),
+    (6, "Discovery cluster"),
+    (7, "Systems online"),
+    (8, "IBM terminal"),
+    (9, "Modem chirp"),
+    (10, "Wind chimes"),
+    (11, "Singing bowl"),
+    (12, "Harp lift"),
+    (13, "Sonar ping"),
+    (14, "Music box"),
+];
+
+#[component]
+fn NotificationsSettingsPanel() -> Element {
+    let services = use_context::<AppServices>();
+    let state = use_context::<SettingsUiState>();
+    let save_service = services.settings.clone();
+    let platform = services.platform.clone();
+    let current = (state.settings)();
+    let variant_id = completion_sound_variant_id(current.completion_sound_variant_id);
+    let mut preview_nonce = use_signal(|| 0_u64);
+    let mut preview_variant = use_signal(|| variant_id);
+    let mut testing = use_signal(|| false);
+    let mut test_result = use_signal(|| None::<(&'static str, bool)>);
+
+    rsx! {
+        section { class: "notifications-settings",
+            div { class: "settings-section-title", Codicon { name: "bell" } h1 { "Notifications" } }
+            p { class: "settings-intro", "OS notifications (not in-app toasts). Per device." }
+            if (state.loading)() {
+                p { class: "settings-intro", "Loading notification preferences…" }
+            } else {
+                section { class: "settings-list-row",
+                    div { class: "settings-row-copy", strong { "Enable notifications" } p { "Off silences every notification below." } }
+                    label { class: "settings-switch",
+                        input {
+                            r#type: "checkbox",
+                            checked: current.notifications,
+                            aria_label: "Enable notifications",
+                            onchange: {
+                                let service = save_service.clone();
+                                let before = current.clone();
+                                let mut next = current.clone();
+                                move |event| {
+                                    next.notifications = event.checked();
+                                    save_app_settings(state, service.clone(), before.clone(), next.clone());
+                                }
+                            }
+                        }
+                        span {}
+                    }
+                }
+                for (kind, label, description) in NOTIFICATION_KINDS {
+                    section { class: "settings-list-row",
+                        div { class: "settings-row-copy", strong { "{label}" } p { "{description}" } }
+                        label { class: "settings-switch",
+                            input {
+                                r#type: "checkbox",
+                                disabled: !current.notifications,
+                                checked: current.notifications && current.notification_kinds.enabled(*kind),
+                                aria_label: "{label}",
+                                onchange: {
+                                    let service = save_service.clone();
+                                    let before = current.clone();
+                                    let mut next = current.clone();
+                                    let kind = *kind;
+                                    move |event| {
+                                        next.notification_kinds.set(kind, event.checked());
+                                        save_app_settings(state, service.clone(), before.clone(), next.clone());
+                                    }
+                                }
+                            }
+                            span {}
+                        }
+                    }
+                }
+                section { class: "settings-list-row notification-sound-row",
+                    div { class: "settings-row-copy", strong { "Completion Sound" } p { "Plays when an agent turn finishes. Pick a preset and preview it here." } }
+                    div { class: "notification-sound-action",
+                        select {
+                            class: "settings-select",
+                            aria_label: "Completion sound",
+                            value: "{variant_id}",
+                            onchange: {
+                                let service = save_service.clone();
+                                let before = current.clone();
+                                let mut next = current.clone();
+                                move |event| {
+                                    let selected = event.value().parse::<u8>().map_or(1, completion_sound_variant_id);
+                                    next.completion_sound_variant_id = selected;
+                                    preview_variant.set(selected);
+                                    preview_nonce += 1;
+                                    save_app_settings(state, service.clone(), before.clone(), next.clone());
+                                }
+                            },
+                            for (id, name) in COMPLETION_SOUND_VARIANTS {
+                                option { value: "{id}", "{name}" }
+                            }
+                        }
+                        button {
+                            class: "button notification-preview",
+                            onclick: move |_| {
+                                preview_variant.set(variant_id);
+                                preview_nonce += 1;
+                            },
+                            Codicon { name: "play" }
+                            "Preview"
+                        }
+                    }
+                }
+                div { class: "notification-test",
+                    button {
+                        class: "button",
+                        disabled: testing(),
+                        onclick: {
+                            let platform = platform.clone();
+                            move |_| {
+                                if testing() { return; }
+                                testing.set(true);
+                                test_result.set(None);
+                                let platform = platform.clone();
+                                spawn(async move {
+                                    let accepted = platform.notify("Hermes", "Notifications are working.").await.unwrap_or(false);
+                                    test_result.set(Some(if accepted {
+                                        ("Test sent. If nothing appears, check your OS notification permissions and Focus/Do Not Disturb.", false)
+                                    } else {
+                                        ("This system does not support native notifications.", true)
+                                    }));
+                                    testing.set(false);
+                                });
+                            }
+                        },
+                        Codicon { name: "bell" }
+                        if testing() { "Sending…" } else { "Send test notification" }
+                    }
+                    p { "Completion alerts only fire while Hermes is in the background." }
+                    if let Some((message, is_error)) = test_result() {
+                        p { class: if is_error { "notification-test-result error" } else { "notification-test-result" }, role: "status", "{message}" }
+                    }
+                }
+                if preview_nonce() > 0 {
+                    audio {
+                        key: "{preview_nonce}",
+                        autoplay: true,
+                        src: "{completion_sound_data_uri(preview_variant())}",
+                    }
+                }
+                if let Some(error) = (state.error)() {
+                    p { class: "inline-error", role: "alert", "{error}" }
+                }
+            }
+        }
+    }
+}
+
+fn save_app_settings(
+    state: SettingsUiState,
+    service: Arc<dyn hermes_core::SettingsService>,
+    before: AppSettings,
+    next: AppSettings,
+) {
+    let mut settings_signal = state.settings;
+    let mut error_signal = state.error;
+    settings_signal.set(next.clone());
+    error_signal.set(None);
+    spawn(async move {
+        if let Err(error) = service.save(&next).await {
+            settings_signal.set(before);
+            error_signal.set(Some(error.to_string()));
+        }
+    });
+}
+
+const fn completion_sound_variant_id(value: u8) -> u8 {
+    if value >= 1 && value <= 14 { value } else { 1 }
+}
+
+#[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+fn completion_sound_data_uri(variant: u8) -> String {
+    const SAMPLE_RATE: u32 = 12_000;
+    const SAMPLE_COUNT: usize = 8_640;
+    let tones: Vec<(f32, f32, f32)> = match completion_sound_variant_id(variant) {
+        1 => vec![(329.63, 0.0, 0.22), (261.63, 0.08, 0.50)],
+        2 => vec![(783.99, 0.0, 0.42)],
+        3 => vec![(261.63, 0.0, 0.22), (392.0, 0.12, 0.28)],
+        4 => vec![
+            (261.63, 0.0, 0.20),
+            (329.63, 0.08, 0.22),
+            (392.0, 0.16, 0.28),
+        ],
+        5 => vec![(220.0, 0.0, 0.46), (440.0, 0.12, 0.36)],
+        6 => vec![
+            (261.63, 0.0, 0.38),
+            (329.63, 0.02, 0.42),
+            (523.25, 0.05, 0.46),
+        ],
+        7 => vec![
+            (130.81, 0.0, 0.22),
+            (261.63, 0.11, 0.36),
+            (523.25, 0.22, 0.38),
+        ],
+        8 => vec![(110.0, 0.0, 0.14), (220.0, 0.11, 0.18)],
+        9 => vec![
+            (987.77, 0.0, 0.16),
+            (659.25, 0.13, 0.18),
+            (1_318.51, 0.27, 0.18),
+        ],
+        10 => vec![
+            (523.25, 0.0, 0.48),
+            (783.99, 0.08, 0.46),
+            (659.25, 0.16, 0.44),
+        ],
+        11 => vec![(261.63, 0.0, 0.62), (523.25, 0.0, 0.48)],
+        12 => vec![
+            (261.63, 0.0, 0.28),
+            (329.63, 0.09, 0.30),
+            (392.0, 0.18, 0.32),
+            (523.25, 0.27, 0.36),
+        ],
+        13 => vec![(523.25, 0.0, 0.58)],
+        _ => vec![
+            (659.25, 0.0, 0.18),
+            (523.25, 0.13, 0.20),
+            (392.0, 0.26, 0.28),
+        ],
+    };
+    let mut pcm = Vec::with_capacity(SAMPLE_COUNT * 2);
+    for index in 0..SAMPLE_COUNT {
+        let time = index as f32 / SAMPLE_RATE as f32;
+        let mut sample = 0.0_f32;
+        for (frequency, start, duration) in &tones {
+            if time >= *start && time <= start + duration {
+                let local = time - start;
+                let envelope = (1.0 - local / duration).max(0.0).powf(2.2);
+                sample += (std::f32::consts::TAU * frequency * local).sin() * envelope * 0.22;
+            }
+        }
+        let value = (sample.clamp(-0.9, 0.9) * f32::from(i16::MAX)) as i16;
+        pcm.extend_from_slice(&value.to_le_bytes());
+    }
+    let data_length = u32::try_from(pcm.len()).unwrap_or_default();
+    let mut wav = Vec::with_capacity(44 + pcm.len());
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&(36 + data_length).to_le_bytes());
+    wav.extend_from_slice(b"WAVEfmt ");
+    wav.extend_from_slice(&16_u32.to_le_bytes());
+    wav.extend_from_slice(&1_u16.to_le_bytes());
+    wav.extend_from_slice(&1_u16.to_le_bytes());
+    wav.extend_from_slice(&SAMPLE_RATE.to_le_bytes());
+    wav.extend_from_slice(&(SAMPLE_RATE * 2).to_le_bytes());
+    wav.extend_from_slice(&2_u16.to_le_bytes());
+    wav.extend_from_slice(&16_u16.to_le_bytes());
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&data_length.to_le_bytes());
+    wav.extend_from_slice(&pcm);
+    format!("data:audio/wav;base64,{}", base64_encode(&wav))
+}
+
+fn base64_encode(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut encoded = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let first = chunk[0];
+        let second = chunk.get(1).copied().unwrap_or_default();
+        let third = chunk.get(2).copied().unwrap_or_default();
+        encoded.push(char::from(ALPHABET[usize::from(first >> 2)]));
+        encoded.push(char::from(
+            ALPHABET[usize::from(((first & 0x03) << 4) | (second >> 4))],
+        ));
+        encoded.push(if chunk.len() > 1 {
+            char::from(ALPHABET[usize::from(((second & 0x0f) << 2) | (third >> 6))])
+        } else {
+            '='
+        });
+        encoded.push(if chunk.len() > 2 {
+            char::from(ALPHABET[usize::from(third & 0x3f)])
+        } else {
+            '='
+        });
+    }
+    encoded
+}
+
 #[component]
 fn Session(id: String) -> Element {
     let services = use_context::<AppServices>();
@@ -4121,8 +4444,9 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        config_display_value, config_value, curated_config_options, moa_complete, set_config_value,
-        voice_config_field_visible, voice_free_input_field,
+        completion_sound_data_uri, completion_sound_variant_id, config_display_value, config_value,
+        curated_config_options, moa_complete, set_config_value, voice_config_field_visible,
+        voice_free_input_field,
     };
 
     #[test]
@@ -4251,6 +4575,16 @@ mod tests {
             config_display_value(&json!(["C:\\Code", "D:\\Projects"])),
             r"C:\Code, D:\Projects"
         );
+    }
+
+    #[test]
+    fn completion_sound_preview_clamps_legacy_values_and_emits_wav_data() {
+        assert_eq!(completion_sound_variant_id(0), 1);
+        assert_eq!(completion_sound_variant_id(14), 14);
+        assert_eq!(completion_sound_variant_id(15), 1);
+        let data_uri = completion_sound_data_uri(2);
+        assert!(data_uri.starts_with("data:audio/wav;base64,UklGR"));
+        assert!(data_uri.len() > 10_000);
     }
 
     #[test]

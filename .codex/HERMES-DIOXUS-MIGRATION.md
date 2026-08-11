@@ -656,6 +656,33 @@ unit tests plus doc-tests.
 
 Device-only keep-awake and Quick Entry remain intentionally outside the generic
 Agent record until their typed PowerService and ShortcutService/WindowService
-slices exist. Exact next action: port Notifications using a typed native
-NotificationService rather than simulating desktop notification authority in
-the Dioxus layer.
+slices exist. Exact next action: port Notifications through the typed native
+PlatformService rather than simulating desktop notification authority in the
+Dioxus layer.
+
+## Notification preferences checkpoint (2026-08-11)
+
+The Notifications section now preserves the OG per-device topology: a master
+notification switch; Approval, Input, Response Ready, Turn Failed, Background
+Task, and Credit switches; the complete 14-name completion-sound catalog with
+selection and preview; a native test-notification action; and the original
+background-only completion hint. Legacy settings records default every kind on,
+matching the source.
+
+Preferences are typed protocol state persisted atomically through
+`SettingsService`; the UI has no storage or native authority. The preview is a
+small generated WAV data URI rendered by the shared WebView, so it remains
+web-ready without runtime Node or direct platform calls. Native test delivery
+uses `PlatformService::notify` and reports unsupported honestly while the
+Windows AppUserModelID/toast registration slice remains unfinished.
+
+Focused tests prove legacy defaults, independent per-kind round trips, invalid
+sound-ID clamping, and WAV generation. The workspace passes 37 unit tests plus
+doc-tests, and Clippy has no new warnings beyond the recorded backlog. A native
+visual pass could not be completed in this run because shell-launched Dioxus
+processes stopped exposing a top-level window; the same condition reproduced
+from detached checkpoint `64a3395`, ruling out this diff as the regression.
+
+Exact next action: port Providers from the official source and its typed Agent
+provider/model contracts, then return to native toast registration during the
+Windows integration/package identity slice.

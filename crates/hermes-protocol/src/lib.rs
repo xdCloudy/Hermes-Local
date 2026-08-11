@@ -303,7 +303,73 @@ pub enum ThemeMode {
     System,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NativeNotificationKind {
+    Approval,
+    Input,
+    TurnDone,
+    TurnError,
+    BackgroundDone,
+    Credits,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[allow(clippy::struct_excessive_bools)] // Mirrors the OG per-kind preference record.
+pub struct NativeNotificationKinds {
+    #[serde(default = "default_true")]
+    pub approval: bool,
+    #[serde(default = "default_true")]
+    pub input: bool,
+    #[serde(default = "default_true")]
+    pub turn_done: bool,
+    #[serde(default = "default_true")]
+    pub turn_error: bool,
+    #[serde(default = "default_true")]
+    pub background_done: bool,
+    #[serde(default = "default_true")]
+    pub credits: bool,
+}
+
+impl Default for NativeNotificationKinds {
+    fn default() -> Self {
+        Self {
+            approval: true,
+            input: true,
+            turn_done: true,
+            turn_error: true,
+            background_done: true,
+            credits: true,
+        }
+    }
+}
+
+impl NativeNotificationKinds {
+    #[must_use]
+    pub const fn enabled(&self, kind: NativeNotificationKind) -> bool {
+        match kind {
+            NativeNotificationKind::Approval => self.approval,
+            NativeNotificationKind::Input => self.input,
+            NativeNotificationKind::TurnDone => self.turn_done,
+            NativeNotificationKind::TurnError => self.turn_error,
+            NativeNotificationKind::BackgroundDone => self.background_done,
+            NativeNotificationKind::Credits => self.credits,
+        }
+    }
+
+    pub const fn set(&mut self, kind: NativeNotificationKind, enabled: bool) {
+        match kind {
+            NativeNotificationKind::Approval => self.approval = enabled,
+            NativeNotificationKind::Input => self.input = enabled,
+            NativeNotificationKind::TurnDone => self.turn_done = enabled,
+            NativeNotificationKind::TurnError => self.turn_error = enabled,
+            NativeNotificationKind::BackgroundDone => self.background_done = enabled,
+            NativeNotificationKind::Credits => self.credits = enabled,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct AppSettings {
     #[serde(default)]
     pub theme: ThemeMode,
@@ -318,11 +384,33 @@ pub struct AppSettings {
     #[serde(default = "default_true")]
     pub notifications: bool,
     #[serde(default)]
+    pub notification_kinds: NativeNotificationKinds,
+    #[serde(default = "default_completion_sound_variant_id")]
+    pub completion_sound_variant_id: u8,
+    #[serde(default)]
     pub keep_awake: bool,
     #[serde(default)]
     pub launch_at_login: bool,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            theme: ThemeMode::System,
+            theme_name: None,
+            profile: None,
+            gateway_url: None,
+            default_project_dir: None,
+            notifications: true,
+            notification_kinds: NativeNotificationKinds::default(),
+            completion_sound_variant_id: default_completion_sound_variant_id(),
+            keep_awake: false,
+            launch_at_login: false,
+            extra: BTreeMap::new(),
+        }
+    }
 }
 
 /// A single field from the Agent's declared `/api/config/schema` response.
@@ -551,6 +639,10 @@ const fn default_true() -> bool {
     true
 }
 
+const fn default_completion_sound_variant_id() -> u8 {
+    1
+}
+
 fn null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -680,6 +772,41 @@ mod tests {
         assert_eq!(
             GatewayEvent::from_frame(&frame).expect("event").kind,
             "message.delta"
+        );
+    }
+
+    #[test]
+    fn notification_preferences_default_on_and_round_trip_per_kind() {
+        let mut settings: AppSettings =
+            serde_json::from_value(serde_json::json!({})).expect("legacy settings record");
+        assert!(settings.notifications);
+        assert_eq!(settings.completion_sound_variant_id, 1);
+        for kind in [
+            NativeNotificationKind::Approval,
+            NativeNotificationKind::Input,
+            NativeNotificationKind::TurnDone,
+            NativeNotificationKind::TurnError,
+            NativeNotificationKind::BackgroundDone,
+            NativeNotificationKind::Credits,
+        ] {
+            assert!(settings.notification_kinds.enabled(kind));
+        }
+        settings
+            .notification_kinds
+            .set(NativeNotificationKind::TurnError, false);
+        let round_trip: AppSettings = serde_json::from_value(
+            serde_json::to_value(settings).expect("serialize notification preferences"),
+        )
+        .expect("deserialize notification preferences");
+        assert!(
+            !round_trip
+                .notification_kinds
+                .enabled(NativeNotificationKind::TurnError)
+        );
+        assert!(
+            round_trip
+                .notification_kinds
+                .enabled(NativeNotificationKind::Approval)
         );
     }
 }

@@ -1176,7 +1176,7 @@ impl PlatformService for DesktopPlatform {
         })
     }
 
-    fn notify(&self, _title: &str, _body: &str) -> ServiceFuture<'_, ()> {
+    fn notify(&self, _title: &str, _body: &str) -> ServiceFuture<'_, bool> {
         Box::pin(async {
             Err(ServiceError::Unavailable(
                 "native notifications are not configured".into(),

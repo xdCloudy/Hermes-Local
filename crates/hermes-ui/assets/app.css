@@ -425,7 +425,7 @@ h1 { margin-top: 4px !important; margin-bottom: 0 !important; font-size: 1.25rem
 .settings-rail-footer button:hover { background: var(--hover); color: var(--text-1); }
 .settings-rail-footer .codicon { width: 13px; height: 13px; }
 .settings-main { min-width: 0; overflow: hidden auto; padding: 32px clamp(20px, 4vw, 44px) 28px; }
-.appearance-settings, .agent-config-settings, .settings-placeholder { width: 100%; max-width: 980px; margin: 0 auto; }
+.appearance-settings, .agent-config-settings, .notifications-settings, .settings-placeholder { width: 100%; max-width: 980px; margin: 0 auto; }
 .settings-section-title { display: flex; align-items: center; gap: 8px; }
 .settings-section-title > .codicon { width: 17px; height: 17px; color: var(--text-2); }
 .settings-section-title h1 { margin: 0 !important; font-size: 1rem; }
@@ -453,6 +453,15 @@ h1 { margin-top: 4px !important; margin-bottom: 0 !important; font-size: 1.25rem
 .settings-switch input:checked + span { border-color: var(--accent); background: var(--accent); }
 .settings-switch input:checked + span::after { transform: translateX(12px); background: #fff; }
 .settings-switch input:focus-visible + span { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; }
+.settings-switch input:disabled + span { opacity: .42; cursor: default; }
+.notification-sound-action { display: flex; min-width: 420px; flex: 0 1 520px; align-items: center; justify-content: flex-end; gap: 8px; }
+.notification-sound-action .settings-select { min-width: 224px; }
+.notification-preview { gap: 6px; white-space: nowrap; }
+.notification-preview .codicon, .notification-test .button .codicon { width: 13px; height: 13px; }
+.notification-test { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; margin-top: 16px; }
+.notification-test > p { margin: 0; color: var(--text-3); font-size: .6875rem; line-height: 1.45; }
+.notification-test-result.error { color: var(--red); }
+.notifications-settings audio { display: none; }
 .settings-save-state { margin: 10px 0 0; color: var(--text-3); font-size: .6875rem; text-align: right; }
 .settings-load-error { display: grid; max-width: 520px; justify-items: start; gap: 7px; margin-top: 20px; border: 1px solid var(--stroke-2); border-radius: 8px; padding: 16px; background: var(--panel-bg); }
 .settings-load-error > .codicon { width: 18px; height: 18px; color: var(--red); }

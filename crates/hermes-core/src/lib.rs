@@ -415,7 +415,7 @@ pub trait PlatformService: Send + Sync {
         starting_directory: Option<&Path>,
     ) -> ServiceFuture<'_, Option<PathBuf>>;
     fn open_external(&self, url: &str) -> ServiceFuture<'_, ()>;
-    fn notify(&self, title: &str, body: &str) -> ServiceFuture<'_, ()>;
+    fn notify(&self, title: &str, body: &str) -> ServiceFuture<'_, bool>;
     fn version(&self) -> ServiceFuture<'_, String>;
 }
 
