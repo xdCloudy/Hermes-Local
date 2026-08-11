@@ -116,13 +116,22 @@ jobs:
       - name: Verify installer lifecycle
         shell: pwsh
         run: |
-          $installRoot = Join-Path $env:RUNNER_TEMP "Hermes Local DI-17"
+          $installRoot = Join-Path $env:RUNNER_TEMP "HermesLocal-DI17"
+          $installLog = Join-Path $env:RUNNER_TEMP "hermes-local-install.log"
+          $uninstallLog = Join-Path $env:RUNNER_TEMP "hermes-local-uninstall.log"
           Remove-Item -Recurse -Force -LiteralPath $installRoot -ErrorAction SilentlyContinue
+          Remove-Item -Force -LiteralPath $installLog,$uninstallLog -ErrorAction SilentlyContinue
 
           & ".\build\rust-packages\Hermes-Local-Setup.exe" `
-            /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- "/DIR=$installRoot"
-          if ($LASTEXITCODE -ne 0) {
-            throw "Silent installer validation failed."
+            /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCANCEL /SP- `
+            "/DIR=$installRoot" "/LOG=$installLog"
+          $installExit = $LASTEXITCODE
+          if ($installExit -ne 0) {
+            Write-Host "Inno Setup exited with code $installExit"
+            if (Test-Path -LiteralPath $installLog) {
+              Get-Content -LiteralPath $installLog
+            }
+            throw "Silent installer validation failed with exit code $installExit."
           }
 
           python ".\scripts\ci\rust_windows_package.py" verify-install `
@@ -150,9 +159,14 @@ jobs:
           if (-not (Test-Path -LiteralPath $uninstaller)) {
             throw "Hermes Local uninstaller was not created."
           }
-          & $uninstaller /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-          if ($LASTEXITCODE -ne 0) {
-            throw "Hermes Local uninstall validation failed."
+          & $uninstaller /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/LOG=$uninstallLog"
+          $uninstallExit = $LASTEXITCODE
+          if ($uninstallExit -ne 0) {
+            Write-Host "Inno Uninstall exited with code $uninstallExit"
+            if (Test-Path -LiteralPath $uninstallLog) {
+              Get-Content -LiteralPath $uninstallLog
+            }
+            throw "Hermes Local uninstall validation failed with exit code $uninstallExit."
           }
           Start-Sleep -Seconds 2
 
