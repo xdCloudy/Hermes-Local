@@ -1234,7 +1234,7 @@ mod tests {
 
     #[test]
     fn served_token_parser_requires_json_string_literal() {
-        let html = r#"<script>window.__HERMES_SESSION_TOKEN__ = \"abc\\\"def\";</script>"#;
+        let html = r#"<script>window.__HERMES_SESSION_TOKEN__ = "abc\"def";</script>"#;
         assert_eq!(extract_served_token(html).as_deref(), Some("abc\"def"));
         assert_eq!(
             extract_served_token("window.__HERMES_SESSION_TOKEN__ = token"),
