@@ -6,7 +6,7 @@ use dioxus::prelude::*;
 use futures_util::StreamExt;
 use hermes_core::{AgentConfigService, AppServices, ModelService, SessionTranscript};
 use hermes_protocol::{
-    AgentConfigSnapshot, AppSettings, MessageRole, MoaConfig, ModelAssignmentRequest,
+    AgentConfigSnapshot, AppSettings, EnvVarInfo, MessageRole, MoaConfig, ModelAssignmentRequest,
     ModelProvider, ModelSettingsSnapshot, NativeNotificationKind, OAuthProvider, OAuthStart,
     ProjectFolder, ProjectsSnapshot, SessionCreateRequest, SessionSummary, ThemeMode,
 };
@@ -1848,6 +1848,8 @@ fn SettingsOverlay(initial: &'static str) -> Element {
                         NotificationsSettingsPanel {}
                     } else if active() == "providers" && provider_view() == "accounts" {
                         ProviderAccountsPanel { on_want_api_key: move |()| provider_view.set("keys".to_owned()) }
+                    } else if active() == "providers" && provider_view() == "keys" {
+                        ProviderKeysPanel { on_custom_endpoint: move |()| provider_view.set("custom-endpoints".to_owned()) }
                     } else {
                         section { class: "settings-placeholder",
                             div { class: "settings-section-title", Codicon { name: active_icon } h1 { "{active_label}" } }
@@ -3966,6 +3968,152 @@ fn provider_flow_subtitle(flow: &str) -> &'static str {
     }
 }
 
+const PROVIDER_PREFIXES: &[(&str, &str, u8)] = &[
+    ("NOUS_", "Nous Portal", 0),
+    ("FIREWORKS_", "Fireworks AI", 1),
+    ("OPENROUTER_", "OpenRouter", 1),
+    ("ANTHROPIC_", "Anthropic", 2),
+    ("XAI_", "xAI", 3),
+    ("GOOGLE_", "Gemini", 4),
+    ("GEMINI_", "Gemini", 4),
+    ("DEEPSEEK_", "DeepSeek", 5),
+    ("DASHSCOPE_", "DashScope (Qwen)", 6),
+    ("HERMES_QWEN_", "DashScope (Qwen)", 6),
+    ("GLM_", "GLM / Z.AI", 7),
+    ("ZAI_", "GLM / Z.AI", 7),
+    ("Z_AI_", "GLM / Z.AI", 7),
+    ("KIMI_", "Kimi / Moonshot", 8),
+    ("KIMI_CN_", "Kimi (China)", 9),
+    ("MINIMAX_", "MiniMax", 10),
+    ("MINIMAX_CN_", "MiniMax (China)", 11),
+    ("HF_", "Hugging Face", 12),
+    ("OPENCODE_ZEN_", "OpenCode Zen", 13),
+    ("OPENCODE_GO_", "OpenCode Go", 14),
+    ("NVIDIA_", "NVIDIA NIM", 15),
+    ("OLLAMA_", "Ollama Cloud", 16),
+    ("LM_", "LM Studio", 17),
+    ("STEPFUN_", "StepFun", 18),
+    ("XIAOMI_", "Xiaomi MiMo", 19),
+    ("ARCEEAI_", "Arcee AI", 20),
+    ("ARCEE_", "Arcee AI", 20),
+    ("GMI_", "GMI Cloud", 21),
+    ("AZURE_FOUNDRY_", "Azure Foundry", 22),
+    ("AWS_", "AWS Bedrock", 23),
+];
+
+#[derive(Clone, Debug, PartialEq)]
+struct ProviderKeyGroup {
+    advanced: Vec<(String, EnvVarInfo)>,
+    description: String,
+    docs_url: Option<String>,
+    has_any_set: bool,
+    name: String,
+    primary: (String, EnvVarInfo),
+    priority: u8,
+}
+
+fn provider_group_for_key(key: &str) -> Option<(&'static str, u8)> {
+    PROVIDER_PREFIXES
+        .iter()
+        .filter(|(prefix, _, _)| key.starts_with(prefix))
+        .max_by_key(|(prefix, _, _)| prefix.len())
+        .map(|(_, name, priority)| (*name, *priority))
+}
+
+fn provider_priority(name: &str) -> u8 {
+    PROVIDER_PREFIXES
+        .iter()
+        .find_map(|(_, candidate, priority)| (*candidate == name).then_some(*priority))
+        .unwrap_or(99)
+}
+
+fn is_provider_key(key: &str, info: &EnvVarInfo) -> bool {
+    info.is_password
+        || key.ends_with("_API_KEY")
+        || key.ends_with("_TOKEN")
+        || key.ends_with("_KEY")
+}
+
+fn build_provider_key_groups(vars: &BTreeMap<String, EnvVarInfo>) -> Vec<ProviderKeyGroup> {
+    let mut buckets = BTreeMap::<String, Vec<(String, EnvVarInfo)>>::new();
+    for (key, info) in vars {
+        if info.category != "provider" {
+            continue;
+        }
+        let fallback = provider_group_for_key(key);
+        let name = info
+            .provider_label
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| {
+                info.provider
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty())
+            })
+            .map(str::to_owned)
+            .or_else(|| fallback.map(|(name, _)| name.to_owned()));
+        if let Some(name) = name {
+            buckets
+                .entry(name)
+                .or_default()
+                .push((key.clone(), info.clone()));
+        }
+    }
+    let mut groups = Vec::new();
+    for (name, entries) in buckets {
+        let primary = entries
+            .iter()
+            .find(|(key, info)| !info.advanced && is_provider_key(key, info))
+            .or_else(|| {
+                entries
+                    .iter()
+                    .find(|(key, info)| is_provider_key(key, info))
+            })
+            .cloned();
+        let Some(primary) = primary else { continue };
+        let mut advanced = entries
+            .iter()
+            .filter(|(key, info)| key != &primary.0 && (!is_provider_key(key, info) || info.is_set))
+            .cloned()
+            .collect::<Vec<_>>();
+        advanced.sort_by(|left, right| left.0.cmp(&right.0));
+        groups.push(ProviderKeyGroup {
+            description: primary.1.description.clone(),
+            docs_url: primary.1.url.clone(),
+            has_any_set: entries.iter().any(|(_, info)| info.is_set),
+            priority: provider_priority(&name),
+            name,
+            primary,
+            advanced,
+        });
+    }
+    groups.sort_by(|left, right| {
+        left.priority
+            .cmp(&right.priority)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    groups
+}
+
+fn credential_field_label(key: &str) -> String {
+    let trimmed = key
+        .strip_suffix("_API_KEY")
+        .or_else(|| key.strip_suffix("_TOKEN"))
+        .or_else(|| key.strip_suffix("_KEY"))
+        .unwrap_or(key);
+    trimmed
+        .split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            chars.next().map_or_else(String::new, |first| {
+                first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[derive(Clone, Debug, PartialEq)]
 enum ProviderAuthFlow {
     Starting(OAuthProvider),
@@ -4075,6 +4223,259 @@ async fn poll_provider_oauth(
         provider,
         session_id: Some(session_id),
     }));
+}
+
+fn redacted_credential(value: &str) -> String {
+    let chars = value.chars().collect::<Vec<_>>();
+    if chars.len() <= 8 {
+        "••••".into()
+    } else {
+        format!(
+            "{}...{}",
+            chars[..4].iter().collect::<String>(),
+            chars[chars.len() - 4..].iter().collect::<String>()
+        )
+    }
+}
+
+#[component]
+fn ProviderKeysPanel(on_custom_endpoint: Callback<()>) -> Element {
+    let services = use_context::<AppServices>();
+    let settings = use_context::<SettingsUiState>();
+    let profile = (settings.settings)().profile;
+    let load_service = services.providers.clone();
+    let mut vars = use_signal(|| None::<BTreeMap<String, EnvVarInfo>>);
+    let mut loading = use_signal(|| true);
+    let mut error = use_signal(|| None::<String>);
+    let mut query = use_signal(String::new);
+    let mut expanded = use_signal(|| None::<String>);
+    let mut drafts = use_signal(BTreeMap::<String, String>::new);
+    let mut busy = use_signal(|| None::<String>);
+    let mut remove_target = use_signal(|| None::<String>);
+    let load_profile = profile.clone();
+    let _load = use_resource(move || {
+        let service = load_service.clone();
+        let profile = load_profile.clone();
+        async move {
+            loading.set(true);
+            match service.env(profile.as_deref()).await {
+                Ok(next) => {
+                    vars.set(Some(next));
+                    error.set(None);
+                }
+                Err(problem) => error.set(Some(problem.to_string())),
+            }
+            loading.set(false);
+        }
+    });
+    let groups = vars()
+        .as_ref()
+        .map(build_provider_key_groups)
+        .unwrap_or_default();
+    let needle = query().trim().to_lowercase();
+    let visible = groups
+        .iter()
+        .filter(|group| {
+            needle.is_empty()
+                || group.name.to_lowercase().contains(&needle)
+                || group.description.to_lowercase().contains(&needle)
+                || group.primary.0.to_lowercase().contains(&needle)
+                || group
+                    .advanced
+                    .iter()
+                    .any(|(key, _)| key.to_lowercase().contains(&needle))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
+    rsx! {
+        section { class: "provider-settings provider-keys-settings",
+            button { class: "provider-row provider-local-endpoint", onclick: move |_| on_custom_endpoint.call(()),
+                div { strong { "Local / custom endpoint" } p { "Point Hermes at any OpenAI-compatible endpoint (Zyphra, vLLM, llama.cpp, Ollama, etc)." } }
+                Codicon { name: "chevron-right" }
+            }
+            if loading() {
+                div { class: "provider-list provider-loading", for _ in 0..6 { div { class: "provider-skeleton" } } }
+            } else if let Some(problem) = error() {
+                div { class: "settings-load-error compact", role: "alert", Codicon { name: "warning" } strong { "Could not load provider keys" } p { "{problem}" } }
+            } else if groups.is_empty() {
+                div { class: "provider-empty", "No provider API keys available." }
+            } else {
+                label { class: "provider-search",
+                    Codicon { name: "search" }
+                    input { aria_label: "Search providers", placeholder: "Search providers…", value: "{query}", oninput: move |event| query.set(event.value()) }
+                }
+                if visible.is_empty() {
+                    div { class: "provider-empty", "No providers match your search." }
+                } else {
+                    div { class: "provider-key-list",
+                        for group in visible {
+                            article { class: if expanded().as_deref() == Some(group.name.as_str()) { "provider-key-card expanded" } else { "provider-key-card" },
+                                button { class: "provider-key-card-head", onclick: {
+                                    let name = group.name.clone();
+                                    move |_| expanded.set((expanded().as_deref() != Some(name.as_str())).then_some(name.clone()))
+                                },
+                                    span { class: if group.has_any_set { "provider-key-dot set" } else { "provider-key-dot" } }
+                                    div { strong { "{group.name}" } p { "{group.description}" } }
+                                    Codicon { name: if expanded().as_deref() == Some(group.name.as_str()) { "chevron-up" } else { "chevron-down" } }
+                                }
+                                div { class: "provider-key-primary",
+                                    ProviderCredentialField {
+                                        var_key: group.primary.0.clone(),
+                                        info: group.primary.1.clone(),
+                                        drafts,
+                                        busy,
+                                        vars,
+                                        remove_target,
+                                        error,
+                                        profile: profile.clone(),
+                                    }
+                                }
+                                if expanded().as_deref() == Some(group.name.as_str()) {
+                                    div { class: "provider-key-advanced",
+                                        if !group.advanced.is_empty() { p { class: "provider-group-label", "Configuration" } }
+                                        for (key, info) in group.advanced.clone() {
+                                            label { class: "provider-advanced-row",
+                                                span { "{credential_field_label(&key)}" }
+                                                ProviderCredentialField { var_key: key, info, drafts, busy, vars, remove_target, error, profile: profile.clone() }
+                                            }
+                                        }
+                                        if let Some(url) = group.docs_url.clone() {
+                                            button { class: "provider-reopen", onclick: {
+                                                let platform = services.platform.clone();
+                                                move |_| { let platform = platform.clone(); let url = url.clone(); spawn(async move { let _ = platform.open_external(&url).await; }); }
+                                            }, Codicon { name: "link-external" } "Get a key" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(key) = remove_target() {
+                div { class: "dialog-backdrop", role: "presentation",
+                    section { class: "hermes-dialog compact", role: "alertdialog", aria_modal: "true", aria_label: "Remove provider credential",
+                        header { h2 { "Remove {key} from .env?" } p { "Hermes will remove this credential from the active profile." } }
+                        footer {
+                            button { class: "button", disabled: busy().is_some(), onclick: move |_| remove_target.set(None), "Cancel" }
+                            button { class: "button danger", disabled: busy().is_some(), onclick: {
+                                let service = services.providers.clone();
+                                let profile = profile.clone();
+                                let key = key.clone();
+                                move |_| {
+                                    busy.set(Some(key.clone()));
+                                    let service = service.clone();
+                                    let profile = profile.clone();
+                                    let key = key.clone();
+                                    spawn(async move {
+                                        match service.delete_env(profile.as_deref(), &key).await {
+                                            Ok(()) => {
+                                                if let Some(info) = vars.write().as_mut().and_then(|rows| rows.get_mut(&key)) {
+                                                    info.is_set = false;
+                                                    info.redacted_value = None;
+                                                }
+                                                drafts.write().remove(&key);
+                                                remove_target.set(None);
+                                                error.set(None);
+                                            }
+                                            Err(problem) => error.set(Some(problem.to_string())),
+                                        }
+                                        busy.set(None);
+                                    });
+                                }
+                            }, if busy().is_some() { "Removing…" } else { "Remove" } }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ProviderCredentialField(
+    var_key: String,
+    info: EnvVarInfo,
+    mut drafts: Signal<BTreeMap<String, String>>,
+    mut busy: Signal<Option<String>>,
+    mut vars: Signal<Option<BTreeMap<String, EnvVarInfo>>>,
+    mut remove_target: Signal<Option<String>>,
+    mut error: Signal<Option<String>>,
+    profile: Option<String>,
+) -> Element {
+    let services = use_context::<AppServices>();
+    let editing = drafts().contains_key(&var_key);
+    let draft = drafts().get(&var_key).cloned().unwrap_or_default();
+    let shown = if editing {
+        draft.clone()
+    } else if info.is_set {
+        info.redacted_value
+            .clone()
+            .unwrap_or_else(|| "••••••••".into())
+    } else {
+        String::new()
+    };
+    let is_busy = busy().as_deref() == Some(var_key.as_str());
+    rsx! {
+        div { class: "provider-credential-field",
+            input {
+                class: "settings-input",
+                r#type: if info.is_password && editing { "password" } else { "text" },
+                readonly: info.is_set && !editing,
+                disabled: is_busy,
+                placeholder: if info.is_set { "Replace current value" } else if info.is_password { "Paste API key" } else { "Optional" },
+                value: "{shown}",
+                onfocus: {
+                    let key = var_key.clone();
+                    move |_| { if !drafts().contains_key(&key) { drafts.write().insert(key.clone(), String::new()); } }
+                },
+                oninput: {
+                    let key = var_key.clone();
+                    move |event| { drafts.write().insert(key.clone(), event.value()); }
+                },
+                onkeydown: {
+                    let key = var_key.clone();
+                    move |event| if event.key() == Key::Escape { drafts.write().remove(&key); }
+                }
+            }
+            if editing && info.is_set {
+                button { class: "provider-remove", disabled: is_busy, aria_label: "Remove {var_key}", title: "Remove", onclick: {
+                    let key = var_key.clone();
+                    move |_| remove_target.set(Some(key.clone()))
+                }, Codicon { name: "trash" } }
+            }
+            if editing && !draft.trim().is_empty() {
+                button { class: "button primary provider-key-save", disabled: is_busy, onclick: {
+                    let service = services.providers.clone();
+                    let profile = profile.clone();
+                    let key = var_key.clone();
+                    let value = draft.trim().to_owned();
+                    move |_| {
+                        busy.set(Some(key.clone()));
+                        let service = service.clone();
+                        let profile = profile.clone();
+                        let key = key.clone();
+                        let value = value.clone();
+                        spawn(async move {
+                            match service.set_env(profile.as_deref(), &key, &value).await {
+                                Ok(()) => {
+                                    if let Some(info) = vars.write().as_mut().and_then(|rows| rows.get_mut(&key)) {
+                                        info.is_set = true;
+                                        info.redacted_value = Some(redacted_credential(&value));
+                                    }
+                                    drafts.write().remove(&key);
+                                    error.set(None);
+                                }
+                                Err(problem) => error.set(Some(problem.to_string())),
+                            }
+                            busy.set(None);
+                        });
+                    }
+                }, if is_busy { "Saving…" } else { "Save" } }
+            }
+        }
+    }
 }
 
 #[component]
@@ -5058,13 +5459,18 @@ fn ErrorState(error: String) -> Element {
 
 #[cfg(test)]
 mod tests {
-    use hermes_protocol::{MoaConfig, MoaModelSlot, MoaPreset, OAuthProvider, OAuthStart};
+    use std::collections::BTreeMap;
+
+    use hermes_protocol::{
+        EnvVarInfo, MoaConfig, MoaModelSlot, MoaPreset, OAuthProvider, OAuthStart,
+    };
     use serde_json::json;
 
     use super::{
-        ProviderAuthFlow, completion_sound_data_uri, completion_sound_variant_id,
-        config_display_value, config_value, curated_config_options, moa_complete, provider_order,
-        provider_title, set_config_value, voice_config_field_visible, voice_free_input_field,
+        ProviderAuthFlow, build_provider_key_groups, completion_sound_data_uri,
+        completion_sound_variant_id, config_display_value, config_value, curated_config_options,
+        moa_complete, provider_group_for_key, provider_order, provider_title, redacted_credential,
+        set_config_value, voice_config_field_visible, voice_free_input_field,
     };
 
     #[test]
@@ -5250,6 +5656,37 @@ mod tests {
             session_id: Some("session-1".into()),
         };
         assert_eq!(failed.session_id(), Some("session-1"));
+    }
+
+    #[test]
+    fn provider_key_groups_prefer_backend_identity_and_longest_prefix_fallback() {
+        assert_eq!(
+            provider_group_for_key("MINIMAX_CN_API_KEY"),
+            Some(("MiniMax (China)", 11))
+        );
+        let key = EnvVarInfo {
+            category: "provider".into(),
+            description: "Provider key".into(),
+            is_password: true,
+            provider: Some("future-provider".into()),
+            provider_label: Some("Future Provider".into()),
+            ..EnvVarInfo::default()
+        };
+        let endpoint = EnvVarInfo {
+            advanced: true,
+            category: "provider".into(),
+            provider_label: Some("Future Provider".into()),
+            ..EnvVarInfo::default()
+        };
+        let groups = build_provider_key_groups(&BTreeMap::from([
+            ("FUTURE_API_KEY".into(), key),
+            ("FUTURE_BASE_URL".into(), endpoint),
+        ]));
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].name, "Future Provider");
+        assert_eq!(groups[0].primary.0, "FUTURE_API_KEY");
+        assert_eq!(groups[0].advanced[0].0, "FUTURE_BASE_URL");
+        assert_eq!(redacted_credential("abcdefghijkl"), "abcd...ijkl");
     }
 
     #[test]

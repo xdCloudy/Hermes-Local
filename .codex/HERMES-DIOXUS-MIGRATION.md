@@ -771,3 +771,27 @@ than this overlay.
 Exact next action: port Providers → API Keys with the backend provider grouping
 metadata, OG prefix fallback, masked inline editing, removal confirmation, and
 the Local / custom endpoint entry point.
+
+## Provider API keys UI checkpoint (2026-08-11)
+
+Providers → API Keys now consumes the Agent environment catalog through
+`ProviderService` and preserves the source grouping contract. Backend
+`provider_label` / `provider` identity wins; the complete OG prefix catalog is
+the fallback, using longest-prefix matching so regional variants such as
+`MINIMAX_CN_` do not collapse into their parent. Groups keep the official
+priority order and require a real key/token field before rendering.
+
+The Dioxus view includes the Local / custom endpoint entry row, provider search,
+set-state dots, collapsed provider cards, masked click-to-edit values, Escape
+cancel, inline save, confirmed removal, configuration-level advanced fields,
+and typed external docs opening. Credential values remain in Rust signal state
+only while edited and are replaced with a short redaction after save.
+
+Focused tests cover backend identity precedence, longest-prefix selection,
+primary/advanced row construction, and redaction. The workspace passes 43 unit
+tests plus doc-tests with no new Clippy warnings. Rendered QA remains blocked by
+the recorded native top-level-window failure.
+
+Exact next action: port Providers → Custom Endpoints with OG list/edit/add,
+model discovery validation, active selection, config-owned deletion guard, and
+whole-response refresh behavior.

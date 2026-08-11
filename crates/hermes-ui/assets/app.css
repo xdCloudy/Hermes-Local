@@ -517,6 +517,30 @@ h1 { margin-top: 4px !important; margin-bottom: 0 !important; font-size: 1.25rem
 .provider-auth-waiting .codicon, .provider-auth-state.starting > .codicon { animation: provider-spin 1s linear infinite; }
 .provider-auth-error-actions { display: flex; gap: 7px; }
 @keyframes provider-spin { to { transform: rotate(360deg); } }
+.provider-local-endpoint { margin-bottom: 13px; }
+.provider-search { display: flex; height: 31px; align-items: center; gap: 7px; margin-bottom: 10px; border: 1px solid var(--stroke-2); border-radius: 7px; padding: 0 9px; background: var(--input-bg); color: var(--text-3); }
+.provider-search .codicon { width: 13px; height: 13px; }
+.provider-search input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--text-1); font-size: .6875rem; }
+.provider-key-list { display: grid; gap: 4px; }
+.provider-key-card { border: 1px solid transparent; border-radius: 7px; transition: .14s ease; }
+.provider-key-card:hover { background: var(--hover); }
+.provider-key-card.expanded { border-color: var(--stroke-2); background: var(--panel-bg); }
+.provider-key-card-head { display: grid; width: 100%; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; border: 0; padding: 10px 12px 5px; background: transparent; color: var(--text-1); text-align: left; }
+.provider-key-card-head > div { min-width: 0; }
+.provider-key-card-head strong { display: block; overflow: hidden; font-size: .75rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.provider-key-card-head p { overflow: hidden; margin: 3px 0 0; color: var(--text-3); font-size: .6875rem; text-overflow: ellipsis; white-space: nowrap; }
+.provider-key-card-head > .codicon { width: 13px; height: 13px; color: var(--text-3); }
+.provider-key-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--stroke-1); }
+.provider-key-dot.set { background: var(--accent); }
+.provider-key-primary { padding: 4px 12px 10px 29px; }
+.provider-credential-field { display: flex; min-width: 0; align-items: center; gap: 5px; }
+.provider-credential-field .settings-input { width: 100%; max-width: none; flex: 1; }
+.provider-credential-field > .provider-remove { flex: 0 0 27px; margin: 0; }
+.provider-key-save { height: 30px; flex: 0 0 auto; white-space: nowrap; }
+.provider-key-advanced { display: grid; gap: 8px; margin: 0 12px 11px 29px; border-top: 1px solid var(--stroke-3); padding-top: 8px; }
+.provider-key-advanced > .provider-group-label { margin: 0; }
+.provider-advanced-row { display: grid; grid-template-columns: minmax(105px, .75fr) minmax(190px, 1.35fr); align-items: center; gap: 12px; color: var(--text-2); font-size: .6875rem; }
+.provider-advanced-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .settings-save-state { margin: 10px 0 0; color: var(--text-3); font-size: .6875rem; text-align: right; }
 .settings-load-error { display: grid; max-width: 520px; justify-items: start; gap: 7px; margin-top: 20px; border: 1px solid var(--stroke-2); border-radius: 8px; padding: 16px; background: var(--panel-bg); }
 .settings-load-error > .codicon { width: 18px; height: 18px; color: var(--red); }

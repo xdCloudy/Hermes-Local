@@ -138,6 +138,7 @@ updater work itself.
 | Provider account discovery and disconnect | `ProviderService` | Providers → Accounts | ordering/title unit fixture + populated render/sign-out E2E | Ported |
 | Provider OAuth session lifecycle | `ProviderService` + `PlatformService` | provider sign-in overlay | exact start/submit/poll/cancel fixture + browser/device E2E | Service validated |
 | Provider PKCE/device/external sign-in UI | `ProviderService` + `PlatformService` | Providers → Accounts overlay | session cleanup unit + rendered flow E2E | Ported |
+| Provider API-key grouping and credential editing | `ProviderService` | Providers → API Keys | grouping/redaction unit + rendered save/remove E2E | Ported |
 | Local/remote/cloud connection profiles | `ConnectionService` | settings/profiles | soft/hard/live re-home tests | Designed |
 | OAuth login/logout and callbacks | `AuthService` | settings/recovery | RFC 8252/state/origin/token tests | Designed |
 | Hermes Cloud discovery/sign-in | `AuthService` | settings/profile menu | auth/connectivity separation tests | Designed |
