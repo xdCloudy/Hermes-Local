@@ -1822,6 +1822,8 @@ fn SettingsOverlay(initial: &'static str) -> Element {
                         AgentConfigPanel { section: "memory", icon: "database", label: "Memory & Context" }
                     } else if active() == "voice" {
                         AgentConfigPanel { section: "voice", icon: "unmute", label: "Voice" }
+                    } else if active() == "advanced" {
+                        AgentConfigPanel { section: "advanced", icon: "tools", label: "Advanced" }
                     } else {
                         section { class: "settings-placeholder",
                             div { class: "settings-section-title", Codicon { name: active_icon } h1 { "{active_label}" } }
@@ -1911,6 +1913,8 @@ fn AgentConfigPanel(section: &'static str, icon: &'static str, label: &'static s
                     "Choose what Hermes remembers and how long conversations are compressed near the context limit."
                 } else if section == "voice" {
                     "Configure speech synthesis, transcription, and the active provider-specific voice controls."
+                } else if section == "advanced" {
+                    "Tune toolsets, execution backends, output limits, agent turns, delegation, and update behavior."
                 } else {
                     "Choose how new chats behave and how model output is presented."
                 }
@@ -1968,8 +1972,16 @@ fn AgentConfigPanel(section: &'static str, icon: &'static str, label: &'static s
                             saving,
                             error,
                         }
-                    } else {
+                    } else if section == "voice" {
                         VoiceConfigFields {
+                            snapshot,
+                            loaded,
+                            profile: profile.clone(),
+                            saving,
+                            error,
+                        }
+                    } else {
+                        AdvancedConfigFields {
                             snapshot,
                             loaded,
                             profile: profile.clone(),
@@ -3181,6 +3193,63 @@ const VOICE_FIELDS: &[(&str, &str, &str)] = &[
     ("voice.max_recording_seconds", "Max Recording Length", ""),
 ];
 
+const ADVANCED_FIELDS: &[(&str, &str, &str)] = &[
+    ("toolsets", "Enabled Toolsets", ""),
+    ("terminal.backend", "Execution Backend", ""),
+    ("terminal.timeout", "Command Timeout", ""),
+    (
+        "terminal.docker_image",
+        "Docker Image",
+        "Container image used when the execution backend is Docker.",
+    ),
+    (
+        "terminal.singularity_image",
+        "Singularity Image",
+        "Image used when the execution backend is Singularity.",
+    ),
+    (
+        "terminal.modal_image",
+        "Modal Image",
+        "Image used when the execution backend is Modal.",
+    ),
+    (
+        "terminal.daytona_image",
+        "Daytona Image",
+        "Image used when the execution backend is Daytona.",
+    ),
+    ("tool_output.max_bytes", "Terminal Output Limit", ""),
+    ("tool_output.max_lines", "File Page Limit", ""),
+    ("tool_output.max_line_length", "Line Length Limit", ""),
+    ("checkpoints.max_snapshots", "Checkpoint Limit", ""),
+    (
+        "agent.max_turns",
+        "Max Agent Steps",
+        "Upper bound for tool-calling turns before Hermes stops a run.",
+    ),
+    ("agent.api_max_retries", "API Retries", ""),
+    ("agent.service_tier", "Service Tier", ""),
+    ("agent.tool_use_enforcement", "Tool-Use Enforcement", ""),
+    ("delegation.model", "Subagent Model", ""),
+    ("delegation.provider", "Subagent Provider", ""),
+    ("delegation.max_iterations", "Subagent Turn Limit", ""),
+    (
+        "delegation.max_concurrent_children",
+        "Parallel Subagents",
+        "",
+    ),
+    ("delegation.child_timeout_seconds", "Subagent Timeout", ""),
+    (
+        "delegation.reasoning_effort",
+        "Subagent Reasoning Effort",
+        "",
+    ),
+    (
+        "updates.non_interactive_local_changes",
+        "In-App Update Local Changes",
+        "When Hermes updates itself from the app, keep local source edits or throw them away. Terminal updates always ask.",
+    ),
+];
+
 #[component]
 fn WorkspaceConfigFields(
     snapshot: Signal<Option<AgentConfigSnapshot>>,
@@ -3278,6 +3347,31 @@ fn VoiceConfigFields(
                     title,
                     description,
                 }
+            }
+        }
+    }
+}
+
+#[component]
+fn AdvancedConfigFields(
+    snapshot: Signal<Option<AgentConfigSnapshot>>,
+    loaded: AgentConfigSnapshot,
+    profile: Option<String>,
+    saving: Signal<bool>,
+    error: Signal<Option<String>>,
+) -> Element {
+    rsx! {
+        for (path, title, description) in ADVANCED_FIELDS {
+            CuratedConfigField {
+                key: "{path}",
+                snapshot,
+                loaded: loaded.clone(),
+                profile: profile.clone(),
+                saving,
+                error,
+                path,
+                title,
+                description,
             }
         }
     }
@@ -3532,6 +3626,26 @@ fn curated_config_options(path: &str, current: &str, schema_options: &[Value]) -
             json!("verse"),
         ],
         "tts.neutts.device" => vec![json!("cpu"), json!("cuda"), json!("mps")],
+        "terminal.backend" => vec![
+            json!("local"),
+            json!("docker"),
+            json!("singularity"),
+            json!("modal"),
+            json!("daytona"),
+            json!("ssh"),
+        ],
+        "delegation.reasoning_effort" => vec![
+            json!(""),
+            json!("none"),
+            json!("minimal"),
+            json!("low"),
+            json!("medium"),
+            json!("high"),
+            json!("xhigh"),
+            json!("max"),
+            json!("ultra"),
+        ],
+        "updates.non_interactive_local_changes" => vec![json!("stash"), json!("discard")],
         _ => schema_options.to_vec(),
     };
     if !options.is_empty()
@@ -4071,6 +4185,39 @@ mod tests {
         assert_eq!(
             curated_config_options("context.engine", "default", &[json!("stale")]),
             [json!("compressor"), json!("default"), json!("custom")]
+        );
+    }
+
+    #[test]
+    fn advanced_enum_overrides_match_the_source() {
+        assert_eq!(
+            curated_config_options("terminal.backend", "docker", &[]),
+            [
+                json!("local"),
+                json!("docker"),
+                json!("singularity"),
+                json!("modal"),
+                json!("daytona"),
+                json!("ssh"),
+            ]
+        );
+        assert_eq!(
+            curated_config_options("delegation.reasoning_effort", "high", &[]),
+            [
+                json!(""),
+                json!("none"),
+                json!("minimal"),
+                json!("low"),
+                json!("medium"),
+                json!("high"),
+                json!("xhigh"),
+                json!("max"),
+                json!("ultra"),
+            ]
+        );
+        assert_eq!(
+            curated_config_options("updates.non_interactive_local_changes", "stash", &[]),
+            [json!("stash"), json!("discard")]
         );
     }
 

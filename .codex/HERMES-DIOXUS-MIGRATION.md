@@ -631,3 +631,31 @@ Exact next action: port the OG Advanced section, including the curated toolset,
 terminal backend, output limits, agent/delegation controls, and update-local-
 changes policy; keep device-only keep-awake and Quick Entry for their native
 service slices.
+
+## Advanced settings checkpoint (2026-08-11)
+
+Advanced now renders the official 22-key Agent configuration inventory in
+source order: toolsets; terminal backend, timeout, and backend images; terminal
+and file-output limits; checkpoint retention; agent turn, retry, tier, and
+tool-use controls; delegation model/provider/limits/reasoning; and the in-app
+update local-changes policy. Schema support still gates every row, and edits
+continue to replace the exact whole config record without dropping unknown
+future keys.
+
+Execution Backend keeps the OG `local / docker / singularity / modal / daytona
+/ ssh` choices. Subagent Reasoning Effort includes inherited-empty plus the
+complete official effort scale, while In-App Update Local Changes is limited to
+`stash / discard`. Focused tests pin all three source-owned choice sets.
+
+Maximized native QA at 1296x809 covers both halves of the long scrollable pane,
+including delegation and update controls. A real WebView interaction saved
+Execution Backend `docker → local`, remounted Advanced, and reloaded `local`;
+the fixture also proved an unrelated future config key survived replacement.
+The temporary server and app were stopped and removed. The workspace passes 35
+unit tests plus doc-tests.
+
+Device-only keep-awake and Quick Entry remain intentionally outside the generic
+Agent record until their typed PowerService and ShortcutService/WindowService
+slices exist. Exact next action: port Notifications using a typed native
+NotificationService rather than simulating desktop notification authority in
+the Dioxus layer.
