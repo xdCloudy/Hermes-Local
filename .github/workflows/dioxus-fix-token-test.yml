@@ -1,0 +1,40 @@
+name: Repair SSH served-token fixture
+
+on:
+  push:
+    branches:
+      - refactor/dioxus-rust-client
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/dioxus-rust-client
+          fetch-depth: 0
+      - name: Fix JSON-string fixture and verify targeted test
+        shell: pwsh
+        run: |
+          $path = 'apps/desktop/src/ssh_lifecycle.rs'
+          $text = Get-Content -Raw $path
+          $old = 'let html = r#"<script>window.__HERMES_SESSION_TOKEN__ = \"abc\\\"def\";</script>"#;'
+          $new = 'let html = r#"<script>window.__HERMES_SESSION_TOKEN__ = "abc\"def";</script>"#;'
+          if ($text.Contains($old)) {
+            $text = $text.Replace($old, $new)
+            Set-Content -NoNewline -Encoding utf8 $path $text
+          }
+          cargo fmt --all
+          cargo test -p hermes-local --bin hermes-local served_token_parser_requires_json_string_literal --locked
+      - name: Commit fix if needed
+        shell: pwsh
+        run: |
+          if (-not (git status --porcelain)) { exit 0 }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/desktop/src/ssh_lifecycle.rs
+          git commit -m 'test(ssh): use a valid served-token JavaScript fixture'
+          git push origin HEAD:refactor/dioxus-rust-client
