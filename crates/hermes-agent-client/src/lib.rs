@@ -8,12 +8,16 @@ use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio_tungstenite::{
+    connect_async_with_config,
+    tungstenite::{Message, protocol::WebSocketConfig},
+};
 use tracing::{debug, warn};
 use url::Url;
 
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_mins(2);
+const MAX_GATEWAY_MESSAGE_BYTES: usize = 16 * 1024 * 1024;
 const COMMAND_CAPACITY: usize = 128;
 const EVENT_CAPACITY: usize = 512;
 
@@ -75,6 +79,13 @@ pub struct GatewayClient {
 }
 
 impl GatewayClient {
+    /// Connect to a Hermes Agent WebSocket endpoint and start the bounded client actor.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GatewayError::InvalidUrl`] for a non-WebSocket URL,
+    /// [`GatewayError::ConnectTimeout`] when the handshake exceeds the configured timeout,
+    /// or [`GatewayError::Transport`] when the WebSocket handshake fails.
     pub async fn connect(url: &str, options: GatewayOptions) -> Result<Self, GatewayError> {
         let parsed =
             Url::parse(url).map_err(|error| GatewayError::InvalidUrl(error.to_string()))?;
@@ -86,11 +97,17 @@ impl GatewayClient {
 
         let (events, _) = broadcast::channel(EVENT_CAPACITY);
         let (state_tx, state) = watch::channel(ConnectionState::Connecting);
-        let socket = tokio::time::timeout(options.connect_timeout, connect_async(url))
-            .await
-            .map_err(|_| GatewayError::ConnectTimeout)?
-            .map_err(|error| GatewayError::Transport(error.to_string()))?
-            .0;
+        let mut websocket_config = WebSocketConfig::default();
+        websocket_config.max_message_size = Some(MAX_GATEWAY_MESSAGE_BYTES);
+        websocket_config.max_frame_size = Some(MAX_GATEWAY_MESSAGE_BYTES);
+        let socket = tokio::time::timeout(
+            options.connect_timeout,
+            connect_async_with_config(url, Some(websocket_config), false),
+        )
+        .await
+        .map_err(|_| GatewayError::ConnectTimeout)?
+        .map_err(|error| GatewayError::Transport(error.to_string()))?
+        .0;
         let (commands, command_rx) = mpsc::channel(COMMAND_CAPACITY);
         let actor_events = events.clone();
         tokio::spawn(async move {
@@ -114,6 +131,13 @@ impl GatewayClient {
         self.state.clone()
     }
 
+    /// Send a typed JSON-RPC request using the client's default request timeout.
+    ///
+    /// # Errors
+    ///
+    /// Returns a protocol error when parameters or the response cannot be serialized,
+    /// a timeout when the Agent does not answer in time, a remote error for JSON-RPC
+    /// errors, or [`GatewayError::Closed`] when the actor has stopped.
     pub async fn request<P, R>(&self, method: &str, params: P) -> Result<R, GatewayError>
     where
         P: Serialize,
@@ -123,6 +147,16 @@ impl GatewayClient {
             .await
     }
 
+    /// Send a typed JSON-RPC request with an explicit timeout.
+    ///
+    /// A timed-out request is removed from the actor's pending map so a late response
+    /// cannot grow retained state or be delivered to a subsequent request.
+    ///
+    /// # Errors
+    ///
+    /// Returns a protocol error when parameters or the response cannot be serialized,
+    /// a timeout when the Agent does not answer within `timeout`, a remote error for
+    /// JSON-RPC errors, or [`GatewayError::Closed`] when the actor has stopped.
     pub async fn request_with_timeout<P, R>(
         &self,
         method: &str,
@@ -162,6 +196,12 @@ impl GatewayClient {
         serde_json::from_value(value).map_err(|error| GatewayError::Protocol(error.to_string()))
     }
 
+    /// Ask the client actor to close its WebSocket connection gracefully.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GatewayError::Closed`] if the actor has already stopped and can no
+    /// longer receive the close command.
     pub async fn close(&self) -> Result<(), GatewayError> {
         self.commands
             .send(Command::Close)
@@ -277,10 +317,17 @@ mod tests {
     use tokio::net::TcpListener;
     use tokio_tungstenite::accept_async;
 
-    #[test]
-    fn rejects_http_gateway_url() {
-        let result = Url::parse("https://localhost:8080").expect("URL");
-        assert!(!matches!(result.scheme(), "ws" | "wss"));
+    #[tokio::test]
+    async fn rejects_http_gateway_url_before_network_io() {
+        let result = GatewayClient::connect(
+            "https://localhost:8080",
+            GatewayOptions {
+                connect_timeout: Duration::from_millis(1),
+                ..GatewayOptions::default()
+            },
+        )
+        .await;
+        assert!(matches!(result, Err(GatewayError::InvalidUrl(_))));
     }
 
     #[test]
