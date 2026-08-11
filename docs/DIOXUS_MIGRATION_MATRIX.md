@@ -141,6 +141,7 @@ updater work itself.
 | Provider API-key grouping and credential editing | `ProviderService` | Providers → API Keys | grouping/redaction unit + rendered save/remove E2E | Ported |
 | OpenAI-compatible custom endpoint CRUD/discovery | `ProviderService` | Providers → Custom Endpoints | form/payload unit + rendered validate/activate/delete E2E | Ported |
 | Local/remote/cloud/SSH connection profile persistence | `ConnectionService` + Windows Credential Manager | settings/profiles | DTO/persistence/scope/redaction tests | Service validated |
+| Gateway connection-mode settings surface | `ConnectionService` | Settings → Gateway | form/scope/secret-omission tests + rendered mode E2E | Ported |
 | Gateway settings and live re-home behavior | `ConnectionService` | Settings → Gateway | soft/hard/live re-home tests | In progress |
 | OAuth login/logout and callbacks | `AuthService` | settings/recovery | RFC 8252/state/origin/token tests | Designed |
 | Hermes Cloud discovery/sign-in | `AuthService` | settings/profile menu | auth/connectivity separation tests | Designed |

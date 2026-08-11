@@ -851,3 +851,27 @@ port clearing. The workspace passes 48 unit tests plus doc-tests.
 Exact next action: port the OG Gateway settings surface onto this service, then
 complete OAuth login/logout, Hermes Cloud discovery, SSH host/config probing,
 and Local Agent bootstrap before marking apply/re-home behavior complete.
+
+## Gateway settings UI checkpoint (2026-08-11)
+
+Settings → Gateway now replaces the placeholder with the OG connection layout:
+global/current-profile scope chips, environment-override warning, four compact
+Local/Cloud/Remote/SSH mode cards, conditional connection fields, URL auth-mode
+probing, masked saved-token state, full SSH host/user/port/key/path/profile
+fields, test and save/reconnect actions, and the Diagnostics row. Local becomes
+the source's “Use default gateway” action within a profile scope.
+
+The form calls only typed `ConnectionService` operations. Blank token edits are
+omitted so the Credential Manager value is preserved; a replacement exists in
+Dioxus signal state only until the desktop service accepts it. URL probes are
+debounced and stale results cannot overwrite a newer URL. Focused tests cover
+scope propagation, blank-secret omission, explicit SSH-port clearing, trimmed
+replacement secrets, and scoped mode-card copy. The workspace passes 50 unit
+tests plus doc-tests with no new Clippy warnings.
+
+OAuth sign-in, Hermes Cloud discovery, SSH config-host enrichment/bootstrap,
+Local Agent startup, and live re-home remain visibly gated instead of being
+simulated. Native rendered QA retains the recorded top-level-window blocker.
+
+Exact next action: add the OAuth connection session contract and implement the
+OG remote sign-in/sign-out path, then connect Cloud and SSH lifecycle services.

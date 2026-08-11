@@ -6,10 +6,11 @@ use dioxus::prelude::*;
 use futures_util::StreamExt;
 use hermes_core::{AgentConfigService, AppServices, ModelService, SessionTranscript};
 use hermes_protocol::{
-    AgentConfigSnapshot, AppSettings, CustomEndpoint, CustomEndpointUpdate, EnvVarInfo,
-    MessageRole, MoaConfig, ModelAssignmentRequest, ModelProvider, ModelSettingsSnapshot,
-    NativeNotificationKind, OAuthProvider, OAuthStart, ProjectFolder, ProjectsSnapshot,
-    SessionCreateRequest, SessionSummary, ThemeMode,
+    AgentConfigSnapshot, AppSettings, ConnectionConfig, ConnectionConfigInput, ConnectionMode,
+    ConnectionProbeResult, CustomEndpoint, CustomEndpointUpdate, EnvVarInfo, MessageRole,
+    MoaConfig, ModelAssignmentRequest, ModelProvider, ModelSettingsSnapshot,
+    NativeNotificationKind, OAuthProvider, OAuthStart, ProbeAuthMode, ProjectFolder,
+    ProjectsSnapshot, RemoteAuthMode, SessionCreateRequest, SessionSummary, ThemeMode,
 };
 use serde_json::{Map, Value, json};
 
@@ -1853,6 +1854,8 @@ fn SettingsOverlay(initial: &'static str) -> Element {
                         ProviderKeysPanel { on_custom_endpoint: move |()| provider_view.set("custom-endpoints".to_owned()) }
                     } else if active() == "providers" && provider_view() == "custom-endpoints" {
                         CustomEndpointsPanel {}
+                    } else if active() == "gateway" {
+                        GatewaySettingsPanel {}
                     } else {
                         section { class: "settings-placeholder",
                             div { class: "settings-section-title", Codicon { name: active_icon } h1 { "{active_label}" } }
@@ -1860,6 +1863,341 @@ fn SettingsOverlay(initial: &'static str) -> Element {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+fn gateway_input(config: &ConnectionConfig, remote_token: &str) -> ConnectionConfigInput {
+    ConnectionConfigInput {
+        mode: config.mode,
+        profile: config.profile.clone(),
+        remote_auth_mode: Some(config.remote_auth_mode),
+        remote_token: (!remote_token.trim().is_empty()).then(|| remote_token.trim().to_owned()),
+        remote_url: Some(config.remote_url.clone()),
+        cloud_org: Some(config.cloud_org.clone()),
+        ssh_host: Some(config.ssh_host.clone()),
+        ssh_user: Some(config.ssh_user.clone()),
+        ssh_port: Some(config.ssh_port),
+        ssh_key_path: Some(config.ssh_key_path.clone()),
+        ssh_remote_hermes_path: Some(config.ssh_remote_hermes_path.clone()),
+        ssh_remote_profile: Some(config.ssh_remote_profile.clone()),
+    }
+}
+
+fn gateway_mode_copy(
+    mode: ConnectionMode,
+    scoped: bool,
+) -> (&'static str, &'static str, &'static str) {
+    match mode {
+        ConnectionMode::Local if scoped => (
+            "desktop-download",
+            "Use default gateway",
+            "Remove this profile's override and use the default connection.",
+        ),
+        ConnectionMode::Local => (
+            "desktop-download",
+            "Local gateway",
+            "Start a private Hermes backend on localhost. This is the default and works offline.",
+        ),
+        ConnectionMode::Cloud => (
+            "cloud",
+            "Hermes Cloud",
+            "Sign in once to Hermes Cloud and pick from the agents on your account — no URL to paste.",
+        ),
+        ConnectionMode::Remote => (
+            "globe",
+            "Remote gateway",
+            "Connect this desktop shell to a remote Hermes backend.",
+        ),
+        ConnectionMode::Ssh => (
+            "terminal",
+            "Connect via SSH",
+            "Launch Hermes over SSH and tunnel it to this app. Requires working key-based SSH access.",
+        ),
+    }
+}
+
+fn start_gateway_probe(
+    service: Arc<dyn hermes_core::ConnectionService>,
+    url: &str,
+    mut draft: Signal<Option<ConnectionConfig>>,
+    mut probe: Signal<Option<ConnectionProbeResult>>,
+    mut probing: Signal<bool>,
+) {
+    let normalized = if url.contains("://") {
+        url.trim().to_owned()
+    } else {
+        format!("https://{}", url.trim())
+    };
+    if normalized.trim_end_matches("https://").is_empty() {
+        probe.set(None);
+        probing.set(false);
+        return;
+    }
+    probing.set(true);
+    spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let still_current = draft().is_some_and(|config| {
+            let current = if config.remote_url.contains("://") {
+                config.remote_url.trim().to_owned()
+            } else {
+                format!("https://{}", config.remote_url.trim())
+            };
+            current == normalized
+        });
+        if !still_current {
+            return;
+        }
+        match service.probe_config(&normalized).await {
+            Ok(result) => {
+                if let Some(mut config) = draft() {
+                    config.remote_auth_mode = match result.auth_mode {
+                        ProbeAuthMode::Oauth => RemoteAuthMode::Oauth,
+                        ProbeAuthMode::Token | ProbeAuthMode::Unknown => RemoteAuthMode::Token,
+                    };
+                    draft.set(Some(config));
+                }
+                probe.set(Some(result));
+            }
+            Err(error) => probe.set(Some(ConnectionProbeResult {
+                base_url: normalized,
+                reachable: false,
+                error: Some(error.to_string()),
+                ..ConnectionProbeResult::default()
+            })),
+        }
+        probing.set(false);
+    });
+}
+
+#[component]
+fn GatewaySettingsPanel() -> Element {
+    let services = use_context::<AppServices>();
+    let settings = use_context::<SettingsUiState>();
+    let mut scope = use_signal(|| None::<String>);
+    let mut draft = use_signal(|| None::<ConnectionConfig>);
+    let mut remote_token = use_signal(String::new);
+    let mut loading = use_signal(|| true);
+    let mut saving = use_signal(|| false);
+    let mut testing = use_signal(|| false);
+    let mut probe = use_signal(|| None::<ConnectionProbeResult>);
+    let probing = use_signal(|| false);
+    let mut message = use_signal(|| None::<String>);
+    let mut error = use_signal(|| None::<String>);
+    let mut refresh = use_signal(|| 0_u64);
+    let load_service = services.connection.clone();
+    let _load = use_resource(move || {
+        let service = load_service.clone();
+        let selected_scope = scope();
+        let _revision = refresh();
+        async move {
+            loading.set(true);
+            remote_token.set(String::new());
+            probe.set(None);
+            message.set(None);
+            error.set(None);
+            match service.config(selected_scope.as_deref()).await {
+                Ok(config) => draft.set(Some(config)),
+                Err(problem) => error.set(Some(problem.to_string())),
+            }
+            loading.set(false);
+        }
+    });
+    let current_profile = (settings.settings)()
+        .profile
+        .filter(|profile| profile != "default");
+
+    rsx! {
+        section { class: "gateway-settings",
+            div { class: "settings-section-title",
+                Codicon { name: "globe" }
+                h1 { "Gateway Connection" }
+                if draft().is_some_and(|config| config.env_override) {
+                    span { class: "settings-pill", "env override" }
+                }
+            }
+            p { class: "settings-intro", "Local by default. Use remote when this app should drive a Hermes backend elsewhere. Per-profile overrides below." }
+            if loading() {
+                div { class: "settings-loading", span { class: "spinner" } "Loading gateway settings…" }
+            } else if let Some(config) = draft() {
+                if current_profile.is_some() {
+                    section { class: "gateway-scope",
+                        strong { "Applies to" }
+                        div { class: "gateway-scope-chips",
+                            button { class: if scope().is_none() { "active" } else { "" }, onclick: move |_| scope.set(None), "All profiles" }
+                            if let Some(profile) = current_profile.clone() {
+                                button { class: if scope().as_deref() == Some(profile.as_str()) { "active" } else { "" }, onclick: move |_| scope.set(Some(profile.clone())), "{profile}" }
+                            }
+                        }
+                        if let Some(profile) = scope() {
+                            p { "Connection used only when “{profile}” is the active profile. Choose Use default gateway to remove its override." }
+                        } else {
+                            p { "Default connection for every profile that has no override of its own." }
+                        }
+                    }
+                }
+                if config.env_override {
+                    div { class: "gateway-warning", Codicon { name: "warning" } div { strong { "Environment variables are controlling this desktop session." } p { "Unset HERMES_DESKTOP_REMOTE_URL and HERMES_DESKTOP_REMOTE_TOKEN to use the saved setting below." } } }
+                }
+                section { class: "gateway-mode-section",
+                    strong { "Connection mode" }
+                    div { class: "gateway-mode-grid",
+                        for mode in [ConnectionMode::Local, ConnectionMode::Cloud, ConnectionMode::Remote, ConnectionMode::Ssh] {
+                            {
+                                let (icon, title, description) = gateway_mode_copy(mode, scope().is_some());
+                                rsx! {
+                                    button {
+                                        class: if config.mode == mode { "gateway-mode-card active" } else { "gateway-mode-card" },
+                                        disabled: config.env_override,
+                                        onclick: move |_| {
+                                            if let Some(mut next) = draft() {
+                                                next.mode = mode;
+                                                next.profile = scope();
+                                                draft.set(Some(next));
+                                                message.set(None);
+                                                error.set(None);
+                                            }
+                                        },
+                                        div { Codicon { name: icon } strong { "{title}" } if config.mode == mode { Codicon { name: "check" } } }
+                                        p { "{description}" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if config.mode == ConnectionMode::Cloud && !config.env_override {
+                    section { class: "gateway-fields",
+                        SettingsRow { title: "Hermes Cloud", description: "Sign in to Hermes Cloud to discover the agents on your account.",
+                            button { class: "button primary", disabled: true, Codicon { name: "sign-in" } "Sign in to Hermes Cloud" }
+                        }
+                        p { class: "gateway-pending", "Hermes Cloud sign-in and agent discovery are the next connection-service slice." }
+                    }
+                }
+                if config.mode == ConnectionMode::Remote && !config.env_override {
+                    section { class: "gateway-fields",
+                        section { class: "settings-list-row",
+                            div { class: "settings-row-copy", strong { "Remote URL" } p { "Base URL for the remote dashboard backend. Path prefixes are supported, for example /hermes." } }
+                            div { class: "settings-row-action",
+                                input { class: "settings-input gateway-control", value: "{config.remote_url}", placeholder: "https://gateway.example.com/hermes", oninput: {
+                                    let service = services.connection.clone();
+                                    move |event| {
+                                        let value = event.value();
+                                        if let Some(mut next) = draft() {
+                                            next.remote_url.clone_from(&value);
+                                            next.profile = scope();
+                                            draft.set(Some(next));
+                                        }
+                                        probe.set(None);
+                                        start_gateway_probe(service.clone(), &value, draft, probe, probing);
+                                    }
+                                } }
+                            }
+                        }
+                        if probing() {
+                            p { class: "gateway-probe", span { class: "spinner" } "Checking how this gateway authenticates…" }
+                        } else if let Some(result) = probe() && !result.reachable {
+                            p { class: "gateway-probe error", Codicon { name: "warning" } "Could not reach this gateway yet. Check the URL — the auth method will appear once it responds." }
+                        }
+                        if config.remote_auth_mode == RemoteAuthMode::Oauth {
+                            if config.remote_oauth_connected {
+                                section { class: "settings-list-row",
+                                    div { class: "settings-row-copy", strong { "Authentication" } p { "This gateway uses OAuth. You are signed in; the session refreshes automatically." } }
+                                    div { class: "settings-row-action", button { class: "button primary", disabled: true, Codicon { name: "check" } "Signed in" } }
+                                }
+                            } else {
+                                section { class: "settings-list-row",
+                                    div { class: "settings-row-copy", strong { "Authentication" } p { "This gateway uses OAuth. Sign in to authorize this desktop app." } }
+                                    div { class: "settings-row-action", button { class: "button primary", disabled: true, Codicon { name: "sign-in" } "Sign in" } }
+                                }
+                            }
+                        } else {
+                            section { class: "settings-list-row",
+                                div { class: "settings-row-copy", strong { "Session token" } p { "The dashboard session token used for REST and WebSocket access. Leave blank to keep the saved token." } }
+                                div { class: "settings-row-action gateway-token-control",
+                                    if config.remote_token_set {
+                                        if let Some(preview) = config.remote_token_preview.as_deref() {
+                                            small { "Existing token {preview}" }
+                                        } else {
+                                            small { "Existing token saved" }
+                                        }
+                                    }
+                                    input { class: "settings-input gateway-control mono", r#type: "password", autocomplete: "off", value: "{remote_token}", placeholder: "Paste session token", oninput: move |event| remote_token.set(event.value()) }
+                                }
+                            }
+                        }
+                    }
+                }
+                if config.mode == ConnectionMode::Ssh && !config.env_override {
+                    section { class: "gateway-fields",
+                        GatewayTextField { title: "Host", description: "user@host, or a Host alias from ~/.ssh/config.", value: config.ssh_host.clone(), placeholder: "", monospace: false, on_change: move |value| { if let Some(mut next) = draft() { next.ssh_host = value; draft.set(Some(next)); } } }
+                        GatewayTextField { title: "User", description: "Blank = ~/.ssh/config or your current user.", value: config.ssh_user.clone(), placeholder: "from ~/.ssh/config", monospace: false, on_change: move |value| { if let Some(mut next) = draft() { next.ssh_user = value; draft.set(Some(next)); } } }
+                        GatewayTextField { title: "Port", description: "Blank = 22 or the ~/.ssh/config port.", value: config.ssh_port.map(|port| port.to_string()).unwrap_or_default(), placeholder: "22", monospace: false, on_change: move |value: String| { if let Some(mut next) = draft() { next.ssh_port = value.parse().ok(); draft.set(Some(next)); } } }
+                        GatewayTextField { title: "Identity file", description: "Private key path. Blank = ssh-agent or ~/.ssh/config.", value: config.ssh_key_path.clone(), placeholder: "", monospace: true, on_change: move |value| { if let Some(mut next) = draft() { next.ssh_key_path = value; draft.set(Some(next)); } } }
+                        GatewayTextField { title: "Hermes path (optional)", description: "Full path to the remote hermes binary. Blank = auto-detect.", value: config.ssh_remote_hermes_path.clone(), placeholder: "auto-detect", monospace: true, on_change: move |value| { if let Some(mut next) = draft() { next.ssh_remote_hermes_path = value; draft.set(Some(next)); } } }
+                        if scope().is_some() {
+                            GatewayTextField { title: "Remote profile (optional)", description: "Profile name on the remote host. Blank = use the Desktop profile name.", value: config.ssh_remote_profile.clone(), placeholder: "", monospace: true, on_change: move |value| { if let Some(mut next) = draft() { next.ssh_remote_profile = value; draft.set(Some(next)); } } }
+                        }
+                    }
+                }
+                if let Some(notice) = message() { p { class: "gateway-message", Codicon { name: "check" } "{notice}" } }
+                if let Some(problem) = error() { p { class: "inline-error", role: "alert", "{problem}" } }
+                if config.mode != ConnectionMode::Cloud {
+                    footer { class: "gateway-actions",
+                        if matches!(config.mode, ConnectionMode::Remote | ConnectionMode::Ssh) {
+                            button { class: "button ghost gateway-test", disabled: testing(), onclick: {
+                                let service = services.connection.clone();
+                                let input = gateway_input(&config, &remote_token());
+                                move |_| {
+                                    testing.set(true); message.set(None); error.set(None);
+                                    let service = service.clone(); let input = input.clone();
+                                    spawn(async move {
+                                        match service.test_config(&input).await {
+                                            Ok(result) if result.reachable == Some(false) => error.set(result.error.or(Some("Connection test failed.".into()))),
+                                            Ok(result) => message.set(Some(result.base_url.map_or_else(|| "Connection reachable".into(), |url| format!("Connected to {url}")))),
+                                            Err(problem) => error.set(Some(problem.to_string())),
+                                        }
+                                        testing.set(false);
+                                    });
+                                }
+                            }, if testing() { span { class: "spinner" } } if config.mode == ConnectionMode::Ssh { "Test SSH" } else { "Test remote" } }
+                        }
+                        button { class: "button ghost", disabled: saving() || config.env_override, onclick: {
+                            let service = services.connection.clone(); let input = gateway_input(&config, &remote_token());
+                            move |_| { saving.set(true); message.set(None); error.set(None); let service = service.clone(); let input = input.clone(); spawn(async move { match service.save_config(&input).await { Ok(saved) => { draft.set(Some(saved)); remote_token.set(String::new()); message.set(Some("Saved for the next restart.".into())); }, Err(problem) => error.set(Some(problem.to_string())) } saving.set(false); }); }
+                        }, "Save for next restart" }
+                        button { class: "button primary", disabled: saving() || config.env_override, onclick: {
+                            let service = services.connection.clone(); let input = gateway_input(&config, &remote_token());
+                            move |_| { saving.set(true); message.set(None); error.set(None); let service = service.clone(); let input = input.clone(); spawn(async move { match service.apply_config(&input).await { Ok(saved) => { draft.set(Some(saved)); remote_token.set(String::new()); message.set(Some("Gateway connection restarted.".into())); }, Err(problem) => { refresh += 1; error.set(Some(problem.to_string())); } } saving.set(false); }); }
+                        }, if saving() { span { class: "spinner" } } "Save and reconnect" }
+                    }
+                }
+                section { class: "settings-list-row gateway-diagnostics",
+                    div { class: "settings-row-copy", strong { "Diagnostics" } p { "Reveal desktop.log in your file manager — useful when the gateway fails to start." } }
+                    div { class: "settings-row-action", button { class: "button ghost", disabled: true, Codicon { name: "output" } "Open logs" } }
+                }
+            } else if let Some(problem) = error() {
+                p { class: "inline-error", role: "alert", "{problem}" }
+            }
+        }
+    }
+}
+
+#[component]
+fn GatewayTextField(
+    title: &'static str,
+    description: &'static str,
+    value: String,
+    placeholder: &'static str,
+    monospace: bool,
+    on_change: EventHandler<String>,
+) -> Element {
+    rsx! {
+        section { class: "settings-list-row",
+            div { class: "settings-row-copy", strong { "{title}" } p { "{description}" } }
+            div { class: "settings-row-action",
+                input { class: if monospace { "settings-input gateway-control mono" } else { "settings-input gateway-control" }, value: "{value}", placeholder: "{placeholder}", oninput: move |event| on_change.call(event.value()) }
             }
         }
     }
@@ -5733,16 +6071,17 @@ mod tests {
     use std::collections::BTreeMap;
 
     use hermes_protocol::{
-        CustomEndpoint, EnvVarInfo, MoaConfig, MoaModelSlot, MoaPreset, OAuthProvider, OAuthStart,
+        ConnectionConfig, ConnectionMode, CustomEndpoint, EnvVarInfo, MoaConfig, MoaModelSlot,
+        MoaPreset, OAuthProvider, OAuthStart, RemoteAuthMode,
     };
     use serde_json::json;
 
     use super::{
         ProviderAuthFlow, build_provider_key_groups, completion_sound_data_uri,
         completion_sound_variant_id, config_display_value, config_value, curated_config_options,
-        custom_endpoint_form, custom_endpoint_payload, moa_complete, provider_group_for_key,
-        provider_order, provider_title, redacted_credential, set_config_value,
-        voice_config_field_visible, voice_free_input_field,
+        custom_endpoint_form, custom_endpoint_payload, gateway_input, gateway_mode_copy,
+        moa_complete, provider_group_for_key, provider_order, provider_title, redacted_credential,
+        set_config_value, voice_config_field_visible, voice_free_input_field,
     };
 
     #[test]
@@ -6012,5 +6351,42 @@ mod tests {
         preset.reference_models[0].model = "Hermes-4".into();
         preset.reference_models.clear();
         assert!(!moa_complete(&config));
+    }
+
+    #[test]
+    fn gateway_form_preserves_scope_and_omits_an_unchanged_secret() {
+        let config = ConnectionConfig {
+            mode: ConnectionMode::Ssh,
+            profile: Some("work".into()),
+            remote_auth_mode: RemoteAuthMode::Token,
+            remote_token_set: true,
+            ssh_host: "devbox".into(),
+            ssh_port: None,
+            ..ConnectionConfig::default()
+        };
+        let unchanged = gateway_input(&config, "   ");
+        assert_eq!(unchanged.profile.as_deref(), Some("work"));
+        assert_eq!(unchanged.remote_token, None);
+        assert_eq!(unchanged.ssh_port, Some(None));
+        assert_eq!(unchanged.ssh_host.as_deref(), Some("devbox"));
+
+        let replaced = gateway_input(&config, "  new-secret  ");
+        assert_eq!(replaced.remote_token.as_deref(), Some("new-secret"));
+    }
+
+    #[test]
+    fn gateway_local_card_switches_copy_for_profile_scope() {
+        assert_eq!(
+            gateway_mode_copy(ConnectionMode::Local, false).1,
+            "Local gateway"
+        );
+        assert_eq!(
+            gateway_mode_copy(ConnectionMode::Local, true).1,
+            "Use default gateway"
+        );
+        assert_eq!(
+            gateway_mode_copy(ConnectionMode::Cloud, false).1,
+            "Hermes Cloud"
+        );
     }
 }
