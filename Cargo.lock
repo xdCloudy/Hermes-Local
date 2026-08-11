@@ -2334,8 +2334,13 @@ name = "hermes-local"
 version = "0.18.62"
 dependencies = [
  "dioxus",
+ "hermes-core",
  "hermes-desktop",
+ "hermes-protocol",
  "hermes-ui",
+ "serde_json",
+ "tokio",
+ "url",
 ]
 
 [[package]]
@@ -5478,6 +5483,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",
