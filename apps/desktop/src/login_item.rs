@@ -1,4 +1,7 @@
-use std::{ffi::OsStr, path::{Path, PathBuf}};
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
+};
 
 const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 const VALUE_NAME: &str = "Hermes Local";
@@ -47,18 +50,22 @@ fn parse_registered_command(output: &str) -> Option<String> {
 }
 
 fn registration_matches(output: &str, executable: &Path) -> Result<bool, String> {
-    Ok(parse_registered_command(output).as_deref() == Some(registered_command(executable)?.as_str()))
+    Ok(parse_registered_command(output).as_deref()
+        == Some(registered_command(executable)?.as_str()))
 }
 
 #[cfg(windows)]
 fn reg_executable() -> Result<PathBuf, String> {
-    let root = std::env::var_os("SystemRoot")
-        .map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+    let root =
+        std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
     let reg = root.join("System32").join("reg.exe");
     if reg.is_absolute() && reg.is_file() {
         Ok(reg)
     } else {
-        Err(format!("Windows registry helper is unavailable: {}", reg.display()))
+        Err(format!(
+            "Windows registry helper is unavailable: {}",
+            reg.display()
+        ))
     }
 }
 
@@ -83,7 +90,9 @@ fn query_registered_command() -> Result<Option<String>, String> {
     if !output.status.success() {
         return Ok(None);
     }
-    Ok(parse_registered_command(&String::from_utf8_lossy(&output.stdout)))
+    Ok(parse_registered_command(&String::from_utf8_lossy(
+        &output.stdout,
+    )))
 }
 
 #[cfg(windows)]
@@ -166,10 +175,9 @@ mod tests {
 
     #[test]
     fn command_quotes_absolute_executable_and_uses_canonical_argument() {
-        let command = registered_command(Path::new(
-            r"C:\Program Files\Hermes Local\hermes-local.exe",
-        ))
-        .expect("valid command");
+        let command =
+            registered_command(Path::new(r"C:\Program Files\Hermes Local\hermes-local.exe"))
+                .expect("valid command");
         assert_eq!(
             command,
             r#""C:\Program Files\Hermes Local\hermes-local.exe" --hermes-local-autostart"#
