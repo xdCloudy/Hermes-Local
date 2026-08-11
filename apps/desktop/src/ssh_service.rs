@@ -25,10 +25,7 @@ impl SshProbeConnection {
     async fn ssh_config(&self, input: &ConnectionConfigInput) -> ServiceResult<SshConfig> {
         let current = self.inner.config(input.profile.as_deref()).await?;
         let host = input.ssh_host.as_deref().unwrap_or(&current.ssh_host);
-        let user = input
-            .ssh_user
-            .as_deref()
-            .unwrap_or(&current.ssh_user);
+        let user = input.ssh_user.as_deref().unwrap_or(&current.ssh_user);
         let key_path = input
             .ssh_key_path
             .as_deref()
