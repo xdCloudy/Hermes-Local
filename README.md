@@ -47,7 +47,7 @@ a paid inference API.
 <!-- BEGIN GENERATED STATUS -->
 | Release | Delivery | Repository |
 |---|---|---|
-| **Current build:** v0.18.62<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.19 - Dependable Distribution and Control Plane](https://github.com/xdCloudy/Hermes-Local/milestone/6)<br>**Current focus:** Complete dependable distribution, durable operations and shared update orchestration.<br>**Next:** Project Centre and Product UX | **Issues:** 26 open · 37 closed<br>**Overall completion:** 59%<br>**Recent commit:** [`1b63103`](https://github.com/xdCloudy/Hermes-Local/commit/1b631031e3bc495f9e7cb3170b9523a41f1d27c5) Merge pull request #136 from xdCloudy/agent/issue-51-project-centre-flows |
+| **Current build:** v0.18.62<br>**Latest release:** [v0.18.1](https://github.com/xdCloudy/Hermes-Local/releases/tag/v0.18.1)<br>**Recent release:** Hermes Local v0.18.1 — Cold-start reliability · 2026-07-28 | **Current milestone:** [v0.19 - Dependable Distribution and Control Plane](https://github.com/xdCloudy/Hermes-Local/milestone/6)<br>**Current focus:** Complete dependable distribution, durable operations and shared update orchestration.<br>**Next:** Project Centre and Product UX | **Issues:** 26 open · 37 closed<br>**Overall completion:** 59%<br>**Recent commit:** [`def1f22`](https://github.com/xdCloudy/Hermes-Local/commit/def1f22aabc36f1e03b9fb72edbf33da71b27cf7) refactor: make the native Hermes Local client first-class |
 
 > Status is generated from GitHub issues, milestones, releases and commits.
 <!-- END GENERATED STATUS -->
