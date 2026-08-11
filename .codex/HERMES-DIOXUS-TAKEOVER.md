@@ -59,9 +59,40 @@ Startup failure is recoverable in the same window through Retry. The current sma
 - startup/token helpers have bounded timeouts and kill-on-drop;
 - displayed diagnostics redact private root/user paths and long credential-like values and are length-bounded.
 
+### Hermes Agent WebSocket hardening
+
+The typed Rust Gateway client now has explicit resource ceilings rather than relying on transport defaults:
+
+- command queue capacity: 128;
+- event broadcast capacity: 512;
+- maximum WebSocket frame/message: 16 MiB;
+- connect timeout: 15 seconds;
+- default request timeout: 2 minutes;
+- timed-out requests are explicitly removed from the pending actor map;
+- graceful close and unknown-event preservation are covered by tests.
+
+### Native SSH probe parity
+
+The first native SSH slice is now wired behind the typed `ConnectionService::test_config` boundary. It deliberately uses the system OpenSSH client, matching the OG launcher's behavior so existing `~/.ssh/config`, `ProxyJump`, `ssh-agent` and hardware-backed keys continue to work.
+
+Current probe behavior:
+
+- local SSH execution is argv-based with `BatchMode=yes`, bounded connect/command timeouts, bounded captured output and kill-on-drop;
+- SSH host, user, key path and explicit remote Hermes path are validated before they can become OpenSSH arguments or remote-shell data;
+- host-key changes, authentication failures, timeouts and network failures are classified into the existing typed `SshErrorKind` contract;
+- Linux/macOS targets use login-shell Hermes discovery plus the known installer locations;
+- Windows targets use a UTF-16LE PowerShell `-EncodedCommand` probe and the same known Hermes runtime layout as the OG source;
+- both platform paths verify that remote `hermes serve --help` supports `ssh-session-token-file` and `ssh-owner-nonce` before reporting the host as Desktop-SSH-capable;
+- remote diagnostics are control-character stripped and length-bounded before entering UI-facing results;
+- the Dioxus UI still receives only `ConnectionTestResult`, never raw process authority.
+
+The small RFC 4648 encoder under `apps/desktop/src/base64.rs` exists only to encode the Windows PowerShell probe. It avoids adding a runtime dependency solely for `-EncodedCommand`; it is not used for cryptography and carries RFC test vectors.
+
+**Important:** SSH connection testing is ported; full remote-process ownership, token adoption, forwarding/tunnel leases, reuse and provably-owned cleanup are not yet complete. Do not treat SSH mode as production-parity until those OG lifecycle invariants are ported and tested.
+
 ### Rust validation and release evidence
 
-`.github/workflows/dioxus-rust.yml` now validates on Windows:
+`.github/workflows/dioxus-rust.yml` validates on Windows:
 
 - Rust/Dioxus architecture guard;
 - rustfmt;
@@ -74,7 +105,9 @@ Startup failure is recoverable in the same window through Retry. The current sma
 
 `scripts/ci/check_dioxus_rust_architecture.py` enforces the shared-UI/native authority boundary and bundle identity.
 
-The existing Hermes Agent harness/native-client workflow continues to validate the pinned harness boundary separately.
+For branch head `f898a7ab4be6219080f9684aaeeff0c059ba268a`, both the Dioxus Rust validation run (`31493308690`) and the existing Hermes Agent harness/native-client run (`31493308653`) completed successfully. Reopening the draft PR triggered redundant validation runs against the same head; the prior successful runs remain the evidence for that exact commit.
+
+The optimized Windows client is uploaded by CI as `hermes-local-rust-windows-x64`; the run-81 artifact ID is `9101197220`.
 
 ### Windows bundle groundwork
 
@@ -82,11 +115,11 @@ The Dioxus application preserves `com.nousresearch.hermes.local` as its bundle i
 
 ## Known remaining high-priority work
 
-1. Finish Gateway parity: Cloud discovery/sign-in and SSH lifecycle, then prove soft/hard/live re-home semantics.
+1. Finish Gateway parity: SSH ownership/tunnel lifecycle and Cloud discovery/sign-in, then prove soft/hard/live re-home semantics.
 2. Port rich chat/composer behavior: drafts, queueing, attachments, model/tool controls, voice, safe Markdown/code/math/media/diagram rendering.
 3. Port Files/editor/previews/watchers onto the existing typed file boundary.
 4. Port Git/worktrees/review/ship flows onto the existing typed Git boundary.
-5. Port terminal UI and persistent ConPTY lifecycle.
+5. Port terminal UI and persistent ConPTY lifecycle; the native PTY service already exists, but the placeholder Dioxus route is not parity.
 6. Port Local Workstation/runtime/Task Centre/model-download/benchmark/security/repair surfaces.
 7. Port Skills/MCP/Trust/Memory/Cron/Messaging/Webhooks/Artifacts/Agents/Starmap.
 8. Port TUI/dashboard integration with the existing token/origin isolation contract.
@@ -97,6 +130,6 @@ The Dioxus application preserves `com.nousresearch.hermes.local` as its bundle i
 
 ## Current next action
 
-After the current Rust release/CI run finishes, capture the optimized binary size/artifact and then continue feature parity. Prefer a coherent slice with an already-typed backend boundary (Files/Git is a strong next candidate) while keeping Gateway Cloud/SSH security-sensitive work explicit rather than approximated.
+Continue the SSH slice by porting the OG ownership/tunnel lifecycle rather than approximating it: protected per-connection token handling, stable ownership identity, spawn nonce, ephemeral remote port readiness, local forwarding, authenticated reuse proof, exact process ownership verification and safe stale cleanup on Linux/macOS and Windows. If that work exposes a reusable native transport abstraction, keep it Desktop-native and typed rather than widening the shared UI boundary.
 
-Do not merge the draft migration PR until the product owner explicitly authorizes it after final acceptance.
+Do not merge the draft migration PR to `main` until the product owner explicitly authorizes it after final acceptance.
