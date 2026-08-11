@@ -1,8 +1,6 @@
 use std::{path::Path, path::PathBuf, sync::Arc};
 
-use hermes_core::{
-    AppServices, PlatformService, ServiceError, ServiceFuture, ServiceResult,
-};
+use hermes_core::{AppServices, PlatformService, ServiceError, ServiceFuture, ServiceResult};
 
 #[cfg(windows)]
 use std::process::{Command, Stdio};
@@ -89,8 +87,8 @@ fn notify_windows(title: &str, body: &str) -> ServiceResult<bool> {
 
 #[cfg(windows)]
 fn powershell_executable() -> ServiceResult<PathBuf> {
-    let root = std::env::var_os("SystemRoot")
-        .map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+    let root =
+        std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
     let executable = root
         .join("System32")
         .join("WindowsPowerShell")
@@ -126,9 +124,7 @@ fn sanitize_title(value: &str) -> String {
 fn sanitize_body(value: &str) -> String {
     let cleaned = value
         .chars()
-        .filter(|character| {
-            !character.is_control() || matches!(character, '\n' | '\r' | '\t')
-        })
+        .filter(|character| !character.is_control() || matches!(character, '\n' | '\r' | '\t'))
         .collect::<String>();
     bounded_chars(cleaned.trim(), MAX_BODY_CHARS)
 }
