@@ -7,8 +7,8 @@ use futures_util::StreamExt;
 use hermes_core::{AgentConfigService, AppServices, ModelService, SessionTranscript};
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, MessageRole, MoaConfig, ModelAssignmentRequest,
-    ModelProvider, ModelSettingsSnapshot, ProjectsSnapshot, SessionCreateRequest, SessionSummary,
-    ThemeMode,
+    ModelProvider, ModelSettingsSnapshot, ProjectFolder, ProjectsSnapshot, SessionCreateRequest,
+    SessionSummary, ThemeMode,
 };
 use serde_json::{Map, Value, json};
 
@@ -1242,6 +1242,33 @@ simple_surface!(
     "Private, capable, and built for your computer."
 );
 
+fn project_has_broken_path(project: &hermes_protocol::ProjectSummary) -> bool {
+    matches!(
+        project.path_state.as_deref(),
+        Some("missing" | "inaccessible")
+    ) || project.folders.iter().any(|folder| {
+        matches!(
+            folder.path_state.as_deref(),
+            Some("missing" | "inaccessible")
+        )
+    })
+}
+
+fn project_repair_folder(project: &hermes_protocol::ProjectSummary) -> Option<ProjectFolder> {
+    project
+        .folders
+        .iter()
+        .find(|folder| {
+            matches!(
+                folder.path_state.as_deref(),
+                Some("missing" | "inaccessible")
+            )
+        })
+        .or_else(|| project.folders.iter().find(|folder| folder.is_primary))
+        .or_else(|| project.folders.first())
+        .cloned()
+}
+
 #[component]
 fn Projects() -> Element {
     let services = use_context::<AppServices>();
@@ -1258,6 +1285,9 @@ fn Projects() -> Element {
     let mut creating = use_signal(|| false);
     let mut choosing_folder = use_signal(|| false);
     let mut remove_target = use_signal(|| None::<String>);
+    let mut busy_project = use_signal(|| None::<String>);
+    let mut delete_target = use_signal(|| None::<String>);
+    let mut delete_confirmation = use_signal(String::new);
 
     let needle = query().trim().to_lowercase();
     let visible = snapshot
@@ -1333,6 +1363,9 @@ fn Projects() -> Element {
                                             if project.archived {
                                                 span { class: "project-badge", "Archived" }
                                             }
+                                            if project_has_broken_path(&project) {
+                                                span { class: "project-badge warning", "Path needs repair" }
+                                            }
                                         }
                                         span { class: "project-path", title: project.primary_path.clone().unwrap_or_default(),
                                             if let Some(path) = &project.primary_path { "{path}" } else { "No folder attached" }
@@ -1402,6 +1435,7 @@ fn Projects() -> Element {
                                     Link { class: "project-action", to: Route::Project { id: project.id.clone() }, "Open" }
                                     button {
                                         class: "project-action",
+                                        disabled: busy_project().as_deref() == Some(project.id.as_str()),
                                         onclick: {
                                             let service = services.projects.clone();
                                             let id = project.id.clone();
@@ -1427,10 +1461,75 @@ fn Projects() -> Element {
                                         },
                                         if project.archived { "Restore" } else { "Archive" }
                                     }
+                                    if project_has_broken_path(&project) {
+                                        button {
+                                            class: "project-action",
+                                            disabled: busy_project().is_some(),
+                                            onclick: {
+                                                let platform = services.platform.clone();
+                                                let project_service = services.projects.clone();
+                                                let project = project.clone();
+                                                let starting_directory = (settings_state.settings)().default_project_dir.map(std::path::PathBuf::from);
+                                                move |_| {
+                                                    let Some(folder) = project_repair_folder(&project) else { return; };
+                                                    let platform = platform.clone();
+                                                    let project_service = project_service.clone();
+                                                    let project = project.clone();
+                                                    let starting_directory = starting_directory.clone();
+                                                    spawn(async move {
+                                                        let replacement = match platform.pick_folder("Choose replacement project folder", starting_directory.as_deref()).await {
+                                                            Ok(Some(path)) => path.to_string_lossy().into_owned(),
+                                                            Ok(None) => return,
+                                                            Err(problem) => {
+                                                                let mut error = state.error;
+                                                                error.set(Some(problem.to_string()));
+                                                                return;
+                                                            }
+                                                        };
+                                                        busy_project.set(Some(project.id.clone()));
+                                                        match project_service.recover_path(
+                                                            &project.id,
+                                                            &folder.path,
+                                                            &replacement,
+                                                            folder.repository_id.as_deref(),
+                                                        ).await {
+                                                            Ok(repaired) => {
+                                                                let mut next = (state.snapshot)();
+                                                                if let Some(row) = next.projects.iter_mut().find(|row| row.id == repaired.id) {
+                                                                    *row = repaired;
+                                                                }
+                                                                let mut snapshot_signal = state.snapshot;
+                                                                snapshot_signal.set(next);
+                                                            }
+                                                            Err(problem) => {
+                                                                let mut error = state.error;
+                                                                error.set(Some(problem.to_string()));
+                                                            }
+                                                        }
+                                                        busy_project.set(None);
+                                                    });
+                                                }
+                                            },
+                                            "Repair path"
+                                        }
+                                    }
                                     button {
                                         class: "project-action danger",
+                                        disabled: busy_project().is_some(),
                                         onclick: { let id = project.id.clone(); move |_| remove_target.set(Some(id.clone())) },
                                         "Remove registration"
+                                    }
+                                    button {
+                                        class: "project-action danger",
+                                        disabled: busy_project().is_some() || project.folders.is_empty(),
+                                        onclick: {
+                                            let id = project.id.clone();
+                                            move |_| {
+                                                delete_confirmation.set(String::new());
+                                                delete_target.set(Some(id.clone()));
+                                            }
+                                        },
+                                        "Delete files…"
                                     }
                                 }
                             }
@@ -1573,6 +1672,73 @@ fn Projects() -> Element {
                                     }
                                 },
                                 "Remove registration"
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(id) = delete_target()
+                && let Some(project) = snapshot.projects.iter().find(|project| project.id == id).cloned()
+            {
+                div { class: "dialog-backdrop", role: "presentation",
+                    section { class: "hermes-dialog compact delete-files-dialog", role: "alertdialog", aria_modal: "true", aria_label: "Delete project files",
+                        header {
+                            h2 { "Delete project files?" }
+                            p { "This permanently deletes every folder registered to this project, then removes its registration. This cannot be undone." }
+                        }
+                        div { class: "delete-confirm-copy",
+                            p { "Type " strong { "DELETE {project.name}" } " to confirm." }
+                            input {
+                                autofocus: true,
+                                aria_label: "Project file deletion confirmation",
+                                placeholder: "DELETE {project.name}",
+                                value: "{delete_confirmation}",
+                                oninput: move |event| delete_confirmation.set(event.value()),
+                            }
+                        }
+                        footer {
+                            button {
+                                class: "button",
+                                disabled: busy_project().is_some(),
+                                onclick: move |_| {
+                                    delete_target.set(None);
+                                    delete_confirmation.set(String::new());
+                                },
+                                "Cancel"
+                            }
+                            button {
+                                class: "button danger",
+                                disabled: busy_project().is_some() || delete_confirmation() != format!("DELETE {}", project.name),
+                                onclick: {
+                                    let service = services.projects.clone();
+                                    let id = project.id.clone();
+                                    let confirmation = format!("DELETE {}", project.name);
+                                    move |_| {
+                                        if delete_confirmation() != confirmation || busy_project().is_some() {
+                                            return;
+                                        }
+                                        busy_project.set(Some(id.clone()));
+                                        let service = service.clone();
+                                        let id = id.clone();
+                                        let confirmation = confirmation.clone();
+                                        spawn(async move {
+                                            match service.delete_files(&id, &confirmation).await {
+                                                Ok(result) => {
+                                                    let mut snapshot_signal = state.snapshot;
+                                                    snapshot_signal.set(result.snapshot);
+                                                    delete_target.set(None);
+                                                    delete_confirmation.set(String::new());
+                                                }
+                                                Err(problem) => {
+                                                    let mut error = state.error;
+                                                    error.set(Some(problem.to_string()));
+                                                }
+                                            }
+                                            busy_project.set(None);
+                                        });
+                                    }
+                                },
+                                if busy_project().is_some() { "Deleting…" } else { "Delete files permanently" }
                             }
                         }
                     }

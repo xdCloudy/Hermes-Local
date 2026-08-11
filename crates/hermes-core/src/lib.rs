@@ -11,8 +11,9 @@ use futures_core::Stream;
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, ChatMessage, ConnectionState, FileEntry, GatewayEvent,
     GitStatus, MessageRole, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse,
-    ModelSettingsSnapshot, ProjectSummary, ProjectsSnapshot, RuntimeStatus, SessionCreateRequest,
-    SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
+    ModelSettingsSnapshot, ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot,
+    RuntimeStatus, SessionCreateRequest, SessionResumeResponse, SessionSummary, TaskSummary,
+    TrustSnapshot,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -327,7 +328,19 @@ pub trait ProjectService: Send + Sync {
     fn set_active(&self, id: Option<&str>) -> ServiceFuture<'_, ()>;
     fn set_pinned(&self, id: &str, pinned: bool) -> ServiceFuture<'_, ProjectsSnapshot>;
     fn set_archived(&self, id: &str, archived: bool) -> ServiceFuture<'_, ProjectsSnapshot>;
+    fn recover_path(
+        &self,
+        id: &str,
+        old_path: &str,
+        new_path: &str,
+        repository_id: Option<&str>,
+    ) -> ServiceFuture<'_, ProjectSummary>;
     fn remove(&self, id: &str) -> ServiceFuture<'_, ()>;
+    fn delete_files(
+        &self,
+        id: &str,
+        confirmation: &str,
+    ) -> ServiceFuture<'_, ProjectFilesDeleteResult>;
 }
 
 pub trait SettingsService: Send + Sync {

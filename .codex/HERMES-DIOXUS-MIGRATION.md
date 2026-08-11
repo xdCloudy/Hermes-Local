@@ -503,3 +503,33 @@ plus doc-tests.
 Exact next action: implement the OG Project Centre repair operation and the
 separately confirmed delete-files flow, then move through the remaining
 settings sections in official source order.
+
+## Project repair and file deletion checkpoint (2026-08-11)
+
+Broken project registrations now retain the source's path-state and repository
+identity metadata and render an amber `Path needs repair` badge. The repair
+action selects the same recovery candidate order as the OG client (first broken
+folder, then primary, then first registered folder), opens the typed native
+folder picker, and sends `projects.recover_path` with `id`, `old_path`,
+`new_path`, and `repository_id`. The returned project replaces only its stable
+registration row.
+
+Registration removal remains a separate, non-filesystem operation. Projects
+with folders now expose `Delete files…`, which opens the source's dedicated
+warning dialog, requires the exact `DELETE {project name}` phrase, and only then
+sends `projects.delete_files` with the confirmation. The authoritative Project
+Centre snapshot replaces local state after success; returned deleted paths are
+decoded without exposing deletion authority to Dioxus.
+
+An in-process WebSocket compatibility peer proves both exact RPC method names,
+parameter objects, repaired-project decoding, deleted-path decoding, and the
+authoritative empty snapshot. Maximized native QA at 1296x809 covers the broken
+row, warning badge, repair/delete actions, disabled confirmation, exact-match
+enabled state, and successful fixture-only removal. No real folder was selected
+or deleted. `cargo test --workspace` passes 29 unit tests plus doc-tests;
+workspace Clippy still reports only the existing pedantic documentation/style
+backlog.
+
+Exact next action: audit and port the OG Workspace settings section in official
+source order, beginning with default directory and repository discovery fields,
+then continue into Safety.

@@ -249,6 +249,12 @@ pub struct ProjectFolder {
     pub label: Option<String>,
     #[serde(default)]
     pub is_primary: bool,
+    #[serde(default)]
+    pub path_state: Option<String>,
+    #[serde(default)]
+    pub repository_id: Option<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -265,6 +271,8 @@ pub struct ProjectSummary {
     #[serde(default)]
     pub archived: bool,
     #[serde(default)]
+    pub path_state: Option<String>,
+    #[serde(default)]
     pub folders: Vec<ProjectFolder>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
@@ -278,6 +286,12 @@ pub struct ProjectsSnapshot {
     pub active_id: Option<String>,
     #[serde(default)]
     pub pinned_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ProjectFilesDeleteResult {
+    pub snapshot: ProjectsSnapshot,
+    pub deleted_paths: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]

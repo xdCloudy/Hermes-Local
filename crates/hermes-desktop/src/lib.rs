@@ -19,9 +19,9 @@ use hermes_core::{
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, AuxiliaryModels, ConfigSchemaResponse, ConnectionState,
     FileEntry, GitStatus, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse, ModelInfo,
-    ModelOptions, ModelSettingsSnapshot, ProjectSummary, ProjectsSnapshot, RuntimeStatus,
-    SessionCreateRequest, SessionCreateResponse, SessionResumeResponse, SessionSummary,
-    TaskSummary, TrustSnapshot,
+    ModelOptions, ModelSettingsSnapshot, ProjectFilesDeleteResult, ProjectSummary,
+    ProjectsSnapshot, RuntimeStatus, SessionCreateRequest, SessionCreateResponse,
+    SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use reqwest::Method;
@@ -468,6 +468,44 @@ impl ProjectService for GatewayServices {
         })
     }
 
+    fn recover_path(
+        &self,
+        id: &str,
+        old_path: &str,
+        new_path: &str,
+        repository_id: Option<&str>,
+    ) -> ServiceFuture<'_, ProjectSummary> {
+        let id = id.to_owned();
+        let old_path = old_path.to_owned();
+        let new_path = new_path.to_owned();
+        let repository_id = repository_id.map(str::to_owned);
+        Box::pin(async move {
+            validate_identifier(&id, "project")?;
+            if old_path.trim().is_empty() || new_path.trim().is_empty() {
+                return Err(ServiceError::InvalidInput(
+                    "old and replacement project paths are required".into(),
+                ));
+            }
+            let value: Value = self
+                .client()?
+                .request(
+                    "projects.recover_path",
+                    json!({
+                        "id": id,
+                        "old_path": old_path,
+                        "new_path": new_path,
+                        "repository_id": repository_id
+                    }),
+                )
+                .await
+                .map_err(transport)?;
+            let project = value.get("project").cloned().ok_or_else(|| {
+                ServiceError::Transport("Project path recovery returned no project".into())
+            })?;
+            serde_json::from_value(project).map_err(protocol)
+        })
+    }
+
     fn remove(&self, id: &str) -> ServiceFuture<'_, ()> {
         let id = id.to_owned();
         Box::pin(async move {
@@ -478,6 +516,43 @@ impl ProjectService for GatewayServices {
                 .await
                 .map_err(transport)?;
             Ok(())
+        })
+    }
+
+    fn delete_files(
+        &self,
+        id: &str,
+        confirmation: &str,
+    ) -> ServiceFuture<'_, ProjectFilesDeleteResult> {
+        let id = id.to_owned();
+        let confirmation = confirmation.to_owned();
+        Box::pin(async move {
+            validate_identifier(&id, "project")?;
+            if !confirmation.starts_with("DELETE ") || confirmation.len() > 512 {
+                return Err(ServiceError::InvalidInput(
+                    "invalid project file-deletion confirmation".into(),
+                ));
+            }
+            let value: Value = self
+                .client()?
+                .request(
+                    "projects.delete_files",
+                    json!({ "id": id, "confirmation": confirmation }),
+                )
+                .await
+                .map_err(transport)?;
+            let deleted_paths = value
+                .get("deleted_paths")
+                .cloned()
+                .map(serde_json::from_value)
+                .transpose()
+                .map_err(protocol)?
+                .unwrap_or_default();
+            let snapshot = serde_json::from_value(value).map_err(protocol)?;
+            Ok(ProjectFilesDeleteResult {
+                snapshot,
+                deleted_paths,
+            })
         })
     }
 }
@@ -2043,6 +2118,102 @@ mod tests {
         assert_eq!(
             frames[3].params,
             Some(json!({ "id": "project-2", "restore": true }))
+        );
+    }
+
+    #[tokio::test]
+    async fn project_repair_and_file_deletion_match_the_source_contracts() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let address = listener.local_addr().expect("address");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("connection");
+            let mut socket = accept_async(stream).await.expect("WebSocket");
+            let results = [
+                json!({
+                    "project": {
+                        "id": "project-broken",
+                        "name": "Demo",
+                        "primary_path": r"C:\Code\New",
+                        "path_state": "available",
+                        "folders": [{
+                            "path": r"C:\Code\New",
+                            "is_primary": true,
+                            "path_state": "available",
+                            "repository_id": "github.com/example/demo"
+                        }]
+                    }
+                }),
+                json!({
+                    "projects": [],
+                    "active_id": null,
+                    "pinned_ids": [],
+                    "deleted_paths": [r"C:\Code\New"]
+                }),
+            ];
+            let mut frames = Vec::new();
+            for result in results {
+                let message = socket.next().await.expect("request").expect("frame");
+                let frame: hermes_protocol::JsonRpcFrame =
+                    serde_json::from_str(message.to_text().expect("text frame")).expect("JSON-RPC");
+                socket
+                    .send(Message::Text(
+                        json!({ "jsonrpc": "2.0", "id": frame.id, "result": result })
+                            .to_string()
+                            .into(),
+                    ))
+                    .await
+                    .expect("response");
+                frames.push(frame);
+            }
+            frames
+        });
+        let client = GatewayClient::connect(
+            &format!("ws://{address}/api/ws"),
+            hermes_agent_client::GatewayOptions::default(),
+        )
+        .await
+        .expect("gateway");
+        let services = GatewayServices {
+            client: Arc::new(RwLock::new(Some(client))),
+            rest: Arc::new(RwLock::new(None)),
+        };
+
+        let repaired = ProjectService::recover_path(
+            &services,
+            "project-broken",
+            r"C:\Code\Old",
+            r"C:\Code\New",
+            Some("github.com/example/demo"),
+        )
+        .await
+        .expect("repair project path");
+        assert_eq!(repaired.primary_path.as_deref(), Some(r"C:\Code\New"));
+        let deleted = ProjectService::delete_files(&services, "project-broken", "DELETE Demo")
+            .await
+            .expect("delete project files");
+        assert!(deleted.snapshot.projects.is_empty());
+        assert_eq!(deleted.deleted_paths, [r"C:\Code\New"]);
+
+        let frames = server.await.expect("server");
+        assert_eq!(frames[0].method.as_deref(), Some("projects.recover_path"));
+        assert_eq!(
+            frames[0].params,
+            Some(json!({
+                "id": "project-broken",
+                "old_path": r"C:\Code\Old",
+                "new_path": r"C:\Code\New",
+                "repository_id": "github.com/example/demo"
+            }))
+        );
+        assert_eq!(frames[1].method.as_deref(), Some("projects.delete_files"));
+        assert_eq!(
+            frames[1].params,
+            Some(json!({
+                "id": "project-broken",
+                "confirmation": "DELETE Demo"
+            }))
         );
     }
 

@@ -374,6 +374,7 @@ h1 { margin-top: 4px !important; margin-bottom: 0 !important; font-size: 1.25rem
 .project-title-line { display: flex; min-width: 0; align-items: center; gap: 6px; }
 .project-title-line strong { min-width: 0; overflow: hidden; font-size: .8125rem; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .project-badge { border-radius: 4px; padding: 2px 5px; background: var(--active); color: var(--text-3); font-size: .5625rem; letter-spacing: .05em; text-transform: uppercase; }
+.project-badge.warning { background: color-mix(in srgb, var(--amber) 12%, transparent); color: var(--amber); }
 .project-path { min-width: 0; overflow: hidden; color: var(--text-3); font-size: .6875rem; text-overflow: ellipsis; white-space: nowrap; }
 .project-centre-copy small { color: var(--text-4); font-size: .625rem; }
 .icon-button { display: grid; width: 25px; height: 25px; flex: 0 0 25px; place-items: center; border: 0; border-radius: 5px; padding: 0; background: transparent; color: var(--text-3); }
@@ -396,6 +397,11 @@ h1 { margin-top: 4px !important; margin-bottom: 0 !important; font-size: 1.25rem
 .dialog-field { display: grid; gap: 5px; color: var(--text-2); font-size: .6875rem; }
 .dialog-field input { width: 100%; height: 31px; border: 1px solid var(--stroke-2); border-radius: 6px; outline: 0; padding: 0 9px; background: var(--input-bg); font-size: .75rem; }
 .dialog-field input:focus { border-color: var(--accent); }
+.delete-confirm-copy { display: grid; gap: 7px; }
+.delete-confirm-copy p { margin: 0; color: var(--text-2); font-size: .75rem; line-height: 1.45; }
+.delete-confirm-copy strong { color: var(--red); font-weight: 600; }
+.delete-confirm-copy input { width: 100%; height: 31px; border: 1px solid var(--stroke-2); border-radius: 6px; outline: 0; padding: 0 9px; background: var(--input-bg); color: var(--text-1); font-size: .75rem; }
+.delete-confirm-copy input:focus { border-color: var(--red); box-shadow: 0 0 0 1px color-mix(in srgb, var(--red) 20%, transparent); }
 .folder-picker-row { display: flex; min-width: 0; align-items: center; gap: 7px; }
 .folder-picker-row input { min-width: 0; flex: 1; }
 .folder-picker-row .button { flex: 0 0 auto; }
