@@ -303,9 +303,7 @@ fn save_bytes_platform(
 
 #[cfg(not(windows))]
 fn save_bytes_platform(
-    _temporary: &Path,
-    _suggested_name: &str,
-    _extension: &str,
+    _temporary: &Path, _suggested_name: &str, _extension: &str,
 ) -> Result<Option<PathBuf>, String> {
     Err("Native Save As is only available on Windows.".to_owned())
 }
