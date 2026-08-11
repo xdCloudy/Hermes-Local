@@ -1,6 +1,10 @@
 #![cfg_attr(feature = "bundle", windows_subsystem = "windows")]
 
-mod base64;
+#[path = "base64.rs"]
+mod base64_impl;
+pub use base64_impl::{Engine, engine};
+extern crate self as base64;
+
 mod ssh;
 mod ssh_service;
 mod startup;
