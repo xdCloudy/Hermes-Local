@@ -16,7 +16,7 @@ use serde_json::Value;
 use tokio::process::Command;
 use url::Url;
 
-const START_TIMEOUT: Duration = Duration::from_secs(17 * 60);
+const START_TIMEOUT: Duration = Duration::from_mins(17);
 const TOKEN_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_DIAGNOSTIC_BYTES: usize = 2_048;
 const ROOT_SEARCH_DEPTH: usize = 8;
@@ -178,7 +178,8 @@ fn environment_connection_override() -> bool {
 
 fn resolve_project_root() -> Result<PathBuf, String> {
     if let Some(explicit) = env::var_os("HERMES_LOCAL_ROOT") {
-        return validate_explicit_root(PathBuf::from(explicit), "HERMES_LOCAL_ROOT");
+        let explicit = PathBuf::from(explicit);
+        return validate_explicit_root(&explicit, "HERMES_LOCAL_ROOT");
     }
 
     if let Some(argument) = env::args_os().find_map(|argument| {
@@ -187,7 +188,7 @@ fn resolve_project_root() -> Result<PathBuf, String> {
             .strip_prefix("--hermes-local-root=")
             .map(PathBuf::from)
     }) {
-        return validate_explicit_root(argument, "--hermes-local-root");
+        return validate_explicit_root(&argument, "--hermes-local-root");
     }
 
     let mut seeds = Vec::with_capacity(3);
@@ -215,11 +216,11 @@ fn resolve_project_root() -> Result<PathBuf, String> {
         })
 }
 
-fn validate_explicit_root(path: PathBuf, source: &str) -> Result<PathBuf, String> {
+fn validate_explicit_root(path: &Path, source: &str) -> Result<PathBuf, String> {
     if !path.is_absolute() {
         return Err(format!("{source} must be an absolute path"));
     }
-    canonical_root(&path).ok_or_else(|| {
+    canonical_root(path).ok_or_else(|| {
         format!(
             "{source} does not point to a Hermes Local installation: {}",
             path.display()
@@ -276,8 +277,7 @@ fn resolve_powershell() -> Result<PathBuf, String> {
     }
 
     let system_root = env::var_os("SystemRoot")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+        .map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
     let where_exe = system_root.join("System32").join("where.exe");
     if let Ok(output) = std::process::Command::new(where_exe)
         .arg("pwsh.exe")
@@ -433,7 +433,7 @@ fn read_local_endpoint(root: &Path) -> Result<(String, u16), String> {
         let user = read_json(&user_path)?;
         if let Some(network) = user.get("network").and_then(Value::as_object) {
             if let Some(value) = network.get("host").and_then(Value::as_str) {
-                host = value.to_owned();
+                value.clone_into(&mut host);
             }
             if let Some(value) = network.get("hermesPort").and_then(Value::as_u64) {
                 port = value;
@@ -567,10 +567,10 @@ mod tests {
 
     #[test]
     fn explicit_roots_must_be_absolute_and_valid() {
-        assert!(validate_explicit_root(PathBuf::from("relative"), "test").is_err());
+        assert!(validate_explicit_root(Path::new("relative"), "test").is_err());
         let root = test_directory("explicit");
         fs::create_dir_all(&root).expect("root");
-        assert!(validate_explicit_root(root.clone(), "test").is_err());
+        assert!(validate_explicit_root(&root, "test").is_err());
         fs::remove_dir_all(root).expect("cleanup");
     }
 
