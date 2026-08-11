@@ -1820,6 +1820,8 @@ fn SettingsOverlay(initial: &'static str) -> Element {
                         AgentConfigPanel { section: "safety", icon: "lock", label: "Safety" }
                     } else if active() == "memory" {
                         AgentConfigPanel { section: "memory", icon: "database", label: "Memory & Context" }
+                    } else if active() == "voice" {
+                        AgentConfigPanel { section: "voice", icon: "unmute", label: "Voice" }
                     } else {
                         section { class: "settings-placeholder",
                             div { class: "settings-section-title", Codicon { name: active_icon } h1 { "{active_label}" } }
@@ -1907,6 +1909,8 @@ fn AgentConfigPanel(section: &'static str, icon: &'static str, label: &'static s
                     "Control approvals, private-network access, secret redaction, and rollback checkpoints."
                 } else if section == "memory" {
                     "Choose what Hermes remembers and how long conversations are compressed near the context limit."
+                } else if section == "voice" {
+                    "Configure speech synthesis, transcription, and the active provider-specific voice controls."
                 } else {
                     "Choose how new chats behave and how model output is presented."
                 }
@@ -1956,8 +1960,16 @@ fn AgentConfigPanel(section: &'static str, icon: &'static str, label: &'static s
                             saving,
                             error,
                         }
-                    } else {
+                    } else if section == "memory" {
                         MemoryConfigFields {
+                            snapshot,
+                            loaded,
+                            profile: profile.clone(),
+                            saving,
+                            error,
+                        }
+                    } else {
+                        VoiceConfigFields {
                             snapshot,
                             loaded,
                             profile: profile.clone(),
@@ -3109,6 +3121,66 @@ const MEMORY_FIELDS: &[(&str, &str, &str)] = &[
     ),
 ];
 
+const VOICE_FIELDS: &[(&str, &str, &str)] = &[
+    ("tts.provider", "Text-To-Speech Provider", ""),
+    (
+        "stt.enabled",
+        "Speech To Text",
+        "Enable local or provider-backed speech transcription.",
+    ),
+    (
+        "stt.echo_transcripts",
+        "Echo Transcripts",
+        "Post the raw voice transcript back to the chat.",
+    ),
+    ("stt.provider", "Speech-To-Text Provider", ""),
+    (
+        "voice.auto_tts",
+        "Read Responses Aloud",
+        "Automatically speak assistant responses.",
+    ),
+    ("tts.edge.voice", "Edge Voice", ""),
+    ("tts.openai.model", "OpenAI TTS Model", ""),
+    ("tts.openai.voice", "OpenAI Voice", ""),
+    ("tts.elevenlabs.voice_id", "ElevenLabs Voice", ""),
+    ("tts.elevenlabs.model_id", "ElevenLabs Model", ""),
+    ("tts.xai.voice_id", "xAI (Grok) Voice", ""),
+    ("tts.xai.language", "xAI Language", ""),
+    ("tts.xai.speed", "xAI Playback Speed", ""),
+    ("tts.xai.auto_speech_tags", "xAI Auto Speech Tags", ""),
+    (
+        "tts.xai.optimize_streaming_latency",
+        "xAI Streaming Latency Optimization",
+        "",
+    ),
+    ("tts.xai.sample_rate", "xAI Sample Rate", ""),
+    ("tts.xai.bit_rate", "xAI Bit Rate", ""),
+    ("tts.minimax.model", "MiniMax TTS Model", ""),
+    ("tts.minimax.voice_id", "MiniMax Voice", ""),
+    ("tts.mistral.model", "Mistral TTS Model", ""),
+    ("tts.mistral.voice_id", "Mistral Voice", ""),
+    ("tts.gemini.model", "Gemini TTS Model", ""),
+    ("tts.gemini.voice", "Gemini Voice", ""),
+    ("tts.neutts.model", "NeuTTS Model", ""),
+    ("tts.neutts.device", "NeuTTS Device", ""),
+    ("tts.kittentts.model", "KittenTTS Model", ""),
+    ("tts.kittentts.voice", "KittenTTS Voice", ""),
+    ("tts.piper.voice", "Piper Voice", ""),
+    ("tts.deepinfra.model", "DeepInfra TTS Model", ""),
+    ("tts.deepinfra.voice", "DeepInfra Voice", ""),
+    ("stt.local.model", "Local Transcription Model", ""),
+    ("stt.local.language", "Transcription Language", ""),
+    ("stt.openai.model", "OpenAI STT Model", ""),
+    ("stt.groq.model", "Groq STT Model", ""),
+    ("stt.mistral.model", "Mistral STT Model", ""),
+    ("stt.elevenlabs.model_id", "ElevenLabs STT Model", ""),
+    ("stt.elevenlabs.language_code", "ElevenLabs Language", ""),
+    ("stt.elevenlabs.tag_audio_events", "Tag Audio Events", ""),
+    ("stt.elevenlabs.diarize", "Speaker Diarization", ""),
+    ("voice.record_key", "Voice Shortcut", ""),
+    ("voice.max_recording_seconds", "Max Recording Length", ""),
+];
+
 #[component]
 fn WorkspaceConfigFields(
     snapshot: Signal<Option<AgentConfigSnapshot>>,
@@ -3185,6 +3257,54 @@ fn MemoryConfigFields(
 }
 
 #[component]
+fn VoiceConfigFields(
+    snapshot: Signal<Option<AgentConfigSnapshot>>,
+    loaded: AgentConfigSnapshot,
+    profile: Option<String>,
+    saving: Signal<bool>,
+    error: Signal<Option<String>>,
+) -> Element {
+    rsx! {
+        for (path, title, description) in VOICE_FIELDS {
+            if voice_config_field_visible(path, &loaded.config) {
+                CuratedConfigField {
+                    key: "{path}",
+                    snapshot,
+                    loaded: loaded.clone(),
+                    profile: profile.clone(),
+                    saving,
+                    error,
+                    path,
+                    title,
+                    description,
+                }
+            }
+        }
+    }
+}
+
+fn voice_config_field_visible(path: &str, config: &BTreeMap<String, Value>) -> bool {
+    let mut parts = path.split('.');
+    let Some(domain) = parts.next() else {
+        return true;
+    };
+    let Some(provider) = parts.next() else {
+        return true;
+    };
+    if parts.next().is_none() || !matches!(domain, "tts" | "stt") {
+        return true;
+    }
+    if domain == "stt"
+        && !config_value(config, "stt.enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or_default()
+    {
+        return false;
+    }
+    config_value(config, &format!("{domain}.provider")).and_then(Value::as_str) == Some(provider)
+}
+
+#[component]
 fn CuratedConfigField(
     snapshot: Signal<Option<AgentConfigSnapshot>>,
     loaded: AgentConfigSnapshot,
@@ -3232,6 +3352,8 @@ fn CuratedConfigField(
     } else {
         description.to_owned()
     };
+    let free_input = voice_free_input_field(path);
+    let suggestions_id = format!("config-suggestions-{}", path.replace('.', "-"));
     let mut draft = use_signal(|| current_text.clone());
 
     rsx! {
@@ -3255,6 +3377,33 @@ fn CuratedConfigField(
                             }
                         }
                         span {}
+                    }
+                } else if free_input {
+                    div { class: "settings-suggested-input",
+                        input {
+                            class: "settings-input",
+                            list: "{suggestions_id}",
+                            disabled: saving(),
+                            value: "{draft}",
+                            placeholder: "Not set",
+                            oninput: move |event| draft.set(event.value()),
+                            onblur: {
+                                let config = loaded.config.clone();
+                                let profile = profile.clone();
+                                let service = service.clone();
+                                move |_| {
+                                    let next = json!(draft());
+                                    if config_value(&config, path) != Some(&next) {
+                                        commit_agent_config(snapshot, saving, error, service.clone(), profile.clone(), set_config_value(&config, path, next));
+                                    }
+                                }
+                            }
+                        }
+                        datalist { id: "{suggestions_id}",
+                            for option in &options {
+                                option { value: "{config_display_value(option)}" }
+                            }
+                        }
                     }
                 } else if !options.is_empty() {
                     select {
@@ -3339,6 +3488,50 @@ fn curated_config_options(path: &str, current: &str, schema_options: &[Value]) -
         "approvals.mode" => vec![json!("manual"), json!("smart"), json!("off")],
         "code_execution.mode" => vec![json!("project"), json!("strict")],
         "context.engine" => vec![json!("compressor"), json!("default"), json!("custom")],
+        "tts.provider" => vec![
+            json!("edge"),
+            json!("elevenlabs"),
+            json!("openai"),
+            json!("xai"),
+            json!("minimax"),
+            json!("mistral"),
+            json!("gemini"),
+            json!("neutts"),
+            json!("kittentts"),
+            json!("piper"),
+        ],
+        "stt.provider" => vec![
+            json!("local"),
+            json!("groq"),
+            json!("openai"),
+            json!("mistral"),
+            json!("xai"),
+            json!("elevenlabs"),
+        ],
+        "stt.local.model" => vec![
+            json!("tiny"),
+            json!("base"),
+            json!("small"),
+            json!("medium"),
+            json!("large-v3"),
+        ],
+        "tts.openai.model" => vec![json!("gpt-4o-mini-tts"), json!("tts-1"), json!("tts-1-hd")],
+        "tts.openai.voice" => vec![
+            json!("alloy"),
+            json!("ash"),
+            json!("ballad"),
+            json!("cedar"),
+            json!("coral"),
+            json!("echo"),
+            json!("fable"),
+            json!("marin"),
+            json!("nova"),
+            json!("onyx"),
+            json!("sage"),
+            json!("shimmer"),
+            json!("verse"),
+        ],
+        "tts.neutts.device" => vec![json!("cpu"), json!("cuda"), json!("mps")],
         _ => schema_options.to_vec(),
     };
     if !options.is_empty()
@@ -3350,6 +3543,29 @@ fn curated_config_options(path: &str, current: &str, schema_options: &[Value]) -
         options.push(json!(current));
     }
     options
+}
+
+fn voice_free_input_field(path: &str) -> bool {
+    matches!(
+        path,
+        "tts.edge.voice"
+            | "tts.openai.model"
+            | "tts.openai.voice"
+            | "tts.elevenlabs.voice_id"
+            | "tts.gemini.model"
+            | "tts.gemini.voice"
+            | "tts.xai.voice_id"
+            | "tts.minimax.model"
+            | "tts.minimax.voice_id"
+            | "tts.mistral.model"
+            | "tts.mistral.voice_id"
+            | "tts.neutts.model"
+            | "tts.kittentts.model"
+            | "tts.kittentts.voice"
+            | "tts.piper.voice"
+            | "tts.deepinfra.model"
+            | "tts.deepinfra.voice"
+    )
 }
 
 #[component]
@@ -3792,7 +4008,45 @@ mod tests {
 
     use super::{
         config_display_value, config_value, curated_config_options, moa_complete, set_config_value,
+        voice_config_field_visible, voice_free_input_field,
     };
+
+    #[test]
+    fn voice_fields_follow_the_selected_provider_and_stt_state() {
+        let config = serde_json::from_value(json!({
+            "tts": { "provider": "openai" },
+            "stt": { "enabled": true, "provider": "local" },
+            "voice": { "auto_tts": false }
+        }))
+        .expect("voice config");
+        assert!(voice_config_field_visible("tts.provider", &config));
+        assert!(voice_config_field_visible("voice.auto_tts", &config));
+        assert!(voice_config_field_visible("tts.openai.voice", &config));
+        assert!(!voice_config_field_visible("tts.edge.voice", &config));
+        assert!(voice_config_field_visible("stt.local.model", &config));
+        assert!(!voice_config_field_visible("stt.groq.model", &config));
+
+        let disabled = set_config_value(&config, "stt.enabled", json!(false));
+        assert!(voice_config_field_visible("stt.enabled", &disabled));
+        assert!(voice_config_field_visible("stt.provider", &disabled));
+        assert!(!voice_config_field_visible("stt.local.model", &disabled));
+    }
+
+    #[test]
+    fn voice_name_fields_remain_open_to_custom_values() {
+        for path in [
+            "tts.openai.voice",
+            "tts.elevenlabs.voice_id",
+            "tts.edge.voice",
+            "tts.xai.voice_id",
+            "tts.piper.voice",
+        ] {
+            assert!(voice_free_input_field(path), "{path}");
+        }
+        assert!(!voice_free_input_field("tts.provider"));
+        assert!(!voice_free_input_field("tts.neutts.device"));
+        assert!(!voice_free_input_field("stt.provider"));
+    }
 
     #[test]
     fn safety_and_workspace_enum_overrides_match_the_source() {

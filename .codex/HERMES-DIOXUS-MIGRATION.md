@@ -605,3 +605,29 @@ passes 32 unit tests plus doc-tests.
 Exact next action: port the OG Voice section with provider-dependent field
 visibility so users see only the active TTS/STT backend rather than the full
 multi-provider field wall.
+
+## Voice settings checkpoint (2026-08-11)
+
+The complete curated Voice key inventory is represented, but the rendered
+topology follows the source rather than dumping every backend at once. The five
+top-level TTS/STT/auto-speech controls always render; only the selected TTS
+provider's details render; STT details require both STT enabled and their
+provider selected. Recording shortcut and maximum duration remain independent.
+
+Provider, device, and local-model closed enums keep the official choices.
+Voice/model identifiers that accept cloned voices, custom IDs, and newly
+released model names stay free-input with suggestions through native datalists.
+Focused tests prove provider switching, disabled-STT visibility, and the open
+versus closed field classification.
+
+Maximized native QA first showed OpenAI plus Local STT while inactive Edge,
+ElevenLabs, and Groq fields were present in the fixture but absent from the UI.
+A real provider change replaced OpenAI's rows with Edge Voice and persisted the
+selection. Disabling STT then removed the Local model/language rows while
+retaining the top-level provider control. The workspace passes 34 unit tests
+plus doc-tests.
+
+Exact next action: port the OG Advanced section, including the curated toolset,
+terminal backend, output limits, agent/delegation controls, and update-local-
+changes policy; keep device-only keep-awake and Quick Entry for their native
+service slices.

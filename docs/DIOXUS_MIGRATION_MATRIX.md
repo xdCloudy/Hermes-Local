@@ -129,6 +129,7 @@ updater work itself.
 | Workspace Agent configuration | `AgentConfigService` | Workspace settings | nested-key preservation + schema controls + rendered save/reload | Validated |
 | Safety Agent configuration | `AgentConfigService` | Safety settings | curated security whitelist + enum fixtures + rendered save/reload | Validated |
 | Memory and context Agent configuration | `AgentConfigService` | Memory & Context settings | dynamic provider options + compression controls + rendered save/reload | Validated |
+| Voice Agent configuration | `AgentConfigService` | Voice settings | provider visibility + open identifiers + rendered switching E2E | Validated |
 | Main and auxiliary model configuration | `ModelService` | Model settings | provider/catalog/assignment fixtures + interaction E2E | Ported |
 | Mixture-of-Agents model configuration | `ModelService` | Model settings | preset/slot round-trip + interaction E2E | Ported |
 | Local/remote/cloud connection profiles | `ConnectionService` | settings/profiles | soft/hard/live re-home tests | Designed |
