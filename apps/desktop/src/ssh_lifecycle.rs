@@ -189,7 +189,7 @@ async fn connect_unix(
     .trim()
     .to_owned();
     validate_unix_remote_path(&hermes_home)?;
-    let reuse_token = load_reuse_token(ownership_id).unwrap_or_default();
+    let reuse_token = load_reuse_token(ownership_id)?.unwrap_or_default();
 
     if let Some(lock) = read_unix_lock(&config.ssh, ownership_id).await? {
         let alive = remote_pid_alive(&config.ssh, lock.pid).await?;
