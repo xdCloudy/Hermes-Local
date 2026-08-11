@@ -1,7 +1,6 @@
 #![allow(dead_code)] // GT-05 service foundation; review confirmation/UI is a later stage.
 
 use std::{
-    fs,
     path::{Component, Path, PathBuf},
     process::{Command, Output},
 };
@@ -191,7 +190,10 @@ fn bounded_detail(detail: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     #[test]
     fn literal_pathspec_blocks_escape_metadata_and_pathspec_magic() {
@@ -325,6 +327,7 @@ mod tests {
             std::env::temp_dir().join(format!("hermes-{label}-{}-{suffix}", std::process::id()));
         fs::create_dir_all(&repository).expect("repository directory");
         git_ok(&repository, &["init", "--quiet"]);
+        git_ok(&repository, &["config", "core.autocrlf", "false"]);
         git_ok(
             &repository,
             &["config", "user.email", "hermes-tests@example.invalid"],
