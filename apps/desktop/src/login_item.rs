@@ -200,8 +200,7 @@ mod tests {
     #[test]
     fn missing_registry_value_is_not_treated_as_enabled() {
         let executable = Path::new(r"C:\Hermes Local\hermes-local.exe");
-        let output =
-            "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\n";
+        let output = "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\n";
         assert!(!registration_matches(output, executable).expect("comparison"));
     }
 
