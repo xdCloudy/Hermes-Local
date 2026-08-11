@@ -11,6 +11,7 @@ use hermes_protocol::{
 
 use crate::{
     ssh::{self, SshConfig},
+    ssh_config,
     ssh_lifecycle::{self, SshLifecycleConfig},
 };
 
@@ -53,21 +54,37 @@ impl SshProbeConnection {
     async fn ssh_config(&self, input: &ConnectionConfigInput) -> ServiceResult<SshConfig> {
         let current = self.inner.config(input.profile.as_deref()).await?;
         let host = input.ssh_host.as_deref().unwrap_or(&current.ssh_host);
-        let user = input.ssh_user.as_deref().unwrap_or(&current.ssh_user);
-        let key_path = input
+        let mut user = input
+            .ssh_user
+            .as_deref()
+            .unwrap_or(&current.ssh_user)
+            .to_owned();
+        let mut key_path = input
             .ssh_key_path
             .as_deref()
-            .unwrap_or(&current.ssh_key_path);
+            .unwrap_or(&current.ssh_key_path)
+            .to_owned();
         let remote_hermes_path = input
             .ssh_remote_hermes_path
             .as_deref()
             .unwrap_or(&current.ssh_remote_hermes_path);
-        let port = input.ssh_port.unwrap_or(current.ssh_port);
+        let mut port = input.ssh_port.unwrap_or(current.ssh_port);
+
+        if (!host.trim().is_empty())
+            && (user.trim().is_empty() || port.is_none() || key_path.trim().is_empty())
+            && let Ok(resolved) = ssh_config::resolve_host(host).await
+        {
+            let enriched = ssh_config::enrich_fields(&user, port, &key_path, &resolved);
+            user = enriched.user;
+            port = enriched.port;
+            key_path = enriched.key_path;
+        }
+
         SshConfig::new(
             host,
-            Some(user),
+            Some(&user),
             port,
-            Some(key_path),
+            Some(&key_path),
             Some(remote_hermes_path),
         )
         .map_err(ServiceError::InvalidInput)
