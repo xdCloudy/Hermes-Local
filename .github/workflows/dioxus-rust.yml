@@ -1,6 +1,6 @@
 name: Dioxus Rust validation
 
-# Keep this workflow as the branch gate for the native Rust/Dioxus client.
+# Branch gate for the native Rust/Dioxus client migration.
 on:
   workflow_dispatch:
   push:
