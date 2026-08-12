@@ -688,12 +688,14 @@ mod tests {
         fs::write(data.join("private-conversation.txt"), "do-not-export-this")
             .expect("private file");
         fs::create_dir_all(data.join("crashes")).expect("crash directory");
+        let crash_fixture = serde_json::json!({
+            "schemaVersion": 1,
+            "location": data.to_string_lossy(),
+            "message": "token=crash-secret-123456 10.0.0.7"
+        });
         fs::write(
             data.join("crashes/latest.json"),
-            format!(
-                r#"{{"schemaVersion":1,"location":"{}","message":"token=crash-secret-123456 10.0.0.7"}}"#,
-                data.display()
-            ),
+            serde_json::to_vec(&crash_fixture).expect("serialize crash fixture"),
         )
         .expect("crash fixture");
 
