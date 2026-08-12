@@ -20,18 +20,22 @@ jobs:
           ref: goal-loop/integration-review-preview
           fetch-depth: 0
 
-      - name: Apply validated PF-08 product diff
+      - name: Merge validated PF-08 with newer PF-07 and GT-04 work
         shell: pwsh
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin goal-loop/pf08-safe-preview
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git diff --binary a48cbd8c95986352c655fa17f62b6bea1a15b29a..origin/goal-loop/pf08-safe-preview -- | Out-File -Encoding utf8 pf08.patch
+          git checkout origin/goal-loop/pf08-safe-preview -- apps/desktop/src/preview_normalization.rs apps/desktop/src/preview_service.rs crates/hermes-desktop/tests/preview_ui_contract.rs crates/hermes-ui/src/files.rs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git apply --3way --index pf08.patch
+          python scripts/ci/integrate_pf08_merge.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Remove-Item pf08.patch
+          cargo fmt --all
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git add apps/desktop/src/main.rs apps/desktop/src/preview_normalization.rs apps/desktop/src/preview_service.rs crates/hermes-core/src/lib.rs crates/hermes-desktop/src/lib.rs crates/hermes-desktop/tests/preview_ui_contract.rs crates/hermes-ui/src/files.rs
           git commit -m "feat(preview): wire safe native previews into Dioxus"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -59,10 +63,11 @@ jobs:
           cargo clippy --workspace --all-targets --locked
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Remove temporary PF-08 integration workflow
+      - name: Remove temporary PF-08 integration helpers
         shell: pwsh
         run: |
           Remove-Item .github/workflows/integrate-pf08.yml
-          git add .github/workflows/integrate-pf08.yml
-          git commit -m "chore(ci): remove PF-08 integration helper"
+          Remove-Item scripts/ci/integrate_pf08_merge.py
+          git add .github/workflows/integrate-pf08.yml scripts/ci/integrate_pf08_merge.py
+          git commit -m "chore(ci): remove PF-08 integration helpers"
           git push origin HEAD:goal-loop/integration-review-preview
