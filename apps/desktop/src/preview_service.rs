@@ -55,7 +55,8 @@ fn load_document(target: PreviewTarget) -> Result<PreviewDocument, ServiceError>
                 PreviewKind::Binary => PreviewDocumentKind::Binary,
                 PreviewKind::Text => PreviewDocumentKind::Text,
             };
-            let text = if !large && matches!(kind, PreviewDocumentKind::Html | PreviewDocumentKind::Text)
+            let text = if !large
+                && matches!(kind, PreviewDocumentKind::Html | PreviewDocumentKind::Text)
             {
                 Some(read_bounded_text(&path)?)
             } else {
@@ -77,12 +78,15 @@ fn load_document(target: PreviewTarget) -> Result<PreviewDocument, ServiceError>
 }
 
 fn read_bounded_text(path: &Path) -> Result<String, ServiceError> {
-    let mut file = fs::File::open(path)
-        .map_err(|error| ServiceError::Platform(format!("Preview target is not readable: {error}")))?;
+    let mut file = fs::File::open(path).map_err(|error| {
+        ServiceError::Platform(format!("Preview target is not readable: {error}"))
+    })?;
     let mut bytes = Vec::with_capacity(TEXT_PREVIEW_MAX_BYTES as usize + 1);
     file.take(TEXT_PREVIEW_MAX_BYTES + 1)
         .read_to_end(&mut bytes)
-        .map_err(|error| ServiceError::Platform(format!("Could not read preview target: {error}")))?;
+        .map_err(|error| {
+            ServiceError::Platform(format!("Could not read preview target: {error}"))
+        })?;
     if bytes.len() as u64 > TEXT_PREVIEW_MAX_BYTES {
         return Err(ServiceError::InvalidInput(
             "Preview target grew beyond the 512 KiB inline limit while it was being read.".into(),
@@ -98,7 +102,10 @@ pub fn install(services: &mut AppServices) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
+    use std::{
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     #[tokio::test]
     async fn loads_text_through_the_normalized_native_boundary() {

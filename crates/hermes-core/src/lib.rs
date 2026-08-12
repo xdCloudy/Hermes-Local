@@ -443,6 +443,54 @@ pub trait TrustService: Send + Sync {
     fn set_policy(&self, policy: &str) -> ServiceFuture<'_, TrustSnapshot>;
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum PreviewDocumentKind {
+    Url,
+    Html,
+    Image,
+    Binary,
+    #[default]
+    Text,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct PreviewDocument {
+    pub kind: PreviewDocumentKind,
+    pub label: String,
+    pub source: String,
+    pub url: String,
+    pub mime_type: Option<String>,
+    pub language: Option<String>,
+    pub byte_size: Option<u64>,
+    pub large: bool,
+    pub text: Option<String>,
+}
+
+pub trait PreviewService: Send + Sync {
+    fn load(
+        &self,
+        raw_target: &str,
+        base_dir: Option<&Path>,
+    ) -> ServiceFuture<'_, Option<PreviewDocument>>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnavailablePreviewService;
+
+impl PreviewService for UnavailablePreviewService {
+    fn load(
+        &self,
+        _raw_target: &str,
+        _base_dir: Option<&Path>,
+    ) -> ServiceFuture<'_, Option<PreviewDocument>> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "safe preview is unavailable on this platform".into(),
+            ))
+        })
+    }
+}
+
 pub trait FileService: Send + Sync {
     fn read_dir(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, Vec<FileEntry>>;
     fn read_text(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, String>;
@@ -500,6 +548,7 @@ pub struct AppServices {
     pub providers: Arc<dyn ProviderService>,
     pub runtime: Arc<dyn RuntimeService>,
     pub trust: Arc<dyn TrustService>,
+    pub preview: Arc<dyn PreviewService>,
     pub files: Arc<dyn FileService>,
     pub git: Arc<dyn GitService>,
     pub terminal: Arc<dyn TerminalService>,
