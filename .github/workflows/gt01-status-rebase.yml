@@ -20,16 +20,14 @@ jobs:
           ref: goal-loop/gt01-status-parity-rebased
           fetch-depth: 0
 
-      - name: Replay validated GT-01 product commit
+      - name: Replay only validated GT-01 product changes
         shell: pwsh
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git cherry-pick 2c18072a2a248cabc1fb6edf7164bc4597d9feef
-          if ($LASTEXITCODE -ne 0) { git cherry-pick --abort; exit 1 }
+          python scripts/ci/gt01_replay_product.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo fmt --all -- --check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git diff 4036f454380135a99241f6461f17eee7f39c5581..HEAD --check
+          git diff --check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Validate integrated GT-01 status behavior
@@ -48,10 +46,13 @@ jobs:
           cargo clippy --workspace --all-targets --locked
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Remove rebase helper and publish clean branch
+      - name: Publish clean GT-01 branch
         shell: pwsh
         run: |
           Remove-Item .github/workflows/gt01-status-rebase.yml
-          git add .github/workflows/gt01-status-rebase.yml
-          git commit -m "chore(ci): remove GT-01 rebase helper"
+          Remove-Item scripts/ci/gt01_replay_product.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(git): handle unborn and detached status parity"
           git push origin HEAD:goal-loop/gt01-status-parity-rebased
