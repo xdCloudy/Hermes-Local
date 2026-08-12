@@ -1,0 +1,51 @@
+name: PF-08 safe preview staging
+
+on:
+  push:
+    branches:
+      - goal-loop/pf08-safe-preview
+    paths:
+      - .github/workflows/pf08-safe-preview.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  stage:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: goal-loop/pf08-safe-preview
+          fetch-depth: 0
+
+      - name: Apply PF-08 typed preview slice
+        shell: pwsh
+        run: |
+          python scripts/ci/pf08_stage_patch.py
+          cargo fmt --all
+          git diff --check
+
+      - name: Validate PF-08 architecture, safety and UI contracts
+        shell: pwsh
+        run: |
+          python scripts/ci/check_dioxus_rust_architecture.py
+          cargo check --workspace --all-targets --locked
+          cargo check -p hermes-ui --target wasm32-unknown-unknown --locked
+          cargo test -p hermes-local preview_normalization --locked
+          cargo test -p hermes-local preview_service --locked
+          cargo test -p hermes-desktop --test preview_ui_contract --locked
+          cargo test -p hermes-desktop --test files_ui_contract --locked
+          cargo clippy --workspace --all-targets --locked
+
+      - name: Commit staged PF-08 slice and remove staging helpers
+        shell: pwsh
+        run: |
+          Remove-Item .github/workflows/pf08-safe-preview.yml
+          Remove-Item scripts/ci/pf08_stage_patch.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(preview): wire safe native previews into Dioxus"
+          git push origin HEAD:goal-loop/pf08-safe-preview
