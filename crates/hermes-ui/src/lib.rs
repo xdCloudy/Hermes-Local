@@ -2301,13 +2301,28 @@ fn TrustCentre() -> Element {
                     trust_items.set({
                         let mut items = vec![];
                         for item in &snapshot.skills {
-                            items.push((item.id.clone(), item.label.clone(), item.state.clone(), item.source.clone()));
+                            items.push((
+                                item.id.clone(),
+                                item.label.clone(),
+                                item.state.clone(),
+                                item.source.clone(),
+                            ));
                         }
                         for item in &snapshot.mcp_servers {
-                            items.push((item.id.clone(), item.label.clone(), item.state.clone(), item.source.clone()));
+                            items.push((
+                                item.id.clone(),
+                                item.label.clone(),
+                                item.state.clone(),
+                                item.source.clone(),
+                            ));
                         }
                         for item in &snapshot.delegations {
-                            items.push((item.id.clone(), item.label.clone(), item.state.clone(), item.source.clone()));
+                            items.push((
+                                item.id.clone(),
+                                item.label.clone(),
+                                item.state.clone(),
+                                item.source.clone(),
+                            ));
                         }
                         items
                     });
