@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `a48004f733430fed0fb05700d26c7e245117bf8c` (2026-08-12)  
+> **Implementation audit checkpoint:** `dbb3b789462fbeb7dd2577e61bd6d89e34d086bf` (2026-08-12)  
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -53,8 +53,8 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 46 | Largest remaining implementation backlog. |
-| A2 Service | 34 | Native/core foundations exist; UI/parity work remains. |
+| A1 Designed | 44 | Largest remaining implementation backlog. |
+| A2 Service | 36 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 6 | User-facing implementation exists; more evidence required. |
 | A4 Auto-verified | 39 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
@@ -62,9 +62,9 @@ At the audit checkpoint above:
 | BX Blocked | 1 | Named external validation blocker. |
 | **Total** | **127** | Every row must end at A6 or be explicitly retired with product-owner approval. |
 
-At least-service coverage is **79/127 capabilities (62.2%)**. This is service-foundation coverage, not end-user parity or human acceptance.
+At least-service coverage is **81/127 capabilities (63.8%)**. This is service-foundation coverage, not end-user parity or human acceptance.
 
-The last merged migration-head validation set was green for Documentation
+The current merged migration-head validation set is green for Documentation
 validation, the Hermes Agent harness/native-client boundary workflow, Dioxus
 Rust validation, Windows installer/portable packaging and artifact-footprint
 regression. The Rust validation gate includes architecture enforcement, rustfmt,
@@ -72,9 +72,9 @@ regression. The Rust validation gate includes architecture enforcement, rustfmt,
 tests, Clippy, optimized Windows release build, resolved Cargo CycloneDX SBOM,
 release-manifest/SHA-256 generation and artifact upload. Windows distribution CI
 also exercises silent install/uninstall, package identity and data-preserving
-repair. Newly added service work at this checkpoint still requires its own exact-
-head CI before any A4 promotion; A2 records implementation plus focused service
-coverage only.
+repair. The latest DI-07 and AG-01 service slices each passed fresh exact-head
+five-workflow validation before merge; they remain A2 because their Dioxus/user
+surfaces are not wired yet.
 
 ## Roadmap waves
 
@@ -256,7 +256,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | RT-05 | Benchmarks | `RuntimeService` | Benchmarks | A1 Designed | Not ported. | Run/cancel benchmark, verify progress/results persistence and error handling. | ⬜ |
 | RT-06 | Security scan and reports | future `SecurityService` | Security/Tasks | A1 Designed | Not ported. | Run scan against disposable targets, inspect progress/redaction/report export and cancellation. | ⬜ |
 | RT-07 | Restore and repair | `UpdateService` + `RuntimeService` | recovery | A1 Designed | Not ported. | Corrupt representative runtime/install state and verify data-preserving repair/restore/rollback. | ⬜ |
-| AG-01 | Skills hub and local skills | Agent/Trust services | Skills | A1 Designed | Not ported. | List/install/enable/disable/remove skills, trust prompts and invalid packages; compare OG. | ⬜ |
+| AG-01 | Skills hub and local skills | `NativeSkillsClient` | Skills | A2 Service | Native profile-scoped Skills/Hub REST foundation covers skill list/toggle, Hub sources/search/preview/scan/install/uninstall/update and action-status polling with encoded identifiers, bounded inputs/responses, HTTP(S)-only endpoints and header-only session auth. Focused contract/security tests pass; Dioxus Skills/Hub UI, trust prompts and live action-log reconciliation remain unported. | List/install/enable/disable/remove skills, trust prompts and invalid packages; compare OG. | ⬜ |
 | AG-02 | MCP servers and catalog | Agent/Trust services | Skills/MCP | A1 Designed | Not ported. | Add/config/enable/test/disable/remove MCP servers across scopes with trust/reload prompts. | ⬜ |
 | AG-03 | Trust Centre and diagnostics | `TrustService` | Trust Centre | A2 Service | Native exact `trust.get`/`trust.set_policy` contracts, typed policy decoding and forward-compatible diagnostics are covered; invalid/path-like policy values are rejected before mutation. Trust Centre UI remains unported. | Review every trust policy/diagnostic, change policy and trigger representative protected actions. | ⬜ |
 | AG-04 | Memory and curator | `NativeMemoryClient` | Memory/Starmap | A2 Service | Native profile-bound Memory/Curator REST foundation covers status/reset, declared provider config read/write, provider OAuth start/status, curator status/pause/run, encoded provider segments, header-only session auth, bounded responses/config values and cross-profile rejection. Focused contract/security tests are included; Dioxus Memory/Starmap consumers remain unported. | Inspect/search/reset memory and curator flows across profiles/sessions; verify destructive confirmation. | ⬜ |
@@ -281,7 +281,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | DI-04 | External browser opening and safe link policy | `PlatformService` | links/preview | A2 Service | Typed external URL opener allowlists schemes; link-title/SSRF/full rich-link UX remains incomplete. | Open allowed HTTP(S) links, reject unsafe schemes/credentialed/private targets where policy applies and verify no in-app navigation escape. | ⬜ |
 | DI-05 | Deep links and protocol registration | native deep-link service | routed surfaces | A2 Service | Native `hermes://` parsing and per-user Windows protocol registration exist with exact executable command identity and deterministic malformed-input tests; running-instance/single-instance Dioxus delivery is incomplete. | Register/use protocol from cold/running app, malformed payloads, duplicate instance and route/state handling. | ⬜ |
 | DI-06 | Session and secondary app windows | native window-state service | shared Dioxus roots | A2 Service | Rust Desktop now consumes the existing bounded `window-state.json` contract, restores the historical 1220×800 default/minimum 400×620 size and maximized state, and unit-tests sanitization, display caps and 48px visibility rules. Safe x/y restoration, live move/resize persistence and secondary/session-window orchestration remain incomplete. | Open multiple session windows, focus/reuse/close/restore and test bounds across monitors/DPI. | ⬜ |
-| DI-07 | Quick Entry global shortcut/window | Shortcut + Window services | Quick Entry | A1 Designed | Not ported. | Register shortcut, summon/dismiss across apps, submit, move monitors and restart. | ⬜ |
+| DI-07 | Quick Entry global shortcut/window | `QuickEntryShortcutController` + native window geometry | Quick Entry | A2 Service | Native shortcut parsing/settings/controller and 640×168 window-geometry foundation matches Electron alias/order/reserved-key semantics, uses bounded fail-soft settings loading and deterministic controller/monitor tests. Actual OS global-hotkey registration, secondary Dioxus window lifecycle and composer submission remain unported. | Register shortcut, summon/dismiss across apps, submit, move monitors and restart. | ⬜ |
 | DI-08 | Pet overlay and generator | `WindowService` | pet roots | A1 Designed | Not ported. | Generate/show/hide/move pet, focus/input behavior and persistence. | ⬜ |
 | DI-09 | Wake indicator | `WindowService` | wake root | A1 Designed | Not ported. | Trigger/show/hide/reposition indicator and verify lifecycle. | ⬜ |
 | DI-10 | Keep-awake, battery and resume | native power service | settings/status | A2 Service | Dedicated Windows helper holds `ES_CONTINUOUS | ES_SYSTEM_REQUIRED` without forcing the display awake; idempotent enable/disable/drop behavior is covered by the composed Rust/Windows gate. Battery/resume/settings integration remains. | Start/stop blocker, sleep/resume laptop, battery/power changes and no leaked blocker. | ⬜ |
