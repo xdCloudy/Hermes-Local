@@ -35,6 +35,12 @@ fn changes(status: &GitStatus) -> Vec<GitChange> {
         .collect()
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum DiscardTarget {
+    Path(String),
+    All,
+}
+
 #[component]
 pub(super) fn Review() -> Element {
     let services = use_context::<AppServices>();
@@ -46,6 +52,7 @@ pub(super) fn Review() -> Element {
     let mut status_loading = use_signal(|| false);
     let mut diff_loading = use_signal(|| false);
     let mut mutation_busy = use_signal(|| false);
+    let mut discard_target = use_signal(|| None::<DiscardTarget>);
     let mut error = use_signal(|| None::<String>);
     let mut refresh = use_signal(|| 0_u64);
 
@@ -151,6 +158,14 @@ pub(super) fn Review() -> Element {
                             div { style: "min-width:0;flex:1;",
                                 strong { "{project_name}" }
                                 div { class: "muted", "{branch} · ↑{current.ahead} ↓{current.behind}" }
+                            }
+                            if !rows.is_empty() {
+                                button {
+                                    class: "button",
+                                    disabled: mutation_busy(),
+                                    onclick: move |_| discard_target.set(Some(DiscardTarget::All)),
+                                    "Discard all"
+                                }
                             }
                             button {
                                 class: "icon-button",
@@ -288,6 +303,14 @@ pub(super) fn Review() -> Element {
                                 }
                             }
                         }
+                        if let Some(path) = selected_path() {
+                            button {
+                                class: "button",
+                                disabled: mutation_busy(),
+                                onclick: move |_| discard_target.set(Some(DiscardTarget::Path(path.clone()))),
+                                "Discard file"
+                            }
+                        }
                         if diff_loading() {
                             p { class: "muted", "Loading diff…" }
                         } else if selected_path().is_none() {
@@ -304,6 +327,72 @@ pub(super) fn Review() -> Element {
                             pre {
                                 style: "margin:0;min-height:24rem;max-height:34rem;overflow:auto;white-space:pre;font-family:var(--font-mono,monospace);font-size:.76rem;line-height:1.45;padding:.75rem;border:1px solid var(--border-subtle,rgba(127,127,127,.2));border-radius:.5rem;",
                                 "{diff}"
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(target) = discard_target() {
+                {
+                    let message = match &target {
+                        DiscardTarget::Path(path) => format!(
+                            "Discard every staged and unstaged change for {path}, including a non-ignored untracked file if present?"
+                        ),
+                        DiscardTarget::All => "Discard every staged and unstaged change in this repository and remove non-ignored untracked files?".to_owned(),
+                    };
+                    let action_target = target.clone();
+                    let discard_root = root.clone().unwrap_or_default();
+                    let discard_service = services.git_discard.clone();
+                    rsx! {
+                        div {
+                            role: "dialog",
+                            "aria-modal": "true",
+                            style: "position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.58);display:grid;place-items:center;padding:1rem;",
+                            div {
+                                class: "settings-card",
+                                style: "width:min(32rem,100%);display:grid;gap:.75rem;box-shadow:0 1.25rem 4rem rgba(0,0,0,.45);",
+                                strong { "Discard changes?" }
+                                p { style: "margin:0;line-height:1.5;", "{message}" }
+                                p { class: "muted", style: "margin:0;", "This cannot be undone. Ignored files are preserved." }
+                                div { style: "display:flex;justify-content:flex-end;gap:.5rem;",
+                                    button {
+                                        class: "button",
+                                        disabled: mutation_busy(),
+                                        onclick: move |_| discard_target.set(None),
+                                        "Cancel"
+                                    }
+                                    button {
+                                        class: "button",
+                                        disabled: mutation_busy(),
+                                        onclick: move |_| {
+                                            let service = discard_service.clone();
+                                            let repo = discard_root.clone();
+                                            let target = action_target.clone();
+                                            mutation_busy.set(true);
+                                            error.set(None);
+                                            spawn(async move {
+                                                let result = match target {
+                                                    DiscardTarget::Path(path) => service
+                                                        .discard_path(Path::new(&repo), Path::new(&path))
+                                                        .await,
+                                                    DiscardTarget::All => service.discard_all(Path::new(&repo)).await,
+                                                };
+                                                match result {
+                                                    Ok(()) => {
+                                                        selected_path.set(None);
+                                                        staged_view.set(false);
+                                                        diff.set(String::new());
+                                                        discard_target.set(None);
+                                                        refresh.set(refresh() + 1);
+                                                    }
+                                                    Err(next_error) => error.set(Some(next_error.to_string())),
+                                                }
+                                                mutation_busy.set(false);
+                                            });
+                                        },
+                                        "Discard changes"
+                                    }
+                                }
                             }
                         }
                     }
