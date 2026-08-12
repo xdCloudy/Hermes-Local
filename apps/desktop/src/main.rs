@@ -21,6 +21,7 @@ mod notification_service;
 mod platform_diagnostics;
 mod power;
 mod preview_normalization;
+mod preview_watcher;
 mod ssh;
 mod ssh_config;
 mod ssh_lifecycle;
