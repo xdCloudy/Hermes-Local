@@ -1,0 +1,58 @@
+name: GT-07 repository discovery staging
+
+on:
+  push:
+    branches:
+      - goal-loop/gt07-repo-discovery
+    paths:
+      - .github/workflows/gt07-repo-discovery.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  stage:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: goal-loop/gt07-repo-discovery
+          fetch-depth: 0
+
+      - name: Apply GT-07 typed discovery slice
+        shell: pwsh
+        run: |
+          python scripts/ci/gt07_stage_patch.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo fmt --all
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate discovery policy cancellation native scan and UI contract
+        shell: pwsh
+        run: |
+          python scripts/ci/check_dioxus_rust_architecture.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo check --workspace --all-targets --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo check -p hermes-ui --target wasm32-unknown-unknown --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p hermes-local git_repo_scan_service --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p hermes-desktop --test git_repo_discovery_ui_contract --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --workspace --all-targets --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Commit validated GT-07 product slice
+        shell: pwsh
+        run: |
+          Remove-Item .github/workflows/gt07-repo-discovery.yml
+          Remove-Item scripts/ci/gt07_stage_patch.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(projects): add cancellable repository discovery"
+          git push origin HEAD:goal-loop/gt07-repo-discovery
