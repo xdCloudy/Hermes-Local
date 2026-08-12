@@ -8,7 +8,10 @@ use super::{ProjectUiState, Surface};
 
 fn active_project_root(snapshot: &ProjectsSnapshot) -> Option<(String, String)> {
     let active_id = snapshot.active_id.as_deref()?;
-    let project = snapshot.projects.iter().find(|project| project.id == active_id)?;
+    let project = snapshot
+        .projects
+        .iter()
+        .find(|project| project.id == active_id)?;
     let folder = project
         .folders
         .iter()

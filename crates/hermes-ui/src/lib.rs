@@ -1045,12 +1045,8 @@ macro_rules! simple_surface {
     };
 }
 
-simple_surface!(
-    Files,
-    "Workspace",
-    "Files",
-    "Browse and edit files inside a selected project root."
-);
+mod files;
+use files::Files;
 simple_surface!(
     Tui,
     "Hermes Local",
