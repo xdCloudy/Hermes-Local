@@ -1,0 +1,68 @@
+name: Integrate validated GT-06 Review ship
+
+on:
+  push:
+    branches:
+      - goal-loop/gt06-review-ship-integrated
+    paths:
+      - .github/workflows/gt06-integrate.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: goal-loop/gt06-review-ship-integrated
+          fetch-depth: 0
+
+      - name: Apply validated GT-06 net product diff
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin goal-loop/gt06-review-ship
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --binary a0b87300eb6179c151848a64de8fc04248e1d064..76af43d39722f108c8052f66b68cf144fc68dca1 -- | Out-File -Encoding utf8 gt06.patch
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git apply --3way --index gt06.patch
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item gt06.patch
+          git commit -m "feat(review): add commit push and PR ship actions"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo fmt --all -- --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff 4036f454380135a99241f6461f17eee7f39c5581..HEAD --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate integrated GT-06 tree
+        shell: pwsh
+        run: |
+          python scripts/ci/check_dioxus_rust_architecture.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo check --workspace --all-targets --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo check -p hermes-ui --target wasm32-unknown-unknown --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p hermes-local git_ship_service --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p hermes-desktop --test git_review --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p hermes-desktop --test git_discard_ui_contract --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p hermes-desktop --test git_ship_ui_contract --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --workspace --all-targets --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Remove integration helper and publish clean branch
+        shell: pwsh
+        run: |
+          Remove-Item .github/workflows/gt06-integrate.yml
+          git add .github/workflows/gt06-integrate.yml
+          git commit -m "chore(ci): remove GT-06 integration helper"
+          git push origin HEAD:goal-loop/gt06-review-ship-integrated
