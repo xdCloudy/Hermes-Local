@@ -1,49 +1,4 @@
-from pathlib import Path
-
-lib = Path("crates/hermes-desktop/src/lib.rs")
-text = lib.read_text(encoding="utf-8")
-old = """    let branch = header
-        .split(['.', ' '])
-        .next()
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned);"""
-new = """    let branch = if let Some(unborn) = header.strip_prefix("No commits yet on ") {
-        let unborn = unborn.trim();
-        (!unborn.is_empty()).then(|| unborn.to_owned())
-    } else if header == "HEAD (no branch)" || header.starts_with("HEAD detached ") {
-        None
-    } else {
-        header
-            .split(['.', ' '])
-            .next()
-            .filter(|value| !value.is_empty())
-            .map(str::to_owned)
-    };"""
-if text.count(old) != 1:
-    raise SystemExit(f"expected one old Git branch parser, got {text.count(old)}")
-text = text.replace(old, new)
-
-marker = """    #[test]
-    fn blocks_symlink_escape_for_existing_paths() {"""
-insert = """    #[test]
-    fn parses_unborn_and_detached_porcelain_headers() {
-        let unborn = parse_git_status("## No commits yet on feature/status\\n").expect("unborn");
-        assert_eq!(unborn.branch.as_deref(), Some("feature/status"));
-        assert!(unborn.changed.is_empty());
-
-        let detached = parse_git_status("## HEAD (no branch)\\n").expect("detached");
-        assert_eq!(detached.branch, None);
-        assert!(detached.changed.is_empty());
-    }
-
-    #[test]
-    fn blocks_symlink_escape_for_existing_paths() {"""
-if text.count(marker) != 1:
-    raise SystemExit(f"expected one parser-test insertion marker, got {text.count(marker)}")
-lib.write_text(text.replace(marker, insert), encoding="utf-8")
-
-Path("crates/hermes-desktop/tests/git_status_parity.rs").write_text(
-    r'''use std::{fs, path::Path, process::Command};
+use std::{fs, path::Path, process::Command};
 
 use hermes_desktop::NativeApp;
 use uuid::Uuid;
@@ -134,6 +89,3 @@ fn dioxus_review_consumes_status_branch_counters_and_clean_state() {
     assert!(review.contains("Working tree clean"));
     assert!(review.contains("detached / unborn"));
 }
-''',
-    encoding="utf-8",
-)

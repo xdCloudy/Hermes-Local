@@ -2916,11 +2916,18 @@ fn parse_git_status(output: &str) -> ServiceResult<GitStatus> {
         .unwrap_or_default()
         .strip_prefix("## ")
         .unwrap_or_default();
-    let branch = header
-        .split(['.', ' '])
-        .next()
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned);
+    let branch = if let Some(unborn) = header.strip_prefix("No commits yet on ") {
+        let unborn = unborn.trim();
+        (!unborn.is_empty()).then(|| unborn.to_owned())
+    } else if header == "HEAD (no branch)" || header.starts_with("HEAD detached ") {
+        None
+    } else {
+        header
+            .split(['.', ' '])
+            .next()
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+    };
     let ahead = parse_counter(header, "ahead ");
     let behind = parse_counter(header, "behind ");
     let entries: Vec<_> = lines.filter_map(parse_git_change).collect();
@@ -3040,6 +3047,17 @@ mod tests {
         assert_eq!(status.ahead, 2);
         assert_eq!(status.behind, 1);
         assert_eq!(status.changed, ["src/main.rs", "new.txt"]);
+    }
+
+    #[test]
+    fn parses_unborn_and_detached_porcelain_headers() {
+        let unborn = parse_git_status("## No commits yet on feature/status\n").expect("unborn");
+        assert_eq!(unborn.branch.as_deref(), Some("feature/status"));
+        assert!(unborn.changed.is_empty());
+
+        let detached = parse_git_status("## HEAD (no branch)\n").expect("detached");
+        assert_eq!(detached.branch, None);
+        assert!(detached.changed.is_empty());
     }
 
     #[test]
