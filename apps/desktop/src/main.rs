@@ -18,6 +18,7 @@ mod login_item;
 mod notification_service;
 mod platform_diagnostics;
 mod power;
+mod preview_normalization;
 mod ssh;
 mod ssh_config;
 mod ssh_lifecycle;
