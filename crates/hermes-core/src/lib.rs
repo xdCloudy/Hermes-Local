@@ -785,6 +785,11 @@ pub trait TerminalService: Send + Sync {
     fn read(&self, id: &str) -> ServiceFuture<'_, Vec<u8>>;
     fn resize(&self, id: &str, cols: u16, rows: u16) -> ServiceFuture<'_, ()>;
     fn dispose(&self, id: &str) -> ServiceFuture<'_, ()>;
+    fn dispose_now(&self, _id: &str) -> ServiceResult<()> {
+        Err(ServiceError::Unavailable(
+            "synchronous terminal disposal is unavailable on this platform".into(),
+        ))
+    }
 }
 
 pub trait UpdateService: Send + Sync {
