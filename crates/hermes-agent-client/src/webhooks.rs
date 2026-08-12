@@ -184,8 +184,7 @@ impl WebhookClient {
         &self,
         profile: Option<&str>,
     ) -> Result<WebhookEnableResponse, WebhookError> {
-        self.request(Method::POST, &["enable"], profile, None)
-            .await
+        self.request(Method::POST, &["enable"], profile, None).await
     }
 
     pub async fn create(
@@ -267,9 +266,9 @@ impl WebhookClient {
         let profile = profile.map(validate_profile).transpose()?;
         let mut url = self.base_url.clone();
         {
-            let mut segments = url
-                .path_segments_mut()
-                .map_err(|()| WebhookError::InvalidUrl("URL cannot contain path segments".into()))?;
+            let mut segments = url.path_segments_mut().map_err(|()| {
+                WebhookError::InvalidUrl("URL cannot contain path segments".into())
+            })?;
             segments.pop_if_empty();
             segments.push("api").push("webhooks");
             for segment in suffix {
@@ -310,10 +309,7 @@ fn validate_base_url(value: &str) -> Result<Url, WebhookError> {
 }
 
 fn validate_session_token(value: &str) -> Result<&str, WebhookError> {
-    if value.is_empty()
-        || value.len() > MAX_TOKEN_BYTES
-        || value.chars().any(char::is_control)
-    {
+    if value.is_empty() || value.len() > MAX_TOKEN_BYTES || value.chars().any(char::is_control) {
         return Err(WebhookError::InvalidInput(
             "invalid Hermes session token".into(),
         ));
@@ -360,7 +356,10 @@ mod tests {
             if let Some(index) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
                 break index + 4;
             }
-            assert!(bytes.len() < 64 * 1024, "request headers are unexpectedly large");
+            assert!(
+                bytes.len() < 64 * 1024,
+                "request headers are unexpectedly large"
+            );
         };
         let headers = String::from_utf8_lossy(&bytes[..header_end]);
         let content_length = headers
@@ -381,7 +380,9 @@ mod tests {
         String::from_utf8(bytes).expect("request is utf-8")
     }
 
-    async fn spawn_server(responses: Vec<&'static str>) -> (String, tokio::task::JoinHandle<Vec<String>>) {
+    async fn spawn_server(
+        responses: Vec<&'static str>,
+    ) -> (String, tokio::task::JoinHandle<Vec<String>>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind server");
         let address = listener.local_addr().expect("local address");
         let task = tokio::spawn(async move {
@@ -469,7 +470,13 @@ mod tests {
             .await
             .expect("toggle webhook");
         assert!(!toggled.enabled);
-        assert!(client.delete(profile, "my hook/one").await.expect("delete webhook").ok);
+        assert!(
+            client
+                .delete(profile, "my hook/one")
+                .await
+                .expect("delete webhook")
+                .ok
+        );
 
         let requests = server.await.expect("server task");
         assert_eq!(requests.len(), 5);
@@ -477,7 +484,10 @@ mod tests {
             assert!(request.contains("x-hermes-session-token: session-token"));
         }
         assert!(requests[0].starts_with("GET /hermes/api/webhooks?profile=work+profile HTTP/1.1"));
-        assert!(requests[1].starts_with("POST /hermes/api/webhooks/enable?profile=work+profile HTTP/1.1"));
+        assert!(
+            requests[1]
+                .starts_with("POST /hermes/api/webhooks/enable?profile=work+profile HTTP/1.1")
+        );
         assert!(requests[2].starts_with("POST /hermes/api/webhooks?profile=work+profile HTTP/1.1"));
         let create_body = requests[2].split_once("\r\n\r\n").expect("create body").1;
         let create_json: Value = serde_json::from_str(create_body).expect("create json");
