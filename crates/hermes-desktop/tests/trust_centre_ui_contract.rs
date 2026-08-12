@@ -18,7 +18,8 @@ fn trust_centre_stays_on_the_typed_service_boundary() {
     assert!(
         core.contains("pub trait TrustService: Send + Sync")
             && core.contains("fn snapshot(&self) -> ServiceFuture<'_, TrustSnapshot>")
-            && core.contains("fn set_policy(&self, policy: &str) -> ServiceFuture<'_, TrustSnapshot>"),
+            && core
+                .contains("fn set_policy(&self, policy: &str) -> ServiceFuture<'_, TrustSnapshot>"),
         "Trust Centre must keep an explicit typed service contract"
     );
     assert!(
