@@ -14,10 +14,10 @@ use hermes_agent_client::GatewayClient;
 use hermes_core::{
     AgentConfigService, AppServices, ConnectionService, EventStream, FileService, GitService,
     ModelService, PlatformService, ProjectService, ProviderService, RuntimeService, ServiceError,
-    ServiceFuture, ServiceResult, SessionService, SettingsService, TerminalService, TrustService,
-    UnavailableGitBranchService, UnavailableGitDiscardService, UnavailableGitRepoScanService,
-    UnavailableGitShipService, UnavailableGitWorktreeService, UnavailablePreviewService,
-    UpdateService, validate_identifier, validate_relative_path,
+    ServiceFuture, ServiceResult, SessionService, SettingsService, SkillsService, TerminalService,
+    TrustService, UnavailableGitBranchService, UnavailableGitDiscardService,
+    UnavailableGitRepoScanService, UnavailableGitShipService, UnavailableGitWorktreeService,
+    UnavailablePreviewService, UpdateService, validate_identifier, validate_relative_path,
 };
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, AuthProvider, AuxiliaryModels, ConfigSchemaResponse,
@@ -28,7 +28,9 @@ use hermes_protocol::{
     ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit, ProbeAuthMode,
     ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation, RemoteAuthMode,
     RuntimeStatus, SessionCreateRequest, SessionCreateResponse, SessionResumeResponse,
-    SessionSummary, TaskSummary, TrustSnapshot,
+    SessionSummary, SkillActionStart, SkillActionStatus, SkillHubPreview, SkillHubScanResult,
+    SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary, SkillToggleResult, TaskSummary,
+    TrustSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use reqwest::Method;
@@ -654,7 +656,8 @@ impl NativeApp {
                 models: remote.clone(),
                 providers: remote.clone(),
                 runtime: remote.clone(),
-                trust: remote,
+                trust: remote.clone(),
+                skills: remote,
                 preview: Arc::new(UnavailablePreviewService),
                 files: Arc::new(DesktopFiles),
                 git: Arc::new(DesktopGit),
@@ -1796,6 +1799,350 @@ impl RuntimeService for GatewayServices {
     }
 }
 
+const SKILLS_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+const SKILLS_HUB_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
+const MAX_SKILLS_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_SKILL_NAME_BYTES: usize = 512;
+const MAX_SKILL_IDENTIFIER_BYTES: usize = 4096;
+const MAX_SKILL_SEARCH_BYTES: usize = 4096;
+const MAX_SKILL_SOURCE_BYTES: usize = 256;
+const MAX_SKILL_SEARCH_LIMIT: u32 = 1000;
+const MAX_SKILL_ACTION_LINES: u32 = 5000;
+
+fn checked_skill_text(
+    value: &str,
+    max_bytes: usize,
+    field: &str,
+    allow_empty: bool,
+) -> ServiceResult<String> {
+    let value = value.trim();
+    if (!allow_empty && value.is_empty())
+        || value.len() > max_bytes
+        || value.chars().any(char::is_control)
+    {
+        return Err(ServiceError::InvalidInput(format!("invalid {field}")));
+    }
+    Ok(value.to_owned())
+}
+
+fn skills_query_path(path: &str, profile: Option<&str>, query: &[(&str, &str)]) -> String {
+    let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+    if let Some(profile) = profile.filter(|value| !value.is_empty()) {
+        serializer.append_pair("profile", profile);
+    }
+    for (key, value) in query {
+        serializer.append_pair(key, value);
+    }
+    let query = serializer.finish();
+    if query.is_empty() {
+        path.to_owned()
+    } else {
+        format!("{path}?{query}")
+    }
+}
+
+fn skill_action_status_path(
+    name: &str,
+    profile: Option<&str>,
+    lines: u32,
+) -> ServiceResult<String> {
+    let name = checked_skill_text(name, MAX_SKILL_NAME_BYTES, "Skills action name", false)?;
+    if lines == 0 || lines > MAX_SKILL_ACTION_LINES {
+        return Err(ServiceError::InvalidInput(format!(
+            "Skills action log line count must be between 1 and {MAX_SKILL_ACTION_LINES}"
+        )));
+    }
+    let mut url = url::Url::parse("http://skills.invalid/")
+        .map_err(|error| ServiceError::Platform(error.to_string()))?;
+    {
+        let mut segments = url
+            .path_segments_mut()
+            .map_err(|()| ServiceError::Platform("could not encode Skills action path".into()))?;
+        segments.push("api");
+        segments.push("actions");
+        segments.push(&name);
+        segments.push("status");
+    }
+    if let Some(profile) = profile.filter(|value| !value.is_empty()) {
+        url.query_pairs_mut().append_pair("profile", profile);
+    }
+    url.query_pairs_mut()
+        .append_pair("lines", &lines.to_string());
+    Ok(match url.query() {
+        Some(query) => format!("{}?{query}", url.path()),
+        None => url.path().to_owned(),
+    })
+}
+
+impl SkillsService for GatewayServices {
+    fn list(&self, profile: Option<&str>) -> ServiceFuture<'_, Vec<SkillSummary>> {
+        let profile = profile.map(str::to_owned);
+        Box::pin(async move {
+            let profile = validated_profile(profile.as_deref())?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::GET,
+                    &skills_query_path("/api/skills", profile.as_deref(), &[]),
+                    None,
+                    SKILLS_REQUEST_TIMEOUT,
+                    MAX_SKILLS_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn set_enabled(
+        &self,
+        profile: Option<&str>,
+        name: &str,
+        enabled: bool,
+    ) -> ServiceFuture<'_, SkillToggleResult> {
+        let profile = profile.map(str::to_owned);
+        let name = name.to_owned();
+        Box::pin(async move {
+            let profile = validated_profile(profile.as_deref())?;
+            let name = checked_skill_text(&name, MAX_SKILL_NAME_BYTES, "skill name", false)?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::PUT,
+                    &skills_query_path("/api/skills/toggle", profile.as_deref(), &[]),
+                    Some(json!({ "name": name, "enabled": enabled })),
+                    SKILLS_REQUEST_TIMEOUT,
+                    MAX_SKILLS_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn hub_sources(&self, profile: Option<&str>) -> ServiceFuture<'_, SkillHubSourcesResponse> {
+        let profile = profile.map(str::to_owned);
+        Box::pin(async move {
+            let profile = validated_profile(profile.as_deref())?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::GET,
+                    &skills_query_path("/api/skills/hub/sources", profile.as_deref(), &[]),
+                    None,
+                    SKILLS_HUB_TIMEOUT,
+                    MAX_SKILLS_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn hub_search(
+        &self,
+        profile: Option<&str>,
+        query: &str,
+        source: &str,
+        limit: u32,
+    ) -> ServiceFuture<'_, SkillHubSearchResponse> {
+        let profile = profile.map(str::to_owned);
+        let query = query.to_owned();
+        let source = source.to_owned();
+        Box::pin(async move {
+            let profile = validated_profile(profile.as_deref())?;
+            let query = checked_skill_text(
+                &query,
+                MAX_SKILL_SEARCH_BYTES,
+                "Skills Hub search query",
+                true,
+            )?;
+            let source =
+                checked_skill_text(&source, MAX_SKILL_SOURCE_BYTES, "Skills Hub source", false)?;
+            if limit == 0 || limit > MAX_SKILL_SEARCH_LIMIT {
+                return Err(ServiceError::InvalidInput(format!(
+                    "Skills Hub search limit must be between 1 and {MAX_SKILL_SEARCH_LIMIT}"
+                )));
+            }
+            let limit_text = limit.to_string();
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::GET,
+                    &skills_query_path(
+                        "/api/skills/hub/search",
+                        profile.as_deref(),
+                        &[("q", &query), ("source", &source), ("limit", &limit_text)],
+                    ),
+                    None,
+                    SKILLS_HUB_TIMEOUT,
+                    MAX_SKILLS_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn hub_preview(
+        &self,
+        profile: Option<&str>,
+        identifier: &str,
+    ) -> ServiceFuture<'_, SkillHubPreview> {
+        let profile = profile.map(str::to_owned);
+        let identifier = identifier.to_owned();
+        Box::pin(async move {
+            let profile = validated_profile(profile.as_deref())?;
+            let identifier = checked_skill_text(
+                &identifier,
+                MAX_SKILL_IDENTIFIER_BYTES,
+                "Skills Hub identifier",
+                false,
+            )?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::GET,
+                    &skills_query_path(
+                        "/api/skills/hub/preview",
+                        profile.as_deref(),
+                        &[("identifier", &identifier)],
+                    ),
+                    None,
+                    SKILLS_HUB_TIMEOUT,
+                    MAX_SKILLS_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn hub_scan(
+        &self,
+        profile: Option<&str>,
+        identifier: &str,
+    ) -> ServiceFuture<'_, SkillHubScanResult> {
+        let profile = profile.map(str::to_owned);
+        let identifier = identifier.to_owned();
+        Box::pin(async move {
+            let profile = validated_profile(profile.as_deref())?;
+            let identifier = checked_skill_text(
+                &identifier,
+                MAX_SKILL_IDENTIFIER_BYTES,
+                "Skills Hub identifier",
+                false,
+            )?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::GET,
+                    &skills_query_path(
+                        "/api/skills/hub/scan",
+                        profile.as_deref(),
+                        &[("identifier", &identifier)],
+                    ),
+                    None,
+                    SKILLS_HUB_TIMEOUT,
+                    MAX_SKILLS_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn hub_install(
+        &self,
+        profile: Option<&str>,
+        identifier: &str,
+    ) -> ServiceFuture<'_, SkillActionStart> {
+        let profile = profile.map(str::to_owned);
+        let identifier = identifier.to_owned();
+        Box::pin(async move {
+            let profile = validated_profile(profile.as_deref())?;
+            let identifier = checked_skill_text(
+                &identifier,
+                MAX_SKILL_IDENTIFIER_BYTES,
+                "Skills Hub identifier",
+                false,
+            )?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::POST,
+                    &skills_query_path("/api/skills/hub/install", profile.as_deref(), &[]),
+                    Some(json!({ "identifier": identifier })),
+                    SKILLS_REQUEST_TIMEOUT,
+                    MAX_SKILLS_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn hub_uninstall(
+        &self,
+        profile: Option<&str>,
+        name: &str,
+    ) -> ServiceFuture<'_, SkillActionStart> {
+        let profile = profile.map(str::to_owned);
+        let name = name.to_owned();
+        Box::pin(async move {
+            let profile = validated_profile(profile.as_deref())?;
+            let name = checked_skill_text(&name, MAX_SKILL_NAME_BYTES, "skill name", false)?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::POST,
+                    &skills_query_path("/api/skills/hub/uninstall", profile.as_deref(), &[]),
+                    Some(json!({ "name": name })),
+                    SKILLS_REQUEST_TIMEOUT,
+                    MAX_SKILLS_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn hub_update(&self, profile: Option<&str>) -> ServiceFuture<'_, SkillActionStart> {
+        let profile = profile.map(str::to_owned);
+        Box::pin(async move {
+            let profile = validated_profile(profile.as_deref())?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::POST,
+                    &skills_query_path("/api/skills/hub/update", profile.as_deref(), &[]),
+                    Some(json!({})),
+                    SKILLS_REQUEST_TIMEOUT,
+                    MAX_SKILLS_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn action_status(
+        &self,
+        profile: Option<&str>,
+        name: &str,
+        lines: u32,
+    ) -> ServiceFuture<'_, SkillActionStatus> {
+        let profile = profile.map(str::to_owned);
+        let name = name.to_owned();
+        Box::pin(async move {
+            let profile = validated_profile(profile.as_deref())?;
+            let path = skill_action_status_path(&name, profile.as_deref(), lines)?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::GET,
+                    &path,
+                    None,
+                    SKILLS_REQUEST_TIMEOUT,
+                    MAX_SKILLS_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+}
+
 impl TrustService for GatewayServices {
     fn snapshot(&self) -> ServiceFuture<'_, TrustSnapshot> {
         Box::pin(async move {
@@ -2735,6 +3082,72 @@ impl GatewayRest {
             .bytes()
             .await
             .map_err(|error| ServiceError::Transport(error.to_string()))?;
+        if !status.is_success() {
+            let detail = String::from_utf8_lossy(&bytes);
+            return match status.as_u16() {
+                404 => Err(ServiceError::NotFound(detail.trim().to_owned())),
+                401 | 403 => Err(ServiceError::PermissionDenied(detail.trim().to_owned())),
+                _ => Err(ServiceError::Transport(format!(
+                    "{status}: {}",
+                    detail.trim()
+                ))),
+            };
+        }
+        if bytes.is_empty() {
+            return Ok(Value::Null);
+        }
+        serde_json::from_slice(&bytes).map_err(protocol)
+    }
+
+    async fn request_bounded(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+        timeout: std::time::Duration,
+        max_response_bytes: u64,
+    ) -> ServiceResult<Value> {
+        let path = path.strip_prefix('/').ok_or_else(|| {
+            ServiceError::InvalidInput("Hermes REST path must be absolute".into())
+        })?;
+        let url = self.base_url.join(path).map_err(|error| {
+            ServiceError::InvalidInput(format!("invalid Hermes REST path: {error}"))
+        })?;
+        if !matches!(url.scheme(), "http" | "https") || url.origin() != self.base_url.origin() {
+            return Err(ServiceError::PermissionDenied(
+                "Hermes REST request escaped the configured gateway".into(),
+            ));
+        }
+
+        let mut request = self.client.request(method, url).timeout(timeout);
+        if let Some(token) = &self.session_token {
+            request = request.header("X-Hermes-Session-Token", token);
+        }
+        if let Some(body) = body {
+            request = request.json(&body);
+        }
+        let response = request
+            .send()
+            .await
+            .map_err(|error| ServiceError::Transport(error.to_string()))?;
+        let status = response.status();
+        if response
+            .content_length()
+            .is_some_and(|length| length > max_response_bytes)
+        {
+            return Err(ServiceError::Transport(format!(
+                "Hermes REST response exceeded the {max_response_bytes}-byte limit"
+            )));
+        }
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|error| ServiceError::Transport(error.to_string()))?;
+        if bytes.len() as u64 > max_response_bytes {
+            return Err(ServiceError::Transport(format!(
+                "Hermes REST response exceeded the {max_response_bytes}-byte limit"
+            )));
+        }
         if !status.is_success() {
             let detail = String::from_utf8_lossy(&bytes);
             return match status.as_u16() {

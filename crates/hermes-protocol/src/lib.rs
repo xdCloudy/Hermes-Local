@@ -1311,3 +1311,166 @@ mod tests {
         assert!(login.get("base_url").is_none());
     }
 }
+
+// AG-01: forward-compatible Skills/Hub REST DTOs shared by native authority and Dioxus.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SkillSummary {
+    #[serde(default)]
+    pub category: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub enabled: bool,
+    pub name: String,
+    #[serde(default)]
+    pub usage: Option<u64>,
+    #[serde(default)]
+    pub provenance: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SkillHubSource {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub available: Option<bool>,
+    #[serde(default)]
+    pub rate_limited: Option<bool>,
+    #[serde(default)]
+    pub searchable: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SkillHubResult {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    pub source: String,
+    pub identifier: String,
+    #[serde(default)]
+    pub trust_level: String,
+    #[serde(default)]
+    pub repo: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SkillHubInstalledEntry {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub trust_level: Option<String>,
+    #[serde(default)]
+    pub scan_verdict: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SkillHubSourcesResponse {
+    #[serde(default)]
+    pub sources: Vec<SkillHubSource>,
+    #[serde(default)]
+    pub index_available: bool,
+    #[serde(default)]
+    pub featured: Vec<SkillHubResult>,
+    #[serde(default)]
+    pub installed: BTreeMap<String, SkillHubInstalledEntry>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SkillHubSearchResponse {
+    #[serde(default)]
+    pub results: Vec<SkillHubResult>,
+    #[serde(default)]
+    pub source_counts: BTreeMap<String, u64>,
+    #[serde(default)]
+    pub timed_out: Vec<String>,
+    #[serde(default)]
+    pub installed: BTreeMap<String, SkillHubInstalledEntry>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SkillHubPreview {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    pub source: String,
+    pub identifier: String,
+    #[serde(default)]
+    pub trust_level: String,
+    #[serde(default)]
+    pub repo: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub skill_md: String,
+    #[serde(default)]
+    pub files: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SkillHubScanFinding {
+    #[serde(default)]
+    pub severity: String,
+    #[serde(default)]
+    pub category: String,
+    #[serde(default)]
+    pub file: String,
+    #[serde(default)]
+    pub line: Option<u64>,
+    #[serde(default)]
+    pub description: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SkillHubScanResult {
+    pub name: String,
+    pub identifier: String,
+    pub source: String,
+    #[serde(default)]
+    pub trust_level: String,
+    #[serde(default)]
+    pub verdict: String,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub policy: String,
+    #[serde(default)]
+    pub policy_reason: Option<String>,
+    #[serde(default)]
+    pub findings: Vec<SkillHubScanFinding>,
+    #[serde(default)]
+    pub severity_counts: BTreeMap<String, u64>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SkillActionStart {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub pid: u64,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SkillActionStatus {
+    #[serde(default)]
+    pub exit_code: Option<i64>,
+    #[serde(default)]
+    pub lines: Vec<String>,
+    pub name: String,
+    #[serde(default)]
+    pub pid: Option<u64>,
+    #[serde(default)]
+    pub running: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SkillToggleResult {
+    #[serde(default)]
+    pub ok: bool,
+    pub name: String,
+    #[serde(default)]
+    pub enabled: bool,
+}

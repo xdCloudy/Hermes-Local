@@ -19,7 +19,9 @@ use hermes_protocol::{
     MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse, ModelSettingsSnapshot, OAuthPoll,
     OAuthProvider, OAuthStart, OAuthSubmit, ProjectFilesDeleteResult, ProjectSummary,
     ProjectsSnapshot, ProviderActivation, RuntimeStatus, SessionCreateRequest,
-    SessionResumeResponse, SessionSummary, TaskSummary, TrustSnapshot,
+    SessionResumeResponse, SessionSummary, SkillActionStart, SkillActionStatus, SkillHubPreview,
+    SkillHubScanResult, SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary,
+    SkillToggleResult, TaskSummary, TrustSnapshot,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -779,6 +781,168 @@ impl GitRepoScanService for UnavailableGitRepoScanService {
     }
 }
 
+pub trait SkillsService: Send + Sync {
+    fn list(&self, profile: Option<&str>) -> ServiceFuture<'_, Vec<SkillSummary>>;
+    fn set_enabled(
+        &self,
+        profile: Option<&str>,
+        name: &str,
+        enabled: bool,
+    ) -> ServiceFuture<'_, SkillToggleResult>;
+    fn hub_sources(&self, profile: Option<&str>) -> ServiceFuture<'_, SkillHubSourcesResponse>;
+    fn hub_search(
+        &self,
+        profile: Option<&str>,
+        query: &str,
+        source: &str,
+        limit: u32,
+    ) -> ServiceFuture<'_, SkillHubSearchResponse>;
+    fn hub_preview(
+        &self,
+        profile: Option<&str>,
+        identifier: &str,
+    ) -> ServiceFuture<'_, SkillHubPreview>;
+    fn hub_scan(
+        &self,
+        profile: Option<&str>,
+        identifier: &str,
+    ) -> ServiceFuture<'_, SkillHubScanResult>;
+    fn hub_install(
+        &self,
+        profile: Option<&str>,
+        identifier: &str,
+    ) -> ServiceFuture<'_, SkillActionStart>;
+    fn hub_uninstall(
+        &self,
+        profile: Option<&str>,
+        name: &str,
+    ) -> ServiceFuture<'_, SkillActionStart>;
+    fn hub_update(&self, profile: Option<&str>) -> ServiceFuture<'_, SkillActionStart>;
+    fn action_status(
+        &self,
+        profile: Option<&str>,
+        name: &str,
+        lines: u32,
+    ) -> ServiceFuture<'_, SkillActionStatus>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnavailableSkillsService;
+
+impl SkillsService for UnavailableSkillsService {
+    fn list(&self, _profile: Option<&str>) -> ServiceFuture<'_, Vec<SkillSummary>> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "Skills are unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn set_enabled(
+        &self,
+        _profile: Option<&str>,
+        _name: &str,
+        _enabled: bool,
+    ) -> ServiceFuture<'_, SkillToggleResult> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "Skills are unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn hub_sources(&self, _profile: Option<&str>) -> ServiceFuture<'_, SkillHubSourcesResponse> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "Skills Hub is unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn hub_search(
+        &self,
+        _profile: Option<&str>,
+        _query: &str,
+        _source: &str,
+        _limit: u32,
+    ) -> ServiceFuture<'_, SkillHubSearchResponse> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "Skills Hub is unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn hub_preview(
+        &self,
+        _profile: Option<&str>,
+        _identifier: &str,
+    ) -> ServiceFuture<'_, SkillHubPreview> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "Skills Hub is unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn hub_scan(
+        &self,
+        _profile: Option<&str>,
+        _identifier: &str,
+    ) -> ServiceFuture<'_, SkillHubScanResult> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "Skills Hub is unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn hub_install(
+        &self,
+        _profile: Option<&str>,
+        _identifier: &str,
+    ) -> ServiceFuture<'_, SkillActionStart> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "Skills Hub is unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn hub_uninstall(
+        &self,
+        _profile: Option<&str>,
+        _name: &str,
+    ) -> ServiceFuture<'_, SkillActionStart> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "Skills Hub is unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn hub_update(&self, _profile: Option<&str>) -> ServiceFuture<'_, SkillActionStart> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "Skills Hub is unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn action_status(
+        &self,
+        _profile: Option<&str>,
+        _name: &str,
+        _lines: u32,
+    ) -> ServiceFuture<'_, SkillActionStatus> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "Skills Hub action status is unavailable on this platform".into(),
+            ))
+        })
+    }
+}
+
 pub trait TerminalService: Send + Sync {
     fn start(&self, cwd: &Path, cols: u16, rows: u16) -> ServiceFuture<'_, String>;
     fn write(&self, id: &str, data: &[u8]) -> ServiceFuture<'_, ()>;
@@ -827,6 +991,7 @@ pub struct AppServices {
     pub git_discard: Arc<dyn GitDiscardService>,
     pub git_ship: Arc<dyn GitShipService>,
     pub git_repo_scan: Arc<dyn GitRepoScanService>,
+    pub skills: Arc<dyn SkillsService>,
     pub terminal: Arc<dyn TerminalService>,
     pub updates: Arc<dyn UpdateService>,
     pub platform: Arc<dyn PlatformService>,

@@ -1054,10 +1054,12 @@ macro_rules! simple_surface {
 
 mod files;
 mod review;
+mod skills;
 mod source_control;
 mod terminal;
 use files::Files;
 use review::Review;
+use skills::Skills;
 use source_control::{Git, Worktrees};
 use terminal::Terminal;
 simple_surface!(
@@ -1155,12 +1157,6 @@ simple_surface!(
     "Safety",
     "Trust",
     "Understand what Hermes may access and execute."
-);
-simple_surface!(
-    Skills,
-    "Extensions",
-    "Skills",
-    "Curate reusable local capabilities."
 );
 simple_surface!(
     Mcp,
