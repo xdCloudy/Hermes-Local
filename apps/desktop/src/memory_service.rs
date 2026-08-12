@@ -231,7 +231,8 @@ impl NativeMemoryClient {
         &self,
         routing_profile: Option<&str>,
     ) -> Result<MemoryStatusResponse, String> {
-        self.execute(MemoryRequest::memory_status(routing_profile)?).await
+        self.execute(MemoryRequest::memory_status(routing_profile)?)
+            .await
     }
 
     pub async fn reset(
@@ -239,7 +240,8 @@ impl NativeMemoryClient {
         routing_profile: Option<&str>,
         target: MemoryResetTarget,
     ) -> Result<MemoryResetResponse, String> {
-        self.execute(MemoryRequest::reset(routing_profile, target)?).await
+        self.execute(MemoryRequest::reset(routing_profile, target)?)
+            .await
     }
 
     pub async fn provider_config(
@@ -304,7 +306,8 @@ impl NativeMemoryClient {
         &self,
         routing_profile: Option<&str>,
     ) -> Result<CuratorStatusResponse, String> {
-        self.execute(MemoryRequest::curator_status(routing_profile)?).await
+        self.execute(MemoryRequest::curator_status(routing_profile)?)
+            .await
     }
 
     pub async fn set_curator_paused(
@@ -312,18 +315,16 @@ impl NativeMemoryClient {
         routing_profile: Option<&str>,
         paused: bool,
     ) -> Result<CuratorPauseResponse, String> {
-        self.execute(MemoryRequest::set_curator_paused(
-            routing_profile,
-            paused,
-        )?)
-        .await
+        self.execute(MemoryRequest::set_curator_paused(routing_profile, paused)?)
+            .await
     }
 
     pub async fn run_curator(
         &self,
         routing_profile: Option<&str>,
     ) -> Result<ActionResponse, String> {
-        self.execute(MemoryRequest::run_curator(routing_profile)?).await
+        self.execute(MemoryRequest::run_curator(routing_profile)?)
+            .await
     }
 
     async fn execute<T: DeserializeOwned>(&self, spec: MemoryRequest) -> Result<T, String> {
@@ -354,8 +355,7 @@ impl NativeMemoryClient {
         if bytes.len() as u64 > MAX_RESPONSE_BYTES {
             return Err("Memory response exceeded the 4 MiB safety limit.".into());
         }
-        serde_json::from_slice(&bytes)
-            .map_err(|error| format!("Invalid Memory response: {error}"))
+        serde_json::from_slice(&bytes).map_err(|error| format!("Invalid Memory response: {error}"))
     }
 
     fn build_request(&self, spec: &MemoryRequest) -> Result<Request, String> {
@@ -401,10 +401,7 @@ impl MemoryRequest {
         request(MemoryMethod::Get, "/api/memory", routing_profile, None)
     }
 
-    fn reset(
-        routing_profile: Option<&str>,
-        target: MemoryResetTarget,
-    ) -> Result<Self, String> {
+    fn reset(routing_profile: Option<&str>, target: MemoryResetTarget) -> Result<Self, String> {
         request(
             MemoryMethod::Post,
             "/api/memory/reset",
@@ -449,10 +446,7 @@ impl MemoryRequest {
         request(MemoryMethod::Get, "/api/curator", routing_profile, None)
     }
 
-    fn set_curator_paused(
-        routing_profile: Option<&str>,
-        paused: bool,
-    ) -> Result<Self, String> {
+    fn set_curator_paused(routing_profile: Option<&str>, paused: bool) -> Result<Self, String> {
         request(
             MemoryMethod::Put,
             "/api/curator/paused",
@@ -604,8 +598,8 @@ mod tests {
 
     #[test]
     fn rejects_cross_profile_routing_before_dispatch() {
-        let client = NativeMemoryClient::new("http://127.0.0.1:8000", None, Some("work"))
-            .expect("client");
+        let client =
+            NativeMemoryClient::new("http://127.0.0.1:8000", None, Some("work")).expect("client");
         let spec = MemoryRequest::curator_status(Some("personal")).expect("spec");
         let error = client
             .assert_routing_profile(spec.routing_profile.as_deref())
@@ -615,15 +609,11 @@ mod tests {
 
     #[test]
     fn provider_config_uses_declared_surface_and_one_encoded_segment() {
-        let client = NativeMemoryClient::new("http://127.0.0.1:8000/root", None, None)
-            .expect("client");
-        let spec = MemoryRequest::provider_config(
-            None,
-            "vendor/memory one",
-            MemoryMethod::Get,
-            None,
-        )
-        .expect("spec");
+        let client =
+            NativeMemoryClient::new("http://127.0.0.1:8000/root", None, None).expect("client");
+        let spec =
+            MemoryRequest::provider_config(None, "vendor/memory one", MemoryMethod::Get, None)
+                .expect("spec");
         let request = client.build_request(&spec).expect("request");
 
         assert_eq!(request.method(), Method::GET);
@@ -663,7 +653,8 @@ mod tests {
             Some(json!({ "values": values })),
         )
         .expect("spec");
-        let client = NativeMemoryClient::new("https://gateway.example", None, None).expect("client");
+        let client =
+            NativeMemoryClient::new("https://gateway.example", None, None).expect("client");
         let request = client.build_request(&spec).expect("request");
         assert_eq!(request.method(), Method::PUT);
         assert!(!request.url().as_str().contains("super-secret"));
@@ -719,7 +710,9 @@ mod tests {
         assert!(NativeMemoryClient::new("https://user:pass@example.com", None, None).is_err());
         assert!(NativeMemoryClient::new("https://example.com/?token=x", None, None).is_err());
         assert!(NativeMemoryClient::new("https://example.com", Some("bad\ntoken"), None).is_err());
-        assert!(NativeMemoryClient::new("https://example.com", None, Some("bad\nprofile")).is_err());
+        assert!(
+            NativeMemoryClient::new("https://example.com", None, Some("bad\nprofile")).is_err()
+        );
         assert!(
             MemoryRequest::provider_oauth(None, "bad\nprovider", "start", MemoryMethod::Post)
                 .is_err()
