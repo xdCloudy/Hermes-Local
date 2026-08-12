@@ -217,7 +217,8 @@ impl NativeWebhookClient {
         profile: Option<&str>,
         payload: &WebhookCreatePayload,
     ) -> Result<WebhookCreateResponse, String> {
-        self.execute(WebhookRequest::create(profile, payload)?).await
+        self.execute(WebhookRequest::create(profile, payload)?)
+            .await
     }
 
     pub async fn delete(
