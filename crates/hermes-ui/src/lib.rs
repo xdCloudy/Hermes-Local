@@ -1047,8 +1047,10 @@ macro_rules! simple_surface {
 
 mod files;
 mod review;
+mod terminal;
 use files::Files;
 use review::Review;
+use terminal::Terminal;
 simple_surface!(
     Tui,
     "Hermes Local",
@@ -1132,12 +1134,6 @@ simple_surface!(
     "Source control",
     "Worktrees",
     "Keep parallel branches isolated and clear."
-);
-simple_surface!(
-    Terminal,
-    "Developer tools",
-    "Terminal",
-    "A native ConPTY session scoped to your workspace."
 );
 simple_surface!(
     Tasks,

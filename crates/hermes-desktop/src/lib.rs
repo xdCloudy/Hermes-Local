@@ -2068,11 +2068,28 @@ struct TerminalProcess {
     writer: Box<dyn Write + Send>,
     child: Box<dyn Child + Send + Sync>,
     output: Arc<Mutex<Vec<u8>>>,
+    control_tail: Vec<u8>,
 }
 
 #[derive(Default)]
 struct DesktopTerminals {
     processes: Mutex<HashMap<String, TerminalProcess>>,
+}
+
+impl DesktopTerminals {
+    fn dispose_process(&self, id: &str) -> ServiceResult<()> {
+        validate_identifier(id, "terminal")?;
+        let mut process = self
+            .processes
+            .lock()
+            .map_err(|_| ServiceError::Platform("terminal lock was poisoned".into()))?
+            .remove(id)
+            .ok_or_else(|| ServiceError::NotFound("terminal".into()))?;
+        process
+            .child
+            .kill()
+            .map_err(|error| ServiceError::Platform(error.to_string()))
+    }
 }
 
 impl TerminalService for DesktopTerminals {
@@ -2135,6 +2152,7 @@ impl TerminalService for DesktopTerminals {
                         writer,
                         child,
                         output,
+                        control_tail: Vec::new(),
                     },
                 );
             Ok(id)
@@ -2162,18 +2180,40 @@ impl TerminalService for DesktopTerminals {
         let id = id.to_owned();
         Box::pin(async move {
             validate_identifier(&id, "terminal")?;
-            let processes = self
+            let mut processes = self
                 .processes
                 .lock()
                 .map_err(|_| ServiceError::Platform("terminal lock was poisoned".into()))?;
             let process = processes
-                .get(&id)
+                .get_mut(&id)
                 .ok_or_else(|| ServiceError::NotFound("terminal".into()))?;
-            let mut output = process
-                .output
-                .lock()
-                .map_err(|_| ServiceError::Platform("terminal output lock was poisoned".into()))?;
-            Ok(std::mem::take(&mut *output))
+            let bytes = {
+                let mut output = process.output.lock().map_err(|_| {
+                    ServiceError::Platform("terminal output lock was poisoned".into())
+                })?;
+                std::mem::take(&mut *output)
+            };
+
+            let mut control_window = Vec::with_capacity(process.control_tail.len() + bytes.len());
+            control_window.extend_from_slice(&process.control_tail);
+            control_window.extend_from_slice(&bytes);
+            let cursor_queries = control_window
+                .windows(4)
+                .filter(|window| *window == b"\x1b[6n")
+                .count();
+            let tail_start = control_window.len().saturating_sub(3);
+            process.control_tail.clear();
+            process
+                .control_tail
+                .extend_from_slice(&control_window[tail_start..]);
+
+            if cursor_queries > 0 {
+                for _ in 0..cursor_queries {
+                    process.writer.write_all(b"\x1b[1;1R").map_err(platform)?;
+                }
+                process.writer.flush().map_err(platform)?;
+            }
+            Ok(bytes)
         })
     }
 
@@ -2207,19 +2247,11 @@ impl TerminalService for DesktopTerminals {
 
     fn dispose(&self, id: &str) -> ServiceFuture<'_, ()> {
         let id = id.to_owned();
-        Box::pin(async move {
-            validate_identifier(&id, "terminal")?;
-            let mut process = self
-                .processes
-                .lock()
-                .map_err(|_| ServiceError::Platform("terminal lock was poisoned".into()))?
-                .remove(&id)
-                .ok_or_else(|| ServiceError::NotFound("terminal".into()))?;
-            process
-                .child
-                .kill()
-                .map_err(|error| ServiceError::Platform(error.to_string()))
-        })
+        Box::pin(async move { self.dispose_process(&id) })
+    }
+
+    fn dispose_now(&self, id: &str) -> ServiceResult<()> {
+        self.dispose_process(id)
     }
 }
 
