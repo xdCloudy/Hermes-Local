@@ -27,7 +27,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin goal-loop/gt06-review-ship
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git diff --binary a0b87300eb6179c151848a64de8fc04248e1d064..76af43d39722f108c8052f66b68cf144fc68dca1 -- | Out-File -Encoding utf8 gt06.patch
+          git diff --binary --output=gt06.patch a0b87300eb6179c151848a64de8fc04248e1d064..76af43d39722f108c8052f66b68cf144fc68dca1 --
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git apply --3way --index gt06.patch
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
