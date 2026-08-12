@@ -1,0 +1,68 @@
+name: Integrate validated PF-08
+
+on:
+  push:
+    branches:
+      - goal-loop/integration-review-preview
+    paths:
+      - .github/workflows/integrate-pf08.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: goal-loop/integration-review-preview
+          fetch-depth: 0
+
+      - name: Apply validated PF-08 product diff
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin goal-loop/pf08-safe-preview
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --binary a48cbd8c95986352c655fa17f62b6bea1a15b29a..origin/goal-loop/pf08-safe-preview -- | Out-File -Encoding utf8 pf08.patch
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git apply --3way --index pf08.patch
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item pf08.patch
+          git commit -m "feat(preview): wire safe native previews into Dioxus"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate combined PF-07 PF-08 GT-04 tree
+        shell: pwsh
+        run: |
+          cargo fmt --all -- --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/ci/check_dioxus_rust_architecture.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo check --workspace --all-targets --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo check -p hermes-ui --target wasm32-unknown-unknown --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p hermes-local preview_normalization --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p hermes-local preview_service --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p hermes-desktop --test preview_ui_contract --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p hermes-desktop --test files_ui_contract --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p hermes-desktop --test git_review --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --workspace --all-targets --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Remove temporary PF-08 integration workflow
+        shell: pwsh
+        run: |
+          Remove-Item .github/workflows/integrate-pf08.yml
+          git add .github/workflows/integrate-pf08.yml
+          git commit -m "chore(ci): remove PF-08 integration helper"
+          git push origin HEAD:goal-loop/integration-review-preview
