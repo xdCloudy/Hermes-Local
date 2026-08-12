@@ -1,4 +1,5 @@
 name: GT-02 and GT-03 source control staging v3
+# retry: preserve worktree rows for the empty-state check
 
 on:
   push:
