@@ -72,9 +72,9 @@ regression before merge as `2413ce42`. The Rust validation gate includes archite
 tests, Clippy, optimized Windows release build, resolved Cargo CycloneDX SBOM,
 release-manifest/SHA-256 generation and artifact upload. Windows distribution CI
 also exercises silent install/uninstall, package identity and data-preserving
-repair. The latest DI-07 and AG-01 service slices each passed fresh exact-head
-five-workflow validation before merge; they remain A2 because their Dioxus/user
-surfaces are not wired yet.
+repair. DI-07 remains A2 because its OS global-hotkey, secondary-window lifecycle and
+submission surface are not wired. AG-01 is now A4 after PR #185 wired the typed
+Dioxus Skills/Hub surface and passed its applicable exact-head release gates.
 
 ## Roadmap waves
 
@@ -251,7 +251,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | RT-05 | Benchmarks | `RuntimeService` | Benchmarks | A1 Designed | Not ported. | Run/cancel benchmark, verify progress/results persistence and error handling. | ⬜ |
 | RT-06 | Security scan and reports | future `SecurityService` | Security/Tasks | A1 Designed | Not ported. | Run scan against disposable targets, inspect progress/redaction/report export and cancellation. | ⬜ |
 | RT-07 | Restore and repair | `UpdateService` + `RuntimeService` | recovery | A1 Designed | Not ported. | Corrupt representative runtime/install state and verify data-preserving repair/restore/rollback. | ⬜ |
-| AG-01 | Skills hub and local skills | `NativeSkillsClient` | Skills | A4 Auto-verified | Dioxus Skills now lists/toggles profile-scoped local skills and provides Hub sources/search/preview/on-demand scan/install/uninstall/update with independent 1.2s action polling/logs, profile-switch abandonment and trust/verdict display. Authenticated REST stays native with 4 MiB/input bounds; architecture, all-target/WASM, workspace tests and Clippy pass. | List/install/enable/disable/remove skills, trust prompts and invalid packages; compare OG. | ⬜ |
+| AG-01 | Skills hub and local skills | `SkillsService` + authenticated `GatewayServices` | Skills | A4 Auto-verified | Dioxus Skills now lists/toggles profile-scoped local skills and provides Hub sources/search/preview/on-demand scan/install/uninstall/update with independent 1.2s action polling/logs, profile-switch abandonment and trust/verdict display. Authenticated REST stays native with 4 MiB/input bounds; architecture, all-target/WASM, workspace tests and Clippy pass. | List/install/enable/disable/remove skills, trust prompts and invalid packages; compare OG. | ⬜ |
 | AG-02 | MCP servers and catalog | Agent/Trust services | Skills/MCP | A1 Designed | Not ported. | Add/config/enable/test/disable/remove MCP servers across scopes with trust/reload prompts. | ⬜ |
 | AG-03 | Trust Centre and diagnostics | `TrustService` | Trust Centre | A4 Auto-verified | Native exact `trust.get`/`trust.set_policy` contracts, typed policy decoding, forward-compatible diagnostics and invalid/path-like policy rejection are consumed by the functional Dioxus Trust Centre. Contract, architecture, WASM, workspace-test and Clippy gates are green. | Review every trust policy/diagnostic, change policy and trigger representative protected actions. | ⬜ |
 | AG-04 | Memory and curator | `NativeMemoryClient` | Memory/Starmap | A2 Service | Native profile-bound Memory/Curator REST foundation covers status/reset, declared provider config read/write, provider OAuth start/status, curator status/pause/run, encoded provider segments, header-only session auth, bounded responses/config values and cross-profile rejection. Focused contract/security tests are included; Dioxus Memory/Starmap consumers remain unported. | Inspect/search/reset memory and curator flows across profiles/sessions; verify destructive confirmation. | ⬜ |
