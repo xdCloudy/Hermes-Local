@@ -546,6 +546,73 @@ impl GitDiscardService for UnavailableGitDiscardService {
     }
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct GitPullRequestInfo {
+    pub url: String,
+    pub state: String,
+    pub number: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct GitShipInfo {
+    pub gh_ready: bool,
+    pub pull_request: Option<GitPullRequestInfo>,
+}
+
+pub trait GitShipService: Send + Sync {
+    fn info(&self, repository: &Path) -> ServiceFuture<'_, GitShipInfo>;
+    fn commit(
+        &self,
+        repository: &Path,
+        message: &str,
+        push_after_commit: bool,
+    ) -> ServiceFuture<'_, ()>;
+    fn push(&self, repository: &Path) -> ServiceFuture<'_, ()>;
+    fn create_pull_request(&self, repository: &Path) -> ServiceFuture<'_, String>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnavailableGitShipService;
+
+impl GitShipService for UnavailableGitShipService {
+    fn info(&self, _repository: &Path) -> ServiceFuture<'_, GitShipInfo> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git ship actions are unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn commit(
+        &self,
+        _repository: &Path,
+        _message: &str,
+        _push_after_commit: bool,
+    ) -> ServiceFuture<'_, ()> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git ship actions are unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn push(&self, _repository: &Path) -> ServiceFuture<'_, ()> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git ship actions are unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn create_pull_request(&self, _repository: &Path) -> ServiceFuture<'_, String> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git ship actions are unavailable on this platform".into(),
+            ))
+        })
+    }
+}
+
 pub trait TerminalService: Send + Sync {
     fn start(&self, cwd: &Path, cols: u16, rows: u16) -> ServiceFuture<'_, String>;
     fn write(&self, id: &str, data: &[u8]) -> ServiceFuture<'_, ()>;
@@ -585,6 +652,7 @@ pub struct AppServices {
     pub files: Arc<dyn FileService>,
     pub git: Arc<dyn GitService>,
     pub git_discard: Arc<dyn GitDiscardService>,
+    pub git_ship: Arc<dyn GitShipService>,
     pub terminal: Arc<dyn TerminalService>,
     pub updates: Arc<dyn UpdateService>,
     pub platform: Arc<dyn PlatformService>,
