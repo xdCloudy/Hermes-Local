@@ -30,7 +30,7 @@ jobs:
           text = path.read_text(encoding='utf-8')
           replacements = [
               (
-                  '> **Implementation audit checkpoint:** `dbb3b789462fbeb7dd2577e61bd6d89e34d086bf` (2026-08-12)',
+                  '> **Implementation audit checkpoint:** `dbb3b789462fbeb7dd2577e61bd6d89e34d086bf` (2026-08-12)  ',
                   '> **Implementation audit checkpoint:** `2413ce42f24a6cf9cfa0ff6edb93dede40636639` (2026-08-12)',
               ),
               ('| A2 Service | 36 | Native/core foundations exist; UI/parity work remains. |', '| A2 Service | 31 | Native/core foundations exist; UI/parity work remains. |'),
