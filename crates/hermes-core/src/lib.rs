@@ -4,7 +4,10 @@ use std::{
     future::Future,
     path::{Path, PathBuf},
     pin::Pin,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use futures_core::Stream;
@@ -726,6 +729,56 @@ impl GitShipService for UnavailableGitShipService {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct RepoScanCancellation {
+    cancelled: Arc<AtomicBool>,
+}
+
+impl RepoScanCancellation {
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct DiscoveredGitRepository {
+    pub root: PathBuf,
+    pub label: String,
+}
+
+pub trait GitRepoScanService: Send + Sync {
+    fn scan(
+        &self,
+        roots: &[PathBuf],
+        exclude_paths: &[PathBuf],
+        enabled: bool,
+        cancellation: RepoScanCancellation,
+    ) -> ServiceFuture<'_, Vec<DiscoveredGitRepository>>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnavailableGitRepoScanService;
+
+impl GitRepoScanService for UnavailableGitRepoScanService {
+    fn scan(
+        &self,
+        _roots: &[PathBuf],
+        _exclude_paths: &[PathBuf],
+        _enabled: bool,
+        _cancellation: RepoScanCancellation,
+    ) -> ServiceFuture<'_, Vec<DiscoveredGitRepository>> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git repository discovery is unavailable on this platform".into(),
+            ))
+        })
+    }
+}
+
 pub trait TerminalService: Send + Sync {
     fn start(&self, cwd: &Path, cols: u16, rows: u16) -> ServiceFuture<'_, String>;
     fn write(&self, id: &str, data: &[u8]) -> ServiceFuture<'_, ()>;
@@ -768,6 +821,7 @@ pub struct AppServices {
     pub git_worktrees: Arc<dyn GitWorktreeService>,
     pub git_discard: Arc<dyn GitDiscardService>,
     pub git_ship: Arc<dyn GitShipService>,
+    pub git_repo_scan: Arc<dyn GitRepoScanService>,
     pub terminal: Arc<dyn TerminalService>,
     pub updates: Arc<dyn UpdateService>,
     pub platform: Arc<dyn PlatformService>,

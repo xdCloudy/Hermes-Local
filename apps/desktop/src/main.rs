@@ -141,6 +141,7 @@ fn main() {
     notification_service::install(&mut native.services);
     git_branch_service::install(&mut native.services);
     git_discard_service::install(&mut native.services);
+    git_repo_scan_service::install(&mut native.services);
     git_ship_service::install(&mut native.services);
     git_worktree_service::install(&mut native.services);
     preview_service::install(&mut native.services);
