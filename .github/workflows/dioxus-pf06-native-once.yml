@@ -1,3 +1,4 @@
+# One-shot PF-06 native migration; deletes itself after a successful patch.
 name: Dioxus PF-06 native one-shot
 
 on:
@@ -26,12 +27,12 @@ jobs:
           core = Path("crates/hermes-core/src/lib.rs")
           text = core.read_text(encoding="utf-8")
           old = '''    fn write_text(&self, root: &Path, relative: &Path, content: &str) -> ServiceFuture<'_, ()>;
-              fn trash(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()>;'''.replace('              ', '    ')
+    fn trash(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()>;'''
           new = '''    fn write_text(&self, root: &Path, relative: &Path, content: &str) -> ServiceFuture<'_, ()>;
-              fn rename(&self, root: &Path, relative: &Path, new_name: &str) -> ServiceFuture<'_, String>;
-              fn reveal(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
-              fn open(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
-              fn trash(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()>;'''.replace('              ', '    ')
+    fn rename(&self, root: &Path, relative: &Path, new_name: &str) -> ServiceFuture<'_, String>;
+    fn reveal(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
+    fn open(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
+    fn trash(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()>;'''
           if old not in text:
               raise SystemExit("FileService trait anchor not found")
           core.write_text(text.replace(old, new, 1), encoding="utf-8")
@@ -42,56 +43,56 @@ jobs:
           if marker not in text:
               raise SystemExit("DesktopFiles trash anchor not found")
           methods = r'''    fn rename(
-              &self,
-              root: &Path,
-              relative: &Path,
-              new_name: &str,
-          ) -> ServiceFuture<'_, String> {
-              let root = root.to_owned();
-              let relative = relative.to_owned();
-              let new_name = new_name.trim().to_owned();
-              Box::pin(async move {
-                  if new_name.is_empty()
-                      || new_name == "."
-                      || new_name == ".."
-                      || new_name.contains('/')
-                      || new_name.contains('\\')
-                  {
-                      return Err(ServiceError::InvalidInput("Invalid rename".into()));
-                  }
+        &self,
+        root: &Path,
+        relative: &Path,
+        new_name: &str,
+    ) -> ServiceFuture<'_, String> {
+        let root = root.to_owned();
+        let relative = relative.to_owned();
+        let new_name = new_name.trim().to_owned();
+        Box::pin(async move {
+            if new_name.is_empty()
+                || new_name == "."
+                || new_name == ".."
+                || new_name.contains('/')
+                || new_name.contains('\\')
+            {
+                return Err(ServiceError::InvalidInput("Invalid rename".into()));
+            }
 
-                  let source = contained_existing(&root, &relative)?;
-                  let parent = relative.parent().unwrap_or_else(|| Path::new(""));
-                  let destination_relative = parent.join(&new_name);
-                  let destination = contained_for_write(&root, &destination_relative)?;
-                  if destination.exists() {
-                      return Err(ServiceError::InvalidInput(format!(
-                          "A file or folder named '{new_name}' already exists"
-                      )));
-                  }
+            let source = contained_existing(&root, &relative)?;
+            let parent = relative.parent().unwrap_or_else(|| Path::new(""));
+            let destination_relative = parent.join(&new_name);
+            let destination = contained_for_write(&root, &destination_relative)?;
+            if destination.exists() {
+                return Err(ServiceError::InvalidInput(format!(
+                    "A file or folder named '{new_name}' already exists"
+                )));
+            }
 
-                  fs::rename(source, destination).map_err(platform)?;
-                  Ok(destination_relative.to_string_lossy().replace('\\', "/"))
-              })
-          }
+            fs::rename(source, destination).map_err(platform)?;
+            Ok(destination_relative.to_string_lossy().replace('\\', "/"))
+        })
+    }
 
-          fn reveal(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()> {
-              let root = root.to_owned();
-              let relative = relative.to_owned();
-              Box::pin(async move {
-                  let target = contained_existing(&root, &relative)?;
-                  reveal_native_path(&target)
-              })
-          }
+    fn reveal(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()> {
+        let root = root.to_owned();
+        let relative = relative.to_owned();
+        Box::pin(async move {
+            let target = contained_existing(&root, &relative)?;
+            reveal_native_path(&target)
+        })
+    }
 
-          fn open(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()> {
-              let root = root.to_owned();
-              let relative = relative.to_owned();
-              Box::pin(async move {
-                  let target = contained_existing(&root, &relative)?;
-                  open::that(target).map_err(|error| ServiceError::Platform(error.to_string()))
-              })
-          }
+    fn open(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()> {
+        let root = root.to_owned();
+        let relative = relative.to_owned();
+        Box::pin(async move {
+            let target = contained_existing(&root, &relative)?;
+            open::that(target).map_err(|error| ServiceError::Platform(error.to_string()))
+        })
+    }
 
 '''
           text = text.replace(marker, methods + marker, 1)
@@ -100,36 +101,35 @@ jobs:
 
 impl FileService for DesktopFiles {'''
           helper = r'''fn reveal_native_path(target: &Path) -> ServiceResult<()> {
-              #[cfg(target_os = "windows")]
-              {
-                  std::process::Command::new("explorer.exe")
-                      .arg(format!("/select,{}", target.display()))
-                      .spawn()
-                      .map(|_| ())
-                      .map_err(platform)
-              }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer.exe")
+            .arg(format!("/select,{}", target.display()))
+            .spawn()
+            .map(|_| ())
+            .map_err(platform)
+    }
 
-              #[cfg(target_os = "macos")]
-              {
-                  std::process::Command::new("open")
-                      .arg("-R")
-                      .arg(target)
-                      .spawn()
-                      .map(|_| ())
-                      .map_err(platform)
-              }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(target)
+            .spawn()
+            .map(|_| ())
+            .map_err(platform)
+    }
 
-              #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-              {
-                  let parent = target.parent().unwrap_or(target);
-                  open::that(parent).map_err(|error| ServiceError::Platform(error.to_string()))
-              }
-          }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let parent = target.parent().unwrap_or(target);
+        open::that(parent).map_err(|error| ServiceError::Platform(error.to_string()))
+    }
+}
 
-          struct DesktopFiles;
+struct DesktopFiles;
 
-          impl FileService for DesktopFiles {'''
-          helper = '\n'.join(line[10:] if line.startswith('          ') else line for line in helper.splitlines())
+impl FileService for DesktopFiles {'''
           if helper_anchor not in text:
               raise SystemExit("DesktopFiles struct anchor not found")
           text = text.replace(helper_anchor, helper, 1)
