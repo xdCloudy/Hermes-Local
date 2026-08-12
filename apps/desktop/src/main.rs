@@ -139,6 +139,7 @@ fn main() {
 
     let mut native = NativeApp::new(data_dir.clone());
     notification_service::install(&mut native.services);
+    git_discard_service::install(&mut native.services);
     preview_service::install(&mut native.services);
     preview_watcher::install(&mut native.services);
     startup::install_local_bootstrap(&mut native.services);

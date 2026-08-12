@@ -1,14 +1,56 @@
-#![allow(dead_code)] // GT-05 service foundation; review confirmation/UI is a later stage.
-
 use std::{
     path::{Component, Path, PathBuf},
     process::{Command, Output},
+    sync::Arc,
+};
+
+use hermes_core::{
+    AppServices, GitDiscardService as GitDiscardServiceContract, ServiceError, ServiceFuture,
 };
 
 const MAX_GIT_OUTPUT_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct GitDiscardService;
+
+pub fn install(services: &mut AppServices) {
+    services.git_discard = Arc::new(GitDiscardService);
+}
+
+impl GitDiscardServiceContract for GitDiscardService {
+    fn discard_path(&self, repository: &Path, relative: &Path) -> ServiceFuture<'_, ()> {
+        let repository = repository.to_owned();
+        let relative = relative.to_owned();
+        Box::pin(async move {
+            GitDiscardService
+                .discard_path(&repository, &relative)
+                .map_err(service_error)
+        })
+    }
+
+    fn discard_all(&self, repository: &Path) -> ServiceFuture<'_, ()> {
+        let repository = repository.to_owned();
+        Box::pin(async move {
+            GitDiscardService
+                .discard_all(&repository)
+                .map_err(service_error)
+        })
+    }
+}
+
+fn service_error(error: String) -> ServiceError {
+    if error.contains("cannot escape") || error.contains("metadata cannot") {
+        ServiceError::PermissionDenied(error)
+    } else if error.contains("must be")
+        || error.contains("requires a repository")
+        || error.contains("NUL character")
+        || error.starts_with("Use discard_all")
+    {
+        ServiceError::InvalidInput(error)
+    } else {
+        ServiceError::Platform(error)
+    }
+}
 
 impl GitDiscardService {
     /// Restore one exact repository-relative path to `HEAD` and remove

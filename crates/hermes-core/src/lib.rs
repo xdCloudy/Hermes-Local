@@ -520,6 +520,32 @@ pub trait GitService: Send + Sync {
     fn unstage(&self, repository: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
 }
 
+pub trait GitDiscardService: Send + Sync {
+    fn discard_path(&self, repository: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
+    fn discard_all(&self, repository: &Path) -> ServiceFuture<'_, ()>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnavailableGitDiscardService;
+
+impl GitDiscardService for UnavailableGitDiscardService {
+    fn discard_path(&self, _repository: &Path, _relative: &Path) -> ServiceFuture<'_, ()> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git discard is unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn discard_all(&self, _repository: &Path) -> ServiceFuture<'_, ()> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git discard is unavailable on this platform".into(),
+            ))
+        })
+    }
+}
+
 pub trait TerminalService: Send + Sync {
     fn start(&self, cwd: &Path, cols: u16, rows: u16) -> ServiceFuture<'_, String>;
     fn write(&self, id: &str, data: &[u8]) -> ServiceFuture<'_, ()>;
@@ -558,6 +584,7 @@ pub struct AppServices {
     pub preview: Arc<dyn PreviewService>,
     pub files: Arc<dyn FileService>,
     pub git: Arc<dyn GitService>,
+    pub git_discard: Arc<dyn GitDiscardService>,
     pub terminal: Arc<dyn TerminalService>,
     pub updates: Arc<dyn UpdateService>,
     pub platform: Arc<dyn PlatformService>,
