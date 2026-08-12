@@ -22,6 +22,7 @@ mod notification_service;
 mod platform_diagnostics;
 mod power;
 mod preview_normalization;
+mod preview_service;
 mod preview_watcher;
 mod quick_entry;
 mod skills_service;
@@ -138,6 +139,7 @@ fn main() {
 
     let mut native = NativeApp::new(data_dir.clone());
     notification_service::install(&mut native.services);
+    preview_service::install(&mut native.services);
     preview_watcher::install(&mut native.services);
     startup::install_local_bootstrap(&mut native.services);
     ssh_service::install_ssh_probe(&mut native.services, data_dir);

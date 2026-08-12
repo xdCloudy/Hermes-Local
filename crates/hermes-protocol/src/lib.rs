@@ -1143,6 +1143,19 @@ pub struct FileEntry {
     pub size: Option<u64>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct GitChange {
+    pub path: String,
+    #[serde(default)]
+    pub index_status: String,
+    #[serde(default)]
+    pub worktree_status: String,
+    #[serde(default)]
+    pub staged: bool,
+    #[serde(default)]
+    pub unstaged: bool,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct GitStatus {
     #[serde(default)]
@@ -1153,6 +1166,8 @@ pub struct GitStatus {
     pub behind: u32,
     #[serde(default)]
     pub changed: Vec<String>,
+    #[serde(default)]
+    pub entries: Vec<GitChange>,
 }
 
 #[cfg(test)]

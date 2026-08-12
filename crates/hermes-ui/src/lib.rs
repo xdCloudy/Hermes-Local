@@ -1046,7 +1046,9 @@ macro_rules! simple_surface {
 }
 
 mod files;
+mod review;
 use files::Files;
+use review::Review;
 simple_surface!(
     Tui,
     "Hermes Local",
@@ -1130,12 +1132,6 @@ simple_surface!(
     "Source control",
     "Worktrees",
     "Keep parallel branches isolated and clear."
-);
-simple_surface!(
-    Review,
-    "Source control",
-    "Review",
-    "Inspect a change as one coherent story."
 );
 simple_surface!(
     Terminal,

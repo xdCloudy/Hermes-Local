@@ -1,5 +1,3 @@
-#![allow(dead_code)] // PF-08 service foundation; preview UI wiring is a later stage.
-
 use std::{
     fs,
     io::Read,
@@ -8,7 +6,7 @@ use std::{
 
 use url::Url;
 
-const TEXT_PREVIEW_MAX_BYTES: u64 = 512 * 1024;
+pub(crate) const TEXT_PREVIEW_MAX_BYTES: u64 = 512 * 1024;
 const BINARY_SAMPLE_BYTES: usize = 4096;
 const SAFE_ENV_SUFFIXES: [&str; 4] = ["dist", "example", "sample", "template"];
 const SENSITIVE_EXTENSIONS: [&str; 4] = ["kdbx", "p12", "pem", "pfx"];
@@ -71,6 +69,9 @@ fn normalize_url_target(raw: &str) -> Result<PreviewTarget, String> {
     let mut url = Url::parse(raw).map_err(|_| "Preview URL is invalid.".to_owned())?;
     if !matches!(url.scheme(), "http" | "https") {
         return Err("Preview URL must use HTTP or HTTPS.".to_owned());
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("Preview URLs with embedded credentials are not allowed.".to_owned());
     }
     if url.host_str() == Some("0.0.0.0") {
         url.set_host(Some("127.0.0.1"))
@@ -150,11 +151,12 @@ fn normalize_file_target(
     reject_sensitive_file_path(&real_path)?;
 
     // Electron performs an explicit readability probe before returning the
-    // target. Opening once here provides the same fail-closed contract.
-    let mut file = fs::File::open(&resolved)
+    // target. Open the canonical target so the returned path and the sampled
+    // file are the same object after the sensitive-path recheck above.
+    let mut file = fs::File::open(&real_path)
         .map_err(|error| format!("Preview target is not readable: {error}"))?;
 
-    let extension = extension_key(&resolved);
+    let extension = extension_key(&real_path);
     let mime_type = mime_type_for_extension(&extension).to_owned();
     let byte_size = metadata.len();
     let binary = if mime_type.starts_with("image/") {
@@ -175,7 +177,7 @@ fn normalize_file_target(
     } else {
         PreviewKind::Text
     };
-    let url = Url::from_file_path(&resolved)
+    let url = Url::from_file_path(&real_path)
         .map_err(|_| "Could not convert preview file path to a file URL.".to_owned())?
         .to_string();
 
@@ -183,14 +185,14 @@ fn normalize_file_target(
         binary,
         byte_size,
         large: byte_size > TEXT_PREVIEW_MAX_BYTES,
-        label: resolved
+        label: real_path
             .file_name()
             .and_then(|value| value.to_str())
             .unwrap_or_default()
             .to_owned(),
         language: language_for_extension(&extension).to_owned(),
         mime_type,
-        path: resolved,
+        path: real_path,
         preview_kind,
         source,
         url,
@@ -461,6 +463,11 @@ mod tests {
                 .normalize("ftp://example.com/file", None)
                 .expect("non-http target")
                 .is_none()
+        );
+        assert!(
+            PreviewNormalizationService
+                .normalize("https://user:secret@example.com/private", None)
+                .is_err()
         );
     }
 
