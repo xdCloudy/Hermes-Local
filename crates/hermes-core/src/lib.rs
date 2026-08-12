@@ -441,6 +441,9 @@ pub trait FileService: Send + Sync {
     fn read_dir(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, Vec<FileEntry>>;
     fn read_text(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, String>;
     fn write_text(&self, root: &Path, relative: &Path, content: &str) -> ServiceFuture<'_, ()>;
+    fn rename(&self, root: &Path, relative: &Path, new_name: &str) -> ServiceFuture<'_, String>;
+    fn reveal(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
+    fn open(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
     fn trash(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
 }
 

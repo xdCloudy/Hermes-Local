@@ -1849,6 +1849,33 @@ impl SettingsService for JsonSettings {
     }
 }
 
+fn reveal_native_path(target: &Path) -> ServiceResult<()> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer.exe")
+            .arg(format!("/select,{}", target.display()))
+            .spawn()
+            .map(|_| ())
+            .map_err(platform)
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(target)
+            .spawn()
+            .map(|_| ())
+            .map_err(platform)
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let parent = target.parent().unwrap_or(target);
+        open::that(parent).map_err(|error| ServiceError::Platform(error.to_string()))
+    }
+}
+
 struct DesktopFiles;
 
 impl FileService for DesktopFiles {
@@ -1901,6 +1928,53 @@ impl FileService for DesktopFiles {
         Box::pin(async move {
             let target = contained_for_write(&root, &relative)?;
             fs::write(target, content).map_err(platform)
+        })
+    }
+
+    fn rename(&self, root: &Path, relative: &Path, new_name: &str) -> ServiceFuture<'_, String> {
+        let root = root.to_owned();
+        let relative = relative.to_owned();
+        let new_name = new_name.trim().to_owned();
+        Box::pin(async move {
+            if new_name.is_empty()
+                || new_name == "."
+                || new_name == ".."
+                || new_name.contains('/')
+                || new_name.contains('\\')
+            {
+                return Err(ServiceError::InvalidInput("Invalid rename".into()));
+            }
+
+            let source = contained_existing(&root, &relative)?;
+            let parent = relative.parent().unwrap_or_else(|| Path::new(""));
+            let destination_relative = parent.join(&new_name);
+            let destination = contained_for_write(&root, &destination_relative)?;
+            if destination.exists() {
+                return Err(ServiceError::InvalidInput(format!(
+                    "A file or folder named '{new_name}' already exists"
+                )));
+            }
+
+            fs::rename(source, destination).map_err(platform)?;
+            Ok(destination_relative.to_string_lossy().replace('\\', "/"))
+        })
+    }
+
+    fn reveal(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()> {
+        let root = root.to_owned();
+        let relative = relative.to_owned();
+        Box::pin(async move {
+            let target = contained_existing(&root, &relative)?;
+            reveal_native_path(&target)
+        })
+    }
+
+    fn open(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()> {
+        let root = root.to_owned();
+        let relative = relative.to_owned();
+        Box::pin(async move {
+            let target = contained_existing(&root, &relative)?;
+            open::that(target).map_err(|error| ServiceError::Platform(error.to_string()))
         })
     }
 
