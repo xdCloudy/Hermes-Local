@@ -1,0 +1,27 @@
+name: PF06 native patch
+
+on:
+  push:
+    branches: [refactor/dioxus-rust-client]
+    paths:
+      - .github/scripts/pf06_native_once.py
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python .github/scripts/pf06_native_once.py
+      - run: cargo fmt --all
+      - shell: pwsh
+        run: |
+          git rm -- .github/scripts/pf06_native_once.py .github/workflows/pf06-native-once.yml
+          git add -- crates/hermes-core/src/lib.rs crates/hermes-desktop/src/lib.rs
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat(files): add typed native file actions"
+          git push origin HEAD:refactor/dioxus-rust-client
