@@ -173,8 +173,14 @@ impl NativeCronClient {
         routing_profile: Option<&str>,
         job_id: &str,
     ) -> Result<CronJob, String> {
-        self.execute(CronRequest::job(CronMethod::Get, routing_profile, job_id, None, None)?)
-            .await
+        self.execute(CronRequest::job(
+            CronMethod::Get,
+            routing_profile,
+            job_id,
+            None,
+            None,
+        )?)
+        .await
     }
 
     pub async fn runs(
@@ -197,8 +203,12 @@ impl NativeCronClient {
         validate_create(payload)?;
         let body = serde_json::to_value(payload)
             .map_err(|error| format!("Could not serialize Cron job: {error}"))?;
-        self.execute(CronRequest::root(CronMethod::Post, routing_profile, Some(body))?)
-            .await
+        self.execute(CronRequest::root(
+            CronMethod::Post,
+            routing_profile,
+            Some(body),
+        )?)
+        .await
     }
 
     pub async fn update(
@@ -529,7 +539,11 @@ mod tests {
     #[test]
     fn rejects_cross_backend_profile_routing() {
         let client = client();
-        assert!(client.assert_routing_profile(Some("other profile")).is_err());
+        assert!(
+            client
+                .assert_routing_profile(Some("other profile"))
+                .is_err()
+        );
         assert!(client.assert_routing_profile(None).is_err());
     }
 
@@ -556,7 +570,10 @@ mod tests {
             request.url().as_str(),
             "https://gateway.example/hermes/api/cron/jobs/nightly%2Fjob"
         );
-        assert_eq!(spec.body.as_ref().expect("body")["updates"]["enabled"], false);
+        assert_eq!(
+            spec.body.as_ref().expect("body")["updates"]["enabled"],
+            false
+        );
         assert!(spec.body.as_ref().expect("body")["updates"]["model"].is_null());
 
         for action in ["pause", "resume", "trigger"] {
