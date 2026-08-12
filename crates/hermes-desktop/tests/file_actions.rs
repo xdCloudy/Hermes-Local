@@ -43,7 +43,14 @@ async fn rename_rejects_traversal_separators_and_collisions() {
     fs::write(project.join("src/existing.txt"), b"existing").expect("seed collision file");
     let app = NativeApp::new(data_dir.clone());
 
-    for invalid in ["", ".", "..", "../escape.txt", "nested/name.txt", "nested\\name.txt"] {
+    for invalid in [
+        "",
+        ".",
+        "..",
+        "../escape.txt",
+        "nested/name.txt",
+        "nested\\name.txt",
+    ] {
         let error = app
             .services
             .files
