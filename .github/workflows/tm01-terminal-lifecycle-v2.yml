@@ -1,0 +1,60 @@
+name: TM-01 terminal lifecycle staging v2
+
+on:
+  push:
+    branches:
+      - goal-loop/tm01-terminal-lifecycle
+    paths:
+      - .github/workflows/tm01-terminal-lifecycle-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  stage:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: goal-loop/tm01-terminal-lifecycle
+          fetch-depth: 0
+
+      - name: Apply TM-01 terminal surface and DSR handshake
+        shell: pwsh
+        run: |
+          python scripts/ci/tm01_stage_patch.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/ci/tm01_dsr_fix.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo fmt --all
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate real PTY lifecycle cleanup and Dioxus contract
+        shell: pwsh
+        run: |
+          python scripts/ci/check_dioxus_rust_architecture.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo check --workspace --all-targets --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo check -p hermes-ui --target wasm32-unknown-unknown --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p hermes-desktop --test terminal_lifecycle --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --workspace --all-targets --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Commit validated TM-01 product slice
+        shell: pwsh
+        run: |
+          Remove-Item .github/workflows/tm01-terminal-lifecycle.yml
+          Remove-Item .github/workflows/tm01-terminal-lifecycle-v2.yml
+          Remove-Item scripts/ci/tm01_stage_patch.py
+          Remove-Item scripts/ci/tm01_dsr_fix.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(terminal): wire project-scoped PTY lifecycle"
+          git push origin HEAD:goal-loop/tm01-terminal-lifecycle
