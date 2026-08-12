@@ -15,8 +15,8 @@ use hermes_core::{
     AgentConfigService, AppServices, ConnectionService, EventStream, FileService, GitService,
     ModelService, PlatformService, ProjectService, ProviderService, RuntimeService, ServiceError,
     ServiceFuture, ServiceResult, SessionService, SettingsService, TerminalService, TrustService,
-    UnavailableGitDiscardService, UnavailablePreviewService, UpdateService, validate_identifier,
-    validate_relative_path,
+    UnavailableGitDiscardService, UnavailableGitRepoScanService, UnavailablePreviewService,
+    UpdateService, validate_identifier, validate_relative_path,
 };
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, AuthProvider, AuxiliaryModels, ConfigSchemaResponse,
@@ -658,6 +658,7 @@ impl NativeApp {
                 files: Arc::new(DesktopFiles),
                 git: Arc::new(DesktopGit),
                 git_discard: Arc::new(UnavailableGitDiscardService),
+                git_repo_scan: Arc::new(UnavailableGitRepoScanService),
                 terminal: Arc::new(DesktopTerminals::default()),
                 updates: Arc::new(DesktopUpdates { data_dir }),
                 platform,

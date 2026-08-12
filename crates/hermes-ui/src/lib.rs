@@ -1,10 +1,17 @@
 //! Dioxus presentation layer. This crate has no filesystem, process, or OS authority.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use dioxus::prelude::*;
 use futures_util::StreamExt;
-use hermes_core::{AgentConfigService, AppServices, ModelService, SessionTranscript};
+use hermes_core::{
+    AgentConfigService, AppServices, DiscoveredGitRepository, ModelService, RepoScanCancellation,
+    SessionTranscript,
+};
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, ConnectionConfig, ConnectionConfigInput, ConnectionMode,
     ConnectionProbeResult, CustomEndpoint, CustomEndpointUpdate, EnvVarInfo, MessageRole,
@@ -1263,6 +1270,67 @@ fn project_repair_folder(project: &hermes_protocol::ProjectSummary) -> Option<Pr
         .cloned()
 }
 
+#[derive(Clone, Debug)]
+struct RepoDiscoveryPolicy {
+    enabled: bool,
+    roots: Vec<PathBuf>,
+    exclude_paths: Vec<PathBuf>,
+}
+
+fn repo_discovery_policy(config: &BTreeMap<String, Value>) -> RepoDiscoveryPolicy {
+    let desktop = config.get("desktop").and_then(Value::as_object);
+    let strings = |key: &str| {
+        desktop
+            .and_then(|desktop| desktop.get(key))
+            .and_then(Value::as_array)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(PathBuf::from)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    };
+    RepoDiscoveryPolicy {
+        enabled: desktop
+            .and_then(|desktop| desktop.get("repo_scan_enabled"))
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
+        roots: strings("repo_scan_roots"),
+        exclude_paths: strings("repo_scan_exclude_paths"),
+    }
+}
+
+fn repo_path_key(path: &Path) -> String {
+    let value = path
+        .to_string_lossy()
+        .replace('\\', "/")
+        .trim_end_matches('/')
+        .to_owned();
+    if cfg!(windows) {
+        value.to_lowercase()
+    } else {
+        value
+    }
+}
+
+fn registered_repo_keys(snapshot: &ProjectsSnapshot) -> BTreeSet<String> {
+    snapshot
+        .projects
+        .iter()
+        .flat_map(|project| {
+            project
+                .folders
+                .iter()
+                .map(|folder| folder.path.as_str())
+                .chain(project.primary_path.iter().map(String::as_str))
+        })
+        .map(Path::new)
+        .map(repo_path_key)
+        .collect()
+}
+
 #[component]
 fn Projects() -> Element {
     let services = use_context::<AppServices>();
@@ -1282,6 +1350,77 @@ fn Projects() -> Element {
     let mut busy_project = use_signal(|| None::<String>);
     let mut delete_target = use_signal(|| None::<String>);
     let mut delete_confirmation = use_signal(String::new);
+    let mut discovered_repositories = use_signal(Vec::<DiscoveredGitRepository>::new);
+    let mut repo_scanning = use_signal(|| false);
+    let mut repo_scan_enabled = use_signal(|| true);
+    let mut repo_scan_error = use_signal(|| None::<String>);
+    let mut repo_scan_refresh = use_signal(|| 0_u64);
+    let mut repo_scan_cancel = use_signal(|| None::<RepoScanCancellation>);
+    let mut repo_registering = use_signal(|| None::<String>);
+
+    let scan_service = services.git_repo_scan.clone();
+    let config_service = services.agent_config.clone();
+    let settings_signal = settings_state.settings;
+    let project_snapshot_signal = state.snapshot;
+    let _repo_discovery = use_resource(move || {
+        let _revision = repo_scan_refresh();
+        let snapshot = project_snapshot_signal();
+        let profile = settings_signal().profile;
+        let scan_service = scan_service.clone();
+        let config_service = config_service.clone();
+        async move {
+            repo_scan_error.set(None);
+            let loaded = match config_service.load(profile.as_deref()).await {
+                Ok(loaded) => loaded,
+                Err(problem) => {
+                    repo_scanning.set(false);
+                    repo_scan_cancel.set(None);
+                    repo_scan_error.set(Some(problem.to_string()));
+                    return;
+                }
+            };
+            let policy = repo_discovery_policy(&loaded.config);
+            repo_scan_enabled.set(policy.enabled);
+            if !policy.enabled {
+                discovered_repositories.set(Vec::new());
+                repo_scanning.set(false);
+                repo_scan_cancel.set(None);
+                return;
+            }
+
+            let cancellation = RepoScanCancellation::default();
+            repo_scan_cancel.set(Some(cancellation.clone()));
+            repo_scanning.set(true);
+            let result = scan_service
+                .scan(
+                    &policy.roots,
+                    &policy.exclude_paths,
+                    true,
+                    cancellation.clone(),
+                )
+                .await;
+            if cancellation.is_cancelled() {
+                repo_scan_error.set(None);
+            } else {
+                match result {
+                    Ok(repositories) => {
+                        let registered = registered_repo_keys(&snapshot);
+                        discovered_repositories.set(
+                            repositories
+                                .into_iter()
+                                .filter(|repository| {
+                                    !registered.contains(&repo_path_key(&repository.root))
+                                })
+                                .collect(),
+                        );
+                    }
+                    Err(problem) => repo_scan_error.set(Some(problem.to_string())),
+                }
+            }
+            repo_scanning.set(false);
+            repo_scan_cancel.set(None);
+        }
+    });
 
     let needle = query().trim().to_lowercase();
     let visible = snapshot
@@ -1325,9 +1464,90 @@ fn Projects() -> Element {
                             oninput: move |event| query.set(event.value())
                         }
                     }
+                    if repo_scanning() {
+                        button {
+                            class: "button",
+                            onclick: move |_| {
+                                if let Some(cancellation) = repo_scan_cancel() {
+                                    cancellation.cancel();
+                                }
+                            },
+                            "Cancel scan"
+                        }
+                    } else {
+                        button {
+                            class: "button",
+                            disabled: !repo_scan_enabled(),
+                            onclick: move |_| repo_scan_refresh.set(repo_scan_refresh() + 1),
+                            Codicon { name: "search" }
+                            "Scan repositories"
+                        }
+                    }
                     button { class: "button project-create-button", onclick: move |_| create_open.set(true),
                         Codicon { name: "add" }
                         "New project"
+                    }
+                }
+                if !repo_scan_enabled() {
+                    p { class: "muted", "Repository discovery is disabled for the active profile in Workspace settings." }
+                }
+                if let Some(problem) = repo_scan_error() {
+                    p { class: "inline-error", role: "alert", "{problem}" }
+                }
+                if !discovered_repositories().is_empty() {
+                    section { class: "settings-card", style: "display:grid;gap:.6rem;margin-bottom:1rem;",
+                        div { style: "display:flex;align-items:center;gap:.5rem;",
+                            div { style: "min-width:0;flex:1;",
+                                strong { "Discovered repositories" }
+                                div { class: "muted", "Found under the active profile's configured discovery roots. Registering keeps files in place." }
+                            }
+                            span { class: "scope-pill", "{discovered_repositories().len()} found" }
+                        }
+                        for repository in discovered_repositories() {
+                            {
+                                let root = repository.root.to_string_lossy().into_owned();
+                                let label = repository.label.clone();
+                                let busy_key = root.clone();
+                                let project_service = services.projects.clone();
+                                rsx! {
+                                    div { class: "settings-row", style: "align-items:flex-start;gap:.75rem;",
+                                        div { style: "min-width:0;flex:1;",
+                                            strong { "{label}" }
+                                            div { class: "muted", title: "{root}", "{root}" }
+                                        }
+                                        button {
+                                            class: "button",
+                                            disabled: repo_registering().is_some(),
+                                            onclick: move |_| {
+                                                let project_service = project_service.clone();
+                                                let root = root.clone();
+                                                let label = label.clone();
+                                                let busy_key = busy_key.clone();
+                                                repo_registering.set(Some(busy_key));
+                                                repo_scan_error.set(None);
+                                                let mut refresh = state.refresh;
+                                                spawn(async move {
+                                                    let result = async {
+                                                        let project = project_service.create(&label, std::slice::from_ref(&root)).await?;
+                                                        project_service.set_active(Some(&project.id)).await?;
+                                                        Ok::<_, hermes_core::ServiceError>(())
+                                                    }.await;
+                                                    match result {
+                                                        Ok(()) => {
+                                                            refresh += 1;
+                                                            repo_scan_refresh.set(repo_scan_refresh() + 1);
+                                                        }
+                                                        Err(problem) => repo_scan_error.set(Some(problem.to_string())),
+                                                    }
+                                                    repo_registering.set(None);
+                                                });
+                                            },
+                                            if repo_registering().as_deref() == Some(root.as_str()) { "Registering…" } else { "Register project" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 div { class: "project-filters", aria_label: "Project filters",

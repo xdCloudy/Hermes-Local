@@ -1,9 +1,13 @@
-#![allow(dead_code)] // GT-07 service foundation; Project discovery UI is a later stage.
-
 use std::{
     collections::{BTreeMap, HashSet, VecDeque},
     fs,
     path::{Component, Path, PathBuf},
+    sync::Arc,
+};
+
+use hermes_core::{
+    AppServices, DiscoveredGitRepository, GitRepoScanService as GitRepoScanServiceContract,
+    RepoScanCancellation, ServiceError, ServiceFuture,
 };
 
 const DEFAULT_MAX_DEPTH: usize = 3;
@@ -44,6 +48,54 @@ impl Default for RepoScanOptions {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct GitRepoScanService;
 
+pub fn install(services: &mut AppServices) {
+    services.git_repo_scan = Arc::new(GitRepoScanService);
+}
+
+impl GitRepoScanServiceContract for GitRepoScanService {
+    fn scan(
+        &self,
+        roots: &[PathBuf],
+        exclude_paths: &[PathBuf],
+        enabled: bool,
+        cancellation: RepoScanCancellation,
+    ) -> ServiceFuture<'_, Vec<DiscoveredGitRepository>> {
+        let roots = roots.to_vec();
+        let exclude_paths = exclude_paths.to_vec();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || {
+                let options = RepoScanOptions {
+                    enabled,
+                    exclude_paths,
+                    ..RepoScanOptions::default()
+                };
+                GitRepoScanService
+                    .scan_with_cancel(&roots, &options, || cancellation.is_cancelled())
+            })
+            .await
+            .map_err(|error| {
+                ServiceError::Platform(format!("repository scan worker failed: {error}"))
+            })?
+            .map(|repositories| {
+                repositories
+                    .into_iter()
+                    .map(|repository| DiscoveredGitRepository {
+                        root: repository.root,
+                        label: repository.label,
+                    })
+                    .collect()
+            })
+            .map_err(|error| {
+                if error.contains("cancelled") {
+                    ServiceError::Unavailable(error)
+                } else {
+                    ServiceError::Platform(error)
+                }
+            })
+        })
+    }
+}
+
 impl GitRepoScanService {
     /// Scan configured roots for normal Git repositories. An empty root list
     /// preserves the Electron behavior of scanning the current user's home.
@@ -54,6 +106,21 @@ impl GitRepoScanService {
         roots: &[PathBuf],
         options: &RepoScanOptions,
     ) -> Result<Vec<DiscoveredRepository>, String> {
+        self.scan_with_cancel(roots, options, || false)
+    }
+
+    fn scan_with_cancel<F>(
+        &self,
+        roots: &[PathBuf],
+        options: &RepoScanOptions,
+        cancelled: F,
+    ) -> Result<Vec<DiscoveredRepository>, String>
+    where
+        F: Fn() -> bool,
+    {
+        if cancelled() {
+            return Err("Repository discovery was cancelled.".to_owned());
+        }
         if !options.enabled {
             return Ok(Vec::new());
         }
@@ -82,6 +149,9 @@ impl GitRepoScanService {
         queue.extend(search_roots.into_iter().map(|root| (root, 0)));
 
         while let Some((directory, depth)) = queue.pop_front() {
+            if cancelled() {
+                return Err("Repository discovery was cancelled.".to_owned());
+            }
             if depth > options.max_depth {
                 continue;
             }
@@ -124,6 +194,9 @@ impl GitRepoScanService {
                 continue;
             }
             for entry in entries {
+                if cancelled() {
+                    return Err("Repository discovery was cancelled.".to_owned());
+                }
                 let Ok(file_type) = entry.file_type() else {
                     continue;
                 };
@@ -249,6 +322,18 @@ mod tests {
             },
         );
         assert_eq!(result, Ok(Vec::new()));
+    }
+
+    #[test]
+    fn cooperative_cancellation_stops_before_touching_roots() {
+        let error = GitRepoScanService
+            .scan_with_cancel(
+                &[PathBuf::from("definitely-relative-and-unused")],
+                &RepoScanOptions::default(),
+                || true,
+            )
+            .expect_err("cancelled scan");
+        assert!(error.contains("cancelled"));
     }
 
     #[test]
