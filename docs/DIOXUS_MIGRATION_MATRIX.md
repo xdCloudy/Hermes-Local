@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `642f99d6afa053a3750e0d0fbd45276cad286753` (2026-08-12)  
+> **Implementation audit checkpoint:** `1321a4dd4b5231c61fbe07a629d267e37b362577` (2026-08-12)  
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -53,8 +53,8 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 54 | Largest remaining implementation backlog. |
-| A2 Service | 26 | Native/core foundations exist; UI/parity work remains. |
+| A1 Designed | 47 | Largest remaining implementation backlog. |
+| A2 Service | 33 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 6 | User-facing implementation exists; more evidence required. |
 | A4 Auto-verified | 39 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
@@ -62,18 +62,19 @@ At the audit checkpoint above:
 | BX Blocked | 1 | Named external validation blocker. |
 | **Total** | **127** | Every row must end at A6 or be explicitly retired with product-owner approval. |
 
-At least-service coverage is **71/127 capabilities (55.9%)**. This is service-foundation coverage, not end-user parity or human acceptance.
+At least-service coverage is **78/127 capabilities (61.4%)**. This is service-foundation coverage, not end-user parity or human acceptance.
 
-Current CI at this checkpoint is green for Documentation validation, the Hermes
-Agent harness/native-client boundary workflow, Dioxus Rust validation, Windows
-installer/portable packaging and artifact-footprint regression. The Rust
-validation gate includes architecture enforcement, rustfmt,
+The last merged migration-head validation set was green for Documentation
+validation, the Hermes Agent harness/native-client boundary workflow, Dioxus
+Rust validation, Windows installer/portable packaging and artifact-footprint
+regression. The Rust validation gate includes architecture enforcement, rustfmt,
 `cargo check --workspace --all-targets`, shared-UI WASM compilation, workspace
 tests, Clippy, optimized Windows release build, resolved Cargo CycloneDX SBOM,
 release-manifest/SHA-256 generation and artifact upload. Windows distribution CI
 also exercises silent install/uninstall, package identity and data-preserving
-repair. This is evidence for applicable A4 rows only; it is not a substitute for
-A5 or A6.
+repair. Newly added service work at this checkpoint still requires its own exact-
+head CI before any A4 promotion; A2 records implementation plus focused service
+coverage only.
 
 ## Roadmap waves
 
@@ -204,7 +205,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | PF-04 | Broken-path repair and confirmed filesystem deletion | `ProjectService` + `PlatformService` | Project Centre dialogs | A4 Auto-verified | Exact repair/delete RPC shapes and typed `DELETE <name>` confirmation are covered by fixtures. | Using disposable data, break/repair a path, test wrong confirmations, then perform a real confirmed delete and inspect filesystem result. | ⬜ |
 | PF-05 | File tree read and text write service | `FileService` | Files/editor | A2 Service | Typed `read_dir`, `read_text`, `write_text` exist with canonical root containment/symlink defenses; Dioxus Files surface is still placeholder. | After UI lands: browse nested trees, edit/save UTF-8 and edge-case files, verify symlink/path escape rejection. | ⬜ |
 | PF-06 | Rename, trash, reveal and open | `FileService` + `PlatformService` | tree/context actions | A2 Service | Native trash exists behind typed service; rename/reveal/open surface/coverage is incomplete. | After complete: rename files/dirs, recycle-bin trash, reveal/open, permission failures and containment checks. | ⬜ |
-| PF-07 | Directory and preview watchers | `FileService` | tree/preview | A1 Designed | Not ported. | Edit/create/delete files externally; verify coalesced updates, disposal and no hidden watcher leaks. | ⬜ |
+| PF-07 | Directory and preview watchers | `FileService` | tree/preview | A1 Designed | Rebased native watcher service is under review in PR #172; it remains A1 until merged into the migration branch. | Edit/create/delete files externally; verify coalesced updates, disposal and no hidden watcher leaks. | ⬜ |
 | PF-08 | Preview target normalization and safe preview | `PreviewNormalizationService` | preview pane | A2 Service | Native Desktop normalization matches the Electron preview oracle for HTTP(S)/file/local targets, wildcard-host rewriting, directory `index.html`, sensitive/device-path blocking before/after canonicalization, readability, MIME/language/binary/size classification and Windows extended-path normalization; focused Windows/security tests pass. Dioxus preview/watchers are not wired yet. | Preview supported/unsupported local files and URLs; test traversal, credentialed URLs, MIME/size and navigation restrictions. | ⬜ |
 | GT-01 | Git root/status service | `GitService` | Project Centre/status | A2 Service | Typed status uses explicit argv and porcelain parsing; full repo-root/branch UI parity is not present. | Run on clean/dirty/unborn/detached repos and nested paths; verify branch/ahead/behind/change counts. | ⬜ |
 | GT-02 | Branches and branch switching | `GitBranchService` | Project Centre/Git | A2 Service | Native local-branch listing/switching detects worktree checkout state and trunk via `origin/HEAD`, Git config, then `main`/`master`; canonical repository roots, Git branch validation, explicit argv and disposable-repository tests are in place. Dioxus Project Centre/Git UI is not wired. | List/switch/create representative branches, dirty-conflict cases and verify project/session cwd remains coherent. | ⬜ |
@@ -248,8 +249,8 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | CN-06 | Hermes Cloud portal discovery, org selection and agent connection | future `AuthService`/`ConnectionService` | Settings → Gateway | A1 Designed | OG Cloud discovery/org/agent cascade remains unported. | Sign in to Cloud, handle zero/one/multiple orgs, discover agents, connect/switch/reconnect and separate portal auth from Agent connectivity. | ⬜ |
 | CN-07 | Gateway/SSH session secrets at rest | native secret stores | no DOM exposure | A4 Auto-verified | Gateway/OAuth/SSH reuse secrets use Credential Manager/keyring indirection; config exposes only markers/previews. | Inspect persisted files/process args/logs/DOM while connecting; rotate/delete secrets and verify ACL/user isolation. | ⬜ |
 | CN-08 | Remaining product secrets at rest | future `SecretService` | no DOM exposure | A1 Designed | Complete inventory/migration of every non-Gateway credential is not finished. | Audit every credential source; verify DPAPI/Credential Manager storage, migration, deletion and log/DOM/process-arg redaction. | ⬜ |
-| RT-01 | Local Workstation snapshot/home | `RuntimeService` | workstation home | A1 Designed | Route/shell placeholder exists; production snapshot schema/actions are not ported. | Compare all workstation cards/data/refresh/degraded states against OG using real local services. | ⬜ |
-| RT-02 | Runtime actions and Task Centre | future `TaskService`/`RuntimeService` | Tasks/status | A1 Designed | Service trait foundations exist but durable task lifecycle UI is not ported. | Start/cancel/pause/retry representative tasks, restart client and verify durable progress/errors. | ⬜ |
+| RT-01 | Local Workstation snapshot/home | `RuntimeService` | workstation home | A2 Service | Native runtime status contract covers exact `status.get` + `{}` request behavior with typed phase/Agent-version decoding and forward-compatible unknown fields. Workstation home UI is not wired. | Compare all workstation cards/data/refresh/degraded states against OG using real local services. | ⬜ |
+| RT-02 | Runtime actions and Task Centre | `TaskService`/`RuntimeService` | Tasks/status | A2 Service | Native task contracts cover exact `tasks.list`, `tasks.start` and `tasks.cancel` shapes with typed task decoding and invalid action/task identifiers rejected before mutation. Task Centre UI is not wired. | Start/cancel/pause/retry representative tasks, restart client and verify durable progress/errors. | ⬜ |
 | RT-03 | Models and model downloads | `RuntimeService` | Models | A1 Designed | Not ported. | Discover/download/cancel/resume/verify/delete representative models; test checksum/disk/network failures. | ⬜ |
 | RT-04 | Inference profiles and switching | `RuntimeService` | Models/Profiles | A1 Designed | Not ported. | Switch profiles/models during idle and active sessions; verify rollback, runtime restart and provider-neutral behavior. | ⬜ |
 | RT-05 | Benchmarks | `RuntimeService` | Benchmarks | A1 Designed | Not ported. | Run/cancel benchmark, verify progress/results persistence and error handling. | ⬜ |
@@ -257,11 +258,11 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | RT-07 | Restore and repair | `UpdateService` + `RuntimeService` | recovery | A1 Designed | Not ported. | Corrupt representative runtime/install state and verify data-preserving repair/restore/rollback. | ⬜ |
 | AG-01 | Skills hub and local skills | Agent/Trust services | Skills | A1 Designed | Not ported. | List/install/enable/disable/remove skills, trust prompts and invalid packages; compare OG. | ⬜ |
 | AG-02 | MCP servers and catalog | Agent/Trust services | Skills/MCP | A1 Designed | Not ported. | Add/config/enable/test/disable/remove MCP servers across scopes with trust/reload prompts. | ⬜ |
-| AG-03 | Trust Centre and diagnostics | `TrustService` | Trust Centre | A1 Designed | Typed Trust service exists but full surface/policy parity is not implemented. | Review every trust policy/diagnostic, change policy and trigger representative protected actions. | ⬜ |
-| AG-04 | Memory and curator | Agent services | Memory/Starmap | A1 Designed | Not ported. | Inspect/search/reset memory and curator flows across profiles/sessions; verify destructive confirmation. | ⬜ |
-| AG-05 | Cron and scheduled tasks | Agent services | Cron overlay | A1 Designed | Not ported. | Create/edit/enable/disable/run/delete schedules; verify persistence and timezone/error cases. | ⬜ |
-| AG-06 | Messaging integrations | Agent services | Integrations/Messaging | A1 Designed | Not ported. | Configure supported messaging connectors, test connection/state/errors and secret handling. | ⬜ |
-| AG-07 | Webhooks | Agent services | Integrations/Webhooks | A1 Designed | Not ported. | Create/test/update/delete webhooks, invalid URLs, secret redaction and scope behavior. | ⬜ |
+| AG-03 | Trust Centre and diagnostics | `TrustService` | Trust Centre | A2 Service | Native exact `trust.get`/`trust.set_policy` contracts, typed policy decoding and forward-compatible diagnostics are covered; invalid/path-like policy values are rejected before mutation. Trust Centre UI remains unported. | Review every trust policy/diagnostic, change policy and trigger representative protected actions. | ⬜ |
+| AG-04 | Memory and curator | `NativeMemoryClient` | Memory/Starmap | A2 Service | Native profile-bound Memory/Curator REST foundation covers status/reset, declared provider config read/write, provider OAuth start/status, curator status/pause/run, encoded provider segments, header-only session auth, bounded responses/config values and cross-profile rejection. Focused contract/security tests are included; Dioxus Memory/Starmap consumers remain unported. | Inspect/search/reset memory and curator flows across profiles/sessions; verify destructive confirmation. | ⬜ |
+| AG-05 | Cron and scheduled tasks | `NativeCronClient` | Cron overlay | A2 Service | Native typed Cron list/get/runs/create/update/pause/resume/trigger/delete contracts preserve routing-vs-filter profile semantics, encoded IDs, bounded history/input, HTTP(S)-only authenticated transport and startup/interactive timeouts. Cron Dioxus overlay and live reconciliation are not wired. | Create/edit/enable/disable/run/delete schedules; verify persistence and timezone/error cases. | ⬜ |
+| AG-06 | Messaging integrations | `NativeMessagingClient` | Integrations/Messaging | A2 Service | Native messaging platform list/update/test and pairing list/approve/revoke contracts preserve backend/profile placement, encoded platform IDs, redacted read DTOs, bounded secret mutation payloads and header-only auth. Dioxus Messaging integration is not wired. | Configure supported messaging connectors, test connection/state/errors and secret handling. | ⬜ |
+| AG-07 | Webhooks | `NativeWebhookClient` | Integrations/Webhooks | A2 Service | Native typed webhook list/enable/create/enabled-state/delete contracts preserve profile scope, one-segment webhook names, one-time create secrets, secret-free read DTOs, HTTP(S)-only transport and header-only auth. Dioxus Webhooks integration is not wired. | Create/test/update/delete webhooks, invalid URLs, secret redaction and scope behavior. | ⬜ |
 | AG-08 | Artifacts | Agent + `FileService` | Artifacts | A1 Designed | Not ported. | Open representative artifacts, previews/actions, missing files and unsafe path/URL cases. | ⬜ |
 | AG-09 | Agents/subagents | Agent services | Agents overlay | A1 Designed | Not ported. | Launch/observe/cancel subagents, switching/background states and error/reconnect behavior. | ⬜ |
 | AG-10 | Starmap | Agent services | Starmap overlay | A1 Designed | Not ported. | Load large graph, navigate/select/filter and review performance/visual parity. | ⬜ |
