@@ -1,0 +1,70 @@
+name: Reconcile post-AG-01 migration ledger
+
+on:
+  push:
+    branches:
+      - goal-loop/matrix-post-ag01
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconcile migration ledger
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("docs/DIOXUS_MIGRATION_MATRIX.md")
+          text = path.read_text(encoding="utf-8")
+
+          stale = (
+              "The latest DI-07 and AG-01 service slices each passed fresh exact-head\n"
+              "five-workflow validation before merge; they remain A2 because their Dioxus/user\n"
+              "surfaces are not wired yet."
+          )
+          current = (
+              "DI-07 remains A2 because its OS global-hotkey, secondary-window lifecycle and\n"
+              "submission surface are not wired. AG-01 is now A4 after PR #185 wired the typed\n"
+              "Dioxus Skills/Hub surface and passed its applicable exact-head release gates."
+          )
+          if stale not in text:
+              raise SystemExit("stale AG-01 snapshot paragraph not found")
+          text = text.replace(stale, current, 1)
+
+          old_owner = "| AG-01 | Skills hub and local skills | `NativeSkillsClient` | Skills |"
+          new_owner = "| AG-01 | Skills hub and local skills | `SkillsService` + authenticated `GatewayServices` | Skills |"
+          if old_owner not in text:
+              raise SystemExit("AG-01 owner marker not found")
+          text = text.replace(old_owner, new_owner, 1)
+
+          path.write_text(text, encoding="utf-8", newline="\n")
+
+      - name: Verify ledger consistency
+        shell: python
+        run: |
+          from pathlib import Path
+          text = Path("docs/DIOXUS_MIGRATION_MATRIX.md").read_text(encoding="utf-8")
+          assert "| A2 Service | 23 |" in text
+          assert "| A4 Auto-verified | 54 |" in text
+          for row in ("GT-01", "GT-02", "GT-03", "GT-05", "GT-06", "GT-07", "TM-01", "AG-01"):
+              line = next(line for line in text.splitlines() if line.startswith(f"| {row} |"))
+              assert "| A4 Auto-verified |" in line, line
+          assert "AG-01 is now A4" in text
+          assert "they remain A2 because their Dioxus/user" not in text
+
+      - name: Publish docs-only cleanup
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/DIOXUS_MIGRATION_MATRIX.md
+          git commit -m "docs: reconcile post-AG-01 migration ledger"
+          git rm .github/workflows/matrix-post-ag01.yml
+          git commit -m "chore(ci): remove migration-ledger helper"
+          git push origin HEAD:goal-loop/matrix-post-ag01
