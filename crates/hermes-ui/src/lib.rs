@@ -1987,9 +1987,12 @@ fn GatewaySettingsPanel() -> Element {
     let mut message = use_signal(|| None::<String>);
     let mut error = use_signal(|| None::<String>);
     let mut refresh = use_signal(|| 0_u64);
+    let mut ssh_mode = use_signal(|| false);
+    let mut ssh_hosts = use_signal(|| vec![]);
     let load_service = services.connection.clone();
+    let load_service_for_load = load_service.clone();
     let _load = use_resource(move || {
-        let service = load_service.clone();
+        let service = load_service_for_load.clone();
         let selected_scope = scope();
         let _revision = refresh();
         async move {
@@ -2005,6 +2008,29 @@ fn GatewaySettingsPanel() -> Element {
             loading.set(false);
         }
     });
+
+    let ssh_hosts_resource = use_resource(move || {
+        let service = load_service.clone();
+        let mode = ssh_mode();
+        let mut hosts_signal = ssh_hosts;
+        async move {
+            if mode {
+                let hosts_vec = service.list_ssh_hosts().await.unwrap_or_default();
+                hosts_signal.set(hosts_vec.clone());
+                hosts_vec
+            } else {
+                vec![]
+            }
+        }
+    });
+
+    let draft_mode = draft().map(|c| c.mode);
+    use_effect(move || {
+        if let Some(mode) = draft_mode {
+            ssh_mode.set(mode == ConnectionMode::Ssh);
+        }
+    });
+
     let current_profile = (settings.settings)()
         .profile
         .filter(|profile| profile != "default");
@@ -2176,7 +2202,27 @@ fn GatewaySettingsPanel() -> Element {
                 }
                 if config.mode == ConnectionMode::Ssh && !config.env_override {
                     section { class: "gateway-fields",
-                        GatewayTextField { title: "Host", description: "user@host, or a Host alias from ~/.ssh/config.", value: config.ssh_host.clone(), placeholder: "", monospace: false, on_change: move |value| { if let Some(mut next) = draft() { next.ssh_host = value; draft.set(Some(next)); } } }
+                        GatewayTextField { title: "Host", description: "user@host, or a Host alias from ~/.ssh/config.", value: config.ssh_host.clone(), placeholder: "", monospace: false, on_change: move |value| { if let Some(mut next) = draft() { next.ssh_host = value; draft.set(Some(next)); } }                         },
+                        if !ssh_hosts().is_empty() {
+                            section { class: "settings-list-row",
+                                div { class: "settings-row-copy", strong { "Host alias" } p { "Select from saved SSH Host aliases" } },
+                                div { class: "settings-row-action",
+                                    select {
+                                        class: "settings-input gateway-control",
+                                        onchange: move |event| {
+                                            let val = event.value();
+                                            if let Some(mut next) = draft() {
+                                                next.ssh_host = val;
+                                                draft.set(Some(next));
+                                            }
+                                        },
+                                        for host in ssh_hosts() {
+                                            option { "{host}" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         GatewayTextField { title: "User", description: "Blank = ~/.ssh/config or your current user.", value: config.ssh_user.clone(), placeholder: "from ~/.ssh/config", monospace: false, on_change: move |value| { if let Some(mut next) = draft() { next.ssh_user = value; draft.set(Some(next)); } } }
                         GatewayTextField { title: "Port", description: "Blank = 22 or the ~/.ssh/config port.", value: config.ssh_port.map(|port| port.to_string()).unwrap_or_default(), placeholder: "22", monospace: false, on_change: move |value: String| { if let Some(mut next) = draft() { next.ssh_port = value.parse().ok(); draft.set(Some(next)); } } }
                         GatewayTextField { title: "Identity file", description: "Private key path. Blank = ssh-agent or ~/.ssh/config.", value: config.ssh_key_path.clone(), placeholder: "", monospace: true, on_change: move |value| { if let Some(mut next) = draft() { next.ssh_key_path = value; draft.set(Some(next)); } } }

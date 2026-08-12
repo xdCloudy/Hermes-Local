@@ -286,4 +286,8 @@ impl ConnectionService for SshProbeConnection {
     fn oauth_logout(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionOauthLogoutResult> {
         self.inner.oauth_logout(remote_url)
     }
+
+    fn list_ssh_hosts(&self) -> ServiceFuture<'_, Vec<String>> {
+        Box::pin(async move { Ok(ssh_config::configured_hosts()) })
+    }
 }

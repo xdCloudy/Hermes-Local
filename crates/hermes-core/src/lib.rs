@@ -325,6 +325,9 @@ pub trait ConnectionService: Send + Sync {
     fn probe_config(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionProbeResult>;
     fn oauth_login(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionOauthLoginResult>;
     fn oauth_logout(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionOauthLogoutResult>;
+    fn list_ssh_hosts(&self) -> ServiceFuture<'_, Vec<String>> {
+        Box::pin(async move { Ok(Vec::new()) })
+    }
 }
 
 pub trait ProjectService: Send + Sync {
