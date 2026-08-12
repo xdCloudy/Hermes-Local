@@ -1777,6 +1777,7 @@ fn SettingsOverlay(initial: &'static str) -> Element {
         ("notifications", "bell", "Notifications"),
         ("providers", "plug", "Providers"),
         ("gateway", "globe", "Gateway"),
+        ("trust", "shield-check", "Trust Centre"),
         ("keybinds", "symbol-key", "Keybindings"),
         ("keys", "key", "API Keys"),
         ("plugins", "extensions", "Plugins"),
@@ -1856,6 +1857,8 @@ fn SettingsOverlay(initial: &'static str) -> Element {
                         CustomEndpointsPanel {}
                     } else if active() == "gateway" {
                         GatewaySettingsPanel {}
+                    } else if active() == "trust" {
+                        TrustCentre {}
                     } else {
                         section { class: "settings-placeholder",
                             div { class: "settings-section-title", Codicon { name: active_icon } h1 { "{active_label}" } }
@@ -2270,6 +2273,157 @@ fn GatewaySettingsPanel() -> Element {
                 }
             } else if let Some(problem) = error() {
                 p { class: "inline-error", role: "alert", "{problem}" }
+            }
+        }
+    }
+}
+
+#[component]
+fn TrustCentre() -> Element {
+    let services = use_context::<AppServices>();
+    let mut loading = use_signal(|| true);
+    let mut saving = use_signal(|| false);
+    let mut message = use_signal(|| None::<String>);
+    let mut error = use_signal(|| None::<String>);
+    let mut current_policy = use_signal(|| String::new());
+    let mut trust_items = use_signal(|| vec![]);
+    let mut refresh = use_signal(|| 0_u64);
+
+    let trust_services = services.trust.clone();
+    let trust_snapshot = use_resource(move || {
+        let service = trust_services.clone();
+        let _rev = refresh();
+        async move {
+            loading.set(true);
+            match service.snapshot().await {
+                Ok(snapshot) => {
+                    current_policy.set(snapshot.policy.clone());
+                    trust_items.set({
+                        let mut items = vec![];
+                        for item in &snapshot.skills {
+                            items.push((item.id.clone(), item.label.clone(), item.state.clone(), item.source.clone()));
+                        }
+                        for item in &snapshot.mcp_servers {
+                            items.push((item.id.clone(), item.label.clone(), item.state.clone(), item.source.clone()));
+                        }
+                        for item in &snapshot.delegations {
+                            items.push((item.id.clone(), item.label.clone(), item.state.clone(), item.source.clone()));
+                        }
+                        items
+                    });
+                    loading.set(false);
+                    Some(snapshot)
+                }
+                Err(e) => {
+                    loading.set(false);
+                    error.set(Some(e.to_string()));
+                    None
+                }
+            }
+        }
+    });
+
+    let save_policy = |policy: &str| {
+        let service = services.trust.clone();
+        let policy = policy.to_owned();
+        let mut message = message;
+        let mut error = error;
+        let mut refresh = refresh;
+        spawn(async move {
+            match service.set_policy(&policy).await {
+                Ok(_) => {
+                    message.set(Some("Trust policy updated successfully.".into()));
+                    error.set(None);
+                    refresh += 1;
+                }
+                Err(e) => {
+                    error.set(Some(e.to_string()));
+                    message.set(None);
+                }
+            }
+        });
+    };
+
+    rsx! {
+        section { class: "trust-centre",
+            div { class: "settings-section-title",
+                Codicon { name: "shield-check" }
+                h1 { "Trust Centre" }
+            }
+            p { class: "settings-intro", "Define which skills, MCP servers and delegations are allowed to run in this profile." }
+            if loading() {
+                div { class: "settings-loading", span { class: "spinner" } "Loading trust settings…" }
+            } else if let Some(problem) = error() {
+                p { class: "inline-error", role: "alert", "{problem}" }
+            } else {
+                section { class: "gateway-fields",
+                    div { class: "settings-list-row",
+                        div { class: "settings-row-copy", strong { "Trust policy" } p { "Allowed trust policy value. Set to 'default' or a custom policy name." } }
+                        div { class: "settings-row-action",
+                            input {
+                                class: "settings-input gateway-control",
+                                value: "{current_policy()}",
+                                placeholder: "default",
+                                oninput: move |event| current_policy.set(event.value())
+                            }
+                        }
+                    }
+                }
+                if !trust_items().is_empty() {
+                    section { class: "settings-list-row",
+                        div { class: "settings-row-copy", strong { "Trust items" } p { "Allowed components in this profile." } }
+                        div { class: "settings-row-action",
+                            for item in trust_items() {
+                                div { class: "trust-item",
+                                    div { class: "trust-id", "{item.0}" }
+                                    div { class: "trust-label", "{item.1}" }
+                                    div { class: "trust-state", "{item.2}" }
+                                    if let Some(src) = item.3 {
+                                        div { class: "trust-source", "source: {src}" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if let Some(notice) = message() {
+                    p { class: "gateway-message", Codicon { name: "check" } "{notice}" }
+                }
+                if let Some(problem) = error() {
+                    p { class: "inline-error", role: "alert", "{problem}" }
+                }
+                footer { class: "gateway-actions",
+                    button {
+                        class: "button primary",
+                        disabled: saving() || current_policy().is_empty(),
+                        onclick: move |_| {
+                            saving.set(true);
+                            message.set(None);
+                            error.set(None);
+                            let policy = current_policy().clone();
+                            let service = services.trust.clone();
+                            spawn(async move {
+                                match service.set_policy(&policy).await {
+                                    Ok(_) => {
+                                        message.set(Some("Trust policy updated successfully.".into()));
+                                        error.set(None);
+                                        refresh += 1;
+                                    }
+                                    Err(e) => {
+                                        error.set(Some(e.to_string()));
+                                        message.set(None);
+                                    }
+                                }
+                                saving.set(false);
+                            });
+                        },
+                        if saving() {
+                            span { class: "spinner" }
+                        } else {
+                            "Save trust policy"
+                        }
+                    }
+                }
             }
         }
     }
