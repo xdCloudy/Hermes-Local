@@ -461,6 +461,13 @@ pub trait FileService: Send + Sync {
 pub trait GitService: Send + Sync {
     fn status(&self, repository: &Path) -> ServiceFuture<'_, GitStatus>;
     fn diff(&self, repository: &Path, relative: &Path) -> ServiceFuture<'_, String>;
+    fn diff_staged(&self, _repository: &Path, _relative: &Path) -> ServiceFuture<'_, String> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "staged Git diff is unavailable on this platform".into(),
+            ))
+        })
+    }
     fn stage(&self, repository: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
     fn unstage(&self, repository: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
 }
