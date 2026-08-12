@@ -278,7 +278,7 @@ fn redact_prefixed_tokens(input: &str) -> String {
         let prefix = &bytes[cursor..cursor + 3];
         let matches = prefix[2] == b'-'
             && matches!(prefix[0].to_ascii_lowercase(), b's' | b'p' | b'r')
-            && prefix[1].to_ascii_lowercase() == b'k';
+            && prefix[1].eq_ignore_ascii_case(&b'k');
         if !matches {
             cursor += 1;
             continue;
