@@ -38,11 +38,11 @@ fn trust_centre_keeps_user_visible_async_states() {
     let ui = read_repo_file("crates/hermes-ui/src/lib.rs");
 
     for required in [
-        "Loading Trust Centre",
+        "Loading trust settings…",
         "Trust policy updated successfully.",
         "saving.set(true);",
         "error.set(None);",
-        "refresh.set(refresh() + 1);",
+        "refresh += 1;",
     ] {
         assert!(
             ui.contains(required),
