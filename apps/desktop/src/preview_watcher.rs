@@ -82,12 +82,9 @@ impl PreviewWatcherRegistry {
             path: path.clone(),
             url,
         };
-        let handle = start_watch(
-            &directory,
-            Some(&target_name),
-            Some(path),
-            move || callback(event.clone()),
-        )?;
+        let handle = start_watch(&directory, Some(&target_name), Some(path), move || {
+            callback(event.clone())
+        })?;
         self.watches.insert(id.clone(), handle);
         Ok(id)
     }
@@ -370,7 +367,10 @@ mod tests {
     use super::*;
     use std::{
         fs,
-        sync::{Arc, atomic::{AtomicUsize, Ordering}},
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
         time::{SystemTime, UNIX_EPOCH},
     };
 
