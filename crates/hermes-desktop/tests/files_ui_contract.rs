@@ -97,7 +97,8 @@ fn files_surface_consumes_the_typed_directory_watch_stream() {
     assert!(
         desktop.contains("impl FileService for WatchedFileService")
             && desktop.contains("struct WatchLease")
-            && desktop.contains("registry.stop(&self.id)"),
+            && desktop.contains("WatchLease::new(self.registry.clone(), id)")
+            && desktop.contains("registry.stop(&id)"),
         "Desktop watcher adapter must own native watcher lifecycle and disposal"
     );
     assert!(

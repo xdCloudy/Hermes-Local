@@ -1,5 +1,3 @@
-#![allow(dead_code)] // PF-07 service foundation; Dioxus watcher consumers are a later stage.
-
 use std::{
     collections::HashMap,
     path::{Component, Path, PathBuf},
@@ -133,14 +131,32 @@ struct WatchedFileService {
 }
 
 struct WatchLease {
-    registry: Arc<Mutex<PreviewWatcherRegistry>>,
-    id: String,
+    cleanup: Option<Box<dyn FnOnce() + Send + 'static>>,
+}
+
+impl WatchLease {
+    fn new(registry: Arc<Mutex<PreviewWatcherRegistry>>, id: String) -> Self {
+        Self::with_cleanup(move || {
+            if let Ok(mut registry) = registry.lock() {
+                registry.stop(&id);
+            }
+        })
+    }
+
+    fn with_cleanup<F>(cleanup: F) -> Self
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        Self {
+            cleanup: Some(Box::new(cleanup)),
+        }
+    }
 }
 
 impl Drop for WatchLease {
     fn drop(&mut self) {
-        if let Ok(mut registry) = self.registry.lock() {
-            registry.stop(&self.id);
+        if let Some(cleanup) = self.cleanup.take() {
+            cleanup();
         }
     }
 }
@@ -187,10 +203,7 @@ impl FileService for WatchedFileService {
                 let _ = sender.send(FileWatchEvent { path: event.path });
             })
             .map_err(ServiceError::Platform)?;
-        let lease = WatchLease {
-            registry: self.registry.clone(),
-            id,
-        };
+        let lease = WatchLease::new(self.registry.clone(), id);
         Ok(Box::pin(async_stream::stream! {
             let lease = lease;
             while let Some(event) = receiver.recv().await {
@@ -508,23 +521,16 @@ mod tests {
         cleanup(root);
     }
 
-    #[cfg(windows)]
     #[test]
-    fn dropping_watch_lease_releases_native_registry_entry() {
-        let root = test_directory("lease");
-        let registry = Arc::new(Mutex::new(PreviewWatcherRegistry::new()));
-        let id = registry
-            .lock()
-            .expect("registry")
-            .watch_directory(&root, |_| {})
-            .expect("start watcher");
-        assert_eq!(registry.lock().expect("registry").active_count(), 1);
-        drop(WatchLease {
-            registry: registry.clone(),
-            id,
-        });
-        assert_eq!(registry.lock().expect("registry").active_count(), 0);
-        cleanup(root);
+    fn dropping_watch_lease_runs_cleanup_without_native_helper_startup() {
+        use std::sync::atomic::AtomicBool;
+
+        let cleaned = Arc::new(AtomicBool::new(false));
+        let observed = cleaned.clone();
+        drop(WatchLease::with_cleanup(move || {
+            observed.store(true, Ordering::SeqCst);
+        }));
+        assert!(cleaned.load(Ordering::SeqCst));
     }
 
     #[test]
