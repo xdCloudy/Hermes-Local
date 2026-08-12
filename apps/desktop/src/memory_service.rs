@@ -199,8 +199,7 @@ impl NativeMemoryClient {
         if bytes.len() as u64 > MAX_RESPONSE_BYTES {
             return Err("Memory response exceeded the 4 MiB safety limit.".into());
         }
-        serde_json::from_slice(&bytes)
-            .map_err(|error| format!("Invalid Memory response: {error}"))
+        serde_json::from_slice(&bytes).map_err(|error| format!("Invalid Memory response: {error}"))
     }
 
     fn build_request(
@@ -253,10 +252,7 @@ fn validate_base_url(value: &str) -> Result<Url, String> {
 
 fn validate_session_token(value: &str) -> Result<&str, String> {
     let value = value.trim();
-    if value.is_empty()
-        || value.len() > MAX_TOKEN_BYTES
-        || value.chars().any(char::is_control)
-    {
+    if value.is_empty() || value.len() > MAX_TOKEN_BYTES || value.chars().any(char::is_control) {
         return Err("Memory session token is invalid.".into());
     }
     Ok(value)
@@ -359,16 +355,12 @@ mod tests {
     #[test]
     fn base_url_and_auth_validation_fail_closed() {
         assert!(NativeMemoryClient::new("file:///tmp", None, None).is_err());
+        assert!(NativeMemoryClient::new("https://user:pass@example.test/", None, None).is_err());
+        assert!(NativeMemoryClient::new("https://example.test/?token=secret", None, None).is_err());
         assert!(
-            NativeMemoryClient::new("https://user:pass@example.test/", None, None).is_err()
+            NativeMemoryClient::new("https://example.test/", Some("bad\ntoken"), None).is_err()
         );
-        assert!(
-            NativeMemoryClient::new("https://example.test/?token=secret", None, None).is_err()
-        );
-        assert!(NativeMemoryClient::new("https://example.test/", Some("bad\ntoken"), None).is_err());
-        assert!(
-            NativeMemoryClient::new("https://example.test/", None, Some("../other")).is_err()
-        );
+        assert!(NativeMemoryClient::new("https://example.test/", None, Some("../other")).is_err());
     }
 
     #[test]
