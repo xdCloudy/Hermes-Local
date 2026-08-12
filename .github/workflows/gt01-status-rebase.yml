@@ -1,0 +1,57 @@
+name: Rebase validated GT-01 status parity
+
+on:
+  push:
+    branches:
+      - goal-loop/gt01-status-parity-rebased
+    paths:
+      - .github/workflows/gt01-status-rebase.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rebase:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: goal-loop/gt01-status-parity-rebased
+          fetch-depth: 0
+
+      - name: Replay validated GT-01 product commit
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git cherry-pick 2c18072a2a248cabc1fb6edf7164bc4597d9feef
+          if ($LASTEXITCODE -ne 0) { git cherry-pick --abort; exit 1 }
+          cargo fmt --all -- --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff 4036f454380135a99241f6461f17eee7f39c5581..HEAD --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate integrated GT-01 status behavior
+        shell: pwsh
+        run: |
+          python scripts/ci/check_dioxus_rust_architecture.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo check --workspace --all-targets --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo check -p hermes-ui --target wasm32-unknown-unknown --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p hermes-desktop --test git_status_parity --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p hermes-desktop parses_unborn_and_detached_porcelain_headers --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --workspace --all-targets --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Remove rebase helper and publish clean branch
+        shell: pwsh
+        run: |
+          Remove-Item .github/workflows/gt01-status-rebase.yml
+          git add .github/workflows/gt01-status-rebase.yml
+          git commit -m "chore(ci): remove GT-01 rebase helper"
+          git push origin HEAD:goal-loop/gt01-status-parity-rebased
