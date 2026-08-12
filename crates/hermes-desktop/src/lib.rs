@@ -2011,6 +2011,23 @@ impl GitService for DesktopGit {
         })
     }
 
+    fn diff_staged(&self, repository: &Path, relative: &Path) -> ServiceFuture<'_, String> {
+        let repository = repository.to_owned();
+        let relative = relative.to_owned();
+        Box::pin(async move {
+            validate_relative_path(&relative)?;
+            git(
+                &repository,
+                &[
+                    "diff",
+                    "--cached",
+                    "--",
+                    relative.to_string_lossy().as_ref(),
+                ],
+            )
+        })
+    }
+
     fn stage(&self, repository: &Path, relative: &Path) -> ServiceFuture<'_, ()> {
         let repository = repository.to_owned();
         let relative = relative.to_owned();
@@ -2903,14 +2920,38 @@ fn parse_git_status(output: &str) -> ServiceResult<GitStatus> {
         .map(str::to_owned);
     let ahead = parse_counter(header, "ahead ");
     let behind = parse_counter(header, "behind ");
-    let changed = lines
-        .filter_map(|line| line.get(3..).map(str::to_owned))
-        .collect();
+    let entries: Vec<_> = lines.filter_map(parse_git_change).collect();
+    let changed = entries.iter().map(|entry| entry.path.clone()).collect();
     Ok(GitStatus {
         branch,
         ahead,
         behind,
         changed,
+        entries,
+    })
+}
+
+fn parse_git_change(line: &str) -> Option<hermes_protocol::GitChange> {
+    let status = line.get(..2)?;
+    let raw_path = line.get(3..)?;
+    let mut status_chars = status.chars();
+    let index = status_chars.next()?;
+    let worktree = status_chars.next()?;
+    let path = raw_path
+        .rsplit(" -> ")
+        .next()
+        .unwrap_or(raw_path)
+        .trim_matches('"')
+        .to_owned();
+    if path.is_empty() {
+        return None;
+    }
+    Some(hermes_protocol::GitChange {
+        path,
+        index_status: index.to_string(),
+        worktree_status: worktree.to_string(),
+        staged: index != ' ' && index != '?',
+        unstaged: worktree != ' ' || (index == '?' && worktree == '?'),
     })
 }
 

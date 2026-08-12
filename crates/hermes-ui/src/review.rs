@@ -103,7 +103,9 @@ pub(super) fn Review() -> Element {
             };
             diff_loading.set(true);
             let result = if staged {
-                service.diff_staged(Path::new(&root), Path::new(&path)).await
+                service
+                    .diff_staged(Path::new(&root), Path::new(&path))
+                    .await
             } else {
                 service.diff(Path::new(&root), Path::new(&path)).await
             };
