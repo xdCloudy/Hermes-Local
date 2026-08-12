@@ -68,8 +68,7 @@ pub struct MemoryProviderField {
     pub is_set: bool,
     #[serde(default)]
     pub key: String,
-    /// Kept as a string so a future Agent field kind remains readable by an
-    /// older Desktop client instead of failing the whole response.
+    /// Keep this open so an older Desktop build can read future Agent field kinds.
     #[serde(default)]
     pub kind: String,
     #[serde(default)]
@@ -102,9 +101,15 @@ pub struct MemoryProviderOAuthStatus {
     pub connected: bool,
     #[serde(default)]
     pub detail: String,
-    /// Kept open for forward-compatible Agent states.
+    /// Keep this open for forward-compatible Agent states.
     #[serde(default)]
     pub state: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MemoryMutationResponse {
+    #[serde(default)]
+    pub ok: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -193,9 +198,9 @@ pub struct NativeMemoryClient {
 }
 
 impl NativeMemoryClient {
-    /// Bind this client to the already-selected Desktop backend pool. The
-    /// routing profile is not an API query parameter: legacy `profileScoped()`
-    /// selects which backend process owns the request before HTTP dispatch.
+    /// Bind the client to the already-selected Desktop backend pool. The legacy
+    /// bridge's `profile` field selects a backend process; it is not converted
+    /// into an arbitrary Memory API query parameter.
     pub fn new(
         base_url: &str,
         session_token: Option<&str>,
@@ -256,7 +261,7 @@ impl NativeMemoryClient {
         routing_profile: Option<&str>,
         provider: &str,
         values: &BTreeMap<String, String>,
-    ) -> Result<MemoryProviderConfig, String> {
+    ) -> Result<MemoryMutationResponse, String> {
         validate_provider_values(values)?;
         self.execute(MemoryRequest::provider_config(
             routing_profile,
@@ -414,7 +419,7 @@ impl MemoryRequest {
         method: MemoryMethod,
         body: Option<Value>,
     ) -> Result<Self, String> {
-        let provider = encoded_segment(provider, "memory provider")?;
+        let provider = encoded_provider(provider)?;
         let mut spec = request(
             method,
             &format!("/api/memory/providers/{provider}/config"),
@@ -431,7 +436,7 @@ impl MemoryRequest {
         action: &str,
         method: MemoryMethod,
     ) -> Result<Self, String> {
-        let provider = encoded_segment(provider, "memory provider")?;
+        let provider = encoded_provider(provider)?;
         request(
             method,
             &format!("/api/memory/providers/{provider}/oauth/{action}"),
@@ -531,12 +536,12 @@ fn validate_provider(value: &str) -> Result<&str, String> {
     Ok(value)
 }
 
-fn encoded_segment(value: &str, field: &str) -> Result<String, String> {
-    let value = validate_provider(value).map_err(|_| format!("Invalid {field}."))?;
+fn encoded_provider(value: &str) -> Result<String, String> {
+    let value = validate_provider(value)?;
     let mut url = Url::parse("https://hermes.invalid/")
-        .map_err(|error| format!("Could not encode {field}: {error}"))?;
+        .map_err(|error| format!("Could not encode memory provider: {error}"))?;
     url.path_segments_mut()
-        .map_err(|()| format!("Could not encode {field}."))?
+        .map_err(|()| "Could not encode memory provider.".to_owned())?
         .push(value);
     Ok(url.path().trim_start_matches('/').to_owned())
 }
@@ -577,7 +582,10 @@ mod tests {
         let request = client.build_request(&spec).expect("request");
 
         assert_eq!(request.method(), Method::GET);
-        assert_eq!(request.url().as_str(), "https://gateway.example/hermes/api/memory");
+        assert_eq!(
+            request.url().as_str(),
+            "https://gateway.example/hermes/api/memory"
+        );
         assert_eq!(
             request
                 .headers()
@@ -606,7 +614,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_config_uses_declared_surface_and_encodes_provider_as_one_segment() {
+    fn provider_config_uses_declared_surface_and_one_encoded_segment() {
         let client = NativeMemoryClient::new("http://127.0.0.1:8000/root", None, None)
             .expect("client");
         let spec = MemoryRequest::provider_config(
@@ -626,7 +634,7 @@ mod tests {
     }
 
     #[test]
-    fn reset_and_curator_mutations_match_legacy_shapes() {
+    fn mutations_match_legacy_method_path_and_body_contracts() {
         let reset = MemoryRequest::reset(Some("work"), MemoryResetTarget::Memory).expect("reset");
         assert_eq!(reset.method, MemoryMethod::Post);
         assert_eq!(reset.path, "/api/memory/reset");
@@ -644,10 +652,10 @@ mod tests {
     }
 
     #[test]
-    fn provider_config_write_is_bounded_without_exposing_values_in_url() {
+    fn provider_config_write_is_bounded_and_returns_ok_contract() {
         let mut values = BTreeMap::new();
         values.insert("api_key".into(), "super-secret".into());
-        validate_provider_values(&values).expect("valid values");
+        validate_provider_values(&values).expect("values");
         let spec = MemoryRequest::provider_config(
             None,
             "mem0",
@@ -659,11 +667,14 @@ mod tests {
         let request = client.build_request(&spec).expect("request");
         assert_eq!(request.method(), Method::PUT);
         assert!(!request.url().as_str().contains("super-secret"));
-        assert_eq!(spec.body, Some(json!({ "values": { "api_key": "super-secret" } })));
+
+        let response: MemoryMutationResponse =
+            serde_json::from_value(json!({ "ok": true, "future": 1 })).expect("response");
+        assert!(response.ok);
     }
 
     #[test]
-    fn response_contracts_tolerate_future_fields_and_open_provider_states() {
+    fn read_contracts_tolerate_future_fields_and_states() {
         let memory: MemoryStatusResponse = serde_json::from_value(json!({
             "active": "builtin",
             "providers": [{
@@ -703,13 +714,16 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unsafe_bases_tokens_profiles_providers_and_oversized_values() {
+    fn rejects_unsafe_bases_tokens_profiles_providers_and_values() {
         assert!(NativeMemoryClient::new("file:///tmp/hermes", None, None).is_err());
         assert!(NativeMemoryClient::new("https://user:pass@example.com", None, None).is_err());
         assert!(NativeMemoryClient::new("https://example.com/?token=x", None, None).is_err());
         assert!(NativeMemoryClient::new("https://example.com", Some("bad\ntoken"), None).is_err());
         assert!(NativeMemoryClient::new("https://example.com", None, Some("bad\nprofile")).is_err());
-        assert!(MemoryRequest::provider_oauth(None, "bad\nprovider", "start", MemoryMethod::Post).is_err());
+        assert!(
+            MemoryRequest::provider_oauth(None, "bad\nprovider", "start", MemoryMethod::Post)
+                .is_err()
+        );
 
         let mut values = BTreeMap::new();
         values.insert("key".into(), "x".repeat(MAX_CONFIG_VALUE_BYTES + 1));
