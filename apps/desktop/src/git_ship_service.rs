@@ -1,11 +1,15 @@
-#![allow(dead_code)] // GT-06 service foundation; Review ship UI is a later stage.
-
 use std::{
     io::Read,
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
+    sync::Arc,
     thread,
     time::{Duration, Instant},
+};
+
+use hermes_core::{
+    AppServices, GitPullRequestInfo, GitShipInfo, GitShipService as GitShipServiceContract,
+    ServiceError, ServiceFuture,
 };
 
 const MAX_GIT_OUTPUT_BYTES: usize = 8 * 1024 * 1024;
@@ -35,6 +39,89 @@ pub enum PushOutcome {
 
 #[derive(Clone, Debug, Default)]
 pub struct GitShipService;
+
+pub fn install(services: &mut AppServices) {
+    services.git_ship = Arc::new(GitShipService);
+}
+
+impl GitShipServiceContract for GitShipService {
+    fn info(&self, repository: &Path) -> ServiceFuture<'_, GitShipInfo> {
+        let repository = repository.to_owned();
+        Box::pin(async move {
+            let result = tokio::task::spawn_blocking(move || GitShipService.ship_info(&repository))
+                .await
+                .map_err(join_error)?
+                .map_err(service_error)?;
+            Ok(GitShipInfo {
+                gh_ready: result.gh_ready,
+                pull_request: result.pull_request.map(|pull_request| GitPullRequestInfo {
+                    url: pull_request.url,
+                    state: pull_request.state,
+                    number: pull_request.number,
+                }),
+            })
+        })
+    }
+
+    fn commit(
+        &self,
+        repository: &Path,
+        message: &str,
+        push_after_commit: bool,
+    ) -> ServiceFuture<'_, ()> {
+        let repository = repository.to_owned();
+        let message = message.to_owned();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || {
+                GitShipService.commit(&repository, &message, push_after_commit)
+            })
+            .await
+            .map_err(join_error)?
+            .map(|_| ())
+            .map_err(service_error)
+        })
+    }
+
+    fn push(&self, repository: &Path) -> ServiceFuture<'_, ()> {
+        let repository = repository.to_owned();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || GitShipService.push(&repository))
+                .await
+                .map_err(join_error)?
+                .map(|_| ())
+                .map_err(service_error)
+        })
+    }
+
+    fn create_pull_request(&self, repository: &Path) -> ServiceFuture<'_, String> {
+        let repository = repository.to_owned();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || GitShipService.create_pull_request(&repository))
+                .await
+                .map_err(join_error)?
+                .map_err(service_error)
+        })
+    }
+}
+
+fn join_error(error: tokio::task::JoinError) -> ServiceError {
+    ServiceError::Platform(format!("Git ship worker failed: {error}"))
+}
+
+fn service_error(error: String) -> ServiceError {
+    if error.contains("not installed") || error.contains("not authenticated") {
+        ServiceError::Unavailable(error)
+    } else if error.contains("must be")
+        || error.contains("required")
+        || error.contains("requires")
+        || error.contains("NUL character")
+        || error.contains("repository root")
+    {
+        ServiceError::InvalidInput(error)
+    } else {
+        ServiceError::Platform(error)
+    }
+}
 
 impl GitShipService {
     /// Commit the exact staged set. When nothing is staged, mirror the Electron
