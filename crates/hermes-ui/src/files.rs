@@ -49,9 +49,13 @@ pub(super) fn Files() -> Element {
     let mut entries = use_signal(Vec::<FileEntry>::new);
     let mut selected_path = use_signal(|| None::<String>);
     let mut editor_text = use_signal(String::new);
+    let mut action_target = use_signal(|| None::<FileEntry>);
+    let mut rename_name = use_signal(String::new);
+    let mut delete_confirm = use_signal(|| false);
     let mut list_loading = use_signal(|| false);
     let mut editor_loading = use_signal(|| false);
     let mut saving = use_signal(|| false);
+    let mut action_busy = use_signal(|| false);
     let mut dirty = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
     let mut message = use_signal(|| None::<String>);
@@ -126,6 +130,8 @@ pub(super) fn Files() -> Element {
                                 onclick: move |_| {
                                     current_dir.set(parent_dir(&current_dir()));
                                     selected_path.set(None);
+                                    action_target.set(None);
+                                    delete_confirm.set(false);
                                     editor_text.set(String::new());
                                     dirty.set(false);
                                     message.set(None);
@@ -146,53 +152,254 @@ pub(super) fn Files() -> Element {
                         } else if entries().is_empty() {
                             p { class: "muted", "This folder is empty." }
                         } else {
-                            div { style: "display:flex;flex-direction:column;gap:.2rem;max-height:36rem;overflow:auto;",
+                            div { style: "display:flex;flex-direction:column;gap:.2rem;max-height:31rem;overflow:auto;",
                                 for entry in entries() {
                                     {
                                         let entry_path = entry.path.clone();
                                         let entry_name = entry.name.clone();
+                                        let action_entry = entry.clone();
                                         let is_dir = entry.is_dir;
                                         let size = file_size(&entry);
                                         let root_for_open = root.clone().unwrap_or_default();
                                         let file_service = services.files.clone();
                                         rsx! {
-                                            button {
+                                            div {
                                                 key: "{entry_path}",
-                                                class: "button",
-                                                style: "display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:.5rem;text-align:left;width:100%;",
-                                                title: "{entry_path}",
-                                                onclick: move |_| {
-                                                    if is_dir {
-                                                        current_dir.set(entry_path.clone());
-                                                        selected_path.set(None);
-                                                        editor_text.set(String::new());
-                                                        dirty.set(false);
+                                                style: "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.25rem;",
+                                                button {
+                                                    class: "button",
+                                                    style: "display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:.5rem;text-align:left;width:100%;",
+                                                    title: "{entry_path}",
+                                                    onclick: move |_| {
+                                                        if is_dir {
+                                                            current_dir.set(entry_path.clone());
+                                                            selected_path.set(None);
+                                                            action_target.set(None);
+                                                            delete_confirm.set(false);
+                                                            editor_text.set(String::new());
+                                                            dirty.set(false);
+                                                            message.set(None);
+                                                            error.set(None);
+                                                            return;
+                                                        }
+                                                        let service = file_service.clone();
+                                                        let root = root_for_open.clone();
+                                                        let path = entry_path.clone();
+                                                        editor_loading.set(true);
                                                         message.set(None);
                                                         error.set(None);
-                                                        return;
-                                                    }
-                                                    let service = file_service.clone();
-                                                    let root = root_for_open.clone();
-                                                    let path = entry_path.clone();
-                                                    editor_loading.set(true);
-                                                    message.set(None);
-                                                    error.set(None);
-                                                    spawn(async move {
-                                                        match service.read_text(Path::new(&root), Path::new(&path)).await {
-                                                            Ok(text) => {
-                                                                selected_path.set(Some(path));
-                                                                editor_text.set(text);
-                                                                dirty.set(false);
-                                                                error.set(None);
+                                                        spawn(async move {
+                                                            match service.read_text(Path::new(&root), Path::new(&path)).await {
+                                                                Ok(text) => {
+                                                                    selected_path.set(Some(path));
+                                                                    editor_text.set(text);
+                                                                    dirty.set(false);
+                                                                    error.set(None);
+                                                                }
+                                                                Err(next_error) => error.set(Some(next_error.to_string())),
                                                             }
-                                                            Err(next_error) => error.set(Some(next_error.to_string())),
-                                                        }
-                                                        editor_loading.set(false);
-                                                    });
+                                                            editor_loading.set(false);
+                                                        });
+                                                    },
+                                                    span { aria_hidden: "true", if is_dir { "▸" } else { "·" } }
+                                                    span { style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;", "{entry_name}" }
+                                                    span { class: "muted", "{size}" }
+                                                }
+                                                button {
+                                                    class: "icon-button",
+                                                    title: "File actions",
+                                                    aria_label: "Actions for {action_entry.name}",
+                                                    onclick: move |_| {
+                                                        rename_name.set(action_entry.name.clone());
+                                                        action_target.set(Some(action_entry.clone()));
+                                                        delete_confirm.set(false);
+                                                        message.set(None);
+                                                        error.set(None);
+                                                    },
+                                                    "⋯"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if let Some(target) = action_target() {
+                            {
+                                let target_path = target.path.clone();
+                                let target_name = target.name.clone();
+                                let target_is_open_dirty = selected_path().as_deref() == Some(target_path.as_str()) && dirty();
+                                let root_for_actions = root.clone().unwrap_or_default();
+                                let rename_service = services.files.clone();
+                                let reveal_service = services.files.clone();
+                                let open_service = services.files.clone();
+                                let trash_service = services.files.clone();
+                                rsx! {
+                                    div { class: "settings-list", style: "margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border-subtle,rgba(127,127,127,.2));",
+                                        div {
+                                            strong { "{target_name}" }
+                                            div { class: "muted", title: "{target_path}", "{target_path}" }
+                                        }
+                                        if target_is_open_dirty {
+                                            p { class: "muted", "Save the open editor changes before renaming or deleting this file." }
+                                        }
+                                        div { style: "display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;",
+                                            input {
+                                                class: "settings-input",
+                                                style: "min-width:10rem;flex:1;",
+                                                aria_label: "Rename file or folder",
+                                                disabled: action_busy(),
+                                                value: "{rename_name}",
+                                                oninput: move |event| rename_name.set(event.value())
+                                            }
+                                            button {
+                                                class: "button",
+                                                disabled: action_busy()
+                                                    || target_is_open_dirty
+                                                    || rename_name().trim().is_empty()
+                                                    || rename_name().trim() == target_name,
+                                                onclick: {
+                                                    let root = root_for_actions.clone();
+                                                    let path = target_path.clone();
+                                                    let old_path = target_path.clone();
+                                                    let service = rename_service.clone();
+                                                    move |_| {
+                                                        let root = root.clone();
+                                                        let path = path.clone();
+                                                        let old_path = old_path.clone();
+                                                        let name = rename_name();
+                                                        let service = service.clone();
+                                                        action_busy.set(true);
+                                                        message.set(None);
+                                                        error.set(None);
+                                                        spawn(async move {
+                                                            match service.rename(Path::new(&root), Path::new(&path), &name).await {
+                                                                Ok(new_path) => {
+                                                                    if selected_path().as_deref() == Some(old_path.as_str()) {
+                                                                        selected_path.set(Some(new_path));
+                                                                    }
+                                                                    action_target.set(None);
+                                                                    delete_confirm.set(false);
+                                                                    refresh.set(refresh() + 1);
+                                                                    message.set(Some("Renamed.".into()));
+                                                                }
+                                                                Err(next_error) => error.set(Some(next_error.to_string())),
+                                                            }
+                                                            action_busy.set(false);
+                                                        });
+                                                    }
                                                 },
-                                                span { aria_hidden: "true", if is_dir { "▸" } else { "·" } }
-                                                span { style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;", "{entry_name}" }
-                                                span { class: "muted", "{size}" }
+                                                "Rename"
+                                            }
+                                            button {
+                                                class: "button",
+                                                disabled: action_busy(),
+                                                onclick: {
+                                                    let root = root_for_actions.clone();
+                                                    let path = target_path.clone();
+                                                    let service = reveal_service.clone();
+                                                    move |_| {
+                                                        let root = root.clone();
+                                                        let path = path.clone();
+                                                        let service = service.clone();
+                                                        action_busy.set(true);
+                                                        message.set(None);
+                                                        error.set(None);
+                                                        spawn(async move {
+                                                            match service.reveal(Path::new(&root), Path::new(&path)).await {
+                                                                Ok(()) => message.set(Some("Revealed in file manager.".into())),
+                                                                Err(next_error) => error.set(Some(next_error.to_string())),
+                                                            }
+                                                            action_busy.set(false);
+                                                        });
+                                                    }
+                                                },
+                                                "Reveal"
+                                            }
+                                            button {
+                                                class: "button",
+                                                disabled: action_busy(),
+                                                onclick: {
+                                                    let root = root_for_actions.clone();
+                                                    let path = target_path.clone();
+                                                    let service = open_service.clone();
+                                                    move |_| {
+                                                        let root = root.clone();
+                                                        let path = path.clone();
+                                                        let service = service.clone();
+                                                        action_busy.set(true);
+                                                        message.set(None);
+                                                        error.set(None);
+                                                        spawn(async move {
+                                                            match service.open(Path::new(&root), Path::new(&path)).await {
+                                                                Ok(()) => message.set(Some("Opened with the system handler.".into())),
+                                                                Err(next_error) => error.set(Some(next_error.to_string())),
+                                                            }
+                                                            action_busy.set(false);
+                                                        });
+                                                    }
+                                                },
+                                                "Open"
+                                            }
+                                            if !delete_confirm() {
+                                                button {
+                                                    class: "button",
+                                                    disabled: action_busy() || target_is_open_dirty,
+                                                    onclick: move |_| delete_confirm.set(true),
+                                                    "Delete…"
+                                                }
+                                            }
+                                        }
+                                        if delete_confirm() {
+                                            div { class: "settings-error",
+                                                strong { "Move {target_name} to the OS trash?" }
+                                                p { "This uses the recoverable system trash instead of permanently deleting the item." }
+                                                div { style: "display:flex;gap:.4rem;",
+                                                    button {
+                                                        class: "button",
+                                                        disabled: action_busy(),
+                                                        onclick: move |_| delete_confirm.set(false),
+                                                        "Cancel"
+                                                    }
+                                                    button {
+                                                        class: "button",
+                                                        disabled: action_busy(),
+                                                        onclick: {
+                                                            let root = root_for_actions.clone();
+                                                            let path = target_path.clone();
+                                                            let deleted_path = target_path.clone();
+                                                            let service = trash_service.clone();
+                                                            move |_| {
+                                                                let root = root.clone();
+                                                                let path = path.clone();
+                                                                let deleted_path = deleted_path.clone();
+                                                                let service = service.clone();
+                                                                action_busy.set(true);
+                                                                message.set(None);
+                                                                error.set(None);
+                                                                spawn(async move {
+                                                                    match service.trash(Path::new(&root), Path::new(&path)).await {
+                                                                        Ok(()) => {
+                                                                            if selected_path().as_deref() == Some(deleted_path.as_str()) {
+                                                                                selected_path.set(None);
+                                                                                editor_text.set(String::new());
+                                                                                dirty.set(false);
+                                                                            }
+                                                                            action_target.set(None);
+                                                                            delete_confirm.set(false);
+                                                                            refresh.set(refresh() + 1);
+                                                                            message.set(Some("Moved to trash.".into()));
+                                                                        }
+                                                                        Err(next_error) => error.set(Some(next_error.to_string())),
+                                                                    }
+                                                                    action_busy.set(false);
+                                                                });
+                                                            }
+                                                        },
+                                                        "Delete"
+                                                    }
+                                                }
                                             }
                                         }
                                     }
