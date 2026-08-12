@@ -5,6 +5,7 @@ on:
     branches: [refactor/dioxus-rust-client]
     paths:
       - .github/scripts/pf06_native_once.py
+      - .github/workflows/pf06-native-once.yml
 
 permissions:
   contents: write
