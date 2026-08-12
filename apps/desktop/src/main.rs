@@ -27,6 +27,7 @@ mod ssh_service;
 mod ssh_windows;
 mod startup;
 mod update_activation;
+mod webhook_service;
 mod window_state;
 
 use std::path::PathBuf;
