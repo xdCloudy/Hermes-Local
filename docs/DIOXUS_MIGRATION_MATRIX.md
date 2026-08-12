@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `1321a4dd4b5231c61fbe07a629d267e37b362577` (2026-08-12)  
+> **Implementation audit checkpoint:** `a48004f733430fed0fb05700d26c7e245117bf8c` (2026-08-12)  
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -53,8 +53,8 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 47 | Largest remaining implementation backlog. |
-| A2 Service | 33 | Native/core foundations exist; UI/parity work remains. |
+| A1 Designed | 46 | Largest remaining implementation backlog. |
+| A2 Service | 34 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 6 | User-facing implementation exists; more evidence required. |
 | A4 Auto-verified | 39 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
@@ -62,7 +62,7 @@ At the audit checkpoint above:
 | BX Blocked | 1 | Named external validation blocker. |
 | **Total** | **127** | Every row must end at A6 or be explicitly retired with product-owner approval. |
 
-At least-service coverage is **78/127 capabilities (61.4%)**. This is service-foundation coverage, not end-user parity or human acceptance.
+At least-service coverage is **79/127 capabilities (62.2%)**. This is service-foundation coverage, not end-user parity or human acceptance.
 
 The last merged migration-head validation set was green for Documentation
 validation, the Hermes Agent harness/native-client boundary workflow, Dioxus
@@ -143,7 +143,7 @@ arbitrary filesystem, process, Git, PTY, Windows, updater or secret-store
 authority. The CI architecture guard enforces this boundary, and the shared UI
 must continue compiling for `wasm32-unknown-unknown`.
 
-## Capability matrix
+## capability matrix
 
 The `Human acceptance` column is the minimum manual scenario for the row. It
 does not replace the common checklist in `DIOXUS_HUMAN_VALIDATION.md`; both
@@ -205,7 +205,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | PF-04 | Broken-path repair and confirmed filesystem deletion | `ProjectService` + `PlatformService` | Project Centre dialogs | A4 Auto-verified | Exact repair/delete RPC shapes and typed `DELETE <name>` confirmation are covered by fixtures. | Using disposable data, break/repair a path, test wrong confirmations, then perform a real confirmed delete and inspect filesystem result. | ⬜ |
 | PF-05 | File tree read and text write service | `FileService` | Files/editor | A2 Service | Typed `read_dir`, `read_text`, `write_text` exist with canonical root containment/symlink defenses; Dioxus Files surface is still placeholder. | After UI lands: browse nested trees, edit/save UTF-8 and edge-case files, verify symlink/path escape rejection. | ⬜ |
 | PF-06 | Rename, trash, reveal and open | `FileService` + `PlatformService` | tree/context actions | A2 Service | Native trash exists behind typed service; rename/reveal/open surface/coverage is incomplete. | After complete: rename files/dirs, recycle-bin trash, reveal/open, permission failures and containment checks. | ⬜ |
-| PF-07 | Directory and preview watchers | `FileService` | tree/preview | A1 Designed | Rebased native watcher service is under review in PR #172; it remains A1 until merged into the migration branch. | Edit/create/delete files externally; verify coalesced updates, disposal and no hidden watcher leaks. | ⬜ |
+| PF-07 | Directory and preview watchers | `FileService` | tree/preview | A2 Service | Native Windows preview/directory watcher registry is implemented with exact-basename filtering, non-recursive FileSystemWatcher authority, 120 ms trailing debounce, deleted-file suppression, UUID lifecycle, raw device-path rejection, trusted PowerShell resolution and focused tests. Dioxus Files/Preview consumers are not wired. | Edit/create/delete files externally; verify coalesced updates, disposal and no hidden watcher leaks. | ⬜ |
 | PF-08 | Preview target normalization and safe preview | `PreviewNormalizationService` | preview pane | A2 Service | Native Desktop normalization matches the Electron preview oracle for HTTP(S)/file/local targets, wildcard-host rewriting, directory `index.html`, sensitive/device-path blocking before/after canonicalization, readability, MIME/language/binary/size classification and Windows extended-path normalization; focused Windows/security tests pass. Dioxus preview/watchers are not wired yet. | Preview supported/unsupported local files and URLs; test traversal, credentialed URLs, MIME/size and navigation restrictions. | ⬜ |
 | GT-01 | Git root/status service | `GitService` | Project Centre/status | A2 Service | Typed status uses explicit argv and porcelain parsing; full repo-root/branch UI parity is not present. | Run on clean/dirty/unborn/detached repos and nested paths; verify branch/ahead/behind/change counts. | ⬜ |
 | GT-02 | Branches and branch switching | `GitBranchService` | Project Centre/Git | A2 Service | Native local-branch listing/switching detects worktree checkout state and trunk via `origin/HEAD`, Git config, then `main`/`master`; canonical repository roots, Git branch validation, explicit argv and disposable-repository tests are in place. Dioxus Project Centre/Git UI is not wired. | List/switch/create representative branches, dirty-conflict cases and verify project/session cwd remains coherent. | ⬜ |
