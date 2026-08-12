@@ -102,3 +102,16 @@ if text.count(old) != 1:
 text = text.replace(old, new)
 
 path.write_text(text, encoding="utf-8")
+
+contract = Path("crates/hermes-desktop/tests/files_ui_contract.rs")
+contract_text = contract.read_text(encoding="utf-8")
+old_contract = '''        desktop.contains("impl FileService for WatchedFileService")
+            && desktop.contains("struct WatchLease")
+            && desktop.contains("registry.stop(&self.id)"),'''
+new_contract = '''        desktop.contains("impl FileService for WatchedFileService")
+            && desktop.contains("struct WatchLease")
+            && desktop.contains("WatchLease::new(self.registry.clone(), id)")
+            && desktop.contains("registry.stop(&id)"),'''
+if contract_text.count(old_contract) != 1:
+    raise SystemExit("PF-07 Files watcher lifecycle contract changed")
+contract.write_text(contract_text.replace(old_contract, new_contract), encoding="utf-8")
