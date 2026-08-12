@@ -289,10 +289,8 @@ where
                         ready_sent = true;
                         let _ = ready_tx.send(());
                     }
-                    "changed" if ready_sent => {
-                        if signal_tx.send(()).is_err() {
-                            break;
-                        }
+                    "changed" if ready_sent && signal_tx.send(()).is_err() => {
+                        break;
                     }
                     _ => {}
                 }
