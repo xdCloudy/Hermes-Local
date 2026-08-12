@@ -25,4 +25,10 @@ if text.count(old) != 1:
     raise SystemExit(f"expected one nested branch label expression, got {text.count(old)}")
 text = text.replace(old, new)
 
+old = "                        for tree in rows {"
+new = "                        for tree in rows.clone() {"
+if text.count(old) != 1:
+    raise SystemExit(f"expected one worktree rows loop, got {text.count(old)}")
+text = text.replace(old, new)
+
 path.write_text(text, encoding="utf-8")
