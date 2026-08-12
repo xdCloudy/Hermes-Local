@@ -8,6 +8,7 @@ extern crate self as base64;
 mod clipboard_service;
 mod crash_forensics;
 mod deep_link;
+mod diagnostics_export;
 mod git_branch_service;
 mod git_discard_service;
 mod git_repo_scan_service;
