@@ -1,5 +1,7 @@
 //! Async, typed JSON-RPC gateway client for Hermes Agent.
 
+pub mod webhooks;
+
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
