@@ -1,9 +1,13 @@
-#![allow(dead_code)] // GT-03 service foundation; Dioxus worktree UI is a later stage.
-
 use std::{
     fs,
     path::{Path, PathBuf},
     process::{Command, Output},
+    sync::Arc,
+};
+
+use hermes_core::{
+    AppServices, GitWorktreeInfo, GitWorktreeService as GitWorktreeServiceContract, ServiceError,
+    ServiceFuture,
 };
 
 const MAX_GIT_OUTPUT_BYTES: usize = 8 * 1024 * 1024;
@@ -19,6 +23,108 @@ pub struct GitWorktree {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct GitWorktreeService;
+
+pub fn install(services: &mut AppServices) {
+    services.git_worktrees = Arc::new(GitWorktreeService);
+}
+
+impl GitWorktreeServiceContract for GitWorktreeService {
+    fn list(&self, repository: &Path) -> ServiceFuture<'_, Vec<GitWorktreeInfo>> {
+        let repository = repository.to_owned();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || GitWorktreeService.list(&repository))
+                .await
+                .map_err(join_error)?
+                .map(|worktrees| worktrees.into_iter().map(to_info).collect())
+                .map_err(service_error)
+        })
+    }
+
+    fn add_new(
+        &self,
+        repository: &Path,
+        display_name: &str,
+        branch: &str,
+        base: Option<&str>,
+    ) -> ServiceFuture<'_, GitWorktreeInfo> {
+        let repository = repository.to_owned();
+        let display_name = display_name.to_owned();
+        let branch = branch.to_owned();
+        let base = base.map(str::to_owned);
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || {
+                GitWorktreeService.add_new(&repository, &display_name, &branch, base.as_deref())
+            })
+            .await
+            .map_err(join_error)?
+            .map(to_info)
+            .map_err(service_error)
+        })
+    }
+
+    fn add_existing(&self, repository: &Path, branch: &str) -> ServiceFuture<'_, GitWorktreeInfo> {
+        let repository = repository.to_owned();
+        let branch = branch.to_owned();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || {
+                GitWorktreeService.add_existing(&repository, &branch)
+            })
+            .await
+            .map_err(join_error)?
+            .map(to_info)
+            .map_err(service_error)
+        })
+    }
+
+    fn remove(
+        &self,
+        repository: &Path,
+        worktree_path: &Path,
+        force: bool,
+    ) -> ServiceFuture<'_, String> {
+        let repository = repository.to_owned();
+        let worktree_path = worktree_path.to_owned();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || {
+                GitWorktreeService.remove(&repository, &worktree_path, force)
+            })
+            .await
+            .map_err(join_error)?
+            .map(|path| path.to_string_lossy().into_owned())
+            .map_err(service_error)
+        })
+    }
+}
+
+fn to_info(worktree: GitWorktree) -> GitWorktreeInfo {
+    GitWorktreeInfo {
+        path: worktree.path.to_string_lossy().into_owned(),
+        branch: worktree.branch,
+        is_main: worktree.is_main,
+        detached: worktree.detached,
+        locked: worktree.locked,
+    }
+}
+
+fn join_error(error: tokio::task::JoinError) -> ServiceError {
+    ServiceError::Platform(format!("Git worktree worker failed: {error}"))
+}
+
+fn service_error(error: String) -> ServiceError {
+    if error.contains("required")
+        || error.contains("must be")
+        || error.contains("not a Git worktree")
+        || error.contains("cannot be removed")
+        || error.contains("only removes managed")
+        || error.contains("not registered")
+        || error.contains("already checked out")
+        || error.contains("invalid")
+    {
+        ServiceError::InvalidInput(error)
+    } else {
+        ServiceError::Platform(error)
+    }
+}
 
 impl GitWorktreeService {
     pub fn list(&self, repository: &Path) -> Result<Vec<GitWorktree>, String> {

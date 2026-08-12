@@ -1,9 +1,13 @@
-#![allow(dead_code)] // GT-02 service foundation; Dioxus Project Centre wiring is a later stage.
-
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
     process::{Command, Output},
+    sync::Arc,
+};
+
+use hermes_core::{
+    AppServices, GitBranchInfo, GitBranchService as GitBranchServiceContract, ServiceError,
+    ServiceFuture,
 };
 
 const MAX_GIT_OUTPUT_BYTES: usize = 8 * 1024 * 1024;
@@ -19,6 +23,63 @@ pub struct GitBranch {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct GitBranchService;
+
+pub fn install(services: &mut AppServices) {
+    services.git_branches = Arc::new(GitBranchService);
+}
+
+impl GitBranchServiceContract for GitBranchService {
+    fn list(&self, repository: &Path) -> ServiceFuture<'_, Vec<GitBranchInfo>> {
+        let repository = repository.to_owned();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || GitBranchService.list(&repository))
+                .await
+                .map_err(join_error)?
+                .map(|branches| {
+                    branches
+                        .into_iter()
+                        .map(|branch| GitBranchInfo {
+                            name: branch.name,
+                            checked_out: branch.checked_out,
+                            is_default: branch.is_default,
+                            worktree_path: branch
+                                .worktree_path
+                                .map(|path| path.to_string_lossy().into_owned()),
+                        })
+                        .collect()
+                })
+                .map_err(service_error)
+        })
+    }
+
+    fn switch(&self, repository: &Path, branch: &str) -> ServiceFuture<'_, String> {
+        let repository = repository.to_owned();
+        let branch = branch.to_owned();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || GitBranchService.switch(&repository, &branch))
+                .await
+                .map_err(join_error)?
+                .map_err(service_error)
+        })
+    }
+}
+
+fn join_error(error: tokio::task::JoinError) -> ServiceError {
+    ServiceError::Platform(format!("Git branch worker failed: {error}"))
+}
+
+fn service_error(error: String) -> ServiceError {
+    if error.contains("required")
+        || error.contains("must be")
+        || error.contains("not a Git worktree")
+        || error.contains("invalid")
+        || error.contains("already checked out")
+    {
+        ServiceError::InvalidInput(error)
+    } else {
+        ServiceError::Platform(error)
+    }
+}
 
 impl GitBranchService {
     /// List local branches in Git's most-recently-committed order, enriching

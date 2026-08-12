@@ -4,7 +4,10 @@ use std::{
     future::Future,
     path::{Path, PathBuf},
     pin::Pin,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use futures_core::Stream;
@@ -520,6 +523,119 @@ pub trait GitService: Send + Sync {
     fn unstage(&self, repository: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct GitBranchInfo {
+    pub name: String,
+    pub checked_out: bool,
+    pub is_default: bool,
+    pub worktree_path: Option<String>,
+}
+
+pub trait GitBranchService: Send + Sync {
+    fn list(&self, repository: &Path) -> ServiceFuture<'_, Vec<GitBranchInfo>>;
+    fn switch(&self, repository: &Path, branch: &str) -> ServiceFuture<'_, String>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnavailableGitBranchService;
+
+impl GitBranchService for UnavailableGitBranchService {
+    fn list(&self, _repository: &Path) -> ServiceFuture<'_, Vec<GitBranchInfo>> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git branch management is unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn switch(&self, _repository: &Path, _branch: &str) -> ServiceFuture<'_, String> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git branch management is unavailable on this platform".into(),
+            ))
+        })
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct GitWorktreeInfo {
+    pub path: String,
+    pub branch: Option<String>,
+    pub is_main: bool,
+    pub detached: bool,
+    pub locked: bool,
+}
+
+pub trait GitWorktreeService: Send + Sync {
+    fn list(&self, repository: &Path) -> ServiceFuture<'_, Vec<GitWorktreeInfo>>;
+    fn add_new(
+        &self,
+        repository: &Path,
+        display_name: &str,
+        branch: &str,
+        base: Option<&str>,
+    ) -> ServiceFuture<'_, GitWorktreeInfo>;
+    fn add_existing(&self, repository: &Path, branch: &str) -> ServiceFuture<'_, GitWorktreeInfo>;
+    fn remove(
+        &self,
+        repository: &Path,
+        worktree_path: &Path,
+        force: bool,
+    ) -> ServiceFuture<'_, String>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnavailableGitWorktreeService;
+
+impl GitWorktreeService for UnavailableGitWorktreeService {
+    fn list(&self, _repository: &Path) -> ServiceFuture<'_, Vec<GitWorktreeInfo>> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git worktree management is unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn add_new(
+        &self,
+        _repository: &Path,
+        _display_name: &str,
+        _branch: &str,
+        _base: Option<&str>,
+    ) -> ServiceFuture<'_, GitWorktreeInfo> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git worktree management is unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn add_existing(
+        &self,
+        _repository: &Path,
+        _branch: &str,
+    ) -> ServiceFuture<'_, GitWorktreeInfo> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git worktree management is unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn remove(
+        &self,
+        _repository: &Path,
+        _worktree_path: &Path,
+        _force: bool,
+    ) -> ServiceFuture<'_, String> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git worktree management is unavailable on this platform".into(),
+            ))
+        })
+    }
+}
+
 pub trait GitDiscardService: Send + Sync {
     fn discard_path(&self, repository: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
     fn discard_all(&self, repository: &Path) -> ServiceFuture<'_, ()>;
@@ -546,12 +662,134 @@ impl GitDiscardService for UnavailableGitDiscardService {
     }
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct GitPullRequestInfo {
+    pub url: String,
+    pub state: String,
+    pub number: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct GitShipInfo {
+    pub gh_ready: bool,
+    pub pull_request: Option<GitPullRequestInfo>,
+}
+
+pub trait GitShipService: Send + Sync {
+    fn info(&self, repository: &Path) -> ServiceFuture<'_, GitShipInfo>;
+    fn commit(
+        &self,
+        repository: &Path,
+        message: &str,
+        push_after_commit: bool,
+    ) -> ServiceFuture<'_, ()>;
+    fn push(&self, repository: &Path) -> ServiceFuture<'_, ()>;
+    fn create_pull_request(&self, repository: &Path) -> ServiceFuture<'_, String>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnavailableGitShipService;
+
+impl GitShipService for UnavailableGitShipService {
+    fn info(&self, _repository: &Path) -> ServiceFuture<'_, GitShipInfo> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git ship actions are unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn commit(
+        &self,
+        _repository: &Path,
+        _message: &str,
+        _push_after_commit: bool,
+    ) -> ServiceFuture<'_, ()> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git ship actions are unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn push(&self, _repository: &Path) -> ServiceFuture<'_, ()> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git ship actions are unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn create_pull_request(&self, _repository: &Path) -> ServiceFuture<'_, String> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git ship actions are unavailable on this platform".into(),
+            ))
+        })
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RepoScanCancellation {
+    cancelled: Arc<AtomicBool>,
+}
+
+impl RepoScanCancellation {
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct DiscoveredGitRepository {
+    pub root: PathBuf,
+    pub label: String,
+}
+
+pub trait GitRepoScanService: Send + Sync {
+    fn scan(
+        &self,
+        roots: &[PathBuf],
+        exclude_paths: &[PathBuf],
+        enabled: bool,
+        cancellation: RepoScanCancellation,
+    ) -> ServiceFuture<'_, Vec<DiscoveredGitRepository>>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnavailableGitRepoScanService;
+
+impl GitRepoScanService for UnavailableGitRepoScanService {
+    fn scan(
+        &self,
+        _roots: &[PathBuf],
+        _exclude_paths: &[PathBuf],
+        _enabled: bool,
+        _cancellation: RepoScanCancellation,
+    ) -> ServiceFuture<'_, Vec<DiscoveredGitRepository>> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git repository discovery is unavailable on this platform".into(),
+            ))
+        })
+    }
+}
+
 pub trait TerminalService: Send + Sync {
     fn start(&self, cwd: &Path, cols: u16, rows: u16) -> ServiceFuture<'_, String>;
     fn write(&self, id: &str, data: &[u8]) -> ServiceFuture<'_, ()>;
     fn read(&self, id: &str) -> ServiceFuture<'_, Vec<u8>>;
     fn resize(&self, id: &str, cols: u16, rows: u16) -> ServiceFuture<'_, ()>;
     fn dispose(&self, id: &str) -> ServiceFuture<'_, ()>;
+    fn dispose_now(&self, _id: &str) -> ServiceResult<()> {
+        Err(ServiceError::Unavailable(
+            "synchronous terminal disposal is unavailable on this platform".into(),
+        ))
+    }
 }
 
 pub trait UpdateService: Send + Sync {
@@ -584,7 +822,11 @@ pub struct AppServices {
     pub preview: Arc<dyn PreviewService>,
     pub files: Arc<dyn FileService>,
     pub git: Arc<dyn GitService>,
+    pub git_branches: Arc<dyn GitBranchService>,
+    pub git_worktrees: Arc<dyn GitWorktreeService>,
     pub git_discard: Arc<dyn GitDiscardService>,
+    pub git_ship: Arc<dyn GitShipService>,
+    pub git_repo_scan: Arc<dyn GitRepoScanService>,
     pub terminal: Arc<dyn TerminalService>,
     pub updates: Arc<dyn UpdateService>,
     pub platform: Arc<dyn PlatformService>,
