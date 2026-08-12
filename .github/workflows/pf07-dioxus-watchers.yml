@@ -25,6 +25,7 @@ jobs:
         run: |
           python scripts/ci/pf07_stage_patch.py
           cargo fmt --all
+          cargo check --workspace --all-targets
           git diff --check
 
       - name: Validate PF-07 architecture and contracts
