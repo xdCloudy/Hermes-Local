@@ -1,0 +1,64 @@
+name: GT-02 and GT-03 source control staging v2
+
+on:
+  push:
+    branches:
+      - goal-loop/gt02-03-source-control
+    paths:
+      - .github/workflows/gt02-03-source-control-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  stage:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: goal-loop/gt02-03-source-control
+          fetch-depth: 0
+
+      - name: Apply corrected branch and worktree surfaces
+        shell: pwsh
+        run: |
+          python scripts/ci/gt02_03_stage_patch.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/ci/gt02_03_compile_fix.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo fmt --all
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate GT-02 and GT-03 architecture runtime and UI contracts
+        shell: pwsh
+        run: |
+          python scripts/ci/check_dioxus_rust_architecture.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo check --workspace --all-targets --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo check -p hermes-ui --target wasm32-unknown-unknown --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p hermes-local git_branch_service --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p hermes-local git_worktree_service --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p hermes-desktop --test git_source_control_ui_contract --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --workspace --all-targets --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Commit validated GT-02 and GT-03 product slice
+        shell: pwsh
+        run: |
+          Remove-Item .github/workflows/gt02-03-source-control.yml
+          Remove-Item .github/workflows/gt02-03-source-control-v2.yml
+          Remove-Item scripts/ci/gt02_03_stage_patch.py
+          Remove-Item scripts/ci/gt02_03_compile_fix.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(git): add branch and worktree management surfaces"
+          git push origin HEAD:goal-loop/gt02-03-source-control
