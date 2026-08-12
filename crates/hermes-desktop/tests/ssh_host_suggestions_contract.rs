@@ -51,10 +51,10 @@ fn selecting_an_ssh_alias_changes_only_the_host_field() {
         .find(marker)
         .unwrap_or_else(|| panic!("Gateway SSH host-alias selector is missing"));
     let tail = &ui[start..];
-    let end = tail
-        .find("for host in ssh_hosts()")
-        .map(|offset| offset + "for host in ssh_hosts()".len())
-        .unwrap_or_else(|| panic!("Gateway SSH alias option rendering is missing"));
+    let end = tail.find("for host in ssh_hosts()").map_or_else(
+        || panic!("Gateway SSH alias option rendering is missing"),
+        |offset| offset + "for host in ssh_hosts()".len(),
+    );
     let selector = &tail[..end];
 
     assert!(
