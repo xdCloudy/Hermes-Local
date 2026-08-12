@@ -23,7 +23,7 @@ const WATCH_DEBOUNCE: Duration = Duration::from_millis(120);
 const HELPER_READY_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[cfg(windows)]
-const WATCH_SCRIPT: &str = r#"$ErrorActionPreference='Stop'; $dir=$env:HERMES_LOCAL_WATCH_DIR; $target=$env:HERMES_LOCAL_WATCH_TARGET; $watcher=[System.IO.FileSystemWatcher]::new($dir,'*'); $watcher.IncludeSubdirectories=$false; $watcher.NotifyFilter=[IO.NotifyFilters]'FileName, DirectoryName, LastWrite, Size'; $subs=@(); foreach($eventName in @('Changed','Created','Deleted','Renamed','Error')){ $subs += Register-ObjectEvent -InputObject $watcher -EventName $eventName }; $watcher.EnableRaisingEvents=$true; [Console]::Out.WriteLine('ready'); [Console]::Out.Flush(); try { while($true){ $event=Wait-Event; try { $relevant=$true; if($target -and $event.SourceEventArgs -and $event.SourceEventArgs.PSObject.Properties['FullPath']){ $name=[IO.Path]::GetFileName([string]$event.SourceEventArgs.FullPath); $relevant=[string]::Equals($name,$target,[StringComparison]::OrdinalIgnoreCase) }; if($relevant){ [Console]::Out.WriteLine('changed'); [Console]::Out.Flush() } } finally { Remove-Event -EventIdentifier $event.EventIdentifier -ErrorAction SilentlyContinue } } } finally { foreach($sub in $subs){ Unregister-Event -SubscriptionId $sub.Id -ErrorAction SilentlyContinue }; $watcher.Dispose() }"#;
+const WATCH_SCRIPT: &str = r#"$ErrorActionPreference='Stop'; $dir=$env:HERMES_LOCAL_WATCH_DIR; $target=$env:HERMES_LOCAL_WATCH_TARGET; $watcher=[System.IO.FileSystemWatcher]::new($dir,'*'); $watcher.IncludeSubdirectories=$false; $watcher.NotifyFilter=[IO.NotifyFilters]'FileName, DirectoryName, LastWrite, Size'; $subs=@(); foreach($eventName in @('Changed','Created','Deleted','Renamed','Error')){ $subs += Register-ObjectEvent -InputObject $watcher -EventName $eventName }; $watcher.EnableRaisingEvents=$true; [Console]::Out.WriteLine('ready'); [Console]::Out.Flush(); try { while($true){ $event=Wait-Event; try { $relevant=$true; if($target -and $event.SourceEventArgs -and $event.SourceEventArgs.PSObject.Properties['FullPath']){ $name=[IO.Path]::GetFileName([string]$event.SourceEventArgs.FullPath); $relevant=[string]::Equals($name,$target,[StringComparison]::Ordinal) }; if($relevant){ [Console]::Out.WriteLine('changed'); [Console]::Out.Flush() } } finally { Remove-Event -EventIdentifier $event.EventIdentifier -ErrorAction SilentlyContinue } } } finally { foreach($sub in $subs){ Unregister-Event -SubscriptionId $sub.Id -ErrorAction SilentlyContinue }; $watcher.Dispose() }"#;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreviewWatchEvent {
@@ -94,7 +94,7 @@ impl PreviewWatcherRegistry {
         F: Fn(PreviewWatchEvent) + Send + Sync + 'static,
     {
         let path = resolve_watch_directory(raw_dir)?;
-        let url = Url::from_directory_path(&path)
+        let url = Url::from_file_path(&path)
             .map_err(|_| "Could not convert watched directory to a file URL.".to_owned())?
             .to_string();
         let id = new_watch_id();
