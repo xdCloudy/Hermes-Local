@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `5e05f7198b76b01a91601e812e0c0f840b21802e` (2026-08-11)  
+> **Implementation audit checkpoint:** `f4ffd21c175bdf5e55b5774b7e59d846ac64316e` (2026-08-12)  
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -53,14 +53,16 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 64 | Largest remaining implementation backlog. |
-| A2 Service | 16 | Native/core foundations exist; UI/parity work remains. |
+| A1 Designed | 55 | Largest remaining implementation backlog. |
+| A2 Service | 25 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 6 | User-facing implementation exists; more evidence required. |
 | A4 Auto-verified | 39 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 1 | Named external validation blocker. |
 | **Total** | **127** | Every row must end at A6 or be explicitly retired with product-owner approval. |
+
+At least-service coverage is **70/127 capabilities (55.1%)**. This is service-foundation coverage, not end-user parity or human acceptance.
 
 Current CI at this checkpoint is green for Documentation validation, the Hermes
 Agent harness/native-client boundary workflow, Dioxus Rust validation, Windows
@@ -116,9 +118,10 @@ are already available, but its acceptance gate remains explicit.
 - **Rendered native QA:** earlier migration checkpoints recorded an intermittent
   missing top-level native window during some automated visual runs. It must be
   re-proven before rows depending on visual evidence can move to A5.
-- **Distribution/cutover:** verified Rust installer and portable distributions
-  now exist, but production updater/cutover is not complete. Electron/React
-  remains intentionally present as the oracle and current production path.
+- **Distribution/cutover:** verified Rust installer/portable distributions and
+  native update activation/rollback now exist, but release-channel discovery,
+  download and production cutover are not complete. Electron/React remains
+  intentionally present as the oracle and current production path.
 - **Clippy debt:** CI passes, but non-fatal pedantic/dead-code warnings remain.
   They should be reduced as touched code is modularized rather than normalized
   into permanent warning debt.
@@ -202,14 +205,14 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | PF-05 | File tree read and text write service | `FileService` | Files/editor | A2 Service | Typed `read_dir`, `read_text`, `write_text` exist with canonical root containment/symlink defenses; Dioxus Files surface is still placeholder. | After UI lands: browse nested trees, edit/save UTF-8 and edge-case files, verify symlink/path escape rejection. | ⬜ |
 | PF-06 | Rename, trash, reveal and open | `FileService` + `PlatformService` | tree/context actions | A2 Service | Native trash exists behind typed service; rename/reveal/open surface/coverage is incomplete. | After complete: rename files/dirs, recycle-bin trash, reveal/open, permission failures and containment checks. | ⬜ |
 | PF-07 | Directory and preview watchers | `FileService` | tree/preview | A1 Designed | Not ported. | Edit/create/delete files externally; verify coalesced updates, disposal and no hidden watcher leaks. | ⬜ |
-| PF-08 | Preview target normalization and safe preview | `FileService` | preview pane | A1 Designed | Not ported. | Preview supported/unsupported local files and URLs; test traversal, credentialed URLs, MIME/size and navigation restrictions. | ⬜ |
+| PF-08 | Preview target normalization and safe preview | `PreviewNormalizationService` | preview pane | A2 Service | Native Desktop normalization matches the Electron preview oracle for HTTP(S)/file/local targets, wildcard-host rewriting, directory `index.html`, sensitive/device-path blocking before/after canonicalization, readability, MIME/language/binary/size classification and Windows extended-path normalization; focused Windows/security tests pass. Dioxus preview/watchers are not wired yet. | Preview supported/unsupported local files and URLs; test traversal, credentialed URLs, MIME/size and navigation restrictions. | ⬜ |
 | GT-01 | Git root/status service | `GitService` | Project Centre/status | A2 Service | Typed status uses explicit argv and porcelain parsing; full repo-root/branch UI parity is not present. | Run on clean/dirty/unborn/detached repos and nested paths; verify branch/ahead/behind/change counts. | ⬜ |
-| GT-02 | Branches and branch switching | `GitService` | Project Centre/Git | A1 Designed | OG branch/worktree helpers remain oracle; Rust trait does not yet expose complete branch API. | List/switch/create representative branches, dirty-conflict cases and verify project/session cwd remains coherent. | ⬜ |
-| GT-03 | Worktree list/add/remove | `GitService` | Project Centre/worktrees | A1 Designed | Not exposed through Rust service yet. | Create/list/remove disposable worktrees; verify path/branch collision and dirty-worktree safeguards. | ⬜ |
+| GT-02 | Branches and branch switching | `GitBranchService` | Project Centre/Git | A2 Service | Native local-branch listing/switching detects worktree checkout state and trunk via `origin/HEAD`, Git config, then `main`/`master`; canonical repository roots, Git branch validation, explicit argv and disposable-repository tests are in place. Dioxus Project Centre/Git UI is not wired. | List/switch/create representative branches, dirty-conflict cases and verify project/session cwd remains coherent. | ⬜ |
+| GT-03 | Worktree list/add/remove | `GitWorktreeService` | Project Centre/worktrees | A2 Service | Native list/add-new/add-existing/remove lifecycle exists under managed `.worktrees`, with branch/ref validation, collision handling, main-worktree removal refusal, registered-path confinement and disposable-repository tests. Dioxus worktree UI is not wired. | Create/list/remove disposable worktrees; verify path/branch collision and dirty-worktree safeguards. | ⬜ |
 | GT-04 | Review diff, stage and unstage foundations | `GitService` | review pane | A2 Service | Typed `diff`, `stage`, `unstage` exist with explicit argv/`--`; review UI and revert/full parity remain incomplete. | After UI lands: inspect binary/text diffs, partial states, stage/unstage and verify exact Git result. | ⬜ |
-| GT-05 | Revert/discard changes | `GitService` | review pane | A1 Designed | Not ported. | Use disposable changes to verify confirmations, staged/unstaged cases and no unintended file loss. | ⬜ |
-| GT-06 | Commit, push, ship and PR actions | `GitService` | review pane | A1 Designed | Not ported. | Commit with edge-case messages, push branches, exercise remote failures and PR creation without shell injection. | ⬜ |
-| GT-07 | Repository scanning/discovery | `GitService` | project discovery | A1 Designed | Not ported. | Scan representative roots, cancellations, permissions, deep trees and repo limits. | ⬜ |
+| GT-05 | Revert/discard changes | `GitDiscardService` | review pane | A2 Service | Native scoped/all discard resets index/worktree to `HEAD` and removes only non-ignored untracked files; literal pathspec validation blocks traversal, Git metadata and pathspec magic. Staged-addition, staged+unstaged, untracked and ignored-file cases are covered. Confirmation/review UI is not wired. | Use disposable changes to verify confirmations, staged/unstaged cases and no unintended file loss. | ⬜ |
+| GT-06 | Commit, push, ship and PR actions | `GitShipService` | review pane | A2 Service | Native commit/push foundation uses explicit bounded Git/`gh` processes; it stages all only when the index is empty, validates bounded/NUL-safe commit messages, reuses tracking or sets upstream on first push and parses PR info. Disposable bare-remote round-trip tests pass. Dioxus Review ship UI is not wired. | Commit with edge-case messages, push branches, exercise remote failures and PR creation without shell injection. | ⬜ |
+| GT-07 | Repository scanning/discovery | `GitRepoScanService` | project discovery | A2 Service | Native bounded repo discovery scans configured/home roots with depth/visited limits, exclusion and junk/hidden skipping, overlapping-root dedupe and segment-aware containment; disabled/tilde/relative/exclusion cases are tested. Discovery UI is not wired. | Scan representative roots, cancellations, permissions, deep trees and repo limits. | ⬜ |
 | TM-01 | PTY/ConPTY lifecycle service | `TerminalService` | terminal | A2 Service | Native `portable-pty` start/write/read/resize/dispose exists behind typed service; Dioxus terminal is placeholder. | After renderer lands: start shell in project cwd, type/resize, run long/interactive commands, exit/dispose and verify no orphan processes. | ⬜ |
 | TM-02 | Terminal ANSI rendering, scrollback and persistence | terminal read model | terminal pane | A1 Designed | Not ported. | Stress ANSI/Unicode/large output, scrollback, hidden/reopened panes and memory/CPU. | ⬜ |
 | TM-03 | Remote/SSH terminal behavior | `TerminalService` + SSH transport | terminal pane | A1 Designed | SSH Agent tunnel exists but interactive terminal parity is not integrated. | Connect to real SSH target, verify cwd, resize, reconnect, auth-agent use and cleanup. | ⬜ |
@@ -264,15 +267,15 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | AG-10 | Starmap | Agent services | Starmap overlay | A1 Designed | Not ported. | Load large graph, navigate/select/filter and review performance/visual parity. | ⬜ |
 | AG-11 | Hermes TUI panel | Runtime/terminal adapter | TUI page | A1 Designed | Hermes Agent owns the TUI; Dioxus integration/embedding is not ported. | Launch/use TUI inside Hermes Local, verify input/resize/exit/reconnect and no duplicate runtime. | ⬜ |
 | AG-12 | Embedded Hermes Agent dashboard | future `DashboardService` | Dashboard/workstation | A1 Designed | Agent dashboard exists upstream; secure Dioxus embed/launch partition is not ported. | Open dashboard, verify exact-loopback/auth partition, navigation restrictions, TUI tab and no token exposure. | ⬜ |
-| AG-13 | Logs and diagnostics export | future `DiagnosticsService` | Logs/About | A1 Designed | Not ported. | View/filter/copy/export logs, trigger failures and verify secrets/private paths are redacted. | ⬜ |
+| AG-13 | Logs and diagnostics export | `DiagnosticsExportService` | Logs/About | A2 Service | Native diagnostics export writes bounded allowlisted/redacted support data plus a SHA-256 sidecar; it blocks forbidden secrets and redacts credentialed URLs, private roots/private IPs and opaque token-like values. Windows crash/log fixtures and privacy-negative tests pass. Logs/About UI is not wired. | View/filter/copy/export logs, trigger failures and verify secrets/private paths are redacted. | ⬜ |
 | AG-14 | About, version and provenance | `PlatformService` | About | A2 Service | Native version accessor exists; full provenance/SBOM/update information surface is incomplete. | Compare product/Agent/runtime/build versions to manifests and packaged artifact; verify copy/open actions. | ⬜ |
 
 ### Desktop integration, lifecycle, distribution and cutover
 
 | ID | Capability | Rust owner | Dioxus surface | Stage | Current evidence / gap | Human acceptance | Human |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| DI-01 | Native notifications and action routing | future `NotificationService` | session/settings | A2 Service | Native notify primitive exists and notification preferences UI is ported; Windows AppUserModelID/toast action registration is incomplete. | Trigger each notification kind in packaged app; click actions, test duplicates/focus/background and Windows notification settings. | ⬜ |
-| DI-02 | Clipboard text/images and save dialogs | future Clipboard/File services | chat/context actions | A1 Designed | Not ported as complete OG functionality. | Copy/paste text/images, WSL edge cases, save dialogs, unsupported formats and size limits. | ⬜ |
+| DI-01 | Native notifications and action routing | `NotificationPlatform` | session/settings | A2 Service | Native Windows notification wrapper uses a fixed PowerShell/WinForms helper with bounded/sanitized title/body passed through child environment variables and no shell interpolation; notification preferences UI exists. AppUserModelID/toast action registration remains incomplete. | Trigger each notification kind in packaged app; click actions, test duplicates/focus/background and Windows notification settings. | ⬜ |
+| DI-02 | Clipboard text/images and save dialogs | `ClipboardService` | chat/context actions | A2 Service | Native Windows text read/write and PNG clipboard-image export use trusted STA PowerShell helpers with stdin/environment data, transient-busy retries, UTF-8/size/NUL/PNG/path checks and fixed helper paths. Dioxus consumers and save-dialog parity remain incomplete. | Copy/paste text/images, WSL edge cases, save dialogs, unsupported formats and size limits. | ⬜ |
 | DI-03 | Camera/microphone/media permissions | future `MediaService` | permission surfaces | A1 Designed | Not ported. | Grant/deny/revoke permissions, restart and verify only trusted app origin receives media capability. | ⬜ |
 | DI-04 | External browser opening and safe link policy | `PlatformService` | links/preview | A2 Service | Typed external URL opener allowlists schemes; link-title/SSRF/full rich-link UX remains incomplete. | Open allowed HTTP(S) links, reject unsafe schemes/credentialed/private targets where policy applies and verify no in-app navigation escape. | ⬜ |
 | DI-05 | Deep links and protocol registration | native deep-link service | routed surfaces | A2 Service | Native `hermes://` parsing and per-user Windows protocol registration exist with exact executable command identity and deterministic malformed-input tests; running-instance/single-instance Dioxus delivery is incomplete. | Register/use protocol from cold/running app, malformed payloads, duplicate instance and route/state handling. | ⬜ |
@@ -283,7 +286,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | DI-10 | Keep-awake, battery and resume | native power service | settings/status | A2 Service | Dedicated Windows helper holds `ES_CONTINUOUS | ES_SYSTEM_REQUIRED` without forcing the display awake; idempotent enable/disable/drop behavior is covered by the composed Rust/Windows gate. Battery/resume/settings integration remains. | Start/stop blocker, sleep/resume laptop, battery/power changes and no leaked blocker. | ⬜ |
 | DI-11 | Login item/startup | native login-item service | startup settings | A2 Service | Current-user Run-key service binds the exact executable plus `--hermes-local-autostart`, uses trusted explicit registry argv, verifies read-back state and has deterministic negative tests. Settings UI/startup UX is not wired. | Enable/disable per-user startup, reboot/sign-in and verify correct executable/arguments. | ⬜ |
 | DI-12 | Bootstrap, install and uninstall | Rust/Inno install tooling | onboarding/uninstall | A4 Auto-verified | Windows CI verifies clean per-user install, exact payload identity, same-version repair/reinstall, uninstall cleanup and byte-preserving `%APPDATA%\Hermes Local` user data. Older-version upgrade/manual clean-VM review remains. | Clean install, upgrade, repair, uninstall choices and data preservation on a disposable Windows user/VM. | ⬜ |
-| DI-13 | Desktop update, stage, promote and rollback | future `UpdateService` | updates/recovery | A1 Designed | Rust updater lifecycle is not ported; existing proven Electron updater remains oracle. | Test update available/no-update, interrupted download/apply, locked files, rollback, relaunch and data preservation. | ⬜ |
+| DI-13 | Desktop update, stage, promote and rollback | native update activation service | updates/recovery | A2 Service | Native staged activation/rollback verifies exact SHA-256 and PE identity, uses schema-versioned operation-local plans, a copied offline helper, capped retries and probation rollback; tamper/path-escape/non-PE/promotion/rollback tests pass. Update discovery/download/UI/cutover remain incomplete. | Test update available/no-update, interrupted download/apply, locked files, rollback, relaunch and data preservation. | ⬜ |
 | DI-14 | Crash forensics and recovery | native crash diagnostics | boot/recovery | A2 Service | Native startup panic hook writes bounded timestamp/version/location plus a panic SHA-256 without persisting raw panic text, env, argv or tokens; replacement/redaction tests pass. Renderer/runtime crash capture and recovery UI remain. | Force renderer/native/runtime crashes/corrupt state; verify bounded diagnostics, recovery and no secret leakage. | ⬜ |
 | DI-15 | Windows environment, PATH, CA and platform recovery | native platform diagnostics | no direct surface | A2 Service | Privacy-safe diagnostics normalize/dedupe PATH and report only presence for proxy/CA/WSL/display/app-data state; tests prove sensitive values are not retained. Recovery actions/UI remain incomplete. | Test unusual PATH, user env, custom CA/proxy, WSL/remote display and representative broken-install recovery. | ⬜ |
 | DI-16 | Optimized Windows Rust executable build | Rust/Dioxus release tooling | release artifact | A4 Auto-verified | CI builds `hermes-local.exe` with pinned Rust 1.97.1, architecture/WASM/tests/Clippy gates and uploads a Windows x64 artifact. | Run the exact CI artifact on the target Windows machine, verify launch/identity/icon/version and basic navigation. | ⬜ |
