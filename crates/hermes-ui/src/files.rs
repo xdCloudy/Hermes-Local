@@ -2,7 +2,7 @@ use std::path::Path;
 
 use dioxus::prelude::*;
 use futures_util::StreamExt;
-use hermes_core::{AppServices, ServiceError};
+use hermes_core::{AppServices, PreviewDocument, PreviewDocumentKind, ServiceError};
 use hermes_protocol::{FileEntry, ProjectsSnapshot};
 
 use super::{ProjectUiState, Surface};
@@ -33,6 +33,10 @@ fn file_size(entry: &FileEntry) -> String {
     let Some(bytes) = entry.size else {
         return String::new();
     };
+    format_bytes(bytes)
+}
+
+fn format_bytes(bytes: u64) -> String {
     if bytes < 1024 {
         return format!("{bytes} B");
     }
@@ -40,6 +44,64 @@ fn file_size(entry: &FileEntry) -> String {
         return format!("{:.1} KB", bytes as f64 / 1024.0);
     }
     format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+}
+
+#[component]
+fn SafePreview(document: PreviewDocument) -> Element {
+    let size = document.byte_size.map(format_bytes);
+    rsx! {
+        div { style: "display:flex;flex-direction:column;gap:.75rem;min-height:0;flex:1;",
+            div { class: "settings-list",
+                div {
+                    strong { "{document.label}" }
+                    div { class: "muted", title: "{document.source}", "{document.source}" }
+                }
+                div { style: "display:flex;gap:.5rem;flex-wrap:wrap;",
+                    if let Some(mime) = document.mime_type.as_deref() { span { class: "muted", "{mime}" } }
+                    if let Some(language) = document.language.as_deref() { span { class: "muted", "{language}" } }
+                    if let Some(size) = size.as_deref() { span { class: "muted", "{size}" } }
+                }
+            }
+            match document.kind {
+                PreviewDocumentKind::Url => rsx! {
+                    iframe {
+                        title: "Preview of {document.label}",
+                        src: "{document.url}",
+                        "sandbox": "allow-scripts",
+                        "loading": "lazy",
+                        style: "width:100%;min-height:25rem;flex:1;border:1px solid var(--border-subtle,rgba(127,127,127,.2));border-radius:.5rem;background:white;",
+                    }
+                },
+                PreviewDocumentKind::Image => rsx! {
+                    div { style: "display:grid;place-items:center;min-height:20rem;overflow:auto;",
+                        img {
+                            src: "{document.url}",
+                            alt: "Preview of {document.label}",
+                            style: "max-width:100%;max-height:32rem;object-fit:contain;",
+                        }
+                    }
+                },
+                PreviewDocumentKind::Binary => rsx! {
+                    div { class: "settings-empty",
+                        h2 { "Binary file" }
+                        p { "Binary contents are intentionally not copied into the Dioxus UI." }
+                    }
+                },
+                PreviewDocumentKind::Html | PreviewDocumentKind::Text if document.large => rsx! {
+                    div { class: "settings-empty",
+                        h2 { "Preview too large" }
+                        p { "Inline text previews are limited to 512 KiB." }
+                    }
+                },
+                PreviewDocumentKind::Html | PreviewDocumentKind::Text => rsx! {
+                    pre {
+                        style: "margin:0;min-height:20rem;max-height:32rem;overflow:auto;white-space:pre-wrap;word-break:break-word;font-family:var(--font-mono,monospace);font-size:.78rem;line-height:1.5;padding:.75rem;border:1px solid var(--border-subtle,rgba(127,127,127,.2));border-radius:.5rem;",
+                        "{document.text.as_deref().unwrap_or_default()}"
+                    }
+                },
+            }
+        }
+    }
 }
 
 #[component]
@@ -61,6 +123,13 @@ pub(super) fn Files() -> Element {
     let mut error = use_signal(|| None::<String>);
     let mut message = use_signal(|| None::<String>);
     let mut refresh = use_signal(|| 0_u64);
+    let mut preview_mode = use_signal(|| false);
+    let mut preview_input = use_signal(String::new);
+    let mut preview_target = use_signal(String::new);
+    let mut preview_document = use_signal(|| None::<PreviewDocument>);
+    let mut preview_loading = use_signal(|| false);
+    let mut preview_error = use_signal(|| None::<String>);
+    let mut preview_revision = use_signal(|| 0_u64);
 
     let snapshot_signal = project_state.snapshot;
     let list_service = services.files.clone();
@@ -112,6 +181,44 @@ pub(super) fn Files() -> Element {
                 Err(ServiceError::Unavailable(_)) => {}
                 Err(next_error) => error.set(Some(next_error.to_string())),
             }
+        }
+    });
+
+    let preview_service = services.preview.clone();
+    let preview_snapshot = project_state.snapshot;
+    let _previewing = use_resource(move || {
+        let enabled = preview_mode();
+        let target = preview_target();
+        let _revision = preview_revision();
+        let _external_revision = refresh();
+        let snapshot = preview_snapshot();
+        let base = active_project_root(&snapshot).map(|(_, root)| root);
+        let service = preview_service.clone();
+        async move {
+            if !enabled || target.trim().is_empty() {
+                preview_document.set(None);
+                preview_error.set(None);
+                preview_loading.set(false);
+                return;
+            }
+            preview_loading.set(true);
+            match service.load(&target, base.as_deref().map(Path::new)).await {
+                Ok(Some(document)) => {
+                    preview_document.set(Some(document));
+                    preview_error.set(None);
+                }
+                Ok(None) => {
+                    preview_document.set(None);
+                    preview_error.set(Some(
+                        "Preview target was not found or is unsupported.".into(),
+                    ));
+                }
+                Err(next_error) => {
+                    preview_document.set(None);
+                    preview_error.set(Some(next_error.to_string()));
+                }
+            }
+            preview_loading.set(false);
         }
     });
 
@@ -215,6 +322,8 @@ pub(super) fn Files() -> Element {
                                                         spawn(async move {
                                                             match service.read_text(Path::new(&root), Path::new(&path)).await {
                                                                 Ok(text) => {
+                                                                    preview_input.set(path.clone());
+                                                                    preview_target.set(path.clone());
                                                                     selected_path.set(Some(path));
                                                                     editor_text.set(text);
                                                                     dirty.set(false);
@@ -345,6 +454,21 @@ pub(super) fn Files() -> Element {
                                                 class: "button",
                                                 disabled: action_busy(),
                                                 onclick: {
+                                                    let path = target_path.clone();
+                                                    move |_| {
+                                                        preview_input.set(path.clone());
+                                                        preview_target.set(path.clone());
+                                                        preview_mode.set(true);
+                                                        preview_error.set(None);
+                                                        preview_revision.set(preview_revision() + 1);
+                                                    }
+                                                },
+                                                "Preview"
+                                            }
+                                            button {
+                                                class: "button",
+                                                disabled: action_busy(),
+                                                onclick: {
                                                     let root = root_for_actions.clone();
                                                     let path = target_path.clone();
                                                     let service = open_service.clone();
@@ -434,62 +558,125 @@ pub(super) fn Files() -> Element {
                     section { class: "settings-card", style: "min-width:0;display:flex;flex-direction:column;",
                         header { style: "display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem;",
                             div { style: "min-width:0;flex:1;",
-                                strong { "Editor" }
-                                if let Some(path) = selected_path() {
+                                strong { if preview_mode() { "Safe preview" } else { "Editor" } }
+                                if preview_mode() {
+                                    div { class: "muted", "Native-normalized targets only; remote pages are sandboxed." }
+                                } else if let Some(path) = selected_path() {
                                     div { class: "muted", title: "{path}", "{path}" }
                                 } else {
                                     div { class: "muted", "Open a text file from the tree." }
                                 }
                             }
-                            button {
-                                class: "button",
-                                disabled: selected_path().is_none() || !dirty() || saving() || editor_loading(),
-                                onclick: {
-                                    let file_service = services.files.clone();
-                                    let root_for_save = root.clone().unwrap_or_default();
-                                    move |_| {
-                                        let Some(path) = selected_path() else { return; };
-                                        let content = editor_text();
-                                        let service = file_service.clone();
-                                        let root = root_for_save.clone();
-                                        saving.set(true);
-                                        message.set(None);
-                                        error.set(None);
-                                        spawn(async move {
-                                            match service.write_text(Path::new(&root), Path::new(&path), &content).await {
-                                                Ok(()) => {
-                                                    dirty.set(false);
-                                                    message.set(Some("Saved.".into()));
-                                                }
-                                                Err(next_error) => error.set(Some(next_error.to_string())),
+                            div { style: "display:flex;gap:.35rem;",
+                                button {
+                                    class: "button",
+                                    disabled: !preview_mode(),
+                                    onclick: move |_| preview_mode.set(false),
+                                    "Editor"
+                                }
+                                button {
+                                    class: "button",
+                                    disabled: preview_mode(),
+                                    onclick: move |_| {
+                                        if preview_input().trim().is_empty()
+                                            && let Some(path) = selected_path()
+                                        {
+                                            preview_input.set(path.clone());
+                                            preview_target.set(path);
+                                        }
+                                        preview_mode.set(true);
+                                        preview_revision.set(preview_revision() + 1);
+                                    },
+                                    "Preview"
+                                }
+                                if !preview_mode() {
+                                    button {
+                                        class: "button",
+                                        disabled: selected_path().is_none() || !dirty() || saving() || editor_loading(),
+                                        onclick: {
+                                            let file_service = services.files.clone();
+                                            let root_for_save = root.clone().unwrap_or_default();
+                                            move |_| {
+                                                let Some(path) = selected_path() else { return; };
+                                                let content = editor_text();
+                                                let service = file_service.clone();
+                                                let root = root_for_save.clone();
+                                                saving.set(true);
+                                                message.set(None);
+                                                error.set(None);
+                                                spawn(async move {
+                                                    match service.write_text(Path::new(&root), Path::new(&path), &content).await {
+                                                        Ok(()) => {
+                                                            dirty.set(false);
+                                                            message.set(Some("Saved.".into()));
+                                                            preview_revision.set(preview_revision() + 1);
+                                                        }
+                                                        Err(next_error) => error.set(Some(next_error.to_string())),
+                                                    }
+                                                    saving.set(false);
+                                                });
                                             }
-                                            saving.set(false);
-                                        });
+                                        },
+                                        if saving() { "Saving…" } else { "Save" }
                                     }
-                                },
-                                if saving() { "Saving…" } else { "Save" }
+                                }
                             }
                         }
-                        if let Some(next_error) = error() {
-                            div { class: "settings-error", role: "alert", "{next_error}" }
-                        }
-                        if let Some(next_message) = message() {
-                            div { class: "settings-success", role: "status", "{next_message}" }
-                        }
-                        if editor_loading() {
-                            p { class: "muted", "Loading file…" }
-                        }
-                        textarea {
-                            class: "settings-input",
-                            style: "width:100%;min-height:28rem;flex:1;resize:vertical;font-family:var(--font-mono,monospace);",
-                            aria_label: "File editor",
-                            disabled: selected_path().is_none() || editor_loading() || saving(),
-                            value: "{editor_text}",
-                            placeholder: "Select a UTF-8 text file to edit.",
-                            oninput: move |event| {
-                                editor_text.set(event.value());
-                                dirty.set(true);
-                                message.set(None);
+                        if preview_mode() {
+                            div { style: "display:flex;gap:.4rem;margin-bottom:.75rem;",
+                                input {
+                                    class: "settings-input",
+                                    style: "min-width:0;flex:1;",
+                                    aria_label: "Preview target",
+                                    value: "{preview_input}",
+                                    placeholder: "Relative file path, file URL, or https:// URL",
+                                    oninput: move |event| preview_input.set(event.value())
+                                }
+                                button {
+                                    class: "button",
+                                    disabled: preview_loading() || preview_input().trim().is_empty(),
+                                    onclick: move |_| {
+                                        preview_target.set(preview_input());
+                                        preview_error.set(None);
+                                        preview_revision.set(preview_revision() + 1);
+                                    },
+                                    if preview_loading() { "Loading…" } else { "Load" }
+                                }
+                            }
+                            if let Some(next_error) = preview_error() {
+                                div { class: "settings-error", role: "alert", "{next_error}" }
+                            } else if preview_loading() {
+                                p { class: "muted", "Normalizing preview target…" }
+                            } else if let Some(document) = preview_document() {
+                                SafePreview { document }
+                            } else {
+                                div { class: "settings-empty",
+                                    h2 { "No preview loaded" }
+                                    p { "Select a file or enter an HTTP(S) target. Sensitive local paths fail closed." }
+                                }
+                            }
+                        } else {
+                            if let Some(next_error) = error() {
+                                div { class: "settings-error", role: "alert", "{next_error}" }
+                            }
+                            if let Some(next_message) = message() {
+                                div { class: "settings-success", role: "status", "{next_message}" }
+                            }
+                            if editor_loading() {
+                                p { class: "muted", "Loading file…" }
+                            }
+                            textarea {
+                                class: "settings-input",
+                                style: "width:100%;min-height:28rem;flex:1;resize:vertical;font-family:var(--font-mono,monospace);",
+                                aria_label: "File editor",
+                                disabled: selected_path().is_none() || editor_loading() || saving(),
+                                value: "{editor_text}",
+                                placeholder: "Select a UTF-8 text file to edit.",
+                                oninput: move |event| {
+                                    editor_text.set(event.value());
+                                    dirty.set(true);
+                                    message.set(None);
+                                }
                             }
                         }
                     }
