@@ -27,6 +27,7 @@ mod ssh_service;
 mod ssh_windows;
 mod startup;
 mod update_activation;
+mod window_state;
 
 use std::path::PathBuf;
 
@@ -115,14 +116,34 @@ fn main() {
     if let Err(error) = deep_link::register() {
         eprintln!("Hermes Local protocol registration is unavailable: {error}");
     }
+    let saved_window_state = match window_state::load(&data_dir.join("window-state.json")) {
+        Ok(state) => state,
+        Err(error) => {
+            eprintln!("Hermes Local window state is unavailable: {error}");
+            None
+        }
+    };
+    // Display-aware position/capping is implemented in the native service, but
+    // Dioxus owns the event loop. Until DI-06's live monitor integration lands,
+    // consume the shared Electron state only for size/maximized restoration and
+    // let the platform choose a safe centered position.
+    let window_options = window_state::compute_options(saved_window_state.as_ref(), &[]);
+
     let mut native = NativeApp::new(data_dir.clone());
     notification_service::install(&mut native.services);
     startup::install_local_bootstrap(&mut native.services);
     ssh_service::install_ssh_probe(&mut native.services, data_dir);
     let window = WindowBuilder::new()
         .with_title("Hermes Local")
-        .with_inner_size(LogicalSize::new(1_280.0, 800.0))
-        .with_min_inner_size(LogicalSize::new(760.0, 560.0))
+        .with_inner_size(LogicalSize::new(
+            window_options.width as f64,
+            window_options.height as f64,
+        ))
+        .with_min_inner_size(LogicalSize::new(
+            window_state::MIN_WIDTH as f64,
+            window_state::MIN_HEIGHT as f64,
+        ))
+        .with_maximized(window_options.is_maximized)
         .with_decorations(false);
     let config = Config::new()
         .with_window(window)
