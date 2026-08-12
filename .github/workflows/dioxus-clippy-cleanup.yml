@@ -1,0 +1,67 @@
+name: Dioxus focused clippy cleanup
+
+on:
+  push:
+    branches:
+      - refactor/dioxus-rust-client
+    paths:
+      - .github/workflows/dioxus-clippy-cleanup.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/dioxus-rust-client
+          fetch-depth: 0
+
+      - name: Apply focused Dioxus cleanup
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('crates/hermes-ui/src/lib.rs')
+          text = path.read_text(encoding='utf-8')
+          replacements = {
+              '    let mut ssh_hosts = use_signal(|| vec![]);': '    let ssh_hosts = use_signal(Vec::new);',
+              '    let ssh_hosts_resource = use_resource(move || {': '    let _ssh_hosts_resource = use_resource(move || {',
+              '    let mut current_policy = use_signal(|| String::new());': '    let mut current_policy = use_signal(String::new);',
+              '    let mut trust_items = use_signal(|| vec![]);': '    let mut trust_items = use_signal(Vec::new);',
+              '    let trust_snapshot = use_resource(move || {': '    let _trust_snapshot = use_resource(move || {',
+          }
+          for old, new in replacements.items():
+              if text.count(old) != 1:
+                  raise SystemExit(f'expected exactly one occurrence of: {old!r}')
+              text = text.replace(old, new)
+
+          start_marker = '    let save_policy = |policy: &str| {\n'
+          end_marker = '    };\n\n    rsx! {'
+          start = text.find(start_marker)
+          if start == -1:
+              raise SystemExit('unused save_policy helper not found')
+          end = text.find(end_marker, start)
+          if end == -1:
+              raise SystemExit('save_policy helper end not found')
+          text = text[:start] + '    rsx! {' + text[end + len(end_marker):]
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          cargo fmt --all
+          git diff --check
+          git diff -- crates/hermes-ui/src/lib.rs
+
+      - name: Commit cleanup and remove disposable workflow
+        shell: bash
+        run: |
+          rm .github/workflows/dioxus-clippy-cleanup.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/hermes-ui/src/lib.rs .github/workflows/dioxus-clippy-cleanup.yml
+          git commit -m "fix(ui): clear migration clippy blockers"
+          git push origin HEAD:refactor/dioxus-rust-client
