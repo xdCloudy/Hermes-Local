@@ -1987,7 +1987,7 @@ fn GatewaySettingsPanel() -> Element {
     let mut error = use_signal(|| None::<String>);
     let mut refresh = use_signal(|| 0_u64);
     let mut ssh_mode = use_signal(|| false);
-    let mut ssh_hosts = use_signal(|| vec![]);
+    let ssh_hosts = use_signal(Vec::new);
     let load_service = services.connection.clone();
     let load_service_for_load = load_service.clone();
     let _load = use_resource(move || {
@@ -2008,7 +2008,7 @@ fn GatewaySettingsPanel() -> Element {
         }
     });
 
-    let ssh_hosts_resource = use_resource(move || {
+    let _ssh_hosts_resource = use_resource(move || {
         let service = load_service.clone();
         let mode = ssh_mode();
         let mut hosts_signal = ssh_hosts;
@@ -2281,12 +2281,12 @@ fn TrustCentre() -> Element {
     let mut saving = use_signal(|| false);
     let mut message = use_signal(|| None::<String>);
     let mut error = use_signal(|| None::<String>);
-    let mut current_policy = use_signal(|| String::new());
-    let mut trust_items = use_signal(|| vec![]);
+    let mut current_policy = use_signal(String::new);
+    let mut trust_items = use_signal(Vec::new);
     let mut refresh = use_signal(|| 0_u64);
 
     let trust_services = services.trust.clone();
-    let trust_snapshot = use_resource(move || {
+    let _trust_snapshot = use_resource(move || {
         let service = trust_services.clone();
         let _rev = refresh();
         async move {
@@ -2333,27 +2333,6 @@ fn TrustCentre() -> Element {
             }
         }
     });
-
-    let save_policy = |policy: &str| {
-        let service = services.trust.clone();
-        let policy = policy.to_owned();
-        let mut message = message;
-        let mut error = error;
-        let mut refresh = refresh;
-        spawn(async move {
-            match service.set_policy(&policy).await {
-                Ok(_) => {
-                    message.set(Some("Trust policy updated successfully.".into()));
-                    error.set(None);
-                    refresh += 1;
-                }
-                Err(e) => {
-                    error.set(Some(e.to_string()));
-                    message.set(None);
-                }
-            }
-        });
-    };
 
     rsx! {
         section { class: "trust-centre",
