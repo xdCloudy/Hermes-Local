@@ -82,3 +82,36 @@ fn native_files_keep_containment_helpers_on_every_mutating_boundary() {
         "relative-path validation must remain part of containment"
     );
 }
+
+#[test]
+fn files_surface_consumes_the_typed_directory_watch_stream() {
+    let core = read_repo_file("crates/hermes-core/src/lib.rs");
+    let desktop = read_repo_file("apps/desktop/src/preview_watcher.rs");
+    let main = read_repo_file("apps/desktop/src/main.rs");
+    let ui = read_repo_file("crates/hermes-ui/src/files.rs");
+
+    assert!(
+        core.contains("fn watch_directory(&self, _root: &Path, _relative: &Path) -> ServiceResult<FileWatchStream>"),
+        "FileService must keep a typed directory-watch stream contract"
+    );
+    assert!(
+        desktop.contains("impl FileService for WatchedFileService")
+            && desktop.contains("struct WatchLease")
+            && desktop.contains("registry.stop(&self.id)"),
+        "Desktop watcher adapter must own native watcher lifecycle and disposal"
+    );
+    assert!(
+        main.contains("preview_watcher::install(&mut native.services);"),
+        "Desktop composition root must install the native watcher adapter"
+    );
+    assert!(
+        ui.contains(".watch_directory(Path::new(&root), Path::new(&directory))")
+            && ui.contains("while events.next().await.is_some()")
+            && ui.contains("refresh.set(refresh() + 1);"),
+        "Files must refresh from the typed directory-watch stream"
+    );
+    assert!(
+        !ui.contains("FileSystemWatcher") && !ui.contains("powershell.exe"),
+        "hermes-ui must not acquire native watcher/process authority"
+    );
+}

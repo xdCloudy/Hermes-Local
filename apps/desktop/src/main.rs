@@ -138,6 +138,7 @@ fn main() {
 
     let mut native = NativeApp::new(data_dir.clone());
     notification_service::install(&mut native.services);
+    preview_watcher::install(&mut native.services);
     startup::install_local_bootstrap(&mut native.services);
     ssh_service::install_ssh_probe(&mut native.services, data_dir);
     let window = WindowBuilder::new()
