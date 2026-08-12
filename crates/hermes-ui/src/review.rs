@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use dioxus::prelude::*;
-use hermes_core::AppServices;
+use hermes_core::{AppServices, GitShipInfo};
 use hermes_protocol::{GitChange, GitStatus, ProjectsSnapshot};
 
 use super::{ProjectUiState, Surface};
@@ -53,8 +53,13 @@ pub(super) fn Review() -> Element {
     let mut diff_loading = use_signal(|| false);
     let mut mutation_busy = use_signal(|| false);
     let mut discard_target = use_signal(|| None::<DiscardTarget>);
+    let mut commit_message = use_signal(String::new);
+    let mut ship_info = use_signal(GitShipInfo::default);
+    let mut ship_loading = use_signal(|| false);
+    let mut ship_action = use_signal(|| None::<String>);
     let mut error = use_signal(|| None::<String>);
     let mut refresh = use_signal(|| 0_u64);
+    let mut ship_refresh = use_signal(|| 0_u64);
 
     let status_service = services.git.clone();
     let status_snapshot = project_state.snapshot;
@@ -130,6 +135,34 @@ pub(super) fn Review() -> Element {
         }
     });
 
+    let ship_service = services.git_ship.clone();
+    let ship_snapshot = project_state.snapshot;
+    let _ship_resource = use_resource(move || {
+        let snapshot = ship_snapshot();
+        let root = active_project_root(&snapshot).map(|(_, root)| root);
+        let _revision = ship_refresh();
+        let service = ship_service.clone();
+        async move {
+            let Some(root) = root else {
+                ship_info.set(GitShipInfo::default());
+                ship_loading.set(false);
+                return;
+            };
+            ship_loading.set(true);
+            match service.info(Path::new(&root)).await {
+                Ok(next) => {
+                    ship_info.set(next);
+                    error.set(None);
+                }
+                Err(next_error) => {
+                    ship_info.set(GitShipInfo::default());
+                    error.set(Some(next_error.to_string()));
+                }
+            }
+            ship_loading.set(false);
+        }
+    });
+
     let snapshot = (project_state.snapshot)();
     let active = active_project_root(&snapshot);
     let root = active.as_ref().map(|(_, root)| root.clone());
@@ -140,6 +173,8 @@ pub(super) fn Review() -> Element {
     let current = status();
     let rows = changes(&current);
     let branch = current.branch.as_deref().unwrap_or("detached / unborn");
+    let current_ship = ship_info();
+    let current_pr = current_ship.pull_request.clone();
 
     rsx! {
         Surface {
@@ -188,7 +223,7 @@ pub(super) fn Review() -> Element {
                             }
                         } else {
                             div { style: "display:flex;flex-direction:column;gap:.25rem;max-height:31rem;overflow:auto;",
-                                for change in rows {
+                                for change in rows.clone() {
                                     {
                                         let path = change.path.clone();
                                         let row_path = path.clone();
@@ -328,6 +363,175 @@ pub(super) fn Review() -> Element {
                                 style: "margin:0;min-height:24rem;max-height:34rem;overflow:auto;white-space:pre;font-family:var(--font-mono,monospace);font-size:.76rem;line-height:1.45;padding:.75rem;border:1px solid var(--border-subtle,rgba(127,127,127,.2));border-radius:.5rem;",
                                 "{diff}"
                             }
+                        }
+                    }
+                }
+                if !rows.is_empty() {
+                    section { class: "settings-card", style: "margin-top:1rem;display:grid;gap:.75rem;",
+                        header { style: "display:flex;align-items:center;gap:.5rem;",
+                            div { style: "min-width:0;flex:1;",
+                                strong { "Ship changes" }
+                                div { class: "muted", "Commit the current index, optionally push, then create or open a GitHub pull request." }
+                            }
+                            button {
+                                class: "icon-button",
+                                title: "Refresh GitHub status",
+                                aria_label: "Refresh GitHub status",
+                                disabled: ship_loading() || mutation_busy(),
+                                onclick: move |_| ship_refresh.set(ship_refresh() + 1),
+                                "↻"
+                            }
+                        }
+                        textarea {
+                            aria_label: "Commit message",
+                            placeholder: "Commit message",
+                            rows: "3",
+                            value: "{commit_message}",
+                            disabled: mutation_busy(),
+                            oninput: move |event| commit_message.set(event.value()),
+                        }
+                        div { style: "display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;",
+                            button {
+                                class: "button",
+                                disabled: mutation_busy() || commit_message().trim().is_empty(),
+                                onclick: {
+                                    let service = services.git_ship.clone();
+                                    let repo = root.clone().unwrap_or_default();
+                                    move |_| {
+                                        let service = service.clone();
+                                        let repo = repo.clone();
+                                        let message = commit_message();
+                                        mutation_busy.set(true);
+                                        ship_action.set(Some("Committing…".to_owned()));
+                                        error.set(None);
+                                        spawn(async move {
+                                            match service.commit(Path::new(&repo), &message, false).await {
+                                                Ok(()) => {
+                                                    commit_message.set(String::new());
+                                                    refresh.set(refresh() + 1);
+                                                    ship_refresh.set(ship_refresh() + 1);
+                                                }
+                                                Err(next_error) => error.set(Some(next_error.to_string())),
+                                            }
+                                            ship_action.set(None);
+                                            mutation_busy.set(false);
+                                        });
+                                    }
+                                },
+                                "Commit"
+                            }
+                            button {
+                                class: "button",
+                                disabled: mutation_busy() || commit_message().trim().is_empty(),
+                                onclick: {
+                                    let service = services.git_ship.clone();
+                                    let repo = root.clone().unwrap_or_default();
+                                    move |_| {
+                                        let service = service.clone();
+                                        let repo = repo.clone();
+                                        let message = commit_message();
+                                        mutation_busy.set(true);
+                                        ship_action.set(Some("Committing and pushing…".to_owned()));
+                                        error.set(None);
+                                        spawn(async move {
+                                            match service.commit(Path::new(&repo), &message, true).await {
+                                                Ok(()) => {
+                                                    commit_message.set(String::new());
+                                                    refresh.set(refresh() + 1);
+                                                    ship_refresh.set(ship_refresh() + 1);
+                                                }
+                                                Err(next_error) => error.set(Some(next_error.to_string())),
+                                            }
+                                            ship_action.set(None);
+                                            mutation_busy.set(false);
+                                        });
+                                    }
+                                },
+                                "Commit + Push"
+                            }
+                            button {
+                                class: "button",
+                                disabled: mutation_busy(),
+                                onclick: {
+                                    let service = services.git_ship.clone();
+                                    let repo = root.clone().unwrap_or_default();
+                                    move |_| {
+                                        let service = service.clone();
+                                        let repo = repo.clone();
+                                        mutation_busy.set(true);
+                                        ship_action.set(Some("Pushing…".to_owned()));
+                                        error.set(None);
+                                        spawn(async move {
+                                            match service.push(Path::new(&repo)).await {
+                                                Ok(()) => ship_refresh.set(ship_refresh() + 1),
+                                                Err(next_error) => error.set(Some(next_error.to_string())),
+                                            }
+                                            ship_action.set(None);
+                                            mutation_busy.set(false);
+                                        });
+                                    }
+                                },
+                                "Push"
+                            }
+                            if let Some(pull_request) = current_pr.clone() {
+                                button {
+                                    class: "button",
+                                    disabled: mutation_busy(),
+                                    onclick: {
+                                        let platform = services.platform.clone();
+                                        let url = pull_request.url.clone();
+                                        move |_| {
+                                            let platform = platform.clone();
+                                            let url = url.clone();
+                                            mutation_busy.set(true);
+                                            ship_action.set(Some("Opening pull request…".to_owned()));
+                                            error.set(None);
+                                            spawn(async move {
+                                                if let Err(next_error) = platform.open_external(&url).await {
+                                                    error.set(Some(next_error.to_string()));
+                                                }
+                                                ship_action.set(None);
+                                                mutation_busy.set(false);
+                                            });
+                                        }
+                                    },
+                                    "Open PR #{pull_request.number}"
+                                }
+                            } else {
+                                button {
+                                    class: "button",
+                                    disabled: mutation_busy() || ship_loading() || !current_ship.gh_ready,
+                                    title: if current_ship.gh_ready { "Create pull request" } else { "GitHub CLI is unavailable or not authenticated" },
+                                    onclick: {
+                                        let service = services.git_ship.clone();
+                                        let platform = services.platform.clone();
+                                        let repo = root.clone().unwrap_or_default();
+                                        move |_| {
+                                            let service = service.clone();
+                                            let platform = platform.clone();
+                                            let repo = repo.clone();
+                                            mutation_busy.set(true);
+                                            ship_action.set(Some("Creating pull request…".to_owned()));
+                                            error.set(None);
+                                            spawn(async move {
+                                                match service.create_pull_request(Path::new(&repo)).await {
+                                                    Ok(url) => {
+                                                        ship_refresh.set(ship_refresh() + 1);
+                                                        if let Err(next_error) = platform.open_external(&url).await {
+                                                            error.set(Some(next_error.to_string()));
+                                                        }
+                                                    }
+                                                    Err(next_error) => error.set(Some(next_error.to_string())),
+                                                }
+                                                ship_action.set(None);
+                                                mutation_busy.set(false);
+                                            });
+                                        }
+                                    },
+                                    if ship_loading() { "Checking GitHub…" } else if current_ship.gh_ready { "Create PR" } else { "GitHub CLI unavailable" }
+                                }
+                            }
+                            if let Some(action) = ship_action() { span { class: "muted", "{action}" } }
                         }
                     }
                 }
