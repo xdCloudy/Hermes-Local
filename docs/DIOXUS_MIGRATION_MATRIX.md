@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `f4ffd21c175bdf5e55b5774b7e59d846ac64316e` (2026-08-12)  
+> **Implementation audit checkpoint:** `642f99d6afa053a3750e0d0fbd45276cad286753` (2026-08-12)  
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -53,8 +53,8 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 55 | Largest remaining implementation backlog. |
-| A2 Service | 25 | Native/core foundations exist; UI/parity work remains. |
+| A1 Designed | 54 | Largest remaining implementation backlog. |
+| A2 Service | 26 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 6 | User-facing implementation exists; more evidence required. |
 | A4 Auto-verified | 39 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
@@ -62,7 +62,7 @@ At the audit checkpoint above:
 | BX Blocked | 1 | Named external validation blocker. |
 | **Total** | **127** | Every row must end at A6 or be explicitly retired with product-owner approval. |
 
-At least-service coverage is **70/127 capabilities (55.1%)**. This is service-foundation coverage, not end-user parity or human acceptance.
+At least-service coverage is **71/127 capabilities (55.9%)**. This is service-foundation coverage, not end-user parity or human acceptance.
 
 Current CI at this checkpoint is green for Documentation validation, the Hermes
 Agent harness/native-client boundary workflow, Dioxus Rust validation, Windows
@@ -279,7 +279,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | DI-03 | Camera/microphone/media permissions | future `MediaService` | permission surfaces | A1 Designed | Not ported. | Grant/deny/revoke permissions, restart and verify only trusted app origin receives media capability. | ⬜ |
 | DI-04 | External browser opening and safe link policy | `PlatformService` | links/preview | A2 Service | Typed external URL opener allowlists schemes; link-title/SSRF/full rich-link UX remains incomplete. | Open allowed HTTP(S) links, reject unsafe schemes/credentialed/private targets where policy applies and verify no in-app navigation escape. | ⬜ |
 | DI-05 | Deep links and protocol registration | native deep-link service | routed surfaces | A2 Service | Native `hermes://` parsing and per-user Windows protocol registration exist with exact executable command identity and deterministic malformed-input tests; running-instance/single-instance Dioxus delivery is incomplete. | Register/use protocol from cold/running app, malformed payloads, duplicate instance and route/state handling. | ⬜ |
-| DI-06 | Session and secondary app windows | future `WindowService` | shared Dioxus roots | A1 Designed | Not ported. | Open multiple session windows, focus/reuse/close/restore and test bounds across monitors/DPI. | ⬜ |
+| DI-06 | Session and secondary app windows | native window-state service | shared Dioxus roots | A2 Service | Rust Desktop now consumes the existing bounded `window-state.json` contract, restores the historical 1220×800 default/minimum 400×620 size and maximized state, and unit-tests sanitization, display caps and 48px visibility rules. Safe x/y restoration, live move/resize persistence and secondary/session-window orchestration remain incomplete. | Open multiple session windows, focus/reuse/close/restore and test bounds across monitors/DPI. | ⬜ |
 | DI-07 | Quick Entry global shortcut/window | Shortcut + Window services | Quick Entry | A1 Designed | Not ported. | Register shortcut, summon/dismiss across apps, submit, move monitors and restart. | ⬜ |
 | DI-08 | Pet overlay and generator | `WindowService` | pet roots | A1 Designed | Not ported. | Generate/show/hide/move pet, focus/input behavior and persistence. | ⬜ |
 | DI-09 | Wake indicator | `WindowService` | wake root | A1 Designed | Not ported. | Trigger/show/hide/reposition indicator and verify lifecycle. | ⬜ |
