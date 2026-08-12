@@ -2,17 +2,182 @@
 
 use std::time::Duration;
 
-use hermes_agent_client::webhooks::{
-    WebhookCreatePayload, WebhookCreateResponse, WebhookEnableResponse, WebhookEnabledResponse,
-    WebhookMethod, WebhookMutationResponse, WebhookRequest, WebhooksResponse,
-};
 use reqwest::{Client, Method, Request};
-use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::{Value, json};
 use url::Url;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_TOKEN_BYTES: usize = 16 * 1024;
+const MAX_NAME_BYTES: usize = 256;
+const MAX_PROFILE_BYTES: usize = 256;
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WebhookRoute {
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub deliver: String,
+    #[serde(default)]
+    pub deliver_only: bool,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub events: Vec<String>,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub prompt: String,
+    #[serde(default)]
+    pub secret_set: bool,
+    #[serde(default)]
+    pub skills: Vec<String>,
+    #[serde(default)]
+    pub url: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WebhooksResponse {
+    #[serde(default)]
+    pub base_url: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub subscriptions: Vec<WebhookRoute>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WebhookCreatePayload {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deliver: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deliver_chat_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deliver_only: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub events: Option<Vec<String>>,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skills: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WebhookCreateResponse {
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub deliver: String,
+    #[serde(default)]
+    pub deliver_only: bool,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub events: Vec<String>,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub prompt: String,
+    #[serde(default)]
+    pub secret_set: bool,
+    #[serde(default)]
+    pub skills: Vec<String>,
+    #[serde(default)]
+    pub url: String,
+    pub secret: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WebhookEnableResponse {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub needs_restart: bool,
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub platform: String,
+    #[serde(default)]
+    pub restart_action: Option<String>,
+    #[serde(default)]
+    pub restart_error: Option<String>,
+    #[serde(default)]
+    pub restart_pid: Option<u64>,
+    #[serde(default)]
+    pub restart_started: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WebhookEnabledResponse {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub ok: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WebhookMutationResponse {
+    #[serde(default)]
+    pub ok: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WebhookMethod {
+    Get,
+    Post,
+    Put,
+    Delete,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct WebhookRequest {
+    method: WebhookMethod,
+    path: String,
+    profile: Option<String>,
+    body: Option<Value>,
+}
+
+impl WebhookRequest {
+    fn list(profile: Option<&str>) -> Result<Self, String> {
+        build_spec(WebhookMethod::Get, &[], profile, None)
+    }
+
+    fn enable(profile: Option<&str>) -> Result<Self, String> {
+        build_spec(WebhookMethod::Post, &["enable"], profile, None)
+    }
+
+    fn create(profile: Option<&str>, payload: &WebhookCreatePayload) -> Result<Self, String> {
+        validate_webhook_name(&payload.name)?;
+        let body = serde_json::to_value(payload)
+            .map_err(|error| format!("Could not serialize webhook payload: {error}"))?;
+        build_spec(WebhookMethod::Post, &[], profile, Some(body))
+    }
+
+    fn delete(profile: Option<&str>, name: &str) -> Result<Self, String> {
+        validate_webhook_name(name)?;
+        build_spec(WebhookMethod::Delete, &[name], profile, None)
+    }
+
+    fn set_enabled(profile: Option<&str>, name: &str, enabled: bool) -> Result<Self, String> {
+        validate_webhook_name(name)?;
+        build_spec(
+            WebhookMethod::Put,
+            &[name, "enabled"],
+            profile,
+            Some(json!({ "enabled": enabled })),
+        )
+    }
+}
 
 #[derive(Clone)]
 pub struct NativeWebhookClient {
@@ -40,13 +205,11 @@ impl NativeWebhookClient {
     }
 
     pub async fn list(&self, profile: Option<&str>) -> Result<WebhooksResponse, String> {
-        self.execute(WebhookRequest::list(profile).map_err(contract)?)
-            .await
+        self.execute(WebhookRequest::list(profile)?).await
     }
 
     pub async fn enable(&self, profile: Option<&str>) -> Result<WebhookEnableResponse, String> {
-        self.execute(WebhookRequest::enable(profile).map_err(contract)?)
-            .await
+        self.execute(WebhookRequest::enable(profile)?).await
     }
 
     pub async fn create(
@@ -54,8 +217,7 @@ impl NativeWebhookClient {
         profile: Option<&str>,
         payload: &WebhookCreatePayload,
     ) -> Result<WebhookCreateResponse, String> {
-        self.execute(WebhookRequest::create(profile, payload).map_err(contract)?)
-            .await
+        self.execute(WebhookRequest::create(profile, payload)?).await
     }
 
     pub async fn delete(
@@ -63,8 +225,7 @@ impl NativeWebhookClient {
         profile: Option<&str>,
         name: &str,
     ) -> Result<WebhookMutationResponse, String> {
-        self.execute(WebhookRequest::delete(profile, name).map_err(contract)?)
-            .await
+        self.execute(WebhookRequest::delete(profile, name)?).await
     }
 
     pub async fn set_enabled(
@@ -73,7 +234,7 @@ impl NativeWebhookClient {
         name: &str,
         enabled: bool,
     ) -> Result<WebhookEnabledResponse, String> {
-        self.execute(WebhookRequest::set_enabled(profile, name, enabled).map_err(contract)?)
+        self.execute(WebhookRequest::set_enabled(profile, name, enabled)?)
             .await
     }
 
@@ -128,6 +289,34 @@ impl NativeWebhookClient {
     }
 }
 
+fn build_spec(
+    method: WebhookMethod,
+    suffix: &[&str],
+    profile: Option<&str>,
+    body: Option<Value>,
+) -> Result<WebhookRequest, String> {
+    let profile = profile
+        .map(validate_profile)
+        .transpose()?
+        .map(str::to_owned);
+    let mut url = Url::parse("https://hermes.invalid/api/webhooks")
+        .map_err(|error| format!("Could not construct webhook path: {error}"))?;
+    {
+        let mut segments = url
+            .path_segments_mut()
+            .map_err(|()| "Could not construct webhook path.".to_owned())?;
+        for segment in suffix {
+            segments.push(segment);
+        }
+    }
+    Ok(WebhookRequest {
+        method,
+        path: url.path().to_owned(),
+        profile,
+        body,
+    })
+}
+
 fn validate_base_url(value: &str) -> Result<Url, String> {
     let mut url =
         Url::parse(value.trim()).map_err(|error| format!("Invalid webhook base URL: {error}"))?;
@@ -155,6 +344,26 @@ fn validate_session_token(value: &str) -> Result<&str, String> {
     Ok(value)
 }
 
+fn validate_webhook_name(value: &str) -> Result<(), String> {
+    if value.trim().is_empty()
+        || value.len() > MAX_NAME_BYTES
+        || value.chars().any(char::is_control)
+    {
+        return Err("Invalid webhook name.".into());
+    }
+    Ok(())
+}
+
+fn validate_profile(value: &str) -> Result<&str, String> {
+    if value.trim().is_empty()
+        || value.len() > MAX_PROFILE_BYTES
+        || value.chars().any(char::is_control)
+    {
+        return Err("Invalid webhook profile.".into());
+    }
+    Ok(value)
+}
+
 fn endpoint(base_url: &Url, spec: &WebhookRequest) -> Result<Url, String> {
     let mut url = base_url
         .join(spec.path.trim_start_matches('/'))
@@ -163,10 +372,6 @@ fn endpoint(base_url: &Url, spec: &WebhookRequest) -> Result<Url, String> {
         url.query_pairs_mut().append_pair("profile", profile);
     }
     Ok(url)
-}
-
-fn contract(error: impl std::fmt::Display) -> String {
-    error.to_string()
 }
 
 #[cfg(test)]
@@ -232,10 +437,26 @@ mod tests {
     }
 
     #[test]
-    fn rejects_credentialed_or_non_http_bases_and_control_tokens() {
+    fn read_contract_never_contains_a_raw_secret_field() {
+        let route: WebhookRoute = serde_json::from_value(json!({
+            "name": "github-push",
+            "secret": "must-not-cross-read-boundary",
+            "secret_set": true
+        }))
+        .expect("decode route");
+        let encoded = serde_json::to_string(&route).expect("encode route");
+        assert!(route.secret_set);
+        assert!(!encoded.contains("must-not-cross-read-boundary"));
+        assert!(!encoded.contains("\"secret\""));
+    }
+
+    #[test]
+    fn rejects_credentialed_or_non_http_bases_and_control_inputs() {
         assert!(NativeWebhookClient::new("file:///tmp/hermes", None).is_err());
         assert!(NativeWebhookClient::new("https://user:pass@example.com", None).is_err());
         assert!(NativeWebhookClient::new("https://example.com?token=bad", None).is_err());
         assert!(NativeWebhookClient::new("https://example.com", Some("bad\ntoken")).is_err());
+        assert!(WebhookRequest::delete(None, "bad\nname").is_err());
+        assert!(WebhookRequest::list(Some("bad\nprofile")).is_err());
     }
 }
