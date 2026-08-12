@@ -214,18 +214,18 @@ fn starts_file_url(value: &str) -> bool {
 
 fn expand_user_path(value: &str) -> String {
     let trimmed = value.trim();
-    if trimmed == "~" || trimmed.starts_with("~/") || trimmed.starts_with("~\\") {
-        if let Some(home) = home_dir() {
-            return home
-                .join(
-                    trimmed
-                        .get(1..)
-                        .unwrap_or_default()
-                        .trim_start_matches(['/', '\\']),
-                )
-                .to_string_lossy()
-                .into_owned();
-        }
+    if (trimmed == "~" || trimmed.starts_with("~/") || trimmed.starts_with("~\\"))
+        && let Some(home) = home_dir()
+    {
+        return home
+            .join(
+                trimmed
+                    .get(1..)
+                    .unwrap_or_default()
+                    .trim_start_matches(['/', '\\']),
+            )
+            .to_string_lossy()
+            .into_owned();
     }
     trimmed.to_owned()
 }
