@@ -16,6 +16,7 @@ mod git_repo_scan_service;
 mod git_ship_service;
 mod git_worktree_service;
 mod login_item;
+mod memory_service;
 mod messaging_service;
 mod notification_service;
 mod platform_diagnostics;
