@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `dbb3b789462fbeb7dd2577e61bd6d89e34d086bf` (2026-08-12)  
+> **Implementation audit checkpoint:** `2413ce42f24a6cf9cfa0ff6edb93dede40636639` (2026-08-12)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -54,9 +54,9 @@ At the audit checkpoint above:
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
 | A1 Designed | 44 | Largest remaining implementation backlog. |
-| A2 Service | 36 | Native/core foundations exist; UI/parity work remains. |
-| A3 Ported | 6 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 39 | Automated slice is green; human/live acceptance still required. |
+| A2 Service | 31 | Native/core foundations exist; UI/parity work remains. |
+| A3 Ported | 4 | User-facing implementation exists; more evidence required. |
+| A4 Auto-verified | 46 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 1 | Named external validation blocker. |
@@ -64,10 +64,10 @@ At the audit checkpoint above:
 
 At least-service coverage is **81/127 capabilities (63.8%)**. This is service-foundation coverage, not end-user parity or human acceptance.
 
-The current merged migration-head validation set is green for Documentation
+The PR #179 exact-head validation set was green for Documentation
 validation, the Hermes Agent harness/native-client boundary workflow, Dioxus
 Rust validation, Windows installer/portable packaging and artifact-footprint
-regression. The Rust validation gate includes architecture enforcement, rustfmt,
+regression before merge as `2413ce42`. The Rust validation gate includes architecture enforcement, rustfmt,
 `cargo check --workspace --all-targets`, shared-UI WASM compilation, workspace
 tests, Clippy, optimized Windows release build, resolved Cargo CycloneDX SBOM,
 release-manifest/SHA-256 generation and artifact upload. Windows distribution CI
@@ -95,13 +95,12 @@ are already available, but its acceptance gate remains explicit.
 
 ### Current critical path
 
-1. Wire native SSH config-host discovery into the Dioxus Gateway selector and
-   execute the real SSH-host interoperability matrix.
+1. Execute the real SSH-host interoperability matrix and close `SS-05`.
 2. Port Hermes Cloud discovery/org/agent connection and finish complete Gateway
    re-home behavior.
 3. Finish rich chat/composer parity.
-4. Turn the existing File/Git/PTY native service foundations into complete
-   Dioxus workspace tools.
+4. Continue Workspace Tools beyond the now-wired Files/Preview/Review slices,
+   especially branch/worktree/discard/ship integration and Terminal rendering.
 5. Port Workstation/Agent surfaces, then finish native Windows integration.
 6. Finish updater/cutover, remove Electron/React/Node from production, and run
    the full human acceptance pass.
@@ -111,9 +110,6 @@ are already available, but its acceptance gate remains explicit.
 - **Real SSH-host validation:** POSIX and Windows owned lifecycle code is
   auto-verified, but live Linux/macOS/Windows interoperability has not yet been
   executed (`SS-05`).
-- **SSH settings parity:** native `Host`/`Include` discovery and bounded `ssh -G`
-  enrichment now exist, but the Dioxus Gateway host-suggestion selector is not
-  wired to that discovery service yet (`SS-01`).
 - **Hermes Cloud:** discovery/org selection/agent connection is not yet ported
   (`CN-06`).
 - **Rendered native QA:** earlier migration checkpoints recorded an intermittent
@@ -203,21 +199,21 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | PF-02 | Project Centre create, attach and clone | `ProjectService` + `PlatformService` | Project Centre | A4 Auto-verified | Folderless create, attach and clone flows plus picker boundary are implemented. | Run Empty/Attach/Clone against disposable projects, including invalid paths/repos and cancellation. | ⬜ |
 | PF-03 | Project pin, archive, remove registration | `ProjectService` | Project Centre | A4 Auto-verified | Pin/archive/restore and registration-only removal are implemented. | Verify ordering/filtering, archive/restore and that registration removal never deletes files. | ⬜ |
 | PF-04 | Broken-path repair and confirmed filesystem deletion | `ProjectService` + `PlatformService` | Project Centre dialogs | A4 Auto-verified | Exact repair/delete RPC shapes and typed `DELETE <name>` confirmation are covered by fixtures. | Using disposable data, break/repair a path, test wrong confirmations, then perform a real confirmed delete and inspect filesystem result. | ⬜ |
-| PF-05 | File tree read and text write service | `FileService` | Files/editor | A2 Service | Typed `read_dir`, `read_text`, `write_text` exist with canonical root containment/symlink defenses; Dioxus Files surface is still placeholder. | After UI lands: browse nested trees, edit/save UTF-8 and edge-case files, verify symlink/path escape rejection. | ⬜ |
-| PF-06 | Rename, trash, reveal and open | `FileService` + `PlatformService` | tree/context actions | A2 Service | Native trash exists behind typed service; rename/reveal/open surface/coverage is incomplete. | After complete: rename files/dirs, recycle-bin trash, reveal/open, permission failures and containment checks. | ⬜ |
-| PF-07 | Directory and preview watchers | `FileService` | tree/preview | A2 Service | Native Windows preview/directory watcher registry is implemented with exact-basename filtering, non-recursive FileSystemWatcher authority, 120 ms trailing debounce, deleted-file suppression, UUID lifecycle, raw device-path rejection, trusted PowerShell resolution and focused tests. Dioxus Files/Preview consumers are not wired. | Edit/create/delete files externally; verify coalesced updates, disposal and no hidden watcher leaks. | ⬜ |
-| PF-08 | Preview target normalization and safe preview | `PreviewNormalizationService` | preview pane | A2 Service | Native Desktop normalization matches the Electron preview oracle for HTTP(S)/file/local targets, wildcard-host rewriting, directory `index.html`, sensitive/device-path blocking before/after canonicalization, readability, MIME/language/binary/size classification and Windows extended-path normalization; focused Windows/security tests pass. Dioxus preview/watchers are not wired yet. | Preview supported/unsupported local files and URLs; test traversal, credentialed URLs, MIME/size and navigation restrictions. | ⬜ |
+| PF-05 | File tree read and text write service | `FileService` | Files/editor | A4 Auto-verified | Dioxus Files browses nested directories and edits/saves UTF-8 text through the typed `FileService`; canonical root containment/symlink defenses, Files contracts, all-target compile, WASM and PR #179 gates pass. | Browse nested trees, edit/save UTF-8 and edge-case files, verify symlink/path escape rejection. | ⬜ |
+| PF-06 | Rename, trash, reveal and open | `FileService` + `PlatformService` | tree/context actions | A4 Auto-verified | Dioxus Files exposes rename, recycle-bin trash, reveal and open through typed native services; containment/security and UI contracts pass with the merged Rust/WASM/Clippy gates. | Rename files/dirs, recycle-bin trash, reveal/open, permission failures and containment checks. | ⬜ |
+| PF-07 | Directory and preview watchers | `FileService` | tree/preview | A4 Auto-verified | Dioxus Files now owns the typed directory-watch stream and refreshes the current directory on external changes. The existing bounded Windows watcher authority is preserved, and deterministic Drop cleanup proves stream disposal removes the registry lease without spawning a flaky helper in tests; full PR #179 Rust/WASM/Clippy gates pass. | Edit/create/delete files externally; verify coalesced updates, disposal and no hidden watcher leaks. | ⬜ |
+| PF-08 | Preview target normalization and safe preview | `PreviewNormalizationService` | preview pane | A4 Auto-verified | A typed native Preview service now owns normalization and bounded content loading for Dioxus: credentialed HTTP(S) URLs and sensitive/device paths are rejected, local HTML is rendered as escaped source, remote previews are sandboxed, binary/oversize states are explicit, and inline text is capped at 512 KiB. Focused security/UI contracts plus full PR #179 Rust/WASM/Clippy gates pass. | Preview supported/unsupported local files and URLs; test traversal, credentialed URLs, MIME/size and navigation restrictions. | ⬜ |
 | GT-01 | Git root/status service | `GitService` | Project Centre/status | A2 Service | Typed status uses explicit argv and porcelain parsing; full repo-root/branch UI parity is not present. | Run on clean/dirty/unborn/detached repos and nested paths; verify branch/ahead/behind/change counts. | ⬜ |
 | GT-02 | Branches and branch switching | `GitBranchService` | Project Centre/Git | A2 Service | Native local-branch listing/switching detects worktree checkout state and trunk via `origin/HEAD`, Git config, then `main`/`master`; canonical repository roots, Git branch validation, explicit argv and disposable-repository tests are in place. Dioxus Project Centre/Git UI is not wired. | List/switch/create representative branches, dirty-conflict cases and verify project/session cwd remains coherent. | ⬜ |
 | GT-03 | Worktree list/add/remove | `GitWorktreeService` | Project Centre/worktrees | A2 Service | Native list/add-new/add-existing/remove lifecycle exists under managed `.worktrees`, with branch/ref validation, collision handling, main-worktree removal refusal, registered-path confinement and disposable-repository tests. Dioxus worktree UI is not wired. | Create/list/remove disposable worktrees; verify path/branch collision and dirty-worktree safeguards. | ⬜ |
-| GT-04 | Review diff, stage and unstage foundations | `GitService` | review pane | A2 Service | Typed `diff`, `stage`, `unstage` exist with explicit argv/`--`; review UI and revert/full parity remain incomplete. | After UI lands: inspect binary/text diffs, partial states, stage/unstage and verify exact Git result. | ⬜ |
+| GT-04 | Review diff, stage and unstage foundations | `GitService` | review pane | A4 Auto-verified | The Dioxus Review surface consumes structured Git X/Y state, working-tree and staged diffs, and typed stage/unstage mutations. Disposable-repository round trips, traversal rejection, architecture/WASM and full PR #179 Rust/Clippy gates pass; discard/ship/richer diff rendering remain separate rows. | Inspect binary/text diffs, partial states, stage/unstage and verify exact Git result. | ⬜ |
 | GT-05 | Revert/discard changes | `GitDiscardService` | review pane | A2 Service | Native scoped/all discard resets index/worktree to `HEAD` and removes only non-ignored untracked files; literal pathspec validation blocks traversal, Git metadata and pathspec magic. Staged-addition, staged+unstaged, untracked and ignored-file cases are covered. Confirmation/review UI is not wired. | Use disposable changes to verify confirmations, staged/unstaged cases and no unintended file loss. | ⬜ |
 | GT-06 | Commit, push, ship and PR actions | `GitShipService` | review pane | A2 Service | Native commit/push foundation uses explicit bounded Git/`gh` processes; it stages all only when the index is empty, validates bounded/NUL-safe commit messages, reuses tracking or sets upstream on first push and parses PR info. Disposable bare-remote round-trip tests pass. Dioxus Review ship UI is not wired. | Commit with edge-case messages, push branches, exercise remote failures and PR creation without shell injection. | ⬜ |
 | GT-07 | Repository scanning/discovery | `GitRepoScanService` | project discovery | A2 Service | Native bounded repo discovery scans configured/home roots with depth/visited limits, exclusion and junk/hidden skipping, overlapping-root dedupe and segment-aware containment; disabled/tilde/relative/exclusion cases are tested. Discovery UI is not wired. | Scan representative roots, cancellations, permissions, deep trees and repo limits. | ⬜ |
 | TM-01 | PTY/ConPTY lifecycle service | `TerminalService` | terminal | A2 Service | Native `portable-pty` start/write/read/resize/dispose exists behind typed service; Dioxus terminal is placeholder. | After renderer lands: start shell in project cwd, type/resize, run long/interactive commands, exit/dispose and verify no orphan processes. | ⬜ |
 | TM-02 | Terminal ANSI rendering, scrollback and persistence | terminal read model | terminal pane | A1 Designed | Not ported. | Stress ANSI/Unicode/large output, scrollback, hidden/reopened panes and memory/CPU. | ⬜ |
 | TM-03 | Remote/SSH terminal behavior | `TerminalService` + SSH transport | terminal pane | A1 Designed | SSH Agent tunnel exists but interactive terminal parity is not integrated. | Connect to real SSH target, verify cwd, resize, reconnect, auth-agent use and cleanup. | ⬜ |
-| SS-01 | SSH config Host suggestions, Include traversal and `ssh -G` enrichment | `ConnectionService`/SSH helper | Settings → Gateway | A3 Ported | Native `Host`/`Include` discovery, bounded glob/cycle traversal and 5-second `ssh -G` enrichment are implemented with parity tests; manual user/port/key values are never overwritten. Dioxus host suggestions are wired and usable in the Gateway settings. | Use aliases, Includes, wildcard exclusions and custom/raw hosts; verify resolved fields match `ssh -G` and manual values are not overwritten. | ⬜ |
+| SS-01 | SSH config Host suggestions, Include traversal and `ssh -G` enrichment | `ConnectionService`/SSH helper | Settings → Gateway | A4 Auto-verified | Native `Host`/`Include` discovery, bounded glob/cycle traversal and 5-second `ssh -G` enrichment are wired into the Dioxus Gateway selector with parity/contract coverage; manual user/port/key values are never overwritten. The exact-head Rust/Dioxus gate is green. | Use aliases, Includes, wildcard exclusions and custom/raw hosts; verify resolved fields match `ssh -G` and manual values are not overwritten. | ⬜ |
 | SS-02 | SSH probe/discovery and actionable failure classification | native OpenSSH transport | Settings → Gateway | A4 Auto-verified | System OpenSSH argv, Linux/macOS/Windows Hermes discovery, ownership-capability checks and auth/host-key/network classification are unit-tested. | Test real hosts with success, bad auth, changed host key, timeout, unreachable and missing/old Hermes. | ⬜ |
 | SS-03 | POSIX SSH owned backend lifecycle and tunnel reuse | native SSH lifecycle | connection runtime | A4 Auto-verified | Profile-scoped ownership, secure token upload, lock/protocol, owned spawn, readiness, loopback forward, authenticated reuse and safe stale cleanup are implemented/tested. | On real Linux/macOS host: connect, reuse, restart desktop, interrupt network, stale lock/process, remote upgrade and quit cleanup. | ⬜ |
 | SS-04 | Windows SSH owned backend lifecycle and tunnel reuse | native Windows SSH lifecycle | connection runtime | A4 Auto-verified | Canonical `hermes_cli.windows_ssh_runtime` helper is used; ownership binds PID + creation time + Hermes path + spawn nonce and reuse requires matching profile/token/path/home. | On real Windows SSH host: same lifecycle matrix as SS-03, including process identity changes and PowerShell/helper failures. | ⬜ |
@@ -258,7 +254,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | RT-07 | Restore and repair | `UpdateService` + `RuntimeService` | recovery | A1 Designed | Not ported. | Corrupt representative runtime/install state and verify data-preserving repair/restore/rollback. | ⬜ |
 | AG-01 | Skills hub and local skills | `NativeSkillsClient` | Skills | A2 Service | Native profile-scoped Skills/Hub REST foundation covers skill list/toggle, Hub sources/search/preview/scan/install/uninstall/update and action-status polling with encoded identifiers, bounded inputs/responses, HTTP(S)-only endpoints and header-only session auth. Focused contract/security tests pass; Dioxus Skills/Hub UI, trust prompts and live action-log reconciliation remain unported. | List/install/enable/disable/remove skills, trust prompts and invalid packages; compare OG. | ⬜ |
 | AG-02 | MCP servers and catalog | Agent/Trust services | Skills/MCP | A1 Designed | Not ported. | Add/config/enable/test/disable/remove MCP servers across scopes with trust/reload prompts. | ⬜ |
-| AG-03 | Trust Centre and diagnostics | `TrustService` | Trust Centre | A3 Ported | Native exact `trust.get`/`trust.set_policy` contracts, typed policy decoding and forward-compatible diagnostics are covered; invalid/path-like policy values are rejected before mutation. Trust Centre UI is now wired and functional in the Settings overlay. | Review every trust policy/diagnostic, change policy and trigger representative protected actions. | ⬜ |
+| AG-03 | Trust Centre and diagnostics | `TrustService` | Trust Centre | A4 Auto-verified | Native exact `trust.get`/`trust.set_policy` contracts, typed policy decoding, forward-compatible diagnostics and invalid/path-like policy rejection are consumed by the functional Dioxus Trust Centre. Contract, architecture, WASM, workspace-test and Clippy gates are green. | Review every trust policy/diagnostic, change policy and trigger representative protected actions. | ⬜ |
 | AG-04 | Memory and curator | `NativeMemoryClient` | Memory/Starmap | A2 Service | Native profile-bound Memory/Curator REST foundation covers status/reset, declared provider config read/write, provider OAuth start/status, curator status/pause/run, encoded provider segments, header-only session auth, bounded responses/config values and cross-profile rejection. Focused contract/security tests are included; Dioxus Memory/Starmap consumers remain unported. | Inspect/search/reset memory and curator flows across profiles/sessions; verify destructive confirmation. | ⬜ |
 | AG-05 | Cron and scheduled tasks | `NativeCronClient` | Cron overlay | A2 Service | Native typed Cron list/get/runs/create/update/pause/resume/trigger/delete contracts preserve routing-vs-filter profile semantics, encoded IDs, bounded history/input, HTTP(S)-only authenticated transport and startup/interactive timeouts. Cron Dioxus overlay and live reconciliation are not wired. | Create/edit/enable/disable/run/delete schedules; verify persistence and timezone/error cases. | ⬜ |
 | AG-06 | Messaging integrations | `NativeMessagingClient` | Integrations/Messaging | A2 Service | Native messaging platform list/update/test and pairing list/approve/revoke contracts preserve backend/profile placement, encoded platform IDs, redacted read DTOs, bounded secret mutation payloads and header-only auth. Dioxus Messaging integration is not wired. | Configure supported messaging connectors, test connection/state/errors and secret handling. | ⬜ |
