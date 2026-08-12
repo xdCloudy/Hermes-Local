@@ -1047,8 +1047,10 @@ macro_rules! simple_surface {
 
 mod files;
 mod review;
+mod source_control;
 use files::Files;
 use review::Review;
+use source_control::{Git, Worktrees};
 simple_surface!(
     Tui,
     "Hermes Local",
@@ -1120,18 +1122,6 @@ simple_surface!(
     "Hermes Local",
     "Logs",
     "Live, redacted output from each local service."
-);
-simple_surface!(
-    Git,
-    "Source control",
-    "Git",
-    "Review, stage, and understand local changes."
-);
-simple_surface!(
-    Worktrees,
-    "Source control",
-    "Worktrees",
-    "Keep parallel branches isolated and clear."
 );
 simple_surface!(
     Terminal,

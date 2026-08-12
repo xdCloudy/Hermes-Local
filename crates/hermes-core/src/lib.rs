@@ -520,6 +520,119 @@ pub trait GitService: Send + Sync {
     fn unstage(&self, repository: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct GitBranchInfo {
+    pub name: String,
+    pub checked_out: bool,
+    pub is_default: bool,
+    pub worktree_path: Option<String>,
+}
+
+pub trait GitBranchService: Send + Sync {
+    fn list(&self, repository: &Path) -> ServiceFuture<'_, Vec<GitBranchInfo>>;
+    fn switch(&self, repository: &Path, branch: &str) -> ServiceFuture<'_, String>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnavailableGitBranchService;
+
+impl GitBranchService for UnavailableGitBranchService {
+    fn list(&self, _repository: &Path) -> ServiceFuture<'_, Vec<GitBranchInfo>> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git branch management is unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn switch(&self, _repository: &Path, _branch: &str) -> ServiceFuture<'_, String> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git branch management is unavailable on this platform".into(),
+            ))
+        })
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct GitWorktreeInfo {
+    pub path: String,
+    pub branch: Option<String>,
+    pub is_main: bool,
+    pub detached: bool,
+    pub locked: bool,
+}
+
+pub trait GitWorktreeService: Send + Sync {
+    fn list(&self, repository: &Path) -> ServiceFuture<'_, Vec<GitWorktreeInfo>>;
+    fn add_new(
+        &self,
+        repository: &Path,
+        display_name: &str,
+        branch: &str,
+        base: Option<&str>,
+    ) -> ServiceFuture<'_, GitWorktreeInfo>;
+    fn add_existing(&self, repository: &Path, branch: &str) -> ServiceFuture<'_, GitWorktreeInfo>;
+    fn remove(
+        &self,
+        repository: &Path,
+        worktree_path: &Path,
+        force: bool,
+    ) -> ServiceFuture<'_, String>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnavailableGitWorktreeService;
+
+impl GitWorktreeService for UnavailableGitWorktreeService {
+    fn list(&self, _repository: &Path) -> ServiceFuture<'_, Vec<GitWorktreeInfo>> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git worktree management is unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn add_new(
+        &self,
+        _repository: &Path,
+        _display_name: &str,
+        _branch: &str,
+        _base: Option<&str>,
+    ) -> ServiceFuture<'_, GitWorktreeInfo> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git worktree management is unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn add_existing(
+        &self,
+        _repository: &Path,
+        _branch: &str,
+    ) -> ServiceFuture<'_, GitWorktreeInfo> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git worktree management is unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn remove(
+        &self,
+        _repository: &Path,
+        _worktree_path: &Path,
+        _force: bool,
+    ) -> ServiceFuture<'_, String> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Git worktree management is unavailable on this platform".into(),
+            ))
+        })
+    }
+}
+
 pub trait GitDiscardService: Send + Sync {
     fn discard_path(&self, repository: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
     fn discard_all(&self, repository: &Path) -> ServiceFuture<'_, ()>;
@@ -651,6 +764,8 @@ pub struct AppServices {
     pub preview: Arc<dyn PreviewService>,
     pub files: Arc<dyn FileService>,
     pub git: Arc<dyn GitService>,
+    pub git_branches: Arc<dyn GitBranchService>,
+    pub git_worktrees: Arc<dyn GitWorktreeService>,
     pub git_discard: Arc<dyn GitDiscardService>,
     pub git_ship: Arc<dyn GitShipService>,
     pub terminal: Arc<dyn TerminalService>,
