@@ -143,7 +143,7 @@ arbitrary filesystem, process, Git, PTY, Windows, updater or secret-store
 authority. The CI architecture guard enforces this boundary, and the shared UI
 must continue compiling for `wasm32-unknown-unknown`.
 
-## capability matrix
+## Capability matrix
 
 The `Human acceptance` column is the minimum manual scenario for the row. It
 does not replace the common checklist in `DIOXUS_HUMAN_VALIDATION.md`; both
