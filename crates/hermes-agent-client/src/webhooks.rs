@@ -195,7 +195,10 @@ fn build_request(
     profile: Option<&str>,
     body: Option<Value>,
 ) -> Result<WebhookRequest, WebhookContractError> {
-    let profile = profile.map(validate_profile).transpose()?.map(str::to_owned);
+    let profile = profile
+        .map(validate_profile)
+        .transpose()?
+        .map(str::to_owned);
     let mut url = Url::parse("https://hermes.invalid/api/webhooks")
         .map_err(|_| WebhookContractError::InvalidEndpoint)?;
     {
@@ -231,9 +234,7 @@ fn validate_profile(value: &str) -> Result<&str, WebhookContractError> {
         || value.len() > MAX_PROFILE_BYTES
         || value.chars().any(char::is_control)
     {
-        return Err(WebhookContractError::InvalidInput(
-            "invalid profile".into(),
-        ));
+        return Err(WebhookContractError::InvalidInput("invalid profile".into()));
     }
     Ok(value)
 }
@@ -274,8 +275,8 @@ mod tests {
         assert_eq!(body["events"], serde_json::json!(["push"]));
         assert_eq!(body["deliver_only"], true);
 
-        let toggle = WebhookRequest::set_enabled(profile, "my hook/one", false)
-            .expect("toggle request");
+        let toggle =
+            WebhookRequest::set_enabled(profile, "my hook/one", false).expect("toggle request");
         assert_eq!(toggle.method, WebhookMethod::Put);
         assert_eq!(toggle.path, "/api/webhooks/my%20hook%2Fone/enabled");
         assert_eq!(toggle.body, Some(serde_json::json!({ "enabled": false })));

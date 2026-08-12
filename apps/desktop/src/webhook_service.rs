@@ -40,7 +40,8 @@ impl NativeWebhookClient {
     }
 
     pub async fn list(&self, profile: Option<&str>) -> Result<WebhooksResponse, String> {
-        self.execute(WebhookRequest::list(profile).map_err(contract)?).await
+        self.execute(WebhookRequest::list(profile).map_err(contract)?)
+            .await
     }
 
     pub async fn enable(&self, profile: Option<&str>) -> Result<WebhookEnableResponse, String> {
@@ -85,7 +86,10 @@ impl NativeWebhookClient {
             .map_err(|error| format!("Webhook request failed: {error}"))?;
         let status = response.status();
         if !status.is_success() {
-            return Err(format!("Webhook endpoint returned HTTP {}.", status.as_u16()));
+            return Err(format!(
+                "Webhook endpoint returned HTTP {}.",
+                status.as_u16()
+            ));
         }
         if response
             .content_length()
@@ -100,8 +104,7 @@ impl NativeWebhookClient {
         if bytes.len() as u64 > MAX_RESPONSE_BYTES {
             return Err("Webhook response exceeded the 4 MiB safety limit.".into());
         }
-        serde_json::from_slice(&bytes)
-            .map_err(|error| format!("Invalid webhook response: {error}"))
+        serde_json::from_slice(&bytes).map_err(|error| format!("Invalid webhook response: {error}"))
     }
 
     fn build_request(&self, spec: &WebhookRequest) -> Result<Request, String> {
@@ -126,8 +129,8 @@ impl NativeWebhookClient {
 }
 
 fn validate_base_url(value: &str) -> Result<Url, String> {
-    let mut url = Url::parse(value.trim())
-        .map_err(|error| format!("Invalid webhook base URL: {error}"))?;
+    let mut url =
+        Url::parse(value.trim()).map_err(|error| format!("Invalid webhook base URL: {error}"))?;
     if !matches!(url.scheme(), "http" | "https") {
         return Err("Webhook base URL must use HTTP or HTTPS.".into());
     }
@@ -172,11 +175,9 @@ mod tests {
 
     #[test]
     fn builds_exact_profile_scoped_encoded_request_without_token_in_url() {
-        let client = NativeWebhookClient::new(
-            "https://gateway.example/hermes",
-            Some("session-token"),
-        )
-        .expect("client");
+        let client =
+            NativeWebhookClient::new("https://gateway.example/hermes", Some("session-token"))
+                .expect("client");
         let spec = WebhookRequest::set_enabled(Some("work profile"), "my hook/one", false)
             .expect("request spec");
         let request = client.build_request(&spec).expect("request");
@@ -200,12 +201,15 @@ mod tests {
 
     #[test]
     fn preserves_deployment_prefix_for_list_and_create() {
-        let client = NativeWebhookClient::new("http://127.0.0.1:8000/hermes", None)
-            .expect("client");
+        let client =
+            NativeWebhookClient::new("http://127.0.0.1:8000/hermes", None).expect("client");
         let list = client
             .build_request(&WebhookRequest::list(None).expect("list spec"))
             .expect("list request");
-        assert_eq!(list.url().as_str(), "http://127.0.0.1:8000/hermes/api/webhooks");
+        assert_eq!(
+            list.url().as_str(),
+            "http://127.0.0.1:8000/hermes/api/webhooks"
+        );
         assert_eq!(list.method(), Method::GET);
 
         let create = client
@@ -220,7 +224,10 @@ mod tests {
                 .expect("create spec"),
             )
             .expect("create request");
-        assert_eq!(create.url().as_str(), "http://127.0.0.1:8000/hermes/api/webhooks");
+        assert_eq!(
+            create.url().as_str(),
+            "http://127.0.0.1:8000/hermes/api/webhooks"
+        );
         assert_eq!(create.method(), Method::POST);
     }
 
