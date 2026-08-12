@@ -20,7 +20,10 @@ fn files_surface_stays_on_the_typed_file_service_boundary() {
         "fn read_text(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, String>",
         "fn write_text(&self, root: &Path, relative: &Path, content: &str) -> ServiceFuture<'_, ()>",
     ] {
-        assert!(core.contains(contract), "FileService contract disappeared: {contract}");
+        assert!(
+            core.contains(contract),
+            "FileService contract disappeared: {contract}"
+        );
     }
 
     for call in [
@@ -28,7 +31,10 @@ fn files_surface_stays_on_the_typed_file_service_boundary() {
         ".read_text(Path::new(&root), Path::new(&path))",
         ".write_text(Path::new(&root), Path::new(&path), &content)",
     ] {
-        assert!(ui.contains(call), "Files surface stopped using typed FileService call: {call}");
+        assert!(
+            ui.contains(call),
+            "Files surface stopped using typed FileService call: {call}"
+        );
     }
 
     assert!(
@@ -52,7 +58,10 @@ fn files_surface_keeps_editor_and_empty_state_contracts() {
         "dirty.set(false);",
         "Saved.",
     ] {
-        assert!(ui.contains(required), "PF-05 UI-state regression: {required}");
+        assert!(
+            ui.contains(required),
+            "PF-05 UI-state regression: {required}"
+        );
     }
 }
 
