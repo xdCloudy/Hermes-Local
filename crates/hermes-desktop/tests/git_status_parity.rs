@@ -1,49 +1,4 @@
-from pathlib import Path
-
-lib = Path("crates/hermes-desktop/src/lib.rs")
-text = lib.read_text(encoding="utf-8")
-old = """    let branch = header
-        .split(['.', ' '])
-        .next()
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned);"""
-new = """    let branch = if let Some(unborn) = header.strip_prefix("No commits yet on ") {
-        let unborn = unborn.trim();
-        (!unborn.is_empty()).then(|| unborn.to_owned())
-    } else if header == "HEAD (no branch)" || header.starts_with("HEAD detached ") {
-        None
-    } else {
-        header
-            .split(['.', ' '])
-            .next()
-            .filter(|value| !value.is_empty())
-            .map(str::to_owned)
-    };"""
-if text.count(old) != 1:
-    raise SystemExit(f"parse_git_status branch parser expected once, got {text.count(old)}")
-text = text.replace(old, new)
-
-marker = """    #[test]
-    fn blocks_symlink_escape_for_existing_paths() {"""
-insert = """    #[test]
-    fn parses_unborn_and_detached_porcelain_headers() {
-        let unborn = parse_git_status("## No commits yet on feature/status\\n").expect("unborn");
-        assert_eq!(unborn.branch.as_deref(), Some("feature/status"));
-        assert!(unborn.changed.is_empty());
-
-        let detached = parse_git_status("## HEAD (no branch)\\n").expect("detached");
-        assert_eq!(detached.branch, None);
-        assert!(detached.changed.is_empty());
-    }
-
-    #[test]
-    fn blocks_symlink_escape_for_existing_paths() {"""
-if text.count(marker) != 1:
-    raise SystemExit(f"unit-test marker expected once, got {text.count(marker)}")
-lib.write_text(text.replace(marker, insert), encoding="utf-8")
-
-Path("crates/hermes-desktop/tests/git_status_parity.rs").write_text(
-    r'''use std::{fs, path::Path, process::Command};
+use std::{fs, path::Path, process::Command};
 
 use hermes_desktop::NativeApp;
 use uuid::Uuid;
@@ -88,7 +43,12 @@ async fn status_handles_unborn_clean_nested_and_detached_repositories() {
 
     let nested = repo.join("src").join("nested");
     fs::create_dir_all(&nested).expect("nested directory");
-    let nested_status = app.services.git.status(&nested).await.expect("nested status");
+    let nested_status = app
+        .services
+        .git
+        .status(&nested)
+        .await
+        .expect("nested status");
     assert_eq!(nested_status.branch.as_deref(), Some(branch.as_str()));
 
     fs::write(repo.join("tracked.txt"), "seed\n").expect("seed file");
@@ -104,7 +64,12 @@ async fn status_handles_unborn_clean_nested_and_detached_repositories() {
     fs::remove_file(repo.join("untracked.txt")).expect("remove untracked");
 
     git(&repo, &["checkout", "--detach", "HEAD"]);
-    let detached = app.services.git.status(&repo).await.expect("detached status");
+    let detached = app
+        .services
+        .git
+        .status(&repo)
+        .await
+        .expect("detached status");
     assert_eq!(detached.branch, None);
     assert!(detached.changed.is_empty());
 
@@ -113,7 +78,10 @@ async fn status_handles_unborn_clean_nested_and_detached_repositories() {
 
 #[test]
 fn dioxus_review_consumes_status_branch_counters_and_clean_state() {
-    let review = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../hermes-ui/src/review.rs"));
+    let review = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../hermes-ui/src/review.rs"
+    ));
     assert!(review.contains("service.status(Path::new(&root)).await"));
     assert!(review.contains("current.branch"));
     assert!(review.contains("current.ahead"));
@@ -121,6 +89,3 @@ fn dioxus_review_consumes_status_branch_counters_and_clean_state() {
     assert!(review.contains("Working tree clean"));
     assert!(review.contains("detached / unborn"));
 }
-''',
-    encoding="utf-8",
-)
