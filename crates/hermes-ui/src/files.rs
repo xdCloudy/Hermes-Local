@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use dioxus::prelude::*;
-use hermes_core::AppServices;
+use futures_util::StreamExt;
+use hermes_core::{AppServices, ServiceError};
 use hermes_protocol::{FileEntry, ProjectsSnapshot};
 
 use super::{ProjectUiState, Surface};
@@ -88,6 +89,29 @@ pub(super) fn Files() -> Element {
                 Err(next_error) => error.set(Some(next_error.to_string())),
             }
             list_loading.set(false);
+        }
+    });
+
+    let watch_service = services.files.clone();
+    let watch_snapshot = project_state.snapshot;
+    let _watching = use_resource(move || {
+        let snapshot = watch_snapshot();
+        let root = active_project_root(&snapshot).map(|(_, root)| root);
+        let directory = current_dir();
+        let service = watch_service.clone();
+        async move {
+            let Some(root) = root else {
+                return;
+            };
+            match service.watch_directory(Path::new(&root), Path::new(&directory)) {
+                Ok(mut events) => {
+                    while events.next().await.is_some() {
+                        refresh.set(refresh() + 1);
+                    }
+                }
+                Err(ServiceError::Unavailable(_)) => {}
+                Err(next_error) => error.set(Some(next_error.to_string())),
+            }
         }
     });
 

@@ -23,7 +23,13 @@ use thiserror::Error;
 
 pub type ServiceFuture<'a, T> = Pin<Box<dyn Future<Output = ServiceResult<T>> + Send + 'a>>;
 pub type EventStream = Pin<Box<dyn Stream<Item = GatewayEvent> + Send>>;
+pub type FileWatchStream = Pin<Box<dyn Stream<Item = FileWatchEvent> + Send>>;
 pub type ServiceResult<T> = Result<T, ServiceError>;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FileWatchEvent {
+    pub path: PathBuf,
+}
 
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
 pub enum ServiceError {
@@ -445,6 +451,11 @@ pub trait FileService: Send + Sync {
     fn reveal(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
     fn open(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
     fn trash(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()>;
+    fn watch_directory(&self, _root: &Path, _relative: &Path) -> ServiceResult<FileWatchStream> {
+        Err(ServiceError::Unavailable(
+            "directory watching is unavailable on this platform".into(),
+        ))
+    }
 }
 
 pub trait GitService: Send + Sync {

@@ -2333,6 +2333,7 @@ dependencies = [
 name = "hermes-local"
 version = "0.18.62"
 dependencies = [
+ "async-stream",
  "dioxus",
  "hermes-core",
  "hermes-desktop",

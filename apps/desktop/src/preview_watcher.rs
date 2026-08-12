@@ -3,7 +3,7 @@
 use std::{
     collections::HashMap,
     path::{Component, Path, PathBuf},
-    sync::mpsc,
+    sync::{Arc, Mutex, mpsc},
     thread,
     time::Duration,
 };
@@ -14,6 +14,12 @@ use std::{
     process::{Child, Command, Stdio},
 };
 
+use hermes_core::{
+    AppServices, FileService, FileWatchEvent, FileWatchStream, ServiceError, ServiceFuture,
+    ServiceResult, validate_relative_path,
+};
+use hermes_protocol::FileEntry;
+use tokio::sync::mpsc as tokio_mpsc;
 use url::Url;
 use uuid::Uuid;
 
@@ -119,6 +125,112 @@ impl PreviewWatcherRegistry {
     pub fn active_count(&self) -> usize {
         self.watches.len()
     }
+}
+
+struct WatchedFileService {
+    inner: Arc<dyn FileService>,
+    registry: Arc<Mutex<PreviewWatcherRegistry>>,
+}
+
+struct WatchLease {
+    registry: Arc<Mutex<PreviewWatcherRegistry>>,
+    id: String,
+}
+
+impl Drop for WatchLease {
+    fn drop(&mut self) {
+        if let Ok(mut registry) = self.registry.lock() {
+            registry.stop(&self.id);
+        }
+    }
+}
+
+impl FileService for WatchedFileService {
+    fn read_dir(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, Vec<FileEntry>> {
+        self.inner.read_dir(root, relative)
+    }
+
+    fn read_text(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, String> {
+        self.inner.read_text(root, relative)
+    }
+
+    fn write_text(&self, root: &Path, relative: &Path, content: &str) -> ServiceFuture<'_, ()> {
+        self.inner.write_text(root, relative, content)
+    }
+
+    fn rename(&self, root: &Path, relative: &Path, new_name: &str) -> ServiceFuture<'_, String> {
+        self.inner.rename(root, relative, new_name)
+    }
+
+    fn reveal(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()> {
+        self.inner.reveal(root, relative)
+    }
+
+    fn open(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()> {
+        self.inner.open(root, relative)
+    }
+
+    fn trash(&self, root: &Path, relative: &Path) -> ServiceFuture<'_, ()> {
+        self.inner.trash(root, relative)
+    }
+
+    fn watch_directory(&self, root: &Path, relative: &Path) -> ServiceResult<FileWatchStream> {
+        let target = contained_watch_directory(root, relative)?;
+        let (sender, mut receiver) = tokio_mpsc::unbounded_channel();
+        let id = self
+            .registry
+            .lock()
+            .map_err(|_| {
+                ServiceError::Platform("preview watcher registry lock was poisoned".into())
+            })?
+            .watch_directory(&target, move |event| {
+                let _ = sender.send(FileWatchEvent { path: event.path });
+            })
+            .map_err(ServiceError::Platform)?;
+        let lease = WatchLease {
+            registry: self.registry.clone(),
+            id,
+        };
+        Ok(Box::pin(async_stream::stream! {
+            let lease = lease;
+            while let Some(event) = receiver.recv().await {
+                yield event;
+            }
+            drop(lease);
+        }))
+    }
+}
+
+fn contained_watch_directory(root: &Path, relative: &Path) -> ServiceResult<PathBuf> {
+    validate_relative_path(relative)?;
+    let canonical_root = root.canonicalize().map_err(|error| {
+        ServiceError::Platform(format!("could not resolve watched root: {error}"))
+    })?;
+    let target = canonical_root
+        .join(relative)
+        .canonicalize()
+        .map_err(|error| {
+            ServiceError::Platform(format!("could not resolve watched directory: {error}"))
+        })?;
+    if !target.starts_with(&canonical_root) {
+        return Err(ServiceError::PermissionDenied(
+            "watched directory escapes the selected project root".into(),
+        ));
+    }
+    if !target.is_dir() {
+        return Err(ServiceError::InvalidInput(
+            "watched target must be a directory".into(),
+        ));
+    }
+    Ok(target)
+}
+
+pub fn install(services: &mut AppServices) {
+    let inner = services.files.clone();
+    services.files = Arc::new(WatchedFileService {
+        inner,
+        registry: Arc::new(Mutex::new(PreviewWatcherRegistry::new())),
+    });
 }
 
 fn new_watch_id() -> String {
@@ -380,6 +492,38 @@ mod tests {
         assert!(resolved.is_dir());
         assert!(reject_device_path(r"\\?\C:\secret").is_err());
         assert!(reject_device_path(r"\\.\PhysicalDrive0").is_err());
+        cleanup(root);
+    }
+
+    #[test]
+    fn project_scoped_watch_directory_rejects_parent_escape() {
+        let root = test_directory("contained");
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).expect("nested directory");
+        assert_eq!(
+            contained_watch_directory(&root, Path::new("nested")).expect("contained directory"),
+            nested.canonicalize().expect("canonical nested")
+        );
+        assert!(contained_watch_directory(&root, Path::new("../")).is_err());
+        cleanup(root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn dropping_watch_lease_releases_native_registry_entry() {
+        let root = test_directory("lease");
+        let registry = Arc::new(Mutex::new(PreviewWatcherRegistry::new()));
+        let id = registry
+            .lock()
+            .expect("registry")
+            .watch_directory(&root, |_| {})
+            .expect("start watcher");
+        assert_eq!(registry.lock().expect("registry").active_count(), 1);
+        drop(WatchLease {
+            registry: registry.clone(),
+            id,
+        });
+        assert_eq!(registry.lock().expect("registry").active_count(), 0);
         cleanup(root);
     }
 
