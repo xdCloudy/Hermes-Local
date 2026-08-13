@@ -515,10 +515,10 @@ impl LayoutModel {
 
     pub fn normalize(&mut self) {
         self.root.normalize();
-        if self.root.find_group(&self.focused_group).is_none() {
-            if let Some(first) = self.group_ids().first() {
-                self.focused_group.clone_from(first);
-            }
+        if self.root.find_group(&self.focused_group).is_none()
+            && let Some(first) = self.group_ids().first()
+        {
+            self.focused_group.clone_from(first);
         }
     }
 
@@ -539,10 +539,10 @@ impl LayoutModel {
         if unique_panes.len() != panes.len() {
             return Err("pane ids must be unique".into());
         }
-        self.validate_node(&self.root)
+        Self::validate_node(&self.root)
     }
 
-    fn validate_node(&self, node: &LayoutNode) -> Result<(), String> {
+    fn validate_node(node: &LayoutNode) -> Result<(), String> {
         match node {
             LayoutNode::Group(group) => {
                 if group.tabs.is_empty() {
@@ -562,8 +562,8 @@ impl LayoutModel {
                 if !(MIN_SPLIT_RATIO..=MAX_SPLIT_RATIO).contains(ratio) {
                     return Err("split ratio is outside supported bounds".into());
                 }
-                self.validate_node(first)?;
-                self.validate_node(second)
+                Self::validate_node(first)?;
+                Self::validate_node(second)
             }
         }
     }
