@@ -174,24 +174,24 @@ fn parse_ansi(value: &str) -> Vec<AnsiSegment> {
     segments
 }
 
-fn color_css(color: AnsiColor) -> &'static str {
+const fn color_class(color: AnsiColor) -> &'static str {
     match color {
-        AnsiColor::Black => "#6e7681",
-        AnsiColor::Red => "#ff7b72",
-        AnsiColor::Green => "#7ee787",
-        AnsiColor::Yellow => "#d29922",
-        AnsiColor::Blue => "#79c0ff",
-        AnsiColor::Magenta => "#d2a8ff",
-        AnsiColor::Cyan => "#a5d6ff",
-        AnsiColor::White => "#c9d1d9",
-        AnsiColor::BrightBlack => "#8b949e",
-        AnsiColor::BrightRed => "#ffa198",
-        AnsiColor::BrightGreen => "#aff5b4",
-        AnsiColor::BrightYellow => "#e3b341",
-        AnsiColor::BrightBlue => "#a5d6ff",
-        AnsiColor::BrightMagenta => "#e2c5ff",
-        AnsiColor::BrightCyan => "#b3f0ff",
-        AnsiColor::BrightWhite => "#f0f6fc",
+        AnsiColor::Black => "ansi-black",
+        AnsiColor::Red => "ansi-red",
+        AnsiColor::Green => "ansi-green",
+        AnsiColor::Yellow => "ansi-yellow",
+        AnsiColor::Blue => "ansi-blue",
+        AnsiColor::Magenta => "ansi-magenta",
+        AnsiColor::Cyan => "ansi-cyan",
+        AnsiColor::White => "ansi-white",
+        AnsiColor::BrightBlack => "ansi-bright-black",
+        AnsiColor::BrightRed => "ansi-bright-red",
+        AnsiColor::BrightGreen => "ansi-bright-green",
+        AnsiColor::BrightYellow => "ansi-bright-yellow",
+        AnsiColor::BrightBlue => "ansi-bright-blue",
+        AnsiColor::BrightMagenta => "ansi-bright-magenta",
+        AnsiColor::BrightCyan => "ansi-bright-cyan",
+        AnsiColor::BrightWhite => "ansi-bright-white",
     }
 }
 
@@ -202,16 +202,13 @@ pub(super) fn AnsiContent(text: String) -> Element {
         pre { class: "rich-ansi", aria_label: "ANSI terminal output",
             for (index, segment) in segments.into_iter().enumerate() {
                 {
-                    let mut style = String::new();
-                    if segment.bold {
-                        style.push_str("font-weight:700;");
-                    }
-                    if let Some(color) = segment.color {
-                        style.push_str("color:");
-                        style.push_str(color_css(color));
-                        style.push(';');
-                    }
-                    rsx! { span { key: "{index}", style, "{segment.text}" } }
+                    let color = segment.color.map(color_class).unwrap_or_default();
+                    let class = if segment.bold {
+                        format!("ansi-segment ansi-bold {color}")
+                    } else {
+                        format!("ansi-segment {color}")
+                    };
+                    rsx! { span { key: "{index}", class, "{segment.text}" } }
                 }
             }
         }
@@ -233,6 +230,7 @@ mod tests {
         assert_eq!(segments[2].text, " done");
         assert!(!segments[2].bold);
         assert_eq!(segments[2].color, None);
+        assert_eq!(color_class(AnsiColor::BrightCyan), "ansi-bright-cyan");
     }
 
     #[test]
