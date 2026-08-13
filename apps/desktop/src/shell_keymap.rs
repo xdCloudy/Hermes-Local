@@ -145,10 +145,10 @@ pub fn resolve_shortcut(context: FocusContext, chord: &KeyChord) -> Option<Short
     }
 
     if chord.primary && !chord.shift && !chord.alt {
-        if let Ok(number) = key.parse::<usize>() {
-            if (1..=9).contains(&number) {
-                return Some(ShortcutAction::SelectPaneTab(number - 1));
-            }
+        if let Ok(number) = key.parse::<usize>()
+            && (1..=9).contains(&number)
+        {
+            return Some(ShortcutAction::SelectPaneTab(number - 1));
         }
         return match key {
             "w" => Some(ShortcutAction::ClosePaneTab),
