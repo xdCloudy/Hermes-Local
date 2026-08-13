@@ -250,7 +250,7 @@ fn zoom_percent(level: f64) -> i64 {
 
 fn run_js(script: String) {
     spawn(async move {
-        let _ = document::eval(script).await;
+        let _ = document::eval(&script).await;
     });
 }
 
