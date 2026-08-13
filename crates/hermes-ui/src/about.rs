@@ -36,7 +36,7 @@ pub(super) fn About() -> Element {
                 runtime.set(Some(value.clone()));
             }
             if let Ok(value) = &update_result {
-                update.set(Some(update_status(&value)));
+                update.set(Some(update_status(value)));
             }
             let problem = version_result
                 .err()
