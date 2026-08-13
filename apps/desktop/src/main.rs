@@ -33,6 +33,7 @@ mod shell_interaction;
 mod shell_keymap;
 mod shell_layout;
 mod shell_parity;
+mod shell_validation;
 mod shell_window_contract;
 mod skills_service;
 mod ssh;
