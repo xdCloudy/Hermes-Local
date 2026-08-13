@@ -96,6 +96,17 @@ and WASM compile, workspace tests, Clippy, SBOM tooling and optimized Windows
 artifact production. All `SH-01`…`SH-15` rows are therefore A4; A5 still requires
 the row-specific live, visual, keyboard and screen-reader evidence.
 
+PR #192 exact head `655995db` and PR #195 exact head `df9920cf` close the
+machine-verifiable prompt-queue and composer-draft/directive slices. Their Rust
+validation, Windows packaging, install-lifecycle and footprint workflows all
+passed; SSH interoperability was not applicable. PR #196 exact head `e90cc709`
+then ports the native attachment pipeline, including opaque picker capability
+IDs, local/remote staging, attachment-aware background queues and cleanup. Rust
+validation `31714415036`, Windows packaging `31714415069`, install lifecycle
+`31714414994` and footprint `31714415039` all passed for that exact head; the
+SSH interoperability workflow was the expected skip. `CH-09`…`CH-11` are
+therefore A4; A5 still requires the row-specific live composer/session review.
+
 PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable
 Projects/Files/Git/Terminal/SSH slice. Desktop SSH mode now routes the existing
 typed Terminal surface through an OpenSSH-backed native PTY while local terminals
@@ -209,9 +220,9 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | CH-06 | New, resume and switch session | `SessionService` | chat workspace | A4 Auto-verified | Create/resume/switch contracts and identity reconciliation exist with live-harness coverage. | Create multiple sessions and rapidly switch/resume while one is running; verify isolation and route selection. | ⬜ |
 | CH-07 | Transcript loading, pagination and large-history virtualization | `SessionService` | transcript | A3 Ported | Transcript loading/reconciliation exists; realistic very-large-history pagination/virtualization benchmark is not complete. | Open small, medium and very large sessions; scroll/search/revisit and compare responsiveness/memory to OG. | ⬜ |
 | CH-08 | Streaming deltas, reasoning and tool event reconciliation | `SessionService` | assistant turns/tool cards | A4 Auto-verified | Delta coalescing, interim settlement, reasoning, tool upsert, terminal completion and runtime isolation are tested. | Run real multi-tool/long-reasoning turns, interrupt mid-stream and verify ordering, completion and no duplicate/stranded UI. | ⬜ |
-| CH-09 | Prompt queue and background sessions | `SessionService` | composer/status | A1 Designed | Not ported. | Queue multiple prompts and run background sessions; verify ordering, cancellation and foreground isolation. | ⬜ |
-| CH-10 | Composer drafts, undo and directives | `SessionService` | composer | A1 Designed | Basic composer exists; durable drafts/undo/directives parity is incomplete. | Type/edit drafts, switch routes/sessions, restart, undo and exercise supported directives. | ⬜ |
-| CH-11 | Attachments, images and path selection | `FileService` + attachment protocol | composer/preview | A1 Designed | Attach affordance exists, but production attachment pipeline is not ported. | Attach representative text/image/binary files, invalid/oversize files and paths; verify preview/send/cancel/security behavior. | ⬜ |
+| CH-09 | Prompt queue and background sessions | `SessionService` | composer/status | A4 Auto-verified | PR #192 exact head `655995db` implements a route-persistent typed prompt queue with stored/runtime identity binding, FIFO background draining, park/resume/remove/clear controls and failed-submit requeue semantics. Rust validation `31699023935`, packaging `31699023859`, install lifecycle `31699023843` and footprint `31699023864` all passed; SSH was not applicable. | Queue multiple prompts and run background sessions; verify ordering, cancellation and foreground isolation. | ⬜ |
+| CH-10 | Composer drafts, undo and directives | `SessionService` | composer | A4 Auto-verified | PR #195 exact head `df9920cf` adds bounded per-session draft persistence, undo/redo, restore across route/restart, typed slash-directive execution and queue-aware directive sends. Rust validation `31703681496`, packaging `31703681390`, install lifecycle `31703681477` and footprint `31703681363` all passed; SSH was not applicable. | Type/edit drafts, switch routes/sessions, restart, undo and exercise supported directives. | ⬜ |
+| CH-11 | Attachments, images and path selection | `FileService` + attachment protocol | composer/preview | A4 Auto-verified | PR #196 exact head `e90cc709` ports the native multi-file picker behind opaque capability IDs, bounded previews/size limits, local path staging, remote/SSH byte staging, file context refs, image fallback prompting, attachment-aware background queues/retries and staged-image cleanup. Exact-head Rust validation `31714415036`, packaging `31714415069`, install lifecycle `31714414994` and footprint `31714415039` all passed; SSH interoperability was the expected skip. | Attach representative text/image/binary files, invalid/oversize files and paths; verify preview/send/cancel/security behavior. | ⬜ |
 | CH-12 | Voice recording, transcription and playback | future `MediaService` | composer/settings | A1 Designed | Voice settings exist; media capture/playback runtime is not ported. | Grant/deny microphone permission, record, cancel, transcribe and play audio; verify device/failure behavior. | ⬜ |
 | CH-13 | Model, tool and YOLO controls | runtime/trust services | composer/model menus | A1 Designed | Settings-side model controls exist; composer-time control parity is incomplete. | Change model/tool/approval modes before and during chats; verify scope and safety semantics. | ⬜ |
 | CH-14 | Reactions and message metadata | `SessionService` | message actions | A1 Designed | Not ported. | Exercise all OG message actions/reactions and verify persistence/identity after reload. | ⬜ |
