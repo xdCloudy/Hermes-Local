@@ -3,7 +3,7 @@
 
 use dioxus::prelude::*;
 use futures_util::StreamExt;
-use hermes_core::{AppServices, SessionTranscript};
+use hermes_core::{AppServices, PromptQueueCoordinator, SessionTranscript};
 use hermes_protocol::{MessageRole, SessionCreateRequest};
 
 use super::{Codicon, ProjectPicker, ProjectUiState, Route};
@@ -12,6 +12,56 @@ const TRANSCRIPT_WINDOW: usize = 80;
 
 fn visible_message_start(total: usize, requested: usize) -> usize {
     total.saturating_sub(requested.max(1))
+}
+
+#[derive(Clone, Copy)]
+struct ChatRuntimeState {
+    queue: Signal<PromptQueueCoordinator>,
+}
+
+/// Route-persistent chat runtime. Prompt queues live above the Router so a busy
+/// session can finish and drain its queue even after the user navigates to a
+/// different session or product surface.
+#[component]
+pub(super) fn ChatRuntimeProvider() -> Element {
+    let services = use_context::<AppServices>();
+    let events_service = services.sessions.clone();
+    let submit_service = services.sessions.clone();
+    let mut queue = use_signal(PromptQueueCoordinator::default);
+    use_context_provider(|| ChatRuntimeState { queue });
+
+    let _queue_events = use_resource(move || {
+        let events_service = events_service.clone();
+        let submit_service = submit_service.clone();
+        async move {
+            let Ok(mut events) = events_service.events() else {
+                return;
+            };
+            while let Some(event) = events.next().await {
+                let Some(runtime_id) = event.session_id.as_deref() else {
+                    continue;
+                };
+                if event.kind == "message.start" {
+                    queue.write().mark_runtime_busy(runtime_id);
+                    continue;
+                }
+                if event.kind != "message.complete" {
+                    continue;
+                }
+                let next = queue.write().next_after_completion(runtime_id);
+                let Some((stored_id, runtime_id, text)) = next else {
+                    continue;
+                };
+                if let Err(error) = submit_service.submit(&runtime_id, &text).await {
+                    queue
+                        .write()
+                        .mark_submit_failed(&stored_id, text, error.to_string());
+                }
+            }
+        }
+    });
+
+    rsx! { Router::<Route> {} }
 }
 
 #[component]
@@ -110,10 +160,12 @@ pub(super) fn Chat() -> Element {
 #[component]
 pub(super) fn Session(id: String) -> Element {
     let services = use_context::<AppServices>();
+    let chat_runtime = use_context::<ChatRuntimeState>();
     let load_service = services.sessions.clone();
     let history_service = services.sessions.clone();
     let submit_service = services.sessions.clone();
     let interrupt_service = services.sessions.clone();
+    let queue_resume_service = services.sessions.clone();
     let events_service = services.sessions.clone();
     let session_id = id.clone();
     let history_stored_id = id.clone();
@@ -131,7 +183,12 @@ pub(super) fn Session(id: String) -> Element {
             loading.set(true);
             match load_service.resume(&session_id).await {
                 Ok(response) => {
-                    transcript.set(Some(SessionTranscript::load(session_id, response)));
+                    let state = SessionTranscript::load(session_id, response);
+                    chat_runtime
+                        .queue
+                        .write()
+                        .bind(&state.stored_id, &state.runtime_id, state.busy);
+                    transcript.set(Some(state));
                     visible_limit.set(TRANSCRIPT_WINDOW);
                     load_error.set(None);
                     history_error.set(None);
@@ -194,11 +251,19 @@ pub(super) fn Session(id: String) -> Element {
         let Some(before) = transcript() else {
             return;
         };
-        if text.is_empty() || before.busy {
+        if text.is_empty() {
+            return;
+        }
+        let stored_id = before.stored_id.clone();
+        if before.busy {
+            chat_runtime.queue.write().enqueue(&stored_id, text);
+            draft.set(String::new());
+            send_error.set(None);
             return;
         }
         let runtime_id = before.runtime_id.clone();
         let optimistic_id = format!("user-local-{}", before.messages.len());
+        chat_runtime.queue.write().mark_busy(&stored_id, true);
         if let Some(state) = transcript.write().as_mut() {
             state.push_user(optimistic_id, text.clone());
         }
@@ -207,15 +272,52 @@ pub(super) fn Session(id: String) -> Element {
         let service = submit_service.clone();
         spawn(async move {
             if let Err(error) = service.submit(&runtime_id, &text).await {
+                chat_runtime.queue.write().mark_busy(&stored_id, false);
                 transcript.set(Some(before));
                 draft.set(text);
                 send_error.set(Some(error.to_string()));
             }
         });
     });
+
+    let remove_queue_id = id.clone();
+    let remove_queued = Callback::new(move |index: usize| {
+        chat_runtime.queue.write().remove(&remove_queue_id, index);
+    });
+    let clear_queue_id = id.clone();
+    let clear_queued = Callback::new(move |()| {
+        chat_runtime.queue.write().clear(&clear_queue_id);
+    });
+    let resume_queue_id = id.clone();
+    let resume_queue = Callback::new(move |()| {
+        let next = {
+            let mut queue = chat_runtime.queue.write();
+            queue.resume(&resume_queue_id);
+            queue.next_if_idle(&resume_queue_id)
+        };
+        let Some((runtime_id, text)) = next else {
+            return;
+        };
+        let service = queue_resume_service.clone();
+        let stored_id = resume_queue_id.clone();
+        spawn(async move {
+            if let Err(error) = service.submit(&runtime_id, &text).await {
+                chat_runtime
+                    .queue
+                    .write()
+                    .mark_submit_failed(&stored_id, text, error.to_string());
+            }
+        });
+    });
+
     let busy = transcript().as_ref().is_some_and(|state| state.busy);
+    let queued = (chat_runtime.queue)().items(&id);
+    let queue_parked = (chat_runtime.queue)().is_parked(&id);
+    let queue_error = (chat_runtime.queue)().error(&id);
     let header_interrupt = interrupt_service.clone();
     let composer_interrupt = interrupt_service;
+    let header_queue_id = id.clone();
+    let composer_queue_id = id.clone();
     rsx! {
         section { class: "conversation-surface",
             header { class: "conversation-header",
@@ -227,6 +329,7 @@ pub(super) fn Session(id: String) -> Element {
                             let service = header_interrupt.clone();
                             let runtime_id = transcript().map(|state| state.runtime_id).unwrap_or_default();
                             if runtime_id.is_empty() { return; }
+                            chat_runtime.queue.write().park(&header_queue_id);
                             spawn(async move {
                                 if let Err(error) = service.interrupt(&runtime_id).await {
                                     send_error.set(Some(error.to_string()));
@@ -306,11 +409,37 @@ pub(super) fn Session(id: String) -> Element {
             }
             div { class: "session-composer-dock",
                 ProjectPicker {}
+                if !queued.is_empty() {
+                    section { class: "prompt-queue", aria_label: "Queued prompts",
+                        div { class: "prompt-queue-head",
+                            strong { "Queued prompts ({queued.len()})" }
+                            if queue_parked {
+                                button { class: "secondary-button", onclick: move |_| resume_queue.call(()), "Resume queue" }
+                            }
+                            button { class: "secondary-button", onclick: move |_| clear_queued.call(()), "Clear" }
+                        }
+                        for (index, text) in queued.iter().enumerate() {
+                            div { class: "prompt-queue-row",
+                                span { "{index + 1}. {text}" }
+                                button {
+                                    class: "composer-tool",
+                                    aria_label: "Remove queued prompt {index + 1}",
+                                    title: "Remove queued prompt",
+                                    onclick: move |_| remove_queued.call(index),
+                                    Codicon { name: "close" }
+                                }
+                            }
+                        }
+                    }
+                }
+                if let Some(error) = queue_error {
+                    p { class: "inline-error composer-error", role: "alert", "Queued prompt failed: {error}" }
+                }
                 div { class: "composer-card",
                     button { class: "composer-tool", title: "Attach", aria_label: "Attach", Codicon { name: "add" } }
                     textarea {
                         aria_label: "Message Hermes",
-                        placeholder: if busy { "Hermes is working…" } else { "What are we building?" },
+                        placeholder: if busy { "Type and press Enter to queue another prompt…" } else { "What are we building?" },
                         rows: "1",
                         value: "{draft}",
                         disabled: loading(),
@@ -323,7 +452,15 @@ pub(super) fn Session(id: String) -> Element {
                         }
                     }
                     div { class: "composer-actions",
-                        span { class: "composer-model", "Private session" }
+                        span { class: "composer-model", if busy { "Running · Enter queues" } else { "Private session" } }
+                        if busy && !draft().trim().is_empty() {
+                            button {
+                                class: "secondary-button",
+                                aria_label: "Queue prompt",
+                                onclick: move |_| send.call(()),
+                                "Queue"
+                            }
+                        }
                         button {
                             class: if busy { "send-button stop" } else { "send-button" },
                             aria_label: if busy { "Stop response" } else { "Send message" },
@@ -332,6 +469,7 @@ pub(super) fn Session(id: String) -> Element {
                                 if busy {
                                     let service = composer_interrupt.clone();
                                     let runtime_id = transcript().map(|state| state.runtime_id).unwrap_or_default();
+                                    chat_runtime.queue.write().park(&composer_queue_id);
                                     spawn(async move { let _ = service.interrupt(&runtime_id).await; });
                                 } else {
                                     send.call(());
