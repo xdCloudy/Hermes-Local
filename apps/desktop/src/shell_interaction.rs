@@ -94,21 +94,111 @@ struct Command {
 }
 
 const COMMANDS: &[Command] = &[
-    Command { id: "nav.home", label: "Go to Home", category: "Navigation", shortcut: "", action: CommandAction::Navigate("/") },
-    Command { id: "nav.chat", label: "Go to Chat", category: "Navigation", shortcut: "", action: CommandAction::Navigate("/chat") },
-    Command { id: "nav.projects", label: "Go to Projects", category: "Navigation", shortcut: "", action: CommandAction::Navigate("/projects") },
-    Command { id: "nav.skills", label: "Go to Skills", category: "Navigation", shortcut: "", action: CommandAction::Navigate("/skills") },
-    Command { id: "nav.settings", label: "Open Settings", category: "Navigation", shortcut: "Ctrl/Cmd+,", action: CommandAction::Navigate("/settings") },
-    Command { id: "view.showFiles", label: "Show Files", category: "View", shortcut: "", action: CommandAction::Navigate("/files") },
-    Command { id: "view.showTerminal", label: "Show Terminal", category: "View", shortcut: "Ctrl+`", action: CommandAction::Navigate("/terminal") },
-    Command { id: "view.toggleReview", label: "Show Review", category: "View", shortcut: "Ctrl/Cmd+G", action: CommandAction::Navigate("/review") },
-    Command { id: "view.toggleSidebar", label: "Toggle Sidebar", category: "View", shortcut: "Ctrl/Cmd+B", action: CommandAction::ToggleSidebar },
-    Command { id: "view.toggleRightSidebar", label: "Toggle Right Sidebar", category: "View", shortcut: "Ctrl/Cmd+J", action: CommandAction::ToggleRightRail },
-    Command { id: "view.toggleStatusbar", label: "Toggle Status Bar", category: "View", shortcut: "Ctrl/Cmd+Shift+S", action: CommandAction::ToggleStatus },
-    Command { id: "view.findInPage", label: "Find in Page", category: "View", shortcut: "Ctrl/Cmd+F", action: CommandAction::OpenFind },
-    Command { id: "view.zoomIn", label: "Zoom In", category: "View", shortcut: "Ctrl/Cmd++", action: CommandAction::ZoomIn },
-    Command { id: "view.zoomOut", label: "Zoom Out", category: "View", shortcut: "Ctrl/Cmd+-", action: CommandAction::ZoomOut },
-    Command { id: "view.zoomReset", label: "Reset Zoom to 90%", category: "View", shortcut: "Ctrl/Cmd+0", action: CommandAction::ZoomReset },
+    Command {
+        id: "nav.home",
+        label: "Go to Home",
+        category: "Navigation",
+        shortcut: "",
+        action: CommandAction::Navigate("/"),
+    },
+    Command {
+        id: "nav.chat",
+        label: "Go to Chat",
+        category: "Navigation",
+        shortcut: "",
+        action: CommandAction::Navigate("/chat"),
+    },
+    Command {
+        id: "nav.projects",
+        label: "Go to Projects",
+        category: "Navigation",
+        shortcut: "",
+        action: CommandAction::Navigate("/projects"),
+    },
+    Command {
+        id: "nav.skills",
+        label: "Go to Skills",
+        category: "Navigation",
+        shortcut: "",
+        action: CommandAction::Navigate("/skills"),
+    },
+    Command {
+        id: "nav.settings",
+        label: "Open Settings",
+        category: "Navigation",
+        shortcut: "Ctrl/Cmd+,",
+        action: CommandAction::Navigate("/settings"),
+    },
+    Command {
+        id: "view.showFiles",
+        label: "Show Files",
+        category: "View",
+        shortcut: "",
+        action: CommandAction::Navigate("/files"),
+    },
+    Command {
+        id: "view.showTerminal",
+        label: "Show Terminal",
+        category: "View",
+        shortcut: "Ctrl+`",
+        action: CommandAction::Navigate("/terminal"),
+    },
+    Command {
+        id: "view.toggleReview",
+        label: "Show Review",
+        category: "View",
+        shortcut: "Ctrl/Cmd+G",
+        action: CommandAction::Navigate("/review"),
+    },
+    Command {
+        id: "view.toggleSidebar",
+        label: "Toggle Sidebar",
+        category: "View",
+        shortcut: "Ctrl/Cmd+B",
+        action: CommandAction::ToggleSidebar,
+    },
+    Command {
+        id: "view.toggleRightSidebar",
+        label: "Toggle Right Sidebar",
+        category: "View",
+        shortcut: "Ctrl/Cmd+J",
+        action: CommandAction::ToggleRightRail,
+    },
+    Command {
+        id: "view.toggleStatusbar",
+        label: "Toggle Status Bar",
+        category: "View",
+        shortcut: "Ctrl/Cmd+Shift+S",
+        action: CommandAction::ToggleStatus,
+    },
+    Command {
+        id: "view.findInPage",
+        label: "Find in Page",
+        category: "View",
+        shortcut: "Ctrl/Cmd+F",
+        action: CommandAction::OpenFind,
+    },
+    Command {
+        id: "view.zoomIn",
+        label: "Zoom In",
+        category: "View",
+        shortcut: "Ctrl/Cmd++",
+        action: CommandAction::ZoomIn,
+    },
+    Command {
+        id: "view.zoomOut",
+        label: "Zoom Out",
+        category: "View",
+        shortcut: "Ctrl/Cmd+-",
+        action: CommandAction::ZoomOut,
+    },
+    Command {
+        id: "view.zoomReset",
+        label: "Reset Zoom to 90%",
+        category: "View",
+        shortcut: "Ctrl/Cmd+0",
+        action: CommandAction::ZoomReset,
+    },
 ];
 
 fn normalized_key(key: &Key) -> String {
@@ -232,8 +322,16 @@ pub fn ShellHost(children: Element) -> Element {
 
     let class = format!(
         "shell-host{}{}",
-        if sidebar_visible() { "" } else { " sidebar-hidden" },
-        if status_visible() { "" } else { " status-hidden" },
+        if sidebar_visible() {
+            ""
+        } else {
+            " sidebar-hidden"
+        },
+        if status_visible() {
+            ""
+        } else {
+            " status-hidden"
+        },
     );
 
     rsx! {
@@ -442,7 +540,10 @@ mod tests {
 
     #[test]
     fn command_registry_has_stable_unique_ids() {
-        let ids = COMMANDS.iter().map(|command| command.id).collect::<BTreeSet<_>>();
+        let ids = COMMANDS
+            .iter()
+            .map(|command| command.id)
+            .collect::<BTreeSet<_>>();
         assert_eq!(ids.len(), COMMANDS.len());
         assert!(ids.contains("nav.settings"));
         assert!(ids.contains("view.findInPage"));
