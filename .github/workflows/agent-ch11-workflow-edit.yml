@@ -23,19 +23,8 @@ jobs:
           from pathlib import Path
           path = Path('.github/workflows/agent-chat-attachments-a4.yml')
           text = path.read_text(encoding='utf-8')
-          anchor = '''          git apply ch11.patch
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Format Rust
-'''
-          replacement = '''          git apply ch11.patch
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Apply Clippy repair
-        shell: pwsh
-        run: |
-          python agent-patches/ch11-clippy-fix.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Format Rust
-'''
+          anchor = "          git apply ch11.patch\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n      - name: Format Rust\n"
+          replacement = "          git apply ch11.patch\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n      - name: Apply Clippy repair\n        shell: pwsh\n        run: |\n          python agent-patches/ch11-clippy-fix.py\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n      - name: Format Rust\n"
           if anchor not in text:
               raise SystemExit('parity workflow anchor not found')
           path.write_text(text.replace(anchor, replacement, 1), encoding='utf-8')
