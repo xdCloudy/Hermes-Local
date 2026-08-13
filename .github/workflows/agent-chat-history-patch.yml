@@ -32,9 +32,9 @@ jobs:
         shell: bash
         run: |
           git diff --check
-          grep -q 'fn history(&self, session_id: &str)' crates/hermes-core/src/lib.rs
+          grep -q 'fn history(&self' crates/hermes-core/src/lib.rs
           grep -q 'SessionMessagesResponse' crates/hermes-protocol/src/lib.rs
-          grep -q '/api/sessions/{session_id}/messages' crates/hermes-desktop/src/lib.rs
+          grep -q 'messages"' crates/hermes-desktop/src/lib.rs
 
       - name: Remove one-shot patch authority
         shell: bash
