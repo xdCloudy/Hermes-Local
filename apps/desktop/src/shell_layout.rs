@@ -430,10 +430,8 @@ impl LayoutModel {
 
         let remove_group = group.tabs.len() == 1;
         if remove_group {
-            let root = std::mem::replace(
-                &mut self.root,
-                LayoutNode::Group(PaneGroup::placeholder()),
-            );
+            let root =
+                std::mem::replace(&mut self.root, LayoutNode::Group(PaneGroup::placeholder()));
             self.root = root.remove_group(&target).unwrap_or_default_node();
             self.focused_group = self
                 .group_ids()
@@ -473,11 +471,7 @@ impl LayoutModel {
     }
 
     pub fn dock_floating(&mut self, floating_id: &str) -> bool {
-        let Some(index) = self
-            .floating
-            .iter()
-            .position(|pane| pane.id == floating_id)
-        else {
+        let Some(index) = self.floating.iter().position(|pane| pane.id == floating_id) else {
             return false;
         };
         let floating = self.floating.remove(index);
@@ -499,11 +493,7 @@ impl LayoutModel {
             .max()
             .unwrap_or(0)
             + 1;
-        let Some(pane) = self
-            .floating
-            .iter_mut()
-            .find(|pane| pane.id == floating_id)
-        else {
+        let Some(pane) = self.floating.iter_mut().find(|pane| pane.id == floating_id) else {
             return false;
         };
         pane.z_index = next_z;
@@ -511,11 +501,7 @@ impl LayoutModel {
     }
 
     pub fn set_floating_bounds(&mut self, floating_id: &str, bounds: FloatingBounds) -> bool {
-        let Some(pane) = self
-            .floating
-            .iter_mut()
-            .find(|pane| pane.id == floating_id)
-        else {
+        let Some(pane) = self.floating.iter_mut().find(|pane| pane.id == floating_id) else {
             return false;
         };
         pane.bounds = FloatingBounds {
