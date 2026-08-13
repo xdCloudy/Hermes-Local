@@ -9,6 +9,10 @@ fn model_pair(value: &str) -> Option<(String, String)> {
     (!provider.is_empty() && !model.is_empty()).then(|| (provider.into(), model.into()))
 }
 
+fn valid_approval(value: &str) -> bool {
+    matches!(value, "manual" | "smart")
+}
+
 #[component]
 pub(super) fn FreshModelControl() -> Element {
     let services = use_context::<AppServices>();
@@ -16,6 +20,8 @@ pub(super) fn FreshModelControl() -> Element {
     let navigator = use_navigator();
     let mut catalog = use_signal(|| None::<ModelSettingsSnapshot>);
     let mut selected = use_signal(String::new);
+    let mut approval = use_signal(|| "manual".to_owned());
+    let mut tools = use_signal(String::new);
     let mut busy = use_signal(|| false);
     let mut error = use_signal(String::new);
 
@@ -44,6 +50,16 @@ pub(super) fn FreshModelControl() -> Element {
             error.set("Choose a model first".into());
             return;
         };
+        let approval_mode = approval();
+        if !valid_approval(&approval_mode) {
+            error.set("Choose a valid approval mode".into());
+            return;
+        }
+        let tool_control = tools().trim().to_owned();
+        if tool_control.len() > 256 {
+            error.set("Tool control must be 256 characters or fewer".into());
+            return;
+        }
         if busy() {
             return;
         }
@@ -70,13 +86,27 @@ pub(super) fn FreshModelControl() -> Element {
                     .await?;
                 let stored_id = session.id.clone();
                 let runtime_id = session.runtime_id.unwrap_or_else(|| stored_id.clone());
-                if let Err(problem) = service
-                    .execute_directive(
-                        &runtime_id,
-                        &format!("/model {model} --provider {provider} --session"),
-                    )
-                    .await
-                {
+
+                let configure = async {
+                    service
+                        .execute_directive(
+                            &runtime_id,
+                            &format!("/model {model} --provider {provider} --session"),
+                        )
+                        .await?;
+                    service
+                        .execute_directive(&runtime_id, &format!("/approvals {approval_mode}"))
+                        .await?;
+                    if !tool_control.is_empty() {
+                        service
+                            .execute_directive(&runtime_id, &format!("/tools {tool_control}"))
+                            .await?;
+                    }
+                    Ok::<(), hermes_core::ServiceError>(())
+                }
+                .await;
+
+                if let Err(problem) = configure {
                     let _ = service.delete(&stored_id).await;
                     return Err(problem);
                 }
@@ -95,7 +125,7 @@ pub(super) fn FreshModelControl() -> Element {
 
     rsx! {
         if let Some(models) = catalog() {
-            div { class: "chat-runtime-controls fresh-model", aria_label: "Model for new chat",
+            div { class: "chat-runtime-controls fresh-model", aria_label: "New chat runtime controls",
                 select {
                     value: "{selected}",
                     disabled: busy(),
@@ -110,11 +140,26 @@ pub(super) fn FreshModelControl() -> Element {
                         }
                     }
                 }
+                select {
+                    value: "{approval}",
+                    disabled: busy(),
+                    aria_label: "Approval mode for new chat",
+                    onchange: move |event| approval.set(event.value()),
+                    option { value: "manual", "Approvals: manual" }
+                    option { value: "smart", "Approvals: smart" }
+                }
+                input {
+                    value: "{tools}",
+                    disabled: busy(),
+                    aria_label: "Tool control for new chat",
+                    placeholder: "tools: +name | -name",
+                    oninput: move |event| tools.set(event.value()),
+                }
                 button {
                     class: "secondary-button",
                     disabled: busy() || selected().is_empty(),
                     onclick: move |_| start.call(()),
-                    if busy() { "Starting…" } else { "Start with model" }
+                    if busy() { "Starting…" } else { "Start configured chat" }
                 }
             }
         }
@@ -135,5 +180,12 @@ mod tests {
             Some(("provider".into(), "model".into()))
         );
         assert_eq!(model_pair("model"), None);
+    }
+
+    #[test]
+    fn fresh_approval_modes_exclude_bypass() {
+        assert!(valid_approval("manual"));
+        assert!(valid_approval("smart"));
+        assert!(!valid_approval("off"));
     }
 }
