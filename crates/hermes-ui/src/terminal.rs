@@ -93,8 +93,7 @@ impl AnsiColor {
                         let red = cube / 36;
                         let green = (cube % 36) / 6;
                         let blue = cube % 6;
-                        let component =
-                            |value: u8| if value == 0 { 0 } else { 55 + (value * 40) };
+                        let component = |value: u8| if value == 0 { 0 } else { 55 + (value * 40) };
                         format!(
                             "rgb({} {} {})",
                             component(red),
