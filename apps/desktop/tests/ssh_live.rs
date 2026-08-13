@@ -53,7 +53,10 @@ fn live_openssh_probe_reports_remote_runtime() {
         result.remote_hermes_version.as_deref(),
         Some("hermes-live-ssh-test 0.0.1")
     );
-    assert_eq!(result.remote_hermes_path.as_deref(), Some(remote_hermes.as_str()));
+    assert_eq!(
+        result.remote_hermes_path.as_deref(),
+        Some(remote_hermes.as_str())
+    );
 }
 
 fn required(name: &str) -> String {
