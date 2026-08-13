@@ -114,7 +114,7 @@ jobs:
             hermes-ssh@127.0.0.1 \
             "printf 'HERMES_SSH_FIXTURE_OK\\n'"
 
-      - name: Run live Desktop OpenSSH interoperability test
+      - name: Run live Desktop OpenSSH interoperability tests
         shell: bash
         env:
           HERMES_SSH_TEST_HOST: 127.0.0.1
@@ -124,7 +124,10 @@ jobs:
           export HERMES_SSH_TEST_USER="hermes-ssh"
           export HERMES_SSH_TEST_KEY="$RUNNER_TEMP/id_ed25519"
           export HERMES_SSH_TEST_HERMES="/home/hermes-ssh/hermes-live-ssh-fixture"
-          cargo test -p hermes-local --test ssh_live --locked -- --ignored --nocapture 2>&1 | tee "$RUNNER_TEMP/ssh-live.log"
+          {
+            cargo test -p hermes-local --test ssh_live --locked -- --ignored --nocapture
+            cargo test -p hermes-local live_remote_pty_round_trip --locked -- --ignored --nocapture
+          } 2>&1 | tee "$RUNNER_TEMP/ssh-live.log"
 
       - name: Upload live SSH diagnostics
         if: always()
@@ -145,6 +148,7 @@ jobs:
             echo "- Fixture: runner-local sshd on 127.0.0.1:2222"
             echo "- Authentication: isolated hermes-ssh user + ephemeral Ed25519 key, BatchMode"
             echo "- Hermes probe: real apps/desktop/src/ssh.rs process execution"
+            echo "- Remote terminal: real apps/desktop/src/ssh_terminal.rs PTY input/output/resize/dispose"
             echo "- Default CI remains hermetic; this job is explicitly opted in."
           } >> "$GITHUB_STEP_SUMMARY"
 
