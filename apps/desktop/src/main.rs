@@ -30,6 +30,7 @@ mod shell_interaction;
 mod shell_keymap;
 mod shell_layout;
 mod shell_parity;
+mod shell_window_contract;
 mod skills_service;
 mod ssh;
 mod ssh_config;
@@ -166,8 +167,8 @@ fn main() {
             window_options.height as f64,
         ))
         .with_min_inner_size(LogicalSize::new(
-            window_state::MIN_WIDTH as f64,
-            window_state::MIN_HEIGHT as f64,
+            shell_window_contract::WINDOW_MIN_WIDTH as f64,
+            shell_window_contract::WINDOW_MIN_HEIGHT as f64,
         ))
         .with_maximized(window_options.is_maximized)
         .with_decorations(false);
