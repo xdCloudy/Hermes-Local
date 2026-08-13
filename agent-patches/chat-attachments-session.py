@@ -9,6 +9,7 @@ def rep(path, old, new):
     p.write_text(s.replace(old, new, 1), encoding='utf-8')
 
 ui = 'crates/hermes-ui/src/chat.rs'
+rep(ui, '    let mut draft_revision = use_signal(|| 0_u64);', '    let draft_revision = use_signal(|| 0_u64);')
 rep(ui, '''    let mut draft = use_signal(String::new);
     let mut draft_bound = use_signal(|| false);''', '''    let mut draft = use_signal(String::new);
     let mut draft_bound = use_signal(|| false);
@@ -105,6 +106,14 @@ rep(ui, '''        let service = submit_service.clone();
                 transcript.set(Some(before));
                 draft.set(text.clone());
                 attachments.set(restore_attachments);''')
+rep(ui, '''    let header_queue_id = id.clone();
+    let composer_queue_id = id.clone();
+    rsx! {''', '''    let header_queue_id = id.clone();
+    let composer_queue_id = id.clone();
+    let input_draft_id = id.clone();
+    let undo_draft_id = id.clone();
+    let redo_draft_id = id.clone();
+    rsx! {''')
 rep(ui, '''                    button { class: "composer-tool", title: "Attach", aria_label: "Attach", Codicon { name: "add" } }
                     textarea {''', '''                    button {
                         class: "composer-tool", title: "Attach files", aria_label: "Attach files",
@@ -112,6 +121,9 @@ rep(ui, '''                    button { class: "composer-tool", title: "Attach",
                     }
                     AttachmentTray { attachments, on_remove: remove_attachment }
                     textarea {''')
+rep(ui, '                            chat_runtime.drafts.write().edit(&id, value);', '                            chat_runtime.drafts.write().edit(&input_draft_id, value);')
+rep(ui, '                                let restored = chat_runtime.drafts.write().undo(&id);', '                                let restored = chat_runtime.drafts.write().undo(&undo_draft_id);')
+rep(ui, '                                let restored = chat_runtime.drafts.write().redo(&id);', '                                let restored = chat_runtime.drafts.write().redo(&redo_draft_id);')
 rep(ui, '''                            disabled: !busy && draft().trim().is_empty(),''', '''                            disabled: !busy && draft().trim().is_empty() && attachments().is_empty(),''')
 
 print('session attachment UI transform applied')
