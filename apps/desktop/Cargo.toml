@@ -17,6 +17,7 @@ hermes-core = { path = "../../crates/hermes-core" }
 hermes-desktop = { path = "../../crates/hermes-desktop" }
 hermes-protocol = { path = "../../crates/hermes-protocol" }
 hermes-ui = { path = "../../crates/hermes-ui" }
+portable-pty.workspace = true
 reqwest = { workspace = true, features = ["json", "rustls"] }
 serde.workspace = true
 sha2.workspace = true

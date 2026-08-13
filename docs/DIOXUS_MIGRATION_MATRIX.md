@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `0d72892f2d4fef76da407706e9d38d077667e5c9` (2026-08-13)
+> **Implementation audit checkpoint:** `cbeb44c4fd48f0380fe2f5f3cc4fba167036d259` (2026-08-13)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -53,16 +53,16 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 35 | Largest remaining implementation backlog. |
+| A1 Designed | 34 | Largest remaining implementation backlog. |
 | A2 Service | 21 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 3 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 66 | Automated slice is green; human/live acceptance still required. |
+| A4 Auto-verified | 68 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
-| BX Blocked | 1 | Named external validation blocker. |
+| BX Blocked | 0 | No named external validation blockers remain. |
 | **Total** | **127** | Every row must end at A6 or be explicitly retired with product-owner approval. |
 
-At least-service coverage is **90/127 capabilities (70.9%)**. This is service-foundation coverage, not end-user parity or human acceptance.
+At least-service coverage is **92/127 capabilities (72.4%)**. This is service-foundation coverage, not end-user parity or human acceptance.
 
 The PR #179 exact-head validation set was green for Documentation
 validation, the Hermes Agent harness/native-client boundary workflow, Dioxus
@@ -96,6 +96,22 @@ and WASM compile, workspace tests, Clippy, SBOM tooling and optimized Windows
 artifact production. All `SH-01`…`SH-15` rows are therefore A4; A5 still requires
 the row-specific live, visual, keyboard and screen-reader evidence.
 
+PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable
+Projects/Files/Git/Terminal/SSH slice. Desktop SSH mode now routes the existing
+typed Terminal surface through an OpenSSH-backed native PTY while local terminals
+continue to use the existing Desktop PTY implementation. Dioxus Rust validation
+run `31686964451` passed architecture, rustfmt, all-target/WASM compilation,
+workspace tests, Clippy, SBOM tooling and optimized Windows artifact production;
+Windows packaging `31686964346`, install lifecycle `31686964368`, footprint
+`31686964419`, and the Hermes Agent/native-client boundary `31686964412` also
+passed. The opt-in SSH interoperability run `31686964490` provisioned an isolated
+runner-local Linux `sshd` and passed both the real Desktop `ssh.rs` runtime probe
+and the `ssh_terminal.rs` PTY input/output/resize/dispose round trip. All
+`PF-01`…`PF-08`, `GT-01`…`GT-07`, `TM-01`…`TM-03` and `SS-01`…`SS-05` rows are
+therefore A4. A5 still requires row-specific human/live production-host
+acceptance, including ssh-agent/ProxyJump/hardware-key and non-Linux host
+scenarios where applicable.
+
 ## Roadmap waves
 
 The waves are ordered to minimize rework and make the Rust client progressively
@@ -115,20 +131,17 @@ are already available, but its acceptance gate remains explicit.
 
 ### Current critical path
 
-1. Execute the real SSH-host interoperability matrix and close `SS-05`.
-2. Port Hermes Cloud discovery/org/agent connection and finish complete Gateway
+1. Port Hermes Cloud discovery/org/agent connection and finish complete Gateway
    re-home behavior.
-3. Finish rich chat/composer parity.
-4. Finish Workspace Terminal parity beyond the now-A4 local ANSI/scrollback slice, especially TM-03 remote/SSH behavior.
-5. Port Workstation/Agent surfaces, then finish native Windows integration.
-6. Finish updater/cutover, remove Electron/React/Node from production, and run
-   the full human acceptance pass.
+2. Finish rich chat/composer parity.
+3. Port Workstation/Agent surfaces, then finish native Windows integration.
+4. Finish updater/cutover, remove Electron/React/Node from production.
+5. Run the full human acceptance pass, including production-host SSH scenarios.
 
 ## Known blockers and deliberate debt
 
-- **Real SSH-host validation:** POSIX and Windows owned lifecycle code is
-  auto-verified, but live Linux/macOS/Windows interoperability has not yet been
-  executed (`SS-05`).
+No `BX` rows remain at this checkpoint. Remaining deliberate debt includes:
+
 - **Hermes Cloud:** discovery/org selection/agent connection is not yet ported
   (`CN-06`).
 - **Rendered native QA:** earlier migration checkpoints recorded an intermittent
@@ -188,7 +201,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 
 | ID | Capability | Rust owner | Dioxus surface | Stage | Current evidence / gap | Human acceptance | Human |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| CH-01 | Agent gateway URL/auth resolution | `hermes-agent-client` + `ConnectionService` | connection/recovery | A3 Ported | Local, remote token and OAuth paths are substantially wired; Cloud and complete SSH UX remain open. | Test Local, remote token, remote OAuth, Cloud and SSH end-to-end once all modes are available; verify selected scope survives restart. | ⬜ |
+| CH-01 | Agent gateway URL/auth resolution | `hermes-agent-client` + `ConnectionService` | connection/recovery | A3 Ported | Local, remote token and OAuth paths are substantially wired; Cloud and full cross-mode reconnect/re-home behavior remain open. | Test Local, remote token, remote OAuth, Cloud and SSH end-to-end once all modes are available; verify selected scope survives restart. | ⬜ |
 | CH-02 | JSON-RPC framing, calls, cancellation and unknown fields | `hermes-agent-client` | n/a | A4 Auto-verified | Actor-based client has bounded queues/frames, request timeouts, cancellation cleanup, event routing and protocol tests. | Smoke-test calls/cancellation against a real Agent while streaming; confirm no visible protocol regressions. | ⬜ |
 | CH-03 | WebSocket lifecycle, reconnect and degraded recovery | `hermes-agent-client` | connecting/degraded states | A2 Service | Core transport/state primitives exist, but full reconnect/backoff/re-home behavior is not proven across all modes. | Drop/recover network and Agent repeatedly; verify reconnect, no duplicate messages, no lost foreground state and understandable degraded UI. | ⬜ |
 | CH-04 | Session identity, lineage and profile scope | `SessionService` | chat/sidebar | A4 Auto-verified | Stored/runtime identities, lineage-root behavior and profile-scoped contracts are implemented/tested. | Open/resume sessions across profiles and restarts; verify correct history, cwd/project and no cross-profile leakage. | ⬜ |
@@ -231,12 +244,12 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | GT-07 | Repository scanning/discovery | `GitRepoScanService` | project discovery | A4 Auto-verified | Project Centre now consumes profile-scoped repo-scan policy, supports bounded cancellable discovery and explicit registration; native discovery/UI contracts, architecture, WASM and Clippy gates pass. | Scan representative roots, cancellations, permissions, deep trees and repo limits. | ⬜ |
 | TM-01 | PTY/ConPTY lifecycle service | `TerminalService` | terminal | A4 Auto-verified | Dioxus Terminal now owns project-scoped PTY start/read/write/resize/dispose with route teardown via synchronous typed disposal; a real Windows PTY round trip including ESC[6n DSR handling, WASM and Clippy gates pass. | After renderer lands: start shell in project cwd, type/resize, run long/interactive commands, exit/dispose and verify no orphan processes. | ⬜ |
 | TM-02 | Terminal ANSI rendering, scrollback and persistence | terminal read model | terminal pane | A4 Auto-verified | Dioxus Terminal now uses a bounded ANSI-aware Rust read model with SGR/16/256/truecolor styles, split escape/UTF-8 handling, carriage-return/erase behavior, OSC suppression and per-project in-memory scrollback restoration across route/project reopen. Deterministic parser/persistence tests plus exact-head architecture, all-target, WASM, workspace-test and Clippy gates pass; the same head also passes the optimized Windows footprint build. | Stress ANSI/Unicode/large output, scrollback, hidden/reopened panes and memory/CPU. | ⬜ |
-| TM-03 | Remote/SSH terminal behavior | `TerminalService` + SSH transport | terminal pane | A1 Designed | SSH Agent tunnel exists but interactive terminal parity is not integrated. | Connect to real SSH target, verify cwd, resize, reconnect, auth-agent use and cleanup. | ⬜ |
+| TM-03 | Remote/SSH terminal behavior | `TerminalService` + Desktop SSH PTY adapter | terminal pane | A4 Auto-verified | In SSH mode the existing Dioxus Terminal service is wrapped by Desktop-owned `ssh_terminal.rs`, launching system OpenSSH with a native PTY while local mode delegates unchanged. Typed start/read/write/resize/dispose, bounded output, DSR handling and option-safe argv/config mapping are unit-tested; exact-head live run `31686964490` passed a runner-local OpenSSH PTY marker round trip including resize and disposal. Remote project-cwd mapping, reconnect and agent/ProxyJump behavior remain A5 evidence. | Connect to a production SSH target, verify expected remote cwd, resize, reconnect, ssh-agent/ProxyJump/hardware-key behavior where available, and cleanup. | ⬜ |
 | SS-01 | SSH config Host suggestions, Include traversal and `ssh -G` enrichment | `ConnectionService`/SSH helper | Settings → Gateway | A4 Auto-verified | Native `Host`/`Include` discovery, bounded glob/cycle traversal and 5-second `ssh -G` enrichment are wired into the Dioxus Gateway selector with parity/contract coverage; manual user/port/key values are never overwritten. The exact-head Rust/Dioxus gate is green. | Use aliases, Includes, wildcard exclusions and custom/raw hosts; verify resolved fields match `ssh -G` and manual values are not overwritten. | ⬜ |
 | SS-02 | SSH probe/discovery and actionable failure classification | native OpenSSH transport | Settings → Gateway | A4 Auto-verified | System OpenSSH argv, Linux/macOS/Windows Hermes discovery, ownership-capability checks and auth/host-key/network classification are unit-tested. | Test real hosts with success, bad auth, changed host key, timeout, unreachable and missing/old Hermes. | ⬜ |
 | SS-03 | POSIX SSH owned backend lifecycle and tunnel reuse | native SSH lifecycle | connection runtime | A4 Auto-verified | Profile-scoped ownership, secure token upload, lock/protocol, owned spawn, readiness, loopback forward, authenticated reuse and safe stale cleanup are implemented/tested. | On real Linux/macOS host: connect, reuse, restart desktop, interrupt network, stale lock/process, remote upgrade and quit cleanup. | ⬜ |
 | SS-04 | Windows SSH owned backend lifecycle and tunnel reuse | native Windows SSH lifecycle | connection runtime | A4 Auto-verified | Canonical `hermes_cli.windows_ssh_runtime` helper is used; ownership binds PID + creation time + Hermes path + spawn nonce and reuse requires matching profile/token/path/home. | On real Windows SSH host: same lifecycle matrix as SS-03, including process identity changes and PowerShell/helper failures. | ⬜ |
-| SS-05 | Live SSH interoperability matrix | native SSH transport/lifecycle | Settings/Gateway/terminal | BX Blocked | Automated/unit validation is green, but no real Linux/macOS/Windows SSH target matrix has been executed from this branch. | Human/live integration must cover at least one representative remote OS used in production plus ssh-agent/ProxyJump/hardware-key setups when available. | ⬜ |
+| SS-05 | Live SSH interoperability matrix | native SSH transport/lifecycle | Settings/Gateway/terminal | A4 Auto-verified | Dedicated opt-in `SSH interoperability` CI provisions an isolated runner-local Linux `sshd` with an ephemeral Ed25519 key and key-only auth, then exercises the real Desktop OpenSSH runtime probe plus remote PTY input/output/resize/dispose. Exact-head run `31686964490` is green, removing the previous external-validation blocker. macOS/Windows production hosts and ssh-agent/ProxyJump/hardware-key/adverse-network cases remain A5/manual evidence, not claimed by this gate. | Human/live integration must cover at least one representative production remote OS plus ssh-agent/ProxyJump/hardware-key setups when available, and representative auth/host-key/network failures. | ⬜ |
 
 ### Product, settings, connections and workstation
 

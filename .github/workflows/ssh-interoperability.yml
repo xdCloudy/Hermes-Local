@@ -1,0 +1,159 @@
+name: SSH interoperability
+
+# Live OpenSSH execution is intentionally separate from the hermetic default
+# workspace gate. It runs only when explicitly requested by workflow dispatch
+# or by applying the integration:ssh label to a pull request.
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "rust-toolchain.toml"
+      - "apps/desktop/**"
+      - "crates/hermes-core/**"
+      - "crates/hermes-protocol/**"
+      - ".github/workflows/ssh-interoperability.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ssh-interoperability-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  loopback-openssh:
+    name: Runner-local OpenSSH client/server
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'integration:ssh')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show pinned toolchain
+        run: |
+          rustup show
+          rustc --version
+          cargo --version
+
+      - name: Install native build and OpenSSH dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            openssh-server \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev
+
+      - name: Provision isolated loopback SSH server
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/id_ed25519"
+          ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/ssh_host_ed25519_key"
+          sudo useradd --create-home --shell /bin/bash hermes-ssh
+          sudo passwd -d hermes-ssh
+          sudo install -d -m 700 -o hermes-ssh -g hermes-ssh /home/hermes-ssh/.ssh
+          sudo install -m 600 -o hermes-ssh -g hermes-ssh \
+            "$RUNNER_TEMP/id_ed25519.pub" \
+            /home/hermes-ssh/.ssh/authorized_keys
+          sudo mkdir -p /run/sshd
+          cat > "$RUNNER_TEMP/sshd_config" <<EOF
+          Port 2222
+          ListenAddress 127.0.0.1
+          HostKey $RUNNER_TEMP/ssh_host_ed25519_key
+          PidFile $RUNNER_TEMP/sshd.pid
+          AuthorizedKeysFile .ssh/authorized_keys
+          PasswordAuthentication no
+          PermitEmptyPasswords no
+          KbdInteractiveAuthentication no
+          ChallengeResponseAuthentication no
+          PubkeyAuthentication yes
+          PermitRootLogin no
+          UsePAM no
+          StrictModes yes
+          LogLevel VERBOSE
+          AllowUsers hermes-ssh
+          EOF
+          sudo /usr/sbin/sshd -f "$RUNNER_TEMP/sshd_config" -E "$RUNNER_TEMP/sshd.log"
+
+      - name: Provision remote Hermes compatibility fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo tee /home/hermes-ssh/hermes-live-ssh-fixture >/dev/null <<'EOF'
+          #!/usr/bin/env sh
+          if [ "${1:-}" = "--version" ]; then
+            echo "hermes-live-ssh-test 0.0.1"
+            exit 0
+          fi
+          if [ "${1:-}" = "serve" ] && [ "${2:-}" = "--help" ]; then
+            echo "--ssh-session-token-file"
+            echo "--ssh-owner-nonce"
+            exit 0
+          fi
+          exit 0
+          EOF
+          sudo chmod 755 /home/hermes-ssh/hermes-live-ssh-fixture
+          sudo chown hermes-ssh:hermes-ssh /home/hermes-ssh/hermes-live-ssh-fixture
+
+      - name: Verify the isolated SSH fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh \
+            -i "$RUNNER_TEMP/id_ed25519" \
+            -p 2222 \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=accept-new \
+            hermes-ssh@127.0.0.1 \
+            "printf 'HERMES_SSH_FIXTURE_OK\\n'"
+
+      - name: Run live Desktop OpenSSH interoperability tests
+        shell: bash
+        env:
+          HERMES_SSH_TEST_HOST: 127.0.0.1
+          HERMES_SSH_TEST_PORT: "2222"
+        run: |
+          set -euo pipefail
+          export HERMES_SSH_TEST_USER="hermes-ssh"
+          export HERMES_SSH_TEST_KEY="$RUNNER_TEMP/id_ed25519"
+          export HERMES_SSH_TEST_HERMES="/home/hermes-ssh/hermes-live-ssh-fixture"
+          {
+            cargo test -p hermes-local --test ssh_live --locked -- --ignored --nocapture
+            cargo test -p hermes-local live_remote_pty_round_trip --locked -- --ignored --nocapture
+          } 2>&1 | tee "$RUNNER_TEMP/ssh-live.log"
+
+      - name: Upload live SSH diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ssh-live-output
+          path: ${{ runner.temp }}/ssh-live.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Record SSH interoperability evidence
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### SSH interoperability"
+            echo "- OpenSSH client: $(ssh -V 2>&1)"
+            echo "- Fixture: runner-local sshd on 127.0.0.1:2222"
+            echo "- Authentication: isolated hermes-ssh user + ephemeral Ed25519 key, BatchMode"
+            echo "- Hermes probe: real apps/desktop/src/ssh.rs process execution"
+            echo "- Remote terminal: real apps/desktop/src/ssh_terminal.rs PTY input/output/resize/dispose"
+            echo "- Default CI remains hermetic; this job is explicitly opted in."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Print sshd diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          sudo cat "$RUNNER_TEMP/sshd.log" || true
