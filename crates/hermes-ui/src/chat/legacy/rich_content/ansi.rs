@@ -98,12 +98,7 @@ fn apply_sgr(params: &str, bold: &mut bool, color: &mut Option<AnsiColor>) {
     }
 }
 
-fn push_segment(
-    segments: &mut Vec<AnsiSegment>,
-    text: &str,
-    bold: bool,
-    color: Option<AnsiColor>,
-) {
+fn push_segment(segments: &mut Vec<AnsiSegment>, text: &str, bold: bool, color: Option<AnsiColor>) {
     let text = text
         .chars()
         .filter(|ch| !ch.is_control() || matches!(ch, '\n' | '\r' | '\t'))
@@ -243,12 +238,24 @@ mod tests {
     #[test]
     fn drops_cursor_and_osc_sequences() {
         let segments = parse_ansi("a\u{1b}[2Jb\u{1b}]0;title\u{7}c");
-        assert_eq!(segments.iter().map(|segment| segment.text.as_str()).collect::<String>(), "abc");
+        assert_eq!(
+            segments
+                .iter()
+                .map(|segment| segment.text.as_str())
+                .collect::<String>(),
+            "abc"
+        );
     }
 
     #[test]
     fn unsupported_extended_colors_are_consumed_safely() {
         let segments = parse_ansi("\u{1b}[38;2;1;2;3mtrue\u{1b}[0m");
-        assert_eq!(segments.iter().map(|segment| segment.text.as_str()).collect::<String>(), "true");
+        assert_eq!(
+            segments
+                .iter()
+                .map(|segment| segment.text.as_str())
+                .collect::<String>(),
+            "true"
+        );
     }
 }
