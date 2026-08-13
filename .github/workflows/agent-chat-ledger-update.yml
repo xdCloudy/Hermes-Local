@@ -1,56 +1,13 @@
-name: Agent chat A4 ledger update
+name: Retired chat A4 ledger updater
 
 on:
-  push:
-    branches:
-      - refactor/dioxus-rust-client
-    paths:
-      - .github/workflows/agent-chat-ledger-update.yml
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  update-ledger:
-    if: github.actor != 'github-actions[bot]'
+  retired:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Record CH-09 through CH-11 A4 evidence
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('docs/DIOXUS_MIGRATION_MATRIX.md')
-          text = path.read_text(encoding='utf-8')
-
-          replacements = {
-            '| CH-09 | Prompt queue and background sessions | `SessionService` | composer/status | A1 Designed | Not ported. | Queue multiple prompts and run background sessions; verify ordering, cancellation and foreground isolation. | ⬜ |':
-            '| CH-09 | Prompt queue and background sessions | `SessionService` | composer/status | A4 Auto-verified | PR #192 exact head `655995db` implements a route-persistent typed prompt queue with stored/runtime identity binding, FIFO background draining, park/resume/remove/clear controls and failed-submit requeue semantics. Rust validation `31699023935`, packaging `31699023859`, install lifecycle `31699023843` and footprint `31699023864` all passed; SSH was not applicable. | Queue multiple prompts and run background sessions; verify ordering, cancellation and foreground isolation. | ⬜ |',
-            '| CH-10 | Composer drafts, undo and directives | `SessionService` | composer | A1 Designed | Basic composer exists; durable drafts/undo/directives parity is incomplete. | Type/edit drafts, switch routes/sessions, restart, undo and exercise supported directives. | ⬜ |':
-            '| CH-10 | Composer drafts, undo and directives | `SessionService` | composer | A4 Auto-verified | PR #195 exact head `df9920cf` adds bounded per-session draft persistence, undo/redo, restore across route/restart, typed slash-directive execution and queue-aware directive sends. Rust validation `31703681496`, packaging `31703681390`, install lifecycle `31703681477` and footprint `31703681363` all passed; SSH was not applicable. | Type/edit drafts, switch routes/sessions, restart, undo and exercise supported directives. | ⬜ |',
-            '| CH-11 | Attachments, images and path selection | `FileService` + attachment protocol | composer/preview | A1 Designed | Attach affordance exists, but production attachment pipeline is not ported. | Attach representative text/image/binary files, invalid/oversize files and paths; verify preview/send/cancel/security behavior. | ⬜ |':
-            '| CH-11 | Attachments, images and path selection | `FileService` + attachment protocol | composer/preview | A4 Auto-verified | PR #196 exact head `e90cc709` ports the native multi-file picker behind opaque capability IDs, bounded previews/size limits, local path staging, remote/SSH byte staging, file context refs, image fallback prompting, attachment-aware background queues/retries and staged-image cleanup. Exact-head Rust validation `31714415036`, packaging `31714415069`, install lifecycle `31714414994` and footprint `31714415039` all passed; SSH interoperability was the expected skip. | Attach representative text/image/binary files, invalid/oversize files and paths; verify preview/send/cancel/security behavior. | ⬜ |',
-          }
-
-          for old, new in replacements.items():
-              if old not in text:
-                  raise SystemExit(f'ledger row not found: {old[:80]}')
-              text = text.replace(old, new, 1)
-
-          anchor = 'PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable\nProjects/Files/Git/Terminal/SSH slice.'
-          if anchor not in text:
-              raise SystemExit('evidence insertion anchor not found')
-          evidence = '''PR #192 exact head `655995db` and PR #195 exact head `df9920cf` close the\nmachine-verifiable prompt-queue and composer-draft/directive slices. Their Rust\nvalidation, Windows packaging, install-lifecycle and footprint workflows all\npassed; SSH interoperability was not applicable. PR #196 exact head `e90cc709`\nthen ports the native attachment pipeline, including opaque picker capability\nIDs, local/remote staging, attachment-aware background queues and cleanup. Rust\nvalidation `31714415036`, Windows packaging `31714415069`, install lifecycle\n`31714414994` and footprint `31714415039` all passed for that exact head; the\nSSH interoperability workflow was the expected skip. `CH-09`…`CH-11` are\ntherefore A4; A5 still requires the row-specific live composer/session review.\n\n'''
-          text = text.replace(anchor, evidence + anchor, 1)
-          path.write_text(text, encoding='utf-8')
-          PY
-      - name: Commit ledger
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/DIOXUS_MIGRATION_MATRIX.md
-          git commit -m "docs: record CH-09 through CH-11 A4 evidence"
-          git push
+      - run: echo "This one-shot ledger updater has already completed."
