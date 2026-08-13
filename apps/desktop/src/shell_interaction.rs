@@ -685,14 +685,26 @@ mod tests {
 
     #[test]
     fn gateway_status_maps_every_connection_state() {
-        assert_eq!(gateway_status(ConnectionState::Open), ("online", "Agent connected"));
+        assert_eq!(
+            gateway_status(ConnectionState::Open),
+            ("online", "Agent connected")
+        );
         assert_eq!(
             gateway_status(ConnectionState::Connecting),
             ("connecting", "Connecting to Agent")
         );
-        assert_eq!(gateway_status(ConnectionState::Error), ("offline", "Agent error"));
-        assert_eq!(gateway_status(ConnectionState::Closed), ("offline", "Agent offline"));
-        assert_eq!(gateway_status(ConnectionState::Idle), ("offline", "Agent offline"));
+        assert_eq!(
+            gateway_status(ConnectionState::Error),
+            ("offline", "Agent error")
+        );
+        assert_eq!(
+            gateway_status(ConnectionState::Closed),
+            ("offline", "Agent offline")
+        );
+        assert_eq!(
+            gateway_status(ConnectionState::Idle),
+            ("offline", "Agent offline")
+        );
     }
 
     #[test]
