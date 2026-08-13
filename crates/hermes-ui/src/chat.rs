@@ -6,7 +6,7 @@ use futures_util::StreamExt;
 use hermes_core::{AppServices, SessionTranscript};
 use hermes_protocol::{MessageRole, SessionCreateRequest};
 
-use super::{Codicon, ProjectPicker, ProjectUiState, Route};
+use super::{Codicon, ErrorState, LoadingState, ProjectPicker, ProjectUiState, Route};
 
 const TRANSCRIPT_WINDOW: usize = 80;
 

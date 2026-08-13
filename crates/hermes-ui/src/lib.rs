@@ -10,17 +10,15 @@ use std::{
 };
 
 use dioxus::prelude::*;
-use futures_util::StreamExt;
 use hermes_core::{
     AgentConfigService, AppServices, DiscoveredGitRepository, ModelService, RepoScanCancellation,
-    SessionTranscript,
 };
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, ConnectionConfig, ConnectionConfigInput, ConnectionMode,
-    ConnectionProbeResult, CustomEndpoint, CustomEndpointUpdate, EnvVarInfo, MessageRole,
-    MoaConfig, ModelAssignmentRequest, ModelProvider, ModelSettingsSnapshot,
-    NativeNotificationKind, OAuthProvider, OAuthStart, ProbeAuthMode, ProjectFolder,
-    ProjectsSnapshot, RemoteAuthMode, SessionCreateRequest, SessionSummary, ThemeMode,
+    ConnectionProbeResult, CustomEndpoint, CustomEndpointUpdate, EnvVarInfo, MoaConfig,
+    ModelAssignmentRequest, ModelProvider, ModelSettingsSnapshot, NativeNotificationKind,
+    OAuthProvider, OAuthStart, ProbeAuthMode, ProjectFolder, ProjectsSnapshot, RemoteAuthMode,
+    SessionSummary, ThemeMode,
 };
 use serde_json::{Map, Value, json};
 
