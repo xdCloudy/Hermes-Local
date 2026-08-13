@@ -32,7 +32,10 @@ enum Inline {
         url: String,
         provider: Option<String>,
     },
-    Image { alt: String, url: String },
+    Image {
+        alt: String,
+        url: String,
+    },
     Blocked(String),
 }
 
@@ -132,10 +135,7 @@ fn table_separator(line: &str) -> bool {
 
 fn list_item(line: &str) -> Option<(bool, String)> {
     let line = line.trim_start();
-    if let Some(value) = line
-        .strip_prefix("- ")
-        .or_else(|| line.strip_prefix("* "))
-    {
+    if let Some(value) = line.strip_prefix("- ").or_else(|| line.strip_prefix("* ")) {
         return Some((false, value.trim().to_owned()));
     }
     let digits = line.chars().take_while(char::is_ascii_digit).count();
@@ -497,31 +497,135 @@ fn keyword(language: &str, word: &str) -> bool {
     match language {
         "rust" | "rs" => matches!(
             word,
-            "as" | "async" | "await" | "break" | "const" | "continue" | "crate" | "else"
-                | "enum" | "fn" | "for" | "if" | "impl" | "in" | "let" | "loop" | "match"
-                | "mod" | "move" | "mut" | "pub" | "ref" | "return" | "self" | "Self"
-                | "static" | "struct" | "super" | "trait" | "type" | "use" | "where" | "while"
+            "as" | "async"
+                | "await"
+                | "break"
+                | "const"
+                | "continue"
+                | "crate"
+                | "else"
+                | "enum"
+                | "fn"
+                | "for"
+                | "if"
+                | "impl"
+                | "in"
+                | "let"
+                | "loop"
+                | "match"
+                | "mod"
+                | "move"
+                | "mut"
+                | "pub"
+                | "ref"
+                | "return"
+                | "self"
+                | "Self"
+                | "static"
+                | "struct"
+                | "super"
+                | "trait"
+                | "type"
+                | "use"
+                | "where"
+                | "while"
         ),
         "python" | "py" => matches!(
             word,
-            "and" | "as" | "async" | "await" | "break" | "class" | "continue" | "def"
-                | "del" | "elif" | "else" | "except" | "False" | "finally" | "for" | "from"
-                | "global" | "if" | "import" | "in" | "is" | "lambda" | "None" | "nonlocal"
-                | "not" | "or" | "pass" | "raise" | "return" | "True" | "try" | "while" | "with"
+            "and"
+                | "as"
+                | "async"
+                | "await"
+                | "break"
+                | "class"
+                | "continue"
+                | "def"
+                | "del"
+                | "elif"
+                | "else"
+                | "except"
+                | "False"
+                | "finally"
+                | "for"
+                | "from"
+                | "global"
+                | "if"
+                | "import"
+                | "in"
+                | "is"
+                | "lambda"
+                | "None"
+                | "nonlocal"
+                | "not"
+                | "or"
+                | "pass"
+                | "raise"
+                | "return"
+                | "True"
+                | "try"
+                | "while"
+                | "with"
                 | "yield"
         ),
         "javascript" | "js" | "typescript" | "ts" | "tsx" | "jsx" => matches!(
             word,
-            "async" | "await" | "break" | "case" | "catch" | "class" | "const" | "continue"
-                | "default" | "delete" | "do" | "else" | "export" | "extends" | "false" | "finally"
-                | "for" | "from" | "function" | "if" | "import" | "in" | "instanceof" | "let"
-                | "new" | "null" | "of" | "return" | "static" | "super" | "switch" | "this"
-                | "throw" | "true" | "try" | "typeof" | "undefined" | "var" | "while"
+            "async"
+                | "await"
+                | "break"
+                | "case"
+                | "catch"
+                | "class"
+                | "const"
+                | "continue"
+                | "default"
+                | "delete"
+                | "do"
+                | "else"
+                | "export"
+                | "extends"
+                | "false"
+                | "finally"
+                | "for"
+                | "from"
+                | "function"
+                | "if"
+                | "import"
+                | "in"
+                | "instanceof"
+                | "let"
+                | "new"
+                | "null"
+                | "of"
+                | "return"
+                | "static"
+                | "super"
+                | "switch"
+                | "this"
+                | "throw"
+                | "true"
+                | "try"
+                | "typeof"
+                | "undefined"
+                | "var"
+                | "while"
         ),
         "bash" | "sh" | "shell" | "powershell" | "ps1" => matches!(
             word,
-            "case" | "do" | "done" | "elif" | "else" | "esac" | "fi" | "for" | "function"
-                | "if" | "in" | "select" | "then" | "until" | "while"
+            "case"
+                | "do"
+                | "done"
+                | "elif"
+                | "else"
+                | "esac"
+                | "fi"
+                | "for"
+                | "function"
+                | "if"
+                | "in"
+                | "select"
+                | "then"
+                | "until"
+                | "while"
         ),
         _ => false,
     }
@@ -856,7 +960,11 @@ mod tests {
         let parts = parse_math("\\frac{a}{b} + \\sqrt{x} = \\pi");
         assert!(parts.contains(&MathSegment::Fraction("a".into(), "b".into())));
         assert!(parts.contains(&MathSegment::Sqrt("x".into())));
-        assert!(parts.iter().any(|part| matches!(part, MathSegment::Text(value) if value.contains('π'))));
+        assert!(
+            parts
+                .iter()
+                .any(|part| matches!(part, MathSegment::Text(value) if value.contains('π')))
+        );
     }
 
     #[test]
