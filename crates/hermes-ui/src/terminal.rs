@@ -15,7 +15,7 @@ const READ_INTERVAL_MS: u64 = 50;
 
 thread_local! {
     static SCROLLBACK_CACHE: RefCell<VecDeque<(String, TerminalBuffer)>> =
-        RefCell::new(VecDeque::new());
+        const { RefCell::new(VecDeque::new()) };
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -117,18 +117,13 @@ struct TerminalCell {
     style: TextStyle,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 enum ParserState {
+    #[default]
     Ground,
     Escape,
     Csi(Vec<u8>),
     Osc { escaped: bool },
-}
-
-impl Default for ParserState {
-    fn default() -> Self {
-        Self::Ground
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -403,15 +398,15 @@ impl TerminalBuffer {
                 }
                 Err(problem) => {
                     let valid_up_to = problem.valid_up_to();
-                    if valid_up_to > 0 {
-                        if let Ok(text) = std::str::from_utf8(&self.utf8_pending[..valid_up_to]) {
-                            let decoded = text.to_owned();
-                            self.utf8_pending.drain(..valid_up_to);
-                            for character in decoded.chars() {
-                                self.write_char(character);
-                            }
-                            continue;
+                    if valid_up_to > 0
+                        && let Ok(text) = std::str::from_utf8(&self.utf8_pending[..valid_up_to])
+                    {
+                        let decoded = text.to_owned();
+                        self.utf8_pending.drain(..valid_up_to);
+                        for character in decoded.chars() {
+                            self.write_char(character);
                         }
+                        continue;
                     }
                     if let Some(error_len) = problem.error_len() {
                         let error_len = error_len.min(self.utf8_pending.len());
@@ -503,13 +498,13 @@ impl TerminalBuffer {
             }
         }
 
-        if self.cell_count > MAX_SCROLLBACK_CELLS {
-            if let Some(line) = self.lines.front_mut() {
-                let excess = (self.cell_count - MAX_SCROLLBACK_CELLS).min(line.len());
-                line.drain(..excess);
-                self.cell_count = self.cell_count.saturating_sub(excess);
-                self.cursor_column = self.cursor_column.saturating_sub(excess);
-            }
+        if self.cell_count > MAX_SCROLLBACK_CELLS
+            && let Some(line) = self.lines.front_mut()
+        {
+            let excess = (self.cell_count - MAX_SCROLLBACK_CELLS).min(line.len());
+            line.drain(..excess);
+            self.cell_count = self.cell_count.saturating_sub(excess);
+            self.cursor_column = self.cursor_column.saturating_sub(excess);
         }
     }
 
@@ -562,7 +557,7 @@ fn csi_params(sequence: &[u8]) -> Vec<u16> {
         return Vec::new();
     }
     String::from_utf8_lossy(sequence)
-        .trim_start_matches(|character| matches!(character, '?' | '>' | '!'))
+        .trim_start_matches(['?', '>', '!'])
         .replace(':', ";")
         .split(';')
         .map(|value| value.parse::<u16>().unwrap_or(0))
