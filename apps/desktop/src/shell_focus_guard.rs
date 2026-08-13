@@ -1,3 +1,5 @@
+use dioxus::prelude::*;
+
 pub fn install_script() -> &'static str {
     r#"(() => {
       if(window.__hermesShellFocusGuardInstalled) return;
@@ -21,6 +23,16 @@ pub fn install_script() -> &'static str {
         if(owned) event.stopPropagation();
       },true);
     })()"#
+}
+
+#[component]
+pub fn FocusGuard(children: Element) -> Element {
+    use_effect(move || {
+        spawn(async move {
+            let _ = document::eval(install_script()).await;
+        });
+    });
+    rsx! { {children} }
 }
 
 #[cfg(test)]
