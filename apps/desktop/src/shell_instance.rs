@@ -29,7 +29,9 @@ impl InstanceGuard {
                     let _ = fs::remove_file(&path);
                     create_lock(&path)
                         .map(|file| Some(Self { path, _file: file }))
-                        .map_err(|retry| format!("Could not recover Desktop instance lease: {retry}"))
+                        .map_err(|retry| {
+                            format!("Could not recover Desktop instance lease: {retry}")
+                        })
                 } else {
                     Ok(None)
                 }
@@ -72,15 +74,23 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        std::env::temp_dir().join(format!("hermes-shell-instance-{}-{suffix}", std::process::id()))
+        std::env::temp_dir().join(format!(
+            "hermes-shell-instance-{}-{suffix}",
+            std::process::id()
+        ))
     }
 
     #[test]
     fn clean_instance_lease_is_exclusive_and_relaunchable() {
         let root = temp_dir();
-        let first = InstanceGuard::acquire(&root).expect("first lease").expect("owner");
+        let first = InstanceGuard::acquire(&root)
+            .expect("first lease")
+            .expect("owner");
         assert!(first.path().ends_with(INSTANCE_FILE));
-        assert_eq!(read_owner(first.path()).unwrap(), std::process::id().to_string());
+        assert_eq!(
+            read_owner(first.path()).unwrap(),
+            std::process::id().to_string()
+        );
 
         // Same-process acquisition is treated as re-entry recovery so unit
         // tests can exercise clean relaunch without spawning a second binary.
