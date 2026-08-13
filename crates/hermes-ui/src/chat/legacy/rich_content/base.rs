@@ -341,14 +341,13 @@ fn parse_inline(text: &str) -> Vec<Inline> {
                 rest = &after[end + 1..];
                 continue;
             }
-        } else if let Some(after) = rest.strip_prefix('$') {
-            if let Some(end) = after.find('$')
-                && end > 0
-            {
-                out.push(Inline::Math(after[..end].to_owned()));
-                rest = &after[end + 1..];
-                continue;
-            }
+        } else if let Some(after) = rest.strip_prefix('$')
+            && let Some(end) = after.find('$')
+            && end > 0
+        {
+            out.push(Inline::Math(after[..end].to_owned()));
+            rest = &after[end + 1..];
+            continue;
         }
 
         let width = rest.chars().next().map(char::len_utf8).unwrap_or(1);

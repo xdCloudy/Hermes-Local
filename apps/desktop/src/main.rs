@@ -176,6 +176,7 @@ fn main() {
     git_worktree_service::install(&mut native.services);
     preview_service::install(&mut native.services);
     preview_watcher::install(&mut native.services);
+    diagnostics_export::install(&mut native.services, data_dir.clone());
     startup::install_local_bootstrap(&mut native.services);
     ssh_service::install_ssh_probe(&mut native.services, data_dir);
     ssh_terminal::install(&mut native.services);
