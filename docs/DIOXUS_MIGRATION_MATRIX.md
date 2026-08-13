@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `b2f56928fd2a2dcca38aa24758bafb47a91a3ac7` (2026-08-13)
+> **Implementation audit checkpoint:** `097f31b22299a5ee79ec7c3daa23aa55349c687e` (2026-08-13)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -54,9 +54,9 @@ At the audit checkpoint above:
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
 | A1 Designed | 20 | Largest remaining implementation backlog. |
-| A2 Service | 17 | Native/core foundations exist; UI/parity work remains. |
+| A2 Service | 16 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 5 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 84 | Automated slice is green; human/live acceptance still required. |
+| A4 Auto-verified | 85 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 0 | No named external validation blockers remain. |
@@ -134,6 +134,13 @@ explicit reconnect-time request failure, pending-request cleanup and responsive
 shutdown, with loopback recovery tests. Rust validation `31694802116`, Windows
 packaging `31694802071`, install lifecycle `31694802069` and footprint
 `31694802203` all passed for that exact head, so `CH-03` is A4.
+
+PR #201 exact head `ab8381f7` adds the typed About surface for product, Agent and
+runtime versions, sanitized update status, build provenance, SBOM, checksums and
+attestation availability. Rust validation `31750226260`, Windows packaging
+`31750226289`, install lifecycle `31750226295` and footprint `31750226317` all
+passed before merge as `097f31b2`, so `AG-14` is A4. Packaged visual and
+manifest-by-manifest comparison remain A5 evidence.
 
 PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable
 Projects/Files/Git/Terminal/SSH slice. Desktop SSH mode now routes the existing
@@ -336,7 +343,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | AG-11 | Hermes TUI panel | Runtime/terminal adapter | TUI page | A1 Designed | Hermes Agent owns the TUI; Dioxus integration/embedding is not ported. | Launch/use TUI inside Hermes Local, verify input/resize/exit/reconnect and no duplicate runtime. | ⬜ |
 | AG-12 | Embedded Hermes Agent dashboard | future `DashboardService` | Dashboard/workstation | A1 Designed | Agent dashboard exists upstream; secure Dioxus embed/launch partition is not ported. | Open dashboard, verify exact-loopback/auth partition, navigation restrictions, TUI tab and no token exposure. | ⬜ |
 | AG-13 | Logs and diagnostics export | `DiagnosticsExportService` | Logs/About | A2 Service | Native diagnostics export writes bounded allowlisted/redacted support data plus a SHA-256 sidecar; it blocks forbidden secrets and redacts credentialed URLs, private roots/private IPs and opaque token-like values. Windows crash/log fixtures and privacy-negative tests pass. Logs/About UI is not wired. | View/filter/copy/export logs, trigger failures and verify secrets/private paths are redacted. | ⬜ |
-| AG-14 | About, version and provenance | `PlatformService` | About | A2 Service | Native version accessor exists; full provenance/SBOM/update information surface is incomplete. | Compare product/Agent/runtime/build versions to manifests and packaged artifact; verify copy/open actions. | ⬜ |
+| AG-14 | About, version and provenance | `PlatformService` | About | A4 Auto-verified | PR #201 wires a typed About surface for product, Agent and runtime versions, sanitized update status, build provenance, SBOM, checksum and attestation availability. Exact-head Rust validation `31750226260`, packaging `31750226289`, install lifecycle `31750226295` and footprint `31750226317` passed before merge as `097f31b2`; packaged visual and manifest-by-manifest comparison remain A5 evidence. | Compare product/Agent/runtime/build versions to manifests and packaged artifact; verify copy/open actions. | ⬜ |
 
 ### Desktop integration, lifecycle, distribution and cutover
 
