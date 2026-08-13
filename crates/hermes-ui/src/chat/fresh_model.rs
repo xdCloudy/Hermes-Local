@@ -68,14 +68,19 @@ pub(super) fn FreshModelControl() -> Element {
                         ..SessionCreateRequest::default()
                     })
                     .await?;
-                let runtime = session.runtime_id.as_deref().unwrap_or(&session.id);
-                service
+                let stored_id = session.id.clone();
+                let runtime_id = session.runtime_id.unwrap_or_else(|| stored_id.clone());
+                if let Err(problem) = service
                     .execute_directive(
-                        runtime,
+                        &runtime_id,
                         &format!("/model {model} --provider {provider} --session"),
                     )
-                    .await?;
-                Ok::<_, hermes_core::ServiceError>(session.id)
+                    .await
+                {
+                    let _ = service.delete(&stored_id).await;
+                    return Err(problem);
+                }
+                Ok::<_, hermes_core::ServiceError>(stored_id)
             }
             .await;
             busy.set(false);
