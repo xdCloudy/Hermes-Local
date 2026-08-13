@@ -24,6 +24,8 @@ pub enum AttachmentKind {
     Image,
 }
 
+/// Opaque, user-selected Desktop attachment. `id` is a capability token held by
+/// Desktop authority; the shared UI never receives an arbitrary filesystem path.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct SelectedAttachment {
     #[serde(default)]
@@ -31,13 +33,17 @@ pub struct SelectedAttachment {
     #[serde(default)]
     pub kind: AttachmentKind,
     #[serde(default)]
-    pub path: String,
-    #[serde(default)]
     pub label: String,
     #[serde(default)]
     pub size: u64,
     #[serde(default)]
     pub preview_data_url: Option<String>,
+    #[serde(default)]
+    pub attached_session_id: Option<String>,
+    #[serde(default)]
+    pub ref_text: Option<String>,
+    #[serde(default)]
+    pub staged_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
