@@ -25,7 +25,11 @@ mod preview_normalization;
 mod preview_service;
 mod preview_watcher;
 mod quick_entry;
+mod shell_i18n;
 mod shell_interaction;
+mod shell_keymap;
+mod shell_layout;
+mod shell_parity;
 mod skills_service;
 mod ssh;
 mod ssh_config;
@@ -83,8 +87,10 @@ fn desktop_root() -> Element {
             }
         },
         Some(Ok(())) => rsx! {
-            shell_interaction::ShellHost {
-                hermes_ui::App {}
+            shell_parity::ParityShellHost {
+                shell_interaction::ShellHost {
+                    hermes_ui::App {}
+                }
             }
         },
         Some(Err(error)) => rsx! {
