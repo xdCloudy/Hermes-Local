@@ -123,7 +123,9 @@ enum ParserState {
     Ground,
     Escape,
     Csi(Vec<u8>),
-    Osc { escaped: bool },
+    Osc {
+        escaped: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
