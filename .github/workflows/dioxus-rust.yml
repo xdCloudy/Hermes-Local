@@ -72,19 +72,7 @@ jobs:
         run: cargo test --workspace --locked
 
       - name: Run Clippy
-        shell: pwsh
-        run: |
-          $output = & cargo clippy --workspace --all-targets --locked 2>&1
-          $exitCode = $LASTEXITCODE
-          $output | ForEach-Object { Write-Host $_ }
-          if ($exitCode -ne 0) {
-            $diagnostics = $output |
-              Select-String -Pattern 'warning:|error:|--> .*\.rs:|help:|clippy::' |
-              Select-Object -Last 80
-            $message = ($diagnostics | ForEach-Object { $_.Line }) -join '%0A'
-            Write-Host "::error title=Clippy diagnostics::$message"
-            exit $exitCode
-          }
+        run: cargo clippy --workspace --all-targets --locked
 
       - name: Test Rust SBOM tooling
         run: python -m unittest discover -s tests -p "test_rust_cyclonedx.py" -v
