@@ -65,7 +65,7 @@ pub struct SessionSummary {''')
 
 core = 'crates/hermes-core/src/lib.rs'
 rep(core, '    CustomEndpointsResponse, EnvVarInfo, FileEntry, GatewayEvent, GitStatus, MessageRole,\n', '    AttachmentKind, CustomEndpointsResponse, EnvVarInfo, FileEntry, GatewayEvent, GitStatus, MessageRole,\n')
-rep(core, '    RuntimeStatus, SessionCreateRequest,\n    SessionDirectiveResult, SessionResumeResponse, SessionSummary, SkillActionStart,\n', '    RuntimeStatus, SelectedAttachment, SessionAttachmentResult, SessionCreateRequest,\n    SessionDirectiveResult, SessionResumeResponse, SessionSummary, SkillActionStart,\n')
+rep(core, '    ProjectsSnapshot, ProviderActivation, RuntimeStatus, SessionCreateRequest,\n    SessionDirectiveResult, SessionResumeResponse, SessionSummary, SkillActionStart,\n', '    ProjectsSnapshot, ProviderActivation, RuntimeStatus, SelectedAttachment,\n    SessionAttachmentResult, SessionCreateRequest, SessionDirectiveResult, SessionResumeResponse,\n    SessionSummary, SkillActionStart,\n')
 rep(core, '    fn submit(&self, session_id: &str, text: &str) -> ServiceFuture<\'_, ()>;', '''    fn attach(
         &self,
         _session_id: &str,
