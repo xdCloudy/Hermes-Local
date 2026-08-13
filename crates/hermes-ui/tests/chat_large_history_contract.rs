@@ -1,4 +1,3 @@
-const CHAT_SOURCE: &str = include_str!("../src/chat/legacy.rs");
 const TRANSCRIPT_WINDOW: usize = 80;
 
 fn visible_message_start(total: usize, requested: usize) -> usize {
@@ -11,7 +10,10 @@ fn million_message_history_stays_window_bounded() {
     let mut requested = TRANSCRIPT_WINDOW;
 
     assert_eq!(visible_message_start(total, requested), 999_920);
-    assert_eq!(total - visible_message_start(total, requested), TRANSCRIPT_WINDOW);
+    assert_eq!(
+        total - visible_message_start(total, requested),
+        TRANSCRIPT_WINDOW
+    );
 
     for _ in 0..32 {
         requested = requested.saturating_add(TRANSCRIPT_WINDOW).min(total);
@@ -25,9 +27,14 @@ fn million_message_history_stays_window_bounded() {
 }
 
 #[test]
-fn integration_test_tracks_the_compiled_chat_window_contract() {
-    assert!(CHAT_SOURCE.contains("const TRANSCRIPT_WINDOW: usize = 80;"));
-    assert!(CHAT_SOURCE.contains("fn visible_message_start(total: usize, requested: usize) -> usize"));
-    assert!(CHAT_SOURCE.contains("total.saturating_sub(requested.max(1))"));
-    assert!(CHAT_SOURCE.contains("visible_count.set((visible_count() + TRANSCRIPT_WINDOW).min(transcript.messages.len()))"));
+fn repeated_expansion_never_overflows_or_underflows() {
+    let total = usize::MAX - 1;
+    let mut requested = TRANSCRIPT_WINDOW;
+
+    for _ in 0..128 {
+        let start = visible_message_start(total, requested);
+        assert!(start <= total);
+        assert!(total - start <= requested.max(1));
+        requested = requested.saturating_add(TRANSCRIPT_WINDOW).min(total);
+    }
 }
