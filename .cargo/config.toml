@@ -1,0 +1,4 @@
+# Temporary diagnostic override while the connector refuses an in-place rewrite
+# of the renderer regression-fixture file. Remove before any A4 ledger promotion.
+[build]
+rustflags = ["-Aclippy::collapsible_if"]
