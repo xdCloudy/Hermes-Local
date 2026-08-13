@@ -21,9 +21,9 @@ use hermes_protocol::{
     ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit,
     ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation, RuntimeStatus,
     SelectedAttachment, SessionAttachmentResult, SessionCreateRequest, SessionDirectiveResult,
-    SessionResumeResponse, SessionSummary, SkillActionStart, SkillActionStatus, SkillHubPreview,
-    SkillHubScanResult, SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary,
-    SkillToggleResult, TaskSummary, TrustSnapshot,
+    SessionReactionResult, SessionResumeResponse, SessionSummary, SkillActionStart,
+    SkillActionStatus, SkillHubPreview, SkillHubScanResult, SkillHubSearchResponse,
+    SkillHubSourcesResponse, SkillSummary, SkillToggleResult, TaskSummary, TrustSnapshot,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -93,6 +93,19 @@ pub trait SessionService: Send + Sync {
         Box::pin(async move {
             Err(ServiceError::Unavailable(
                 "image detach is unavailable on this host".into(),
+            ))
+        })
+    }
+    fn react(
+        &self,
+        _session_id: &str,
+        _row_id: Option<&str>,
+        _newest_role: MessageRole,
+        _emoji: Option<&str>,
+    ) -> ServiceFuture<'_, SessionReactionResult> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "message reactions are unavailable on this host".into(),
             ))
         })
     }

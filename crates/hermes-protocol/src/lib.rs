@@ -355,6 +355,24 @@ pub struct ChatMessage {
     pub metadata: BTreeMap<String, Value>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct MessageReaction {
+    #[serde(default)]
+    pub emoji: String,
+    #[serde(default)]
+    pub author: String,
+    #[serde(default)]
+    pub at: Option<f64>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct SessionReactionResult {
+    #[serde(default, deserialize_with = "deserialize_stringish")]
+    pub row_id: String,
+    #[serde(default)]
+    pub reactions: Vec<MessageReaction>,
+}
+
 fn deserialize_stringish<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: serde::Deserializer<'de>,

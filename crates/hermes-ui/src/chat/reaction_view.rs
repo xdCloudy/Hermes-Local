@@ -1,8 +1,10 @@
 use dioxus::prelude::*;
+use hermes_protocol::MessageRole;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ReactionItem {
     pub key: String,
+    pub role: MessageRole,
     pub label: String,
     pub current: Option<String>,
     pub agent: Vec<String>,
@@ -20,7 +22,7 @@ const OPTIONS: &[(&str, &str)] = &[
 #[component]
 pub(super) fn ReactionView(
     items: Vec<ReactionItem>,
-    on_react: Callback<(String, String)>,
+    on_react: Callback<(String, MessageRole, String)>,
 ) -> Element {
     rsx! {
         if !items.is_empty() {
@@ -44,8 +46,9 @@ pub(super) fn ReactionView(
                                     title: "{label}",
                                     onclick: {
                                         let key = item.key.clone();
+                                        let role = item.role;
                                         let reaction = (*reaction).to_owned();
-                                        move |_| on_react.call((key.clone(), reaction.clone()))
+                                        move |_| on_react.call((key.clone(), role, reaction.clone()))
                                     },
                                     "{reaction}"
                                 }

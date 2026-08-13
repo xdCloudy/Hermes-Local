@@ -108,6 +108,7 @@ fn visible(
                 current: reactions.get(&key).cloned(),
                 agent: agent_reactions.get(&key).cloned().unwrap_or_default(),
                 key,
+                role: message.role,
                 label: message.text.chars().take(72).collect(),
             }
         })
@@ -188,30 +189,82 @@ pub(super) fn ReactionPanel(session_id: String) -> Element {
     });
 
     let save_services = services.clone();
-    let on_react = Callback::new(move |(key, reaction): (String, String)| {
-        let previous = reactions();
-        let mut next = previous.clone();
-        if next.get(&key) == Some(&reaction) {
-            next.remove(&key);
-        } else {
-            next.insert(key, reaction);
-        }
-        reactions.set(next.clone());
-        error.set(String::new());
-        let services = save_services.clone();
-        spawn(async move {
-            let result = async {
-                let mut settings = services.settings.load().await?;
-                reaction_store::store(&mut settings, &next);
-                services.settings.save(&settings).await
-            }
-            .await;
-            if let Err(problem) = result {
-                reactions.set(previous);
-                error.set(problem.to_string());
-            }
-        });
-    });
+    let on_react = Callback::new(
+        move |(key, role, reaction): (String, MessageRole, String)| {
+            let previous = reactions();
+            let mut next = previous.clone();
+            let selected = if next.get(&key) == Some(&reaction) {
+                next.remove(&key);
+                None
+            } else {
+                next.insert(key.clone(), reaction.clone());
+                Some(reaction)
+            };
+            reactions.set(next.clone());
+            error.set(String::new());
+            let services = save_services.clone();
+            let runtime = runtime_id();
+            spawn(async move {
+                let result = async {
+                    if runtime.is_empty() {
+                        return Err(hermes_core::ServiceError::Unavailable(
+                            "session is not connected".into(),
+                        ));
+                    }
+                    let row_id = key.strip_prefix("row:");
+                    let authoritative = services
+                        .sessions
+                        .react(&runtime, row_id, role, selected.as_deref())
+                        .await?;
+                    let authoritative_key = format!("row:{}", authoritative.row_id);
+                    let mut user = next;
+                    user.remove(&key);
+                    if let Some(value) = authoritative
+                        .reactions
+                        .iter()
+                        .find(|value| value.author == "user")
+                        .map(|value| value.emoji.clone())
+                    {
+                        user.insert(authoritative_key.clone(), value);
+                    }
+                    let agent = authoritative
+                        .reactions
+                        .iter()
+                        .filter(|value| value.author == "agent")
+                        .map(|value| value.emoji.clone())
+                        .collect::<Vec<_>>();
+                    let mut agent_snapshot = agent_reactions();
+                    agent_snapshot.remove(&key);
+                    if !agent.is_empty() {
+                        agent_snapshot.insert(authoritative_key.clone(), agent);
+                    }
+                    let update = ReactionUpdate {
+                        key: authoritative_key,
+                        role,
+                        user: None,
+                        agent: Vec::new(),
+                    };
+                    bind_row_identity(messages.write().as_mut_slice(), &update);
+                    let mut settings = services.settings.load().await?;
+                    reaction_store::store(&mut settings, &user);
+                    reaction_store::store_agent(&mut settings, &agent_snapshot);
+                    services.settings.save(&settings).await?;
+                    Ok::<_, hermes_core::ServiceError>((user, agent_snapshot))
+                }
+                .await;
+                match result {
+                    Ok((user, agent)) => {
+                        reactions.set(user);
+                        agent_reactions.set(agent);
+                    }
+                    Err(problem) => {
+                        reactions.set(previous);
+                        error.set(problem.to_string());
+                    }
+                }
+            });
+        },
+    );
 
     rsx! {
         ReactionView {

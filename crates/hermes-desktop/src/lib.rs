@@ -32,8 +32,8 @@ use hermes_protocol::{
     OAuthProvider, OAuthStart, OAuthSubmit, ProbeAuthMode, ProjectFilesDeleteResult,
     ProjectSummary, ProjectsSnapshot, ProviderActivation, RemoteAuthMode, RuntimeStatus,
     SelectedAttachment, SessionAttachmentResult, SessionCreateRequest, SessionCreateResponse,
-    SessionDirectiveResult, SessionMessagesResponse, SessionResumeResponse, SessionSummary,
-    SkillActionStart, SkillActionStatus, SkillHubPreview, SkillHubScanResult,
+    SessionDirectiveResult, SessionMessagesResponse, SessionReactionResult, SessionResumeResponse,
+    SessionSummary, SkillActionStart, SkillActionStatus, SkillHubPreview, SkillHubScanResult,
     SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary, SkillToggleResult, TaskSummary,
     TrustSnapshot,
 };
@@ -1259,6 +1259,72 @@ impl SessionService for GatewayServices {
                 .await
                 .map_err(transport)?;
             Ok(())
+        })
+    }
+
+    fn react(
+        &self,
+        session_id: &str,
+        row_id: Option<&str>,
+        newest_role: hermes_protocol::MessageRole,
+        emoji: Option<&str>,
+    ) -> ServiceFuture<'_, SessionReactionResult> {
+        let session_id = session_id.to_owned();
+        let row_id = row_id.map(str::to_owned);
+        let emoji = emoji.map(str::to_owned);
+        Box::pin(async move {
+            validate_identifier(&session_id, "session")?;
+            if row_id.as_deref().is_some_and(|value| {
+                value.is_empty() || value.len() > 256 || value.chars().any(char::is_control)
+            }) {
+                return Err(ServiceError::InvalidInput("invalid reaction row id".into()));
+            }
+            if emoji.as_deref().is_some_and(|value| {
+                value.is_empty() || value.len() > 32 || value.chars().any(char::is_control)
+            }) {
+                return Err(ServiceError::InvalidInput("invalid reaction emoji".into()));
+            }
+            let role = match newest_role {
+                hermes_protocol::MessageRole::Assistant => "assistant",
+                hermes_protocol::MessageRole::User => "user",
+                _ => {
+                    return Err(ServiceError::InvalidInput(
+                        "reactions require a user or assistant message".into(),
+                    ));
+                }
+            };
+            let mut params = serde_json::Map::from_iter([
+                ("session_id".into(), Value::String(session_id)),
+                ("author".into(), Value::String("user".into())),
+                (
+                    "emoji".into(),
+                    emoji.map(Value::String).unwrap_or(Value::Null),
+                ),
+            ]);
+            if let Some(row_id) = row_id {
+                let value = row_id
+                    .parse::<i64>()
+                    .map(Value::from)
+                    .unwrap_or_else(|_| Value::String(row_id));
+                params.insert("row_id".into(), value);
+            } else {
+                params.insert("newest_role".into(), Value::String(role.into()));
+            }
+            let result: SessionReactionResult = self
+                .client()?
+                .request_with_timeout(
+                    "message.react",
+                    Value::Object(params),
+                    std::time::Duration::from_secs(30),
+                )
+                .await
+                .map_err(transport)?;
+            if result.row_id.is_empty() {
+                return Err(ServiceError::Transport(
+                    "reaction response did not identify a message row".into(),
+                ));
+            }
+            Ok(result)
         })
     }
 
@@ -4888,6 +4954,94 @@ mod tests {
         assert_eq!(
             frame.params,
             Some(json!({ "session_id": "runtime-1", "text": "hello Hermes" }))
+        );
+    }
+
+    #[tokio::test]
+    async fn session_reactions_use_the_canonical_gateway_write() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let address = listener.local_addr().expect("address");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("connection");
+            let mut socket = accept_async(stream).await.expect("WebSocket");
+            let mut frames = Vec::new();
+            for result in [
+                json!({
+                    "row_id": 42,
+                    "reactions": [{ "emoji": "👍", "author": "user", "at": 1.0 }]
+                }),
+                json!({ "row_id": 43, "reactions": [] }),
+            ] {
+                let message = socket.next().await.expect("request").expect("frame");
+                let frame: hermes_protocol::JsonRpcFrame =
+                    serde_json::from_str(message.to_text().expect("text frame")).expect("JSON-RPC");
+                socket
+                    .send(Message::Text(
+                        json!({ "jsonrpc": "2.0", "id": frame.id, "result": result })
+                            .to_string()
+                            .into(),
+                    ))
+                    .await
+                    .expect("response");
+                frames.push(frame);
+            }
+            frames
+        });
+        let client = GatewayClient::connect(
+            &format!("ws://{address}/api/ws"),
+            hermes_agent_client::GatewayOptions::default(),
+        )
+        .await
+        .expect("gateway");
+        let services = GatewayServices {
+            client: Arc::new(RwLock::new(Some(client))),
+            rest: Arc::new(RwLock::new(None)),
+            connection_store: test_connection_store(),
+        };
+
+        let applied = SessionService::react(
+            &services,
+            "runtime-1",
+            Some("42"),
+            hermes_protocol::MessageRole::Assistant,
+            Some("👍"),
+        )
+        .await
+        .expect("apply reaction");
+        assert_eq!(applied.row_id, "42");
+        assert_eq!(applied.reactions[0].emoji, "👍");
+
+        SessionService::react(
+            &services,
+            "runtime-1",
+            None,
+            hermes_protocol::MessageRole::User,
+            None,
+        )
+        .await
+        .expect("remove newest reaction");
+
+        let frames = server.await.expect("server");
+        assert_eq!(frames[0].method.as_deref(), Some("message.react"));
+        assert_eq!(
+            frames[0].params,
+            Some(json!({
+                "session_id": "runtime-1",
+                "row_id": 42,
+                "emoji": "👍",
+                "author": "user"
+            }))
+        );
+        assert_eq!(
+            frames[1].params,
+            Some(json!({
+                "session_id": "runtime-1",
+                "newest_role": "user",
+                "emoji": null,
+                "author": "user"
+            }))
         );
     }
 
