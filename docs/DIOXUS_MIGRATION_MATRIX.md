@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `1d14e3e4541bdddb8a49639c213cd75a25372ce0` (2026-08-13)
+> **Implementation audit checkpoint:** `b2f56928fd2a2dcca38aa24758bafb47a91a3ac7` (2026-08-13)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -53,16 +53,16 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 22 | Largest remaining implementation backlog. |
-| A2 Service | 20 | Native/core foundations exist; UI/parity work remains. |
-| A3 Ported | 3 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 81 | Automated slice is green; human/live acceptance still required. |
+| A1 Designed | 20 | Largest remaining implementation backlog. |
+| A2 Service | 18 | Native/core foundations exist; UI/parity work remains. |
+| A3 Ported | 5 | User-facing implementation exists; more evidence required. |
+| A4 Auto-verified | 83 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 0 | No named external validation blockers remain. |
 | **Total** | **127** | Every row must end at A6 or be explicitly retired with product-owner approval. |
 
-At least-service coverage is **104/127 capabilities (81.9%)**. This is service-foundation coverage, not end-user parity or human acceptance.
+At least-service coverage is **106/127 capabilities (83.5%)**. This is service-foundation coverage, not end-user parity or human acceptance.
 
 The PR #179 exact-head validation set was green for Documentation
 validation, the Hermes Agent harness/native-client boundary workflow, Dioxus
@@ -117,6 +117,15 @@ and footprint `31747821023` all passed for that exact head; SSH interoperability
 was not applicable. `CH-07` and `CH-13`…`CH-21` are therefore A4. `DI-04` is A3:
 the safe Dioxus link surface is wired, but plain HTTP is still rejected by the
 native external opener and must be aligned before automated verification.
+
+PR #200 exact head `9e04dd9` replaces the Runtime and Tasks placeholders with
+typed live status/task surfaces, 1.5-second reconciliation, explicit loading and
+error states, and validated start/cancel controls. Rust validation `31748327602`,
+Windows packaging `31748327608`, install lifecycle `31748327612` and footprint
+`31748327598` all passed for that exact head. `RT-01` and `RT-02` are therefore
+A4. The same tranche makes the bounded benchmark and security task launch/
+progress/cancel slices usable at A3; persisted reports, result detail/export and
+broader OG workflow parity still need implementation and automated coverage.
 
 PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable
 Projects/Files/Git/Terminal/SSH slice. Desktop SSH mode now routes the existing
@@ -299,12 +308,12 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | CN-06 | Hermes Cloud portal discovery, org selection and agent connection | future `AuthService`/`ConnectionService` | Settings → Gateway | A1 Designed | OG Cloud discovery/org/agent cascade remains unported. | Sign in to Cloud, handle zero/one/multiple orgs, discover agents, connect/switch/reconnect and separate portal auth from Agent connectivity. | ⬜ |
 | CN-07 | Gateway/SSH session secrets at rest | native secret stores | no DOM exposure | A4 Auto-verified | Gateway/OAuth/SSH reuse secrets use Credential Manager/keyring indirection; config exposes only markers/previews. | Inspect persisted files/process args/logs/DOM while connecting; rotate/delete secrets and verify ACL/user isolation. | ⬜ |
 | CN-08 | Remaining product secrets at rest | future `SecretService` | no DOM exposure | A1 Designed | Complete inventory/migration of every non-Gateway credential is not finished. | Audit every credential source; verify DPAPI/Credential Manager storage, migration, deletion and log/DOM/process-arg redaction. | ⬜ |
-| RT-01 | Local Workstation snapshot/home | `RuntimeService` | workstation home | A2 Service | Native runtime status contract covers exact `status.get` + `{}` request behavior with typed phase/Agent-version decoding and forward-compatible unknown fields. Workstation home UI is not wired. | Compare all workstation cards/data/refresh/degraded states against OG using real local services. | ⬜ |
-| RT-02 | Runtime actions and Task Centre | `TaskService`/`RuntimeService` | Tasks/status | A2 Service | Native task contracts cover exact `tasks.list`, `tasks.start` and `tasks.cancel` shapes with typed task decoding and invalid action/task identifiers rejected before mutation. Task Centre UI is not wired. | Start/cancel/pause/retry representative tasks, restart client and verify durable progress/errors. | ⬜ |
+| RT-01 | Local Workstation snapshot/home | `RuntimeService` | workstation home | A4 Auto-verified | PR #200 replaces the Runtime placeholder with a typed live status surface for phase, gateway, model, provider, Agent version and detail, including polling plus explicit loading/error states. Service/UI contracts and exact-head Rust/distribution gates pass. | Compare all workstation cards/data/refresh/degraded states against OG using real local services. | ⬜ |
+| RT-02 | Runtime actions and Task Centre | `TaskService`/`RuntimeService` | Tasks/status | A4 Auto-verified | PR #200 replaces the Tasks placeholder with a typed live Task Centre using validated list/start/cancel contracts, 1.5-second reconciliation, bounded progress and busy/error states. Focused contracts and exact-head gates pass. | Start/cancel/pause/retry representative tasks, restart client and verify durable progress/errors. | ⬜ |
 | RT-03 | Models and model downloads | `RuntimeService` | Models | A1 Designed | Not ported. | Discover/download/cancel/resume/verify/delete representative models; test checksum/disk/network failures. | ⬜ |
 | RT-04 | Inference profiles and switching | `RuntimeService` | Models/Profiles | A1 Designed | Not ported. | Switch profiles/models during idle and active sessions; verify rollback, runtime restart and provider-neutral behavior. | ⬜ |
-| RT-05 | Benchmarks | `RuntimeService` | Benchmarks | A1 Designed | Not ported. | Run/cancel benchmark, verify progress/results persistence and error handling. | ⬜ |
-| RT-06 | Security scan and reports | future `SecurityService` | Security/Tasks | A1 Designed | Not ported. | Run scan against disposable targets, inspect progress/redaction/report export and cancellation. | ⬜ |
+| RT-05 | Benchmarks | `RuntimeService` | Benchmarks | A3 Ported | PR #200 adds a typed benchmark start action plus filtered live task progress and cancellation. Persisted benchmark results, comparison detail and export are not yet represented or covered, so the broader row remains below A4. | Run/cancel benchmark, verify progress/results persistence and error handling. | ⬜ |
+| RT-06 | Security scan and reports | future `SecurityService` | Security/Tasks | A3 Ported | PR #200 adds a typed security-scan start action plus filtered live task progress and cancellation. Findings/report detail, redaction and export are not yet represented or covered, so the broader row remains below A4. | Run scan against disposable targets, inspect progress/redaction/report export and cancellation. | ⬜ |
 | RT-07 | Restore and repair | `UpdateService` + `RuntimeService` | recovery | A1 Designed | Not ported. | Corrupt representative runtime/install state and verify data-preserving repair/restore/rollback. | ⬜ |
 | AG-01 | Skills hub and local skills | `SkillsService` + authenticated `GatewayServices` | Skills | A4 Auto-verified | Dioxus Skills now lists/toggles profile-scoped local skills and provides Hub sources/search/preview/on-demand scan/install/uninstall/update with independent 1.2s action polling/logs, profile-switch abandonment and trust/verdict display. Authenticated REST stays native with 4 MiB/input bounds; architecture, all-target/WASM, workspace tests and Clippy pass. | List/install/enable/disable/remove skills, trust prompts and invalid packages; compare OG. | ⬜ |
 | AG-02 | MCP servers and catalog | Agent/Trust services | Skills/MCP | A1 Designed | Not ported. | Add/config/enable/test/disable/remove MCP servers across scopes with trust/reload prompts. | ⬜ |
