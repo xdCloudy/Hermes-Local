@@ -291,7 +291,7 @@ async fn run_actor(
                 return;
             }
             ReconnectExit::Connected(next_socket) => {
-                socket = next_socket;
+                socket = *next_socket;
             }
         }
     }
@@ -299,7 +299,7 @@ async fn run_actor(
 
 enum ReconnectExit {
     Shutdown,
-    Connected(GatewaySocket),
+    Connected(Box<GatewaySocket>),
 }
 
 async fn reconnect(
@@ -338,7 +338,7 @@ async fn reconnect(
         };
 
         match result {
-            Ok(socket) => return ReconnectExit::Connected(socket),
+            Ok(socket) => return ReconnectExit::Connected(Box::new(socket)),
             Err(error) => {
                 warn!(%error, "gateway reconnect attempt failed");
                 state.send_replace(ConnectionState::Error);
