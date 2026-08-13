@@ -1154,13 +1154,9 @@ impl SessionService for GatewayServices {
                     limit
                 )));
             }
-            if self.connection_store.load(None)?.mode != ConnectionMode::Local {
-                return Err(ServiceError::Unavailable(
-                    "remote attachment byte staging is not enabled in this tranche".into(),
-                ));
-            }
-            let value: Value = match attachment.kind {
-                AttachmentKind::Image => self
+            let local = self.connection_store.load(None)?.mode == ConnectionMode::Local;
+            let value: Value = match (attachment.kind, local) {
+                (AttachmentKind::Image, true) => self
                     .client()?
                     .request_with_timeout(
                         "image.attach",
@@ -1169,7 +1165,22 @@ impl SessionService for GatewayServices {
                     )
                     .await
                     .map_err(transport)?,
-                AttachmentKind::File => self
+                (AttachmentKind::Image, false) => {
+                    let bytes = fs::read(&path).map_err(platform)?;
+                    self.client()?
+                        .request_with_timeout(
+                            "image.attach_bytes",
+                            json!({
+                                "session_id": session_id,
+                                "content_base64": STANDARD.encode(bytes),
+                                "filename": attachment.label,
+                            }),
+                            std::time::Duration::from_mins(5),
+                        )
+                        .await
+                        .map_err(transport)?
+                }
+                (AttachmentKind::File, true) => self
                     .client()?
                     .request_with_timeout(
                         "file.attach",
@@ -1182,6 +1193,25 @@ impl SessionService for GatewayServices {
                     )
                     .await
                     .map_err(transport)?,
+                (AttachmentKind::File, false) => {
+                    let bytes = fs::read(&path).map_err(platform)?;
+                    self.client()?
+                        .request_with_timeout(
+                            "file.attach",
+                            json!({
+                                "session_id": session_id,
+                                "name": attachment.label,
+                                "path": path.to_string_lossy(),
+                                "data_url": format!(
+                                    "data:application/octet-stream;base64,{}",
+                                    STANDARD.encode(bytes)
+                                ),
+                            }),
+                            std::time::Duration::from_mins(5),
+                        )
+                        .await
+                        .map_err(transport)?
+                }
             };
             let result = SessionAttachmentResult {
                 attached: value

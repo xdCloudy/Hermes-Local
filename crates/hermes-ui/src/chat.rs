@@ -4,8 +4,8 @@
 use dioxus::prelude::*;
 use futures_util::StreamExt;
 use hermes_core::{
-    AppServices, ComposerDraftStore, PromptQueueCoordinator, ServiceResult, SessionService,
-    SessionTranscript, attachment_context_text,
+    AppServices, ComposerDraftStore, PromptQueueCoordinator, QueuedPrompt, ServiceResult,
+    SessionService, SessionTranscript, attachment_context_text,
 };
 use hermes_protocol::{AttachmentKind, MessageRole, SelectedAttachment, SessionCreateRequest};
 
@@ -54,6 +54,21 @@ async fn prepare_prompt_attachments(
         staged.push(next);
     }
     Ok((attachment_context_text(visible_text, &results), staged))
+}
+
+async fn detach_staged_images(service: &dyn SessionService, prompt: &QueuedPrompt) {
+    for attachment in &prompt.attachments {
+        if attachment.kind != AttachmentKind::Image {
+            continue;
+        }
+        let (Some(session_id), Some(path)) = (
+            attachment.attached_session_id.as_deref(),
+            attachment.staged_path.as_deref(),
+        ) else {
+            continue;
+        };
+        let _ = service.detach_image(session_id, path).await;
+    }
 }
 
 #[component]
@@ -145,14 +160,31 @@ pub(super) fn ChatRuntimeProvider() -> Element {
                 if event.kind != "message.complete" {
                     continue;
                 }
-                let next = queue.write().next_after_completion(runtime_id);
-                let Some((stored_id, runtime_id, text)) = next else {
+                let next = queue.write().next_prompt_after_completion(runtime_id);
+                let Some((stored_id, runtime_id, prompt)) = next else {
                     continue;
                 };
-                if let Err(error) = submit_service.submit(&runtime_id, &text).await {
+                let prepared = prepare_prompt_attachments(
+                    submit_service.as_ref(),
+                    &runtime_id,
+                    &prompt.text,
+                    &prompt.attachments,
+                )
+                .await;
+                let (result, retry_prompt) = match prepared {
+                    Ok((model_text, staged)) => (
+                        submit_service.submit(&runtime_id, &model_text).await,
+                        QueuedPrompt {
+                            text: prompt.text.clone(),
+                            attachments: staged,
+                        },
+                    ),
+                    Err(error) => (Err(error), prompt),
+                };
+                if let Err(error) = result {
                     queue
                         .write()
-                        .mark_submit_failed(&stored_id, text, error.to_string());
+                        .mark_prompt_failed(&stored_id, retry_prompt, error.to_string());
                 }
             }
         }
@@ -480,8 +512,20 @@ pub(super) fn Session(id: String) -> Element {
         }
     });
     let mut send_error = use_signal(|| None::<String>);
+    let remove_attachment_service = services.sessions.clone();
     let remove_attachment = Callback::new(move |attachment: SelectedAttachment| {
         attachments.write().retain(|item| item.id != attachment.id);
+        if attachment.kind == AttachmentKind::Image
+            && let (Some(session_id), Some(path)) = (
+                attachment.attached_session_id.clone(),
+                attachment.staged_path.clone(),
+            )
+        {
+            let service = remove_attachment_service.clone();
+            spawn(async move {
+                let _ = service.detach_image(&session_id, &path).await;
+            });
+        }
     });
     let pick_attachments = Callback::new(move |()| {
         let service = attachment_picker.clone();
@@ -624,14 +668,15 @@ pub(super) fn Session(id: String) -> Element {
         }
 
         if before.busy {
-            if !pending_attachments.is_empty() {
-                send_error.set(Some(
-                    "Wait for the current turn to finish before sending attachments.".into(),
-                ));
-                return;
-            }
-            chat_runtime.queue.write().enqueue(&stored_id, text);
+            chat_runtime.queue.write().enqueue_prompt(
+                &stored_id,
+                QueuedPrompt {
+                    text,
+                    attachments: pending_attachments,
+                },
+            );
             draft.set(String::new());
+            attachments.set(Vec::new());
             chat_runtime.drafts.write().clear(&stored_id);
             mark_draft_changed(chat_runtime.draft_revision);
             send_error.set(None);
@@ -687,32 +732,70 @@ pub(super) fn Session(id: String) -> Element {
         });
     });
 
+    let queue_cleanup_service = services.sessions.clone();
     let remove_queue_id = id.clone();
     let remove_queued = Callback::new(move |index: usize| {
-        chat_runtime.queue.write().remove(&remove_queue_id, index);
+        let removed = chat_runtime
+            .queue
+            .write()
+            .remove_prompt(&remove_queue_id, index);
+        if let Some(prompt) = removed {
+            let service = queue_cleanup_service.clone();
+            spawn(async move {
+                detach_staged_images(service.as_ref(), &prompt).await;
+            });
+        }
     });
+    let clear_queue_service = services.sessions.clone();
     let clear_queue_id = id.clone();
     let clear_queued = Callback::new(move |()| {
+        let removed = (chat_runtime.queue)().prompts(&clear_queue_id);
         chat_runtime.queue.write().clear(&clear_queue_id);
+        if !removed.is_empty() {
+            let service = clear_queue_service.clone();
+            spawn(async move {
+                for prompt in removed {
+                    detach_staged_images(service.as_ref(), &prompt).await;
+                }
+            });
+        }
     });
     let resume_queue_id = id.clone();
     let resume_queue = Callback::new(move |()| {
         let next = {
             let mut queue = chat_runtime.queue.write();
             queue.resume(&resume_queue_id);
-            queue.next_if_idle(&resume_queue_id)
+            queue.next_prompt_if_idle(&resume_queue_id)
         };
-        let Some((runtime_id, text)) = next else {
+        let Some((runtime_id, prompt)) = next else {
             return;
         };
         let service = queue_resume_service.clone();
         let stored_id = resume_queue_id.clone();
         spawn(async move {
-            if let Err(error) = service.submit(&runtime_id, &text).await {
-                chat_runtime
-                    .queue
-                    .write()
-                    .mark_submit_failed(&stored_id, text, error.to_string());
+            let prepared = prepare_prompt_attachments(
+                service.as_ref(),
+                &runtime_id,
+                &prompt.text,
+                &prompt.attachments,
+            )
+            .await;
+            let (result, retry_prompt) = match prepared {
+                Ok((model_text, staged)) => (
+                    service.submit(&runtime_id, &model_text).await,
+                    QueuedPrompt {
+                        text: prompt.text.clone(),
+                        attachments: staged,
+                    },
+                ),
+                Err(error) => (Err(error), prompt),
+            };
+            if let Err(error) = result {
+                chat_runtime.queue.write().mark_prompt_failed(
+                    &stored_id,
+                    retry_prompt,
+                    error.to_string(),
+                );
             }
         });
     });
