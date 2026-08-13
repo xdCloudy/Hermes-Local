@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `097f31b22299a5ee79ec7c3daa23aa55349c687e` (2026-08-13)
+> **Implementation audit checkpoint:** `39ed10477f9cdceabfcd369064f37a01abcada59` (2026-08-13)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -55,8 +55,8 @@ At the audit checkpoint above:
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
 | A1 Designed | 20 | Largest remaining implementation backlog. |
 | A2 Service | 16 | Native/core foundations exist; UI/parity work remains. |
-| A3 Ported | 5 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 85 | Automated slice is green; human/live acceptance still required. |
+| A3 Ported | 4 | User-facing implementation exists; more evidence required. |
+| A4 Auto-verified | 86 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 0 | No named external validation blockers remain. |
@@ -141,6 +141,13 @@ attestation availability. Rust validation `31750226260`, Windows packaging
 `31750226289`, install lifecycle `31750226295` and footprint `31750226317` all
 passed before merge as `097f31b2`, so `AG-14` is A4. Packaged visual and
 manifest-by-manifest comparison remain A5 evidence.
+
+PR #202 exact composed head `ffda6b8a` aligns the native external opener with
+the existing safe Dioxus policy: bounded HTTP, HTTPS and `mailto` targets are
+accepted, while empty, oversized, control-character, hostless, credentialed and
+privileged-scheme targets are rejected. Rust validation `31752025260`, Windows
+packaging `31752025345`, install lifecycle `31752025322` and footprint
+`31752025377` all passed before merge as `39ed1047`, so `DI-04` is A4.
 
 PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable
 Projects/Files/Git/Terminal/SSH slice. Desktop SSH mode now routes the existing
@@ -352,7 +359,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | DI-01 | Native notifications and action routing | `NotificationPlatform` | session/settings | A2 Service | Native Windows notification wrapper uses a fixed PowerShell/WinForms helper with bounded/sanitized title/body passed through child environment variables and no shell interpolation; notification preferences UI exists. AppUserModelID/toast action registration remains incomplete. | Trigger each notification kind in packaged app; click actions, test duplicates/focus/background and Windows notification settings. | ⬜ |
 | DI-02 | Clipboard text/images and save dialogs | `ClipboardService` | chat/context actions | A2 Service | Native Windows text read/write and PNG clipboard-image export use trusted STA PowerShell helpers with stdin/environment data, transient-busy retries, UTF-8/size/NUL/PNG/path checks and fixed helper paths. Dioxus consumers and save-dialog parity remain incomplete. | Copy/paste text/images, WSL edge cases, save dialogs, unsupported formats and size limits. | ⬜ |
 | DI-03 | Camera/microphone/media permissions | future `MediaService` | permission surfaces | A1 Designed | Not ported. | Grant/deny/revoke permissions, restart and verify only trusted app origin receives media capability. | ⬜ |
-| DI-04 | External browser opening and safe link policy | `PlatformService` | links/preview | A3 Ported | PR #199 wires bounded rich-link cards to the typed external opener and rejects unsafe/credentialed targets. HTTPS is end-to-end; the Dioxus renderer permits plain HTTP but the native opener still rejects it, so the boundary and its tests must be aligned before A4. | Open allowed HTTP(S) links, reject unsafe schemes/credentialed/private targets where policy applies and verify no in-app navigation escape. | ⬜ |
+| DI-04 | External browser opening and safe link policy | `PlatformService` | links/preview | A4 Auto-verified | PR #199 wires bounded rich-link cards to the typed external opener; PR #202 exact composed head `ffda6b8a` aligns the native boundary by allowing bounded HTTP, HTTPS and `mailto` targets while rejecting empty, oversized, control-character, hostless, credentialed and privileged-scheme targets. Rust validation `31752025260`, packaging `31752025345`, install lifecycle `31752025322` and footprint `31752025377` passed before merge as `39ed1047`. | Open allowed HTTP(S) links, reject unsafe schemes/credentialed/private targets where policy applies and verify no in-app navigation escape. | ⬜ |
 | DI-05 | Deep links and protocol registration | native deep-link service | routed surfaces | A2 Service | Native `hermes://` parsing and per-user Windows protocol registration exist with exact executable command identity and deterministic malformed-input tests; running-instance/single-instance Dioxus delivery is incomplete. | Register/use protocol from cold/running app, malformed payloads, duplicate instance and route/state handling. | ⬜ |
 | DI-06 | Session and secondary app windows | native window-state service | shared Dioxus roots | A2 Service | Rust Desktop now consumes the existing bounded `window-state.json` contract, restores the historical 1220×800 default/minimum 400×620 size and maximized state, and unit-tests sanitization, display caps and 48px visibility rules. Safe x/y restoration, live move/resize persistence and secondary/session-window orchestration remain incomplete. | Open multiple session windows, focus/reuse/close/restore and test bounds across monitors/DPI. | ⬜ |
 | DI-07 | Quick Entry global shortcut/window | `QuickEntryShortcutController` + native window geometry | Quick Entry | A2 Service | Native shortcut parsing/settings/controller and 640×168 window-geometry foundation matches Electron alias/order/reserved-key semantics, uses bounded fail-soft settings loading and deterministic controller/monitor tests. Actual OS global-hotkey registration, secondary Dioxus window lifecycle and composer submission remain unported. | Register shortcut, summon/dismiss across apps, submit, move monitors and restart. | ⬜ |
