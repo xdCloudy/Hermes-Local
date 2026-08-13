@@ -13,16 +13,17 @@ use std::{
 
 use futures_core::Stream;
 use hermes_protocol::{
-    AgentConfigSnapshot, AppSettings, ChatMessage, ConnectionConfig, ConnectionConfigInput,
-    ConnectionOauthLoginResult, ConnectionOauthLogoutResult, ConnectionProbeResult,
-    ConnectionState, ConnectionTestResult, CustomEndpointUpdate, CustomEndpointValidation,
-    CustomEndpointsResponse, EnvVarInfo, FileEntry, GatewayEvent, GitStatus, MessageRole,
-    MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse, ModelSettingsSnapshot, OAuthPoll,
-    OAuthProvider, OAuthStart, OAuthSubmit, ProjectFilesDeleteResult, ProjectSummary,
-    ProjectsSnapshot, ProviderActivation, RuntimeStatus, SessionCreateRequest,
-    SessionDirectiveResult, SessionResumeResponse, SessionSummary, SkillActionStart,
-    SkillActionStatus, SkillHubPreview, SkillHubScanResult, SkillHubSearchResponse,
-    SkillHubSourcesResponse, SkillSummary, SkillToggleResult, TaskSummary, TrustSnapshot,
+    AgentConfigSnapshot, AppSettings, AttachmentKind, ChatMessage, ConnectionConfig,
+    ConnectionConfigInput, ConnectionOauthLoginResult, ConnectionOauthLogoutResult,
+    ConnectionProbeResult, ConnectionState, ConnectionTestResult, CustomEndpointUpdate,
+    CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry, GatewayEvent,
+    GitStatus, MessageRole, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse,
+    ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit,
+    ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation, RuntimeStatus,
+    SelectedAttachment, SessionAttachmentResult, SessionCreateRequest, SessionDirectiveResult,
+    SessionResumeResponse, SessionSummary, SkillActionStart, SkillActionStatus, SkillHubPreview,
+    SkillHubScanResult, SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary,
+    SkillToggleResult, TaskSummary, TrustSnapshot,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -74,6 +75,24 @@ pub trait SessionService: Send + Sync {
         Box::pin(async move {
             Err(ServiceError::Unavailable(
                 "session directives are unavailable on this host".into(),
+            ))
+        })
+    }
+    fn attach(
+        &self,
+        _session_id: &str,
+        _attachment: &SelectedAttachment,
+    ) -> ServiceFuture<'_, SessionAttachmentResult> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "session attachments are unavailable on this host".into(),
+            ))
+        })
+    }
+    fn detach_image(&self, _session_id: &str, _path: &str) -> ServiceFuture<'_, ()> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "image detach is unavailable on this host".into(),
             ))
         })
     }
@@ -396,6 +415,31 @@ impl SessionTranscript {
     }
 }
 
+pub fn attachment_context_text(
+    visible_text: &str,
+    attachments: &[SessionAttachmentResult],
+) -> String {
+    let mut parts = attachments
+        .iter()
+        .filter_map(|attachment| attachment.ref_text.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    let visible_text = visible_text.trim();
+    if !visible_text.is_empty() {
+        parts.push(visible_text.to_owned());
+    }
+    if parts.is_empty()
+        && attachments
+            .iter()
+            .any(|attachment| attachment.kind == AttachmentKind::Image && attachment.attached)
+    {
+        return "What do you see in this image?".into();
+    }
+    parts.join("\n\n")
+}
+
 const COMPOSER_UNDO_LIMIT: usize = 64;
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -555,9 +599,28 @@ pub struct PromptQueueCoordinator {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+pub struct QueuedPrompt {
+    pub text: String,
+    pub attachments: Vec<SelectedAttachment>,
+}
+
+impl QueuedPrompt {
+    pub fn label(&self) -> String {
+        if !self.text.trim().is_empty() {
+            return self.text.clone();
+        }
+        self.attachments
+            .iter()
+            .map(|attachment| attachment.label.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
 struct PromptQueueSession {
     runtime_id: String,
-    queued: VecDeque<String>,
+    queued: VecDeque<QueuedPrompt>,
     parked: bool,
     busy: bool,
     error: Option<String>,
@@ -579,17 +642,34 @@ impl PromptQueueCoordinator {
     }
 
     pub fn enqueue(&mut self, stored_id: &str, text: String) -> usize {
-        let text = text.trim().to_owned();
-        if stored_id.is_empty() || text.is_empty() {
+        self.enqueue_prompt(
+            stored_id,
+            QueuedPrompt {
+                text,
+                attachments: Vec::new(),
+            },
+        )
+    }
+
+    pub fn enqueue_prompt(&mut self, stored_id: &str, mut prompt: QueuedPrompt) -> usize {
+        prompt.text = prompt.text.trim().to_owned();
+        if stored_id.is_empty() || (prompt.text.is_empty() && prompt.attachments.is_empty()) {
             return self.count(stored_id);
         }
         let session = self.sessions.entry(stored_id.to_owned()).or_default();
-        session.queued.push_back(text);
+        session.queued.push_back(prompt);
         session.error = None;
         session.queued.len()
     }
 
     pub fn items(&self, stored_id: &str) -> Vec<String> {
+        self.sessions
+            .get(stored_id)
+            .map(|session| session.queued.iter().map(QueuedPrompt::label).collect())
+            .unwrap_or_default()
+    }
+
+    pub fn prompts(&self, stored_id: &str) -> Vec<QueuedPrompt> {
         self.sessions
             .get(stored_id)
             .map(|session| session.queued.iter().cloned().collect())
@@ -603,6 +683,11 @@ impl PromptQueueCoordinator {
     }
 
     pub fn remove(&mut self, stored_id: &str, index: usize) -> Option<String> {
+        self.remove_prompt(stored_id, index)
+            .map(|prompt| prompt.text)
+    }
+
+    pub fn remove_prompt(&mut self, stored_id: &str, index: usize) -> Option<QueuedPrompt> {
         self.sessions
             .get_mut(stored_id)
             .and_then(|session| session.queued.remove(index))
@@ -660,34 +745,86 @@ impl PromptQueueCoordinator {
     }
 
     pub fn next_after_completion(&mut self, runtime_id: &str) -> Option<(String, String, String)> {
+        self.next_prompt_after_completion(runtime_id)
+            .map(|(stored_id, runtime_id, prompt)| (stored_id, runtime_id, prompt.text))
+    }
+
+    pub fn next_prompt_after_completion(
+        &mut self,
+        runtime_id: &str,
+    ) -> Option<(String, String, QueuedPrompt)> {
         let stored_id = self.runtime_to_stored.get(runtime_id)?.clone();
         let session = self.sessions.get_mut(&stored_id)?;
         session.busy = false;
         if session.parked {
             return None;
         }
-        let text = session.queued.pop_front()?;
+        let prompt = session.queued.pop_front()?;
         session.busy = true;
         session.error = None;
-        Some((stored_id, runtime_id.to_owned(), text))
+        Some((stored_id, runtime_id.to_owned(), prompt))
     }
 
     pub fn next_if_idle(&mut self, stored_id: &str) -> Option<(String, String)> {
+        self.next_prompt_if_idle(stored_id)
+            .map(|(runtime_id, prompt)| (runtime_id, prompt.text))
+    }
+
+    pub fn next_prompt_if_idle(&mut self, stored_id: &str) -> Option<(String, QueuedPrompt)> {
         let session = self.sessions.get_mut(stored_id)?;
         if session.busy || session.parked || session.runtime_id.is_empty() {
             return None;
         }
-        let text = session.queued.pop_front()?;
+        let prompt = session.queued.pop_front()?;
         session.busy = true;
         session.error = None;
-        Some((session.runtime_id.clone(), text))
+        Some((session.runtime_id.clone(), prompt))
     }
 
     pub fn mark_submit_failed(&mut self, stored_id: &str, text: String, error: String) {
+        self.mark_prompt_failed(
+            stored_id,
+            QueuedPrompt {
+                text,
+                attachments: Vec::new(),
+            },
+            error,
+        );
+    }
+
+    pub fn mark_prompt_failed(&mut self, stored_id: &str, prompt: QueuedPrompt, error: String) {
         let session = self.sessions.entry(stored_id.to_owned()).or_default();
         session.busy = false;
-        session.queued.push_front(text);
+        session.queued.push_front(prompt);
         session.error = Some(error);
+    }
+}
+
+#[cfg(test)]
+mod attachment_queue_tests {
+    use super::{PromptQueueCoordinator, QueuedPrompt};
+    use hermes_protocol::{AttachmentKind, SelectedAttachment};
+
+    #[test]
+    fn queued_attachment_payload_survives_handoff_and_failure() {
+        let mut queue = PromptQueueCoordinator::default();
+        queue.bind("stored", "runtime", true);
+        let prompt = QueuedPrompt {
+            text: "inspect".into(),
+            attachments: vec![SelectedAttachment {
+                id: "capability".into(),
+                kind: AttachmentKind::Image,
+                label: "shot.png".into(),
+                ..SelectedAttachment::default()
+            }],
+        };
+        queue.enqueue_prompt("stored", prompt.clone());
+        let (_, _, dequeued) = queue
+            .next_prompt_after_completion("runtime")
+            .expect("queued attachment prompt");
+        assert_eq!(dequeued, prompt);
+        queue.mark_prompt_failed("stored", dequeued, "offline".into());
+        assert_eq!(queue.prompts("stored"), vec![prompt]);
     }
 }
 
@@ -1407,6 +1544,18 @@ pub trait UpdateService: Send + Sync {
 }
 
 pub trait PlatformService: Send + Sync {
+    fn pick_attachments(
+        &self,
+        _title: &str,
+        _starting_directory: Option<&Path>,
+        _images_only: bool,
+    ) -> ServiceFuture<'_, Vec<SelectedAttachment>> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "native attachment selection is unavailable on this host".into(),
+            ))
+        })
+    }
     fn pick_folder(
         &self,
         title: &str,
@@ -1598,5 +1747,37 @@ mod tests {
         assert_eq!(state.messages[0].role, MessageRole::User);
         assert_eq!(state.messages[1].text, "partial answer");
         assert!(state.messages[1].streaming);
+    }
+}
+
+#[cfg(test)]
+mod attachment_context_tests {
+    use super::*;
+
+    #[test]
+    fn file_refs_precede_visible_text() {
+        let attachments = vec![SessionAttachmentResult {
+            attached: true,
+            kind: AttachmentKind::File,
+            ref_text: Some("@file:`notes/a b.txt`".into()),
+            ..SessionAttachmentResult::default()
+        }];
+        assert_eq!(
+            attachment_context_text("summarise this", &attachments),
+            "@file:`notes/a b.txt`\n\nsummarise this"
+        );
+    }
+
+    #[test]
+    fn image_only_gets_fallback_prompt() {
+        let attachments = vec![SessionAttachmentResult {
+            attached: true,
+            kind: AttachmentKind::Image,
+            ..SessionAttachmentResult::default()
+        }];
+        assert_eq!(
+            attachment_context_text("", &attachments),
+            "What do you see in this image?"
+        );
     }
 }
