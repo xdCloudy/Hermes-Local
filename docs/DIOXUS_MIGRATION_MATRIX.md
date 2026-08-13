@@ -54,9 +54,9 @@ At the audit checkpoint above:
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
 | A1 Designed | 20 | Largest remaining implementation backlog. |
-| A2 Service | 18 | Native/core foundations exist; UI/parity work remains. |
+| A2 Service | 17 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 5 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 83 | Automated slice is green; human/live acceptance still required. |
+| A4 Auto-verified | 84 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 0 | No named external validation blockers remain. |
@@ -126,6 +126,14 @@ Windows packaging `31748327608`, install lifecycle `31748327612` and footprint
 A4. The same tranche makes the bounded benchmark and security task launch/
 progress/cancel slices usable at A3; persisted reports, result detail/export and
 broader OG workflow parity still need implementation and automated coverage.
+
+The merged-PR reconciliation also confirms that PR #190 exact head `3bd7832e`
+already closed the `CH-03` machine-verifiable reconnect slice. It implements
+bounded exponential backoff, deterministic `Error → Connecting → Open` state,
+explicit reconnect-time request failure, pending-request cleanup and responsive
+shutdown, with loopback recovery tests. Rust validation `31694802116`, Windows
+packaging `31694802071`, install lifecycle `31694802069` and footprint
+`31694802203` all passed for that exact head, so `CH-03` is A4.
 
 PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable
 Projects/Files/Git/Terminal/SSH slice. Desktop SSH mode now routes the existing
@@ -234,7 +242,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CH-01 | Agent gateway URL/auth resolution | `hermes-agent-client` + `ConnectionService` | connection/recovery | A3 Ported | Local, remote token and OAuth paths are substantially wired; Cloud and full cross-mode reconnect/re-home behavior remain open. | Test Local, remote token, remote OAuth, Cloud and SSH end-to-end once all modes are available; verify selected scope survives restart. | ⬜ |
 | CH-02 | JSON-RPC framing, calls, cancellation and unknown fields | `hermes-agent-client` | n/a | A4 Auto-verified | Actor-based client has bounded queues/frames, request timeouts, cancellation cleanup, event routing and protocol tests. | Smoke-test calls/cancellation against a real Agent while streaming; confirm no visible protocol regressions. | ⬜ |
-| CH-03 | WebSocket lifecycle, reconnect and degraded recovery | `hermes-agent-client` | connecting/degraded states | A2 Service | Core transport/state primitives exist, but full reconnect/backoff/re-home behavior is not proven across all modes. | Drop/recover network and Agent repeatedly; verify reconnect, no duplicate messages, no lost foreground state and understandable degraded UI. | ⬜ |
+| CH-03 | WebSocket lifecycle, reconnect and degraded recovery | `hermes-agent-client` | connecting/degraded states | A4 Auto-verified | PR #190 exact head `3bd7832e` adds bounded exponential reconnect, deterministic degraded/recovery states, reconnect-time request rejection, pending-call cleanup and responsive close behavior. Loopback recovery tests and exact-head Rust/distribution gates pass; adverse real-network review remains A5 evidence. | Drop/recover network and Agent repeatedly; verify reconnect, no duplicate messages, no lost foreground state and understandable degraded UI. | ⬜ |
 | CH-04 | Session identity, lineage and profile scope | `SessionService` | chat/sidebar | A4 Auto-verified | Stored/runtime identities, lineage-root behavior and profile-scoped contracts are implemented/tested. | Open/resume sessions across profiles and restarts; verify correct history, cwd/project and no cross-profile leakage. | ⬜ |
 | CH-05 | Session list, search, pin/archive/delete/rename | `SessionService` | sidebar | A4 Auto-verified | Persisted REST list and mutation contracts are implemented with stale-response rollback guards. | Run all mutations on real persisted and active sessions, including failure/rollback cases. | ⬜ |
 | CH-06 | New, resume and switch session | `SessionService` | chat workspace | A4 Auto-verified | Create/resume/switch contracts and identity reconciliation exist with live-harness coverage. | Create multiple sessions and rapidly switch/resume while one is running; verify isolation and route selection. | ⬜ |
