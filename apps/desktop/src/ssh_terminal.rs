@@ -384,6 +384,7 @@ fn platform(error: impl std::fmt::Display) -> ServiceError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{thread, time::{Duration, Instant}};
 
     fn config() -> SshConfig {
         SshConfig::new(
@@ -435,5 +436,44 @@ mod tests {
         assert!(!is_remote_terminal("123"));
         assert!(validate_remote_id("ssh-123").is_ok());
         assert!(validate_remote_id("local-123").is_err());
+    }
+
+    #[test]
+    #[ignore = "requires the explicitly provisioned SSH interoperability fixture"]
+    fn live_remote_pty_round_trip() {
+        let host = env::var("HERMES_SSH_TEST_HOST").unwrap_or_else(|_| "127.0.0.1".into());
+        let user = env::var("HERMES_SSH_TEST_USER").expect("HERMES_SSH_TEST_USER");
+        let port = env::var("HERMES_SSH_TEST_PORT")
+            .expect("HERMES_SSH_TEST_PORT")
+            .parse::<u16>()
+            .expect("HERMES_SSH_TEST_PORT must be a u16");
+        let key = env::var("HERMES_SSH_TEST_KEY").expect("HERMES_SSH_TEST_KEY");
+        let config = SshConfig::new(&host, Some(&user), Some(port), Some(&key), None)
+            .expect("live SSH terminal config");
+        let pool = RemotePtyPool::default();
+        let id = pool.start(&config, 80, 24).expect("start live SSH PTY");
+        pool.resize(&id, 100, 30).expect("resize live SSH PTY");
+        pool.write(&id, b"printf 'HERMES_REMOTE_PTY_OK\\n'\n")
+            .expect("write live SSH PTY");
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut output = Vec::new();
+        while Instant::now() < deadline {
+            output.extend(pool.read(&id).expect("read live SSH PTY"));
+            if output
+                .windows(b"HERMES_REMOTE_PTY_OK".len())
+                .any(|window| window == b"HERMES_REMOTE_PTY_OK")
+            {
+                pool.dispose(&id).expect("dispose live SSH PTY");
+                return;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+
+        let _ = pool.dispose(&id);
+        panic!(
+            "remote PTY marker not observed; output={}",
+            String::from_utf8_lossy(&output)
+        );
     }
 }
