@@ -53,16 +53,16 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 44 | Largest remaining implementation backlog. |
+| A1 Designed | 43 | Largest remaining implementation backlog. |
 | A2 Service | 23 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 4 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 54 | Automated slice is green; human/live acceptance still required. |
+| A4 Auto-verified | 55 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 1 | Named external validation blocker. |
 | **Total** | **127** | Every row must end at A6 or be explicitly retired with product-owner approval. |
 
-At least-service coverage is **81/127 capabilities (63.8%)**. This is service-foundation coverage, not end-user parity or human acceptance.
+At least-service coverage is **82/127 capabilities (64.6%)**. This is service-foundation coverage, not end-user parity or human acceptance.
 
 The PR #179 exact-head validation set was green for Documentation
 validation, the Hermes Agent harness/native-client boundary workflow, Dioxus
@@ -99,7 +99,7 @@ are already available, but its acceptance gate remains explicit.
 2. Port Hermes Cloud discovery/org/agent connection and finish complete Gateway
    re-home behavior.
 3. Finish rich chat/composer parity.
-4. Finish Workspace Terminal parity beyond the now-wired Git/Review/Worktree and PTY lifecycle slices, especially TM-02 ANSI/scrollback and TM-03 remote/SSH behavior.
+4. Finish Workspace Terminal parity beyond the now-A4 local ANSI/scrollback slice, especially TM-03 remote/SSH behavior.
 5. Port Workstation/Agent surfaces, then finish native Windows integration.
 6. Finish updater/cutover, remove Electron/React/Node from production, and run
    the full human acceptance pass.
@@ -210,7 +210,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | GT-06 | Commit, push, ship and PR actions | `GitShipService` | review pane | A4 Auto-verified | Dioxus Review now exposes commit, push, ship and PR actions through bounded Git/gh authority; disposable bare-remote round trips, UI contracts, architecture, WASM and Clippy gates pass. | Commit with edge-case messages, push branches, exercise remote failures and PR creation without shell injection. | ⬜ |
 | GT-07 | Repository scanning/discovery | `GitRepoScanService` | project discovery | A4 Auto-verified | Project Centre now consumes profile-scoped repo-scan policy, supports bounded cancellable discovery and explicit registration; native discovery/UI contracts, architecture, WASM and Clippy gates pass. | Scan representative roots, cancellations, permissions, deep trees and repo limits. | ⬜ |
 | TM-01 | PTY/ConPTY lifecycle service | `TerminalService` | terminal | A4 Auto-verified | Dioxus Terminal now owns project-scoped PTY start/read/write/resize/dispose with route teardown via synchronous typed disposal; a real Windows PTY round trip including ESC[6n DSR handling, WASM and Clippy gates pass. | After renderer lands: start shell in project cwd, type/resize, run long/interactive commands, exit/dispose and verify no orphan processes. | ⬜ |
-| TM-02 | Terminal ANSI rendering, scrollback and persistence | terminal read model | terminal pane | A1 Designed | Not ported. | Stress ANSI/Unicode/large output, scrollback, hidden/reopened panes and memory/CPU. | ⬜ |
+| TM-02 | Terminal ANSI rendering, scrollback and persistence | terminal read model | terminal pane | A4 Auto-verified | Dioxus Terminal now uses a bounded ANSI-aware Rust read model with SGR/16/256/truecolor styles, split escape/UTF-8 handling, carriage-return/erase behavior, OSC suppression and per-project in-memory scrollback restoration across route/project reopen. Deterministic parser/persistence tests plus exact-head architecture, all-target, WASM, workspace-test and Clippy gates pass; the same head also passes the optimized Windows footprint build. | Stress ANSI/Unicode/large output, scrollback, hidden/reopened panes and memory/CPU. | ⬜ |
 | TM-03 | Remote/SSH terminal behavior | `TerminalService` + SSH transport | terminal pane | A1 Designed | SSH Agent tunnel exists but interactive terminal parity is not integrated. | Connect to real SSH target, verify cwd, resize, reconnect, auth-agent use and cleanup. | ⬜ |
 | SS-01 | SSH config Host suggestions, Include traversal and `ssh -G` enrichment | `ConnectionService`/SSH helper | Settings → Gateway | A4 Auto-verified | Native `Host`/`Include` discovery, bounded glob/cycle traversal and 5-second `ssh -G` enrichment are wired into the Dioxus Gateway selector with parity/contract coverage; manual user/port/key values are never overwritten. The exact-head Rust/Dioxus gate is green. | Use aliases, Includes, wildcard exclusions and custom/raw hosts; verify resolved fields match `ssh -G` and manual values are not overwritten. | ⬜ |
 | SS-02 | SSH probe/discovery and actionable failure classification | native OpenSSH transport | Settings → Gateway | A4 Auto-verified | System OpenSSH argv, Linux/macOS/Windows Hermes discovery, ownership-capability checks and auth/host-key/network classification are unit-tested. | Test real hosts with success, bad auth, changed host key, timeout, unreachable and missing/old Hermes. | ⬜ |
