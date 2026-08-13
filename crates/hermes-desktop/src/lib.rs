@@ -27,10 +27,10 @@ use hermes_protocol::{
     GitStatus, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse, ModelInfo, ModelOptions,
     ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit, ProbeAuthMode,
     ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation, RemoteAuthMode,
-    RuntimeStatus, SessionCreateRequest, SessionCreateResponse, SessionResumeResponse,
-    SessionSummary, SkillActionStart, SkillActionStatus, SkillHubPreview, SkillHubScanResult,
-    SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary, SkillToggleResult, TaskSummary,
-    TrustSnapshot,
+    RuntimeStatus, SessionCreateRequest, SessionCreateResponse, SessionMessagesResponse,
+    SessionResumeResponse, SessionSummary, SkillActionStart, SkillActionStatus, SkillHubPreview,
+    SkillHubScanResult, SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary,
+    SkillToggleResult, TaskSummary, TrustSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use reqwest::Method;
@@ -938,6 +938,24 @@ impl SessionService for GatewayServices {
                 .request("session.resume", json!({ "session_id": session_id }))
                 .await
                 .map_err(transport)
+        })
+    }
+
+    fn history(&self, session_id: &str) -> ServiceFuture<'_, Vec<hermes_protocol::ChatMessage>> {
+        let session_id = session_id.to_owned();
+        Box::pin(async move {
+            validate_identifier(&session_id, "session")?;
+            let value = self
+                .rest()?
+                .request(
+                    Method::GET,
+                    &format!("/api/sessions/{session_id}/messages"),
+                    None,
+                )
+                .await?;
+            let response: SessionMessagesResponse =
+                serde_json::from_value(value).map_err(protocol)?;
+            Ok(response.messages)
         })
     }
 

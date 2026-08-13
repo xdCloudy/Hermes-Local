@@ -461,6 +461,14 @@ pub struct SessionResumeResponse {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct SessionMessagesResponse {
+    #[serde(default)]
+    pub messages: Vec<ChatMessage>,
+    #[serde(default)]
+    pub session_id: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct ProjectFolder {
     pub path: String,
     #[serde(default)]
