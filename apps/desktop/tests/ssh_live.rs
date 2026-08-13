@@ -34,6 +34,7 @@ fn live_openssh_probe_reports_remote_runtime() {
     )
     .expect("live SSH fixture config must be valid");
     let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_io()
         .enable_time()
         .build()
         .expect("Tokio runtime");
