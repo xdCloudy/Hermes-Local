@@ -1,8 +1,4 @@
-use std::{
-    cell::RefCell,
-    collections::VecDeque,
-    path::Path,
-};
+use std::{cell::RefCell, collections::VecDeque, path::Path};
 
 use dioxus::prelude::*;
 use hermes_core::{AppServices, ServiceError};
@@ -86,9 +82,9 @@ impl AnsiColor {
             Self::Rgb(red, green, blue) => format!("rgb({red} {green} {blue})"),
             Self::Indexed(index) => {
                 const ANSI_16: [&str; 16] = [
-                    "#000000", "#cd3131", "#0dbc79", "#e5e510", "#2472c8", "#bc3fbc",
-                    "#11a8cd", "#e5e5e5", "#666666", "#f14c4c", "#23d18b", "#f5f543",
-                    "#3b8eea", "#d670d6", "#29b8db", "#ffffff",
+                    "#000000", "#cd3131", "#0dbc79", "#e5e510", "#2472c8", "#bc3fbc", "#11a8cd",
+                    "#e5e5e5", "#666666", "#f14c4c", "#23d18b", "#f5f543", "#3b8eea", "#d670d6",
+                    "#29b8db", "#ffffff",
                 ];
                 match index {
                     0..=15 => ANSI_16[usize::from(index)].to_owned(),
@@ -97,13 +93,8 @@ impl AnsiColor {
                         let red = cube / 36;
                         let green = (cube % 36) / 6;
                         let blue = cube % 6;
-                        let component = |value: u8| {
-                            if value == 0 {
-                                0
-                            } else {
-                                55 + (value * 40)
-                            }
-                        };
+                        let component =
+                            |value: u8| if value == 0 { 0 } else { 55 + (value * 40) };
                         format!(
                             "rgb({} {} {})",
                             component(red),
@@ -471,10 +462,7 @@ impl TerminalBuffer {
             line.push(cell);
             self.cell_count = self.cell_count.saturating_add(1);
         }
-        self.cursor_column = self
-            .cursor_column
-            .saturating_add(1)
-            .min(MAX_CURSOR_COLUMN);
+        self.cursor_column = self.cursor_column.saturating_add(1).min(MAX_CURSOR_COLUMN);
     }
 
     fn new_line(&mut self) {
@@ -657,9 +645,7 @@ pub(super) fn Terminal() -> Element {
     let projects = use_context::<ProjectUiState>();
     let snapshot = (projects.snapshot)();
     let active = active_project_root(&snapshot);
-    let initial_history_key = active
-        .as_ref()
-        .map(|(project_id, _, _)| project_id.clone());
+    let initial_history_key = active.as_ref().map(|(project_id, _, _)| project_id.clone());
     let initial_output = initial_history_key
         .as_deref()
         .map(load_scrollback)
@@ -678,7 +664,8 @@ pub(super) fn Terminal() -> Element {
     let project_snapshot = projects.snapshot;
     let switch_service = services.terminal.clone();
     use_effect(move || {
-        let next_key = active_project_root(&project_snapshot()).map(|(project_id, _, _)| project_id);
+        let next_key =
+            active_project_root(&project_snapshot()).map(|(project_id, _, _)| project_id);
         let previous_key = history_key();
         if previous_key == next_key {
             return;
@@ -692,10 +679,7 @@ pub(super) fn Terminal() -> Element {
             terminal_id.set(None);
         }
 
-        let restored = next_key
-            .as_deref()
-            .map(load_scrollback)
-            .unwrap_or_default();
+        let restored = next_key.as_deref().map(load_scrollback).unwrap_or_default();
         output.set(restored);
         input.set(String::new());
         error.set(None);
@@ -950,9 +934,7 @@ mod tests {
         let runs = buffer.rendered_lines();
         assert_eq!(runs.len(), 1);
         assert!(runs[0].iter().any(|run| {
-            run.text == "red"
-                && run.css.contains("font-weight:700")
-                && run.css.contains("#cd3131")
+            run.text == "red" && run.css.contains("font-weight:700") && run.css.contains("#cd3131")
         }));
     }
 
