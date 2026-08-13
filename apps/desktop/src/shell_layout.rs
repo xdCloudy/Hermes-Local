@@ -455,7 +455,13 @@ impl LayoutModel {
             return None;
         }
         let floating_id = self.alloc("floating");
-        let z_index = self.floating.iter().map(|pane| pane.z_index).max().unwrap_or(0) + 1;
+        let z_index = self
+            .floating
+            .iter()
+            .map(|pane| pane.z_index)
+            .max()
+            .unwrap_or(0)
+            + 1;
         self.floating.push(FloatingPane {
             id: floating_id.clone(),
             tab,
@@ -467,7 +473,11 @@ impl LayoutModel {
     }
 
     pub fn dock_floating(&mut self, floating_id: &str) -> bool {
-        let Some(index) = self.floating.iter().position(|pane| pane.id == floating_id) else {
+        let Some(index) = self
+            .floating
+            .iter()
+            .position(|pane| pane.id == floating_id)
+        else {
             return false;
         };
         let floating = self.floating.remove(index);
@@ -482,8 +492,18 @@ impl LayoutModel {
     }
 
     pub fn bring_floating_to_front(&mut self, floating_id: &str) -> bool {
-        let next_z = self.floating.iter().map(|pane| pane.z_index).max().unwrap_or(0) + 1;
-        let Some(pane) = self.floating.iter_mut().find(|pane| pane.id == floating_id) else {
+        let next_z = self
+            .floating
+            .iter()
+            .map(|pane| pane.z_index)
+            .max()
+            .unwrap_or(0)
+            + 1;
+        let Some(pane) = self
+            .floating
+            .iter_mut()
+            .find(|pane| pane.id == floating_id)
+        else {
             return false;
         };
         pane.z_index = next_z;
@@ -491,7 +511,11 @@ impl LayoutModel {
     }
 
     pub fn set_floating_bounds(&mut self, floating_id: &str, bounds: FloatingBounds) -> bool {
-        let Some(pane) = self.floating.iter_mut().find(|pane| pane.id == floating_id) else {
+        let Some(pane) = self
+            .floating
+            .iter_mut()
+            .find(|pane| pane.id == floating_id)
+        else {
             return false;
         };
         pane.bounds = FloatingBounds {
@@ -587,7 +611,10 @@ mod tests {
     fn default_layout_is_valid_and_workspace_owned() {
         let layout = LayoutModel::default();
         assert!(layout.validate().is_ok());
-        assert_eq!(layout.focused_group().unwrap().active_tab().unwrap().kind, PaneKind::Workspace);
+        assert_eq!(
+            layout.focused_group().unwrap().active_tab().unwrap().kind,
+            PaneKind::Workspace
+        );
     }
 
     #[test]
