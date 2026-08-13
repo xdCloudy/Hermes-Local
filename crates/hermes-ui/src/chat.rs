@@ -44,7 +44,7 @@ pub(super) fn ChatRuntimeProvider() -> Element {
     let mut queue = use_signal(PromptQueueCoordinator::default);
     let mut drafts = use_signal(ComposerDraftStore::default);
     let mut drafts_hydrated = use_signal(|| false);
-    let mut draft_revision = use_signal(|| 0_u64);
+    let draft_revision = use_signal(|| 0_u64);
     let mut draft_saved_revision = use_signal(|| 0_u64);
     use_context_provider(|| ChatRuntimeState {
         queue,
@@ -571,6 +571,9 @@ pub(super) fn Session(id: String) -> Element {
     let composer_interrupt = interrupt_service;
     let header_queue_id = id.clone();
     let composer_queue_id = id.clone();
+    let input_draft_id = id.clone();
+    let undo_draft_id = id.clone();
+    let redo_draft_id = id.clone();
     rsx! {
         section { class: "conversation-surface",
             header { class: "conversation-header",
@@ -700,7 +703,7 @@ pub(super) fn Session(id: String) -> Element {
                         oninput: move |event| {
                             let value = event.value();
                             draft.set(value.clone());
-                            chat_runtime.drafts.write().edit(&id, value);
+                            chat_runtime.drafts.write().edit(&input_draft_id, value);
                             mark_draft_changed(chat_runtime.draft_revision);
                         },
                         onkeydown: move |event| {
@@ -714,7 +717,7 @@ pub(super) fn Session(id: String) -> Element {
                         button {
                             class: "composer-tool", title: "Undo", aria_label: "Undo draft",
                             onclick: move |_| {
-                                let restored = chat_runtime.drafts.write().undo(&id);
+                                let restored = chat_runtime.drafts.write().undo(&undo_draft_id);
                                 if let Some(value) = restored {
                                     draft.set(value);
                                     mark_draft_changed(chat_runtime.draft_revision);
@@ -725,7 +728,7 @@ pub(super) fn Session(id: String) -> Element {
                         button {
                             class: "composer-tool", title: "Redo", aria_label: "Redo draft",
                             onclick: move |_| {
-                                let restored = chat_runtime.drafts.write().redo(&id);
+                                let restored = chat_runtime.drafts.write().redo(&redo_draft_id);
                                 if let Some(value) = restored {
                                     draft.set(value);
                                     mark_draft_changed(chat_runtime.draft_revision);
