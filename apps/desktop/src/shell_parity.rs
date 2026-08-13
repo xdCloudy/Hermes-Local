@@ -1,7 +1,9 @@
 use dioxus::prelude::*;
 
 use crate::{
-    shell_i18n::{LOCALE_STORAGE_KEY, Locale, Message, locale_apply_script, locale_read_script, translate},
+    shell_i18n::{
+        LOCALE_STORAGE_KEY, Locale, Message, locale_apply_script, locale_read_script, translate,
+    },
     shell_keymap::{FocusContext, KeyChord, ShortcutAction, resolve_shortcut},
     shell_layout::{LAYOUT_STORAGE_KEY, LayoutModel, PaneKind, SplitAxis},
 };
@@ -40,7 +42,7 @@ fn route_script(path: &str) -> String {
 }
 
 fn layout_read_script() -> String {
-    format!("return localStorage.getItem('{LAYOUT_STORAGE_KEY}') || '';" )
+    format!("return localStorage.getItem('{LAYOUT_STORAGE_KEY}') || '';")
 }
 
 fn layout_persist_script(layout: &LayoutModel) -> String {
@@ -51,7 +53,8 @@ fn layout_persist_script(layout: &LayoutModel) -> String {
 
 fn locale_observer_script(locale: Locale) -> String {
     let apply = locale_apply_script(locale);
-    format!(r#"(() => {{
+    format!(
+        r#"(() => {{
       {apply};
       if(window.__hermesLocaleObserver) window.__hermesLocaleObserver.disconnect();
       let queued=false;
@@ -62,7 +65,8 @@ fn locale_observer_script(locale: Locale) -> String {
       }});
       observer.observe(document.body,{{subtree:true,childList:true}});
       window.__hermesLocaleObserver=observer;
-    }})()"#)
+    }})()"#
+    )
 }
 
 fn accessibility_audit_script() -> String {
@@ -81,7 +85,8 @@ fn accessibility_audit_script() -> String {
       }
       document.documentElement.dataset.shellA11yViolations=String(violations.length);
       return violations.length;
-    })()"#.into()
+    })()"#
+        .into()
 }
 
 fn mutate_layout(layout: &mut Signal<LayoutModel>, mutation: impl FnOnce(&mut LayoutModel)) {
@@ -93,6 +98,7 @@ fn mutate_layout(layout: &mut Signal<LayoutModel>, mutation: impl FnOnce(&mut La
     run_js(layout_persist_script(&layout()));
 }
 
+#[rustfmt::skip]
 #[component]
 pub fn ParityShellHost(children: Element) -> Element {
     let mut panel_open = use_signal(|| false);
