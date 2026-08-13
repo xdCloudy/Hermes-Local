@@ -62,7 +62,12 @@ fn safe_target(value: &str, image: bool) -> Option<String> {
     if !(lower.starts_with("https://") || lower.starts_with("http://")) {
         return None;
     }
-    let authority = value.split_once("://")?.1.split('/').next().unwrap_or_default();
+    let authority = value
+        .split_once("://")?
+        .1
+        .split('/')
+        .next()
+        .unwrap_or_default();
     (!authority.is_empty() && !authority.contains('@')).then(|| value.to_owned())
 }
 
@@ -130,8 +135,12 @@ fn parse_blocks(source: &str) -> Vec<Block> {
             let mut body = String::new();
             index += 1;
             while index < lines.len() && !lines[index].trim_start().starts_with("```") {
-                if !body.is_empty() { body.push('\n'); }
-                if body.len() < MAX_CODE_BYTES { body.push_str(lines[index]); }
+                if !body.is_empty() {
+                    body.push('\n');
+                }
+                if body.len() < MAX_CODE_BYTES {
+                    body.push_str(lines[index]);
+                }
                 index += 1;
             }
             index = (index + 1).min(lines.len());
@@ -141,7 +150,10 @@ fn parse_blocks(source: &str) -> Vec<Block> {
                 "diff" | "patch" => Block::Diff(body),
                 "ansi" | "terminal" => Block::Ansi(body),
                 "mermaid" | "mmd" => Block::Mermaid(body),
-                _ => Block::Code { language, text: body },
+                _ => Block::Code {
+                    language,
+                    text: body,
+                },
             });
             continue;
         }
@@ -149,7 +161,9 @@ fn parse_blocks(source: &str) -> Vec<Block> {
             let mut body = String::new();
             index += 1;
             while index < lines.len() && lines[index].trim() != "$$" {
-                if !body.is_empty() { body.push('\n'); }
+                if !body.is_empty() {
+                    body.push('\n');
+                }
                 body.push_str(lines[index]);
                 index += 1;
             }
@@ -160,7 +174,10 @@ fn parse_blocks(source: &str) -> Vec<Block> {
         let trimmed = line.trim_start();
         let level = trimmed.chars().take_while(|ch| *ch == '#').count();
         if (1..=6).contains(&level) && trimmed.chars().nth(level) == Some(' ') {
-            blocks.push(Block::Heading(level as u8, trimmed[level + 1..].trim().to_owned()));
+            blocks.push(Block::Heading(
+                level as u8,
+                trimmed[level + 1..].trim().to_owned(),
+            ));
             index += 1;
             continue;
         }
@@ -183,8 +200,12 @@ fn parse_blocks(source: &str) -> Vec<Block> {
             let mut items = vec![first];
             index += 1;
             while index < lines.len() {
-                let Some((next_ordered, next)) = list_item(lines[index]) else { break; };
-                if next_ordered != ordered { break; }
+                let Some((next_ordered, next)) = list_item(lines[index]) else {
+                    break;
+                };
+                if next_ordered != ordered {
+                    break;
+                }
                 items.push(next);
                 index += 1;
             }
@@ -194,7 +215,10 @@ fn parse_blocks(source: &str) -> Vec<Block> {
         if trimmed.starts_with("diff --git ") || trimmed.starts_with("@@ ") {
             let mut body = line.to_owned();
             index += 1;
-            while index < lines.len() && !lines[index].trim().is_empty() && body.len() < MAX_CODE_BYTES {
+            while index < lines.len()
+                && !lines[index].trim().is_empty()
+                && body.len() < MAX_CODE_BYTES
+            {
                 body.push('\n');
                 body.push_str(lines[index]);
                 index += 1;
@@ -211,7 +235,12 @@ fn parse_blocks(source: &str) -> Vec<Block> {
         index += 1;
         while index < lines.len() && !lines[index].trim().is_empty() {
             let next = lines[index];
-            if next.trim_start().starts_with("```") || next.trim() == "$$" || list_item(next).is_some() { break; }
+            if next.trim_start().starts_with("```")
+                || next.trim() == "$$"
+                || list_item(next).is_some()
+            {
+                break;
+            }
             paragraph.push('\n');
             paragraph.push_str(next.trim());
             index += 1;
@@ -225,17 +254,34 @@ fn bracket_target(input: &str, image: bool) -> Option<(usize, String, String)> {
     let prefix = if image { 2 } else { 1 };
     let label_end = input[prefix..].find(']')? + prefix;
     let target_start = label_end + 1;
-    if input.get(target_start..target_start + 1)? != "(" { return None; }
+    if input.get(target_start..target_start + 1)? != "(" {
+        return None;
+    }
     let target_end = input[target_start + 1..].find(')')? + target_start + 1;
-    Some((target_end + 1, input[prefix..label_end].to_owned(), input[target_start + 1..target_end].trim().to_owned()))
+    Some((
+        target_end + 1,
+        input[prefix..label_end].to_owned(),
+        input[target_start + 1..target_end].trim().to_owned(),
+    ))
 }
 
 fn parse_inline(text: &str) -> Vec<Inline> {
     let mut output = Vec::new();
     let mut rest = text;
     while !rest.is_empty() && output.len() < 256 {
-        let start = [rest.find("!["), rest.find('['), rest.find('`'), rest.find('$')].into_iter().flatten().min();
-        let Some(start) = start else { output.push(Inline::Text(rest.to_owned())); break; };
+        let start = [
+            rest.find("!["),
+            rest.find('['),
+            rest.find('`'),
+            rest.find('$'),
+        ]
+        .into_iter()
+        .flatten()
+        .min();
+        let Some(start) = start else {
+            output.push(Inline::Text(rest.to_owned()));
+            break;
+        };
         if start > 0 {
             output.push(Inline::Text(rest[..start].to_owned()));
             rest = &rest[start..];
@@ -243,13 +289,19 @@ fn parse_inline(text: &str) -> Vec<Inline> {
         }
         if rest.starts_with("![") {
             if let Some((used, alt, target)) = bracket_target(rest, true) {
-                output.push(safe_target(&target, true).map_or_else(|| Inline::Blocked(alt.clone()), |url| Inline::Image { alt, url }));
+                output.push(safe_target(&target, true).map_or_else(
+                    || Inline::Blocked(alt.clone()),
+                    |url| Inline::Image { alt, url },
+                ));
                 rest = &rest[used..];
                 continue;
             }
         } else if rest.starts_with('[') {
             if let Some((used, label, target)) = bracket_target(rest, false) {
-                output.push(safe_target(&target, false).map_or_else(|| Inline::Blocked(label.clone()), |url| Inline::Link { label, url }));
+                output.push(safe_target(&target, false).map_or_else(
+                    || Inline::Blocked(label.clone()),
+                    |url| Inline::Link { label, url },
+                ));
                 rest = &rest[used..];
                 continue;
             }
@@ -280,12 +332,18 @@ fn strip_ansi(input: &str) -> String {
     let mut chars = input.chars().peekable();
     while let Some(ch) = chars.next() {
         if ch != '\u{1b}' {
-            if !ch.is_control() || matches!(ch, '\n' | '\r' | '\t') { output.push(ch); }
+            if !ch.is_control() || matches!(ch, '\n' | '\r' | '\t') {
+                output.push(ch);
+            }
             continue;
         }
         if chars.peek() == Some(&'[') {
             chars.next();
-            for next in chars.by_ref() { if ('@'..='~').contains(&next) { break; } }
+            for next in chars.by_ref() {
+                if ('@'..='~').contains(&next) {
+                    break;
+                }
+            }
         }
     }
     output
@@ -296,20 +354,35 @@ fn mermaid_allowed(source: &str) -> bool {
     source.len() <= MAX_CODE_BYTES
         && !source.contains('<')
         && !source.contains('>')
-        && !lower.lines().any(|line| line.trim_start().starts_with("click "))
+        && !lower
+            .lines()
+            .any(|line| line.trim_start().starts_with("click "))
         && !lower.contains("href")
         && !lower.contains("url(")
 }
 
 fn mermaid_edges(source: &str) -> Vec<(String, String)> {
-    if !mermaid_allowed(source) { return Vec::new(); }
-    source.lines().filter_map(|line| {
-        let (left, right) = line.trim().split_once("-->")?;
-        let clean = |value: &str| value.trim().trim_matches(|ch: char| "[](){}\"".contains(ch)).chars().take(96).collect::<String>();
-        let left = clean(left);
-        let right = clean(right);
-        (!left.is_empty() && !right.is_empty()).then_some((left, right))
-    }).take(64).collect()
+    if !mermaid_allowed(source) {
+        return Vec::new();
+    }
+    source
+        .lines()
+        .filter_map(|line| {
+            let (left, right) = line.trim().split_once("-->")?;
+            let clean = |value: &str| {
+                value
+                    .trim()
+                    .trim_matches(|ch: char| "[](){}\"".contains(ch))
+                    .chars()
+                    .take(96)
+                    .collect::<String>()
+            };
+            let left = clean(left);
+            let right = clean(right);
+            (!left.is_empty() && !right.is_empty()).then_some((left, right))
+        })
+        .take(64)
+        .collect()
 }
 
 #[component]
@@ -388,7 +461,10 @@ mod tests {
     #[test]
     fn bounds_content_and_wide_tables() {
         assert!(!parse_blocks(&"x".repeat(MAX_CONTENT_BYTES + 100)).is_empty());
-        let row = (0..100).map(|index| index.to_string()).collect::<Vec<_>>().join("|");
+        let row = (0..100)
+            .map(|index| index.to_string())
+            .collect::<Vec<_>>()
+            .join("|");
         assert_eq!(split_row(&row).len(), MAX_TABLE_COLUMNS);
     }
 
@@ -404,10 +480,22 @@ mod tests {
     fn parses_rich_inventory() {
         let input = "# Heading\n\n```rust\nfn main() {}\n```\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\n```mermaid\ngraph TD\nA-->B\n```";
         let blocks = parse_blocks(input);
-        assert!(blocks.iter().any(|block| matches!(block, Block::Heading(..))));
-        assert!(blocks.iter().any(|block| matches!(block, Block::Code { .. })));
+        assert!(
+            blocks
+                .iter()
+                .any(|block| matches!(block, Block::Heading(..)))
+        );
+        assert!(
+            blocks
+                .iter()
+                .any(|block| matches!(block, Block::Code { .. }))
+        );
         assert!(blocks.iter().any(|block| matches!(block, Block::Table(_))));
-        assert!(blocks.iter().any(|block| matches!(block, Block::Mermaid(_))));
+        assert!(
+            blocks
+                .iter()
+                .any(|block| matches!(block, Block::Mermaid(_)))
+        );
     }
 
     #[test]
@@ -417,7 +505,10 @@ mod tests {
 
     #[test]
     fn embed_provider_list_is_explicit() {
-        assert_eq!(provider_label("https://github.com/owner/repo"), Some("GitHub"));
+        assert_eq!(
+            provider_label("https://github.com/owner/repo"),
+            Some("GitHub")
+        );
         assert_eq!(provider_label("https://example.com/item"), None);
     }
 }
