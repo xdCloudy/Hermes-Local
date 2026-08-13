@@ -3,12 +3,21 @@
 
 use dioxus::prelude::*;
 use futures_util::StreamExt;
-use hermes_core::{AppServices, PromptQueueCoordinator, SessionTranscript};
+use hermes_core::{AppServices, ComposerDraftStore, PromptQueueCoordinator, SessionTranscript};
 use hermes_protocol::{MessageRole, SessionCreateRequest};
 
-use super::{Codicon, ErrorState, LoadingState, ProjectPicker, ProjectUiState, Route};
+use super::{
+    Codicon, ErrorState, LoadingState, ProjectPicker, ProjectUiState, Route, SettingsUiState,
+};
 
 const TRANSCRIPT_WINDOW: usize = 80;
+const DRAFTS_SETTINGS_KEY: &str = "hermes.chat.drafts.v1";
+const NEW_CHAT_DRAFT_KEY: &str = "__new_chat__";
+
+fn mark_draft_changed(mut revision: Signal<u64>) {
+    let next = revision().wrapping_add(1);
+    revision.set(next);
+}
 
 fn visible_message_start(total: usize, requested: usize) -> usize {
     total.saturating_sub(requested.max(1))
@@ -17,6 +26,9 @@ fn visible_message_start(total: usize, requested: usize) -> usize {
 #[derive(Clone, Copy)]
 struct ChatRuntimeState {
     queue: Signal<PromptQueueCoordinator>,
+    drafts: Signal<ComposerDraftStore>,
+    drafts_hydrated: Signal<bool>,
+    draft_revision: Signal<u64>,
 }
 
 /// Route-persistent chat runtime. Prompt queues live above the Router so a busy
@@ -27,8 +39,19 @@ pub(super) fn ChatRuntimeProvider() -> Element {
     let services = use_context::<AppServices>();
     let events_service = services.sessions.clone();
     let submit_service = services.sessions.clone();
+    let settings_service = services.settings.clone();
+    let settings_ui = use_context::<SettingsUiState>();
     let mut queue = use_signal(PromptQueueCoordinator::default);
-    use_context_provider(|| ChatRuntimeState { queue });
+    let mut drafts = use_signal(ComposerDraftStore::default);
+    let mut drafts_hydrated = use_signal(|| false);
+    let mut draft_revision = use_signal(|| 0_u64);
+    let mut draft_saved_revision = use_signal(|| 0_u64);
+    use_context_provider(|| ChatRuntimeState {
+        queue,
+        drafts,
+        drafts_hydrated,
+        draft_revision,
+    });
 
     let _queue_events = use_resource(move || {
         let events_service = events_service.clone();
@@ -61,6 +84,60 @@ pub(super) fn ChatRuntimeProvider() -> Element {
         }
     });
 
+    let _draft_hydration = use_resource(move || {
+        let settings_loading = (settings_ui.loading)();
+        let settings = (settings_ui.settings)();
+        async move {
+            if settings_loading || drafts_hydrated() {
+                return;
+            }
+            if let Some(value) = settings.extra.get(DRAFTS_SETTINGS_KEY) {
+                drafts.set(ComposerDraftStore::hydrate(value));
+            }
+            drafts_hydrated.set(true);
+        }
+    });
+
+    let _draft_persistence = use_resource(move || {
+        let revision = draft_revision();
+        let hydrated = drafts_hydrated();
+        let saved_revision = draft_saved_revision();
+        let settings_service = settings_service.clone();
+        async move {
+            if !hydrated || revision == 0 || revision == saved_revision {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            if draft_revision() != revision {
+                return;
+            }
+            let mut settings = match settings_service.load().await {
+                Ok(settings) => settings,
+                Err(error) => {
+                    let mut error_signal = settings_ui.error;
+                    error_signal.set(Some(error.to_string()));
+                    return;
+                }
+            };
+            settings
+                .extra
+                .insert(DRAFTS_SETTINGS_KEY.into(), drafts().persisted_value());
+            match settings_service.save(&settings).await {
+                Ok(()) => {
+                    draft_saved_revision.set(revision);
+                    let mut settings_signal = settings_ui.settings;
+                    settings_signal.set(settings);
+                    let mut error_signal = settings_ui.error;
+                    error_signal.set(None);
+                }
+                Err(error) => {
+                    let mut error_signal = settings_ui.error;
+                    error_signal.set(Some(error.to_string()));
+                }
+            }
+        }
+    });
+
     rsx! { Router::<Route> {} }
 }
 
@@ -68,9 +145,20 @@ pub(super) fn ChatRuntimeProvider() -> Element {
 pub(super) fn Chat() -> Element {
     let services = use_context::<AppServices>();
     let projects = use_context::<ProjectUiState>();
+    let chat_runtime = use_context::<ChatRuntimeState>();
     let create_service = services.sessions.clone();
     let navigator = use_navigator();
     let mut prompt = use_signal(String::new);
+    let mut prompt_bound = use_signal(|| false);
+    let _restore_prompt = use_resource(move || {
+        let hydrated = (chat_runtime.drafts_hydrated)();
+        async move {
+            if hydrated && !prompt_bound() {
+                prompt.set((chat_runtime.drafts)().text(NEW_CHAT_DRAFT_KEY));
+                prompt_bound.set(true);
+            }
+        }
+    });
     let mut submitting = use_signal(|| false);
     let mut submit_error = use_signal(|| None::<String>);
     let send = Callback::new(move |()| {
@@ -109,6 +197,8 @@ pub(super) fn Chat() -> Element {
             match result {
                 Ok(id) => {
                     prompt.set(String::new());
+                    chat_runtime.drafts.write().clear(NEW_CHAT_DRAFT_KEY);
+                    mark_draft_changed(chat_runtime.draft_revision);
                     navigator.push(Route::Session { id });
                 }
                 Err(error) => submit_error.set(Some(error.to_string())),
@@ -131,7 +221,12 @@ pub(super) fn Chat() -> Element {
                         placeholder: "What are we building?",
                         rows: "1",
                         value: "{prompt}",
-                        oninput: move |event| prompt.set(event.value()),
+                        oninput: move |event| {
+                            let value = event.value();
+                            prompt.set(value.clone());
+                            chat_runtime.drafts.write().edit(NEW_CHAT_DRAFT_KEY, value);
+                            mark_draft_changed(chat_runtime.draft_revision);
+                        },
                         onkeydown: move |event| {
                             if event.key() == Key::Enter && !event.modifiers().contains(Modifiers::SHIFT) {
                                 event.prevent_default();
@@ -140,6 +235,28 @@ pub(super) fn Chat() -> Element {
                         }
                     }
                     div { class: "composer-actions",
+                        button {
+                            class: "composer-tool", title: "Undo", aria_label: "Undo draft",
+                            onclick: move |_| {
+                                let restored = chat_runtime.drafts.write().undo(NEW_CHAT_DRAFT_KEY);
+                                if let Some(value) = restored {
+                                    prompt.set(value);
+                                    mark_draft_changed(chat_runtime.draft_revision);
+                                }
+                            },
+                            Codicon { name: "discard" }
+                        }
+                        button {
+                            class: "composer-tool", title: "Redo", aria_label: "Redo draft",
+                            onclick: move |_| {
+                                let restored = chat_runtime.drafts.write().redo(NEW_CHAT_DRAFT_KEY);
+                                if let Some(value) = restored {
+                                    prompt.set(value);
+                                    mark_draft_changed(chat_runtime.draft_revision);
+                                }
+                            },
+                            Codicon { name: "redo" }
+                        }
                         span { class: "composer-model", "Agents A1" }
                         button { class: "composer-tool", title: "Voice", aria_label: "Voice", Codicon { name: "mic" } }
                         button {
@@ -246,6 +363,18 @@ pub(super) fn Session(id: String) -> Element {
         });
     });
     let mut draft = use_signal(String::new);
+    let mut draft_bound = use_signal(|| false);
+    let restore_draft_id = id.clone();
+    let _restore_draft = use_resource(move || {
+        let hydrated = (chat_runtime.drafts_hydrated)();
+        let restore_draft_id = restore_draft_id.clone();
+        async move {
+            if hydrated && !draft_bound() {
+                draft.set((chat_runtime.drafts)().text(&restore_draft_id));
+                draft_bound.set(true);
+            }
+        }
+    });
     let mut send_error = use_signal(|| None::<String>);
     let send = Callback::new(move |()| {
         let text = draft().trim().to_owned();
@@ -259,6 +388,8 @@ pub(super) fn Session(id: String) -> Element {
         if before.busy {
             chat_runtime.queue.write().enqueue(&stored_id, text);
             draft.set(String::new());
+            chat_runtime.drafts.write().clear(&stored_id);
+            mark_draft_changed(chat_runtime.draft_revision);
             send_error.set(None);
             return;
         }
@@ -269,13 +400,20 @@ pub(super) fn Session(id: String) -> Element {
             state.push_user(optimistic_id, text.clone());
         }
         draft.set(String::new());
+        chat_runtime.drafts.write().clear(&stored_id);
+        mark_draft_changed(chat_runtime.draft_revision);
         send_error.set(None);
         let service = submit_service.clone();
         spawn(async move {
             if let Err(error) = service.submit(&runtime_id, &text).await {
                 chat_runtime.queue.write().mark_busy(&stored_id, false);
                 transcript.set(Some(before));
-                draft.set(text);
+                draft.set(text.clone());
+                chat_runtime
+                    .drafts
+                    .write()
+                    .replace_without_history(&stored_id, text);
+                mark_draft_changed(chat_runtime.draft_revision);
                 send_error.set(Some(error.to_string()));
             }
         });
@@ -444,7 +582,12 @@ pub(super) fn Session(id: String) -> Element {
                         rows: "1",
                         value: "{draft}",
                         disabled: loading(),
-                        oninput: move |event| draft.set(event.value()),
+                        oninput: move |event| {
+                            let value = event.value();
+                            draft.set(value.clone());
+                            chat_runtime.drafts.write().edit(&id, value);
+                            mark_draft_changed(chat_runtime.draft_revision);
+                        },
                         onkeydown: move |event| {
                             if event.key() == Key::Enter && !event.modifiers().contains(Modifiers::SHIFT) {
                                 event.prevent_default();
@@ -453,6 +596,28 @@ pub(super) fn Session(id: String) -> Element {
                         }
                     }
                     div { class: "composer-actions",
+                        button {
+                            class: "composer-tool", title: "Undo", aria_label: "Undo draft",
+                            onclick: move |_| {
+                                let restored = chat_runtime.drafts.write().undo(&id);
+                                if let Some(value) = restored {
+                                    draft.set(value);
+                                    mark_draft_changed(chat_runtime.draft_revision);
+                                }
+                            },
+                            Codicon { name: "discard" }
+                        }
+                        button {
+                            class: "composer-tool", title: "Redo", aria_label: "Redo draft",
+                            onclick: move |_| {
+                                let restored = chat_runtime.drafts.write().redo(&id);
+                                if let Some(value) = restored {
+                                    draft.set(value);
+                                    mark_draft_changed(chat_runtime.draft_revision);
+                                }
+                            },
+                            Codicon { name: "redo" }
+                        }
                         span { class: "composer-model", if busy { "Running · Enter queues" } else { "Private session" } }
                         if busy && !draft().trim().is_empty() {
                             button {
