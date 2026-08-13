@@ -960,12 +960,14 @@ macro_rules! simple_surface {
     };
 }
 
+mod about;
 mod files;
 mod review;
 mod runtime;
 mod skills;
 mod source_control;
 mod terminal;
+use about::About;
 use files::Files;
 use review::Review;
 use runtime::{Benchmarks, Runtime, Security, Tasks};
@@ -1103,12 +1105,6 @@ simple_surface!(
     "Preferences",
     "Updates",
     "Keep signed desktop components current."
-);
-simple_surface!(
-    About,
-    "Hermes Local",
-    "About",
-    "Private, capable, and built for your computer."
 );
 
 fn project_has_broken_path(project: &hermes_protocol::ProjectSummary) -> bool {
