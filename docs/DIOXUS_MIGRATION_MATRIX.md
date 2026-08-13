@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `cbeb44c4fd48f0380fe2f5f3cc4fba167036d259` (2026-08-13)
+> **Implementation audit checkpoint:** `1d14e3e4541bdddb8a49639c213cd75a25372ce0` (2026-08-13)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -53,16 +53,16 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 34 | Largest remaining implementation backlog. |
-| A2 Service | 21 | Native/core foundations exist; UI/parity work remains. |
+| A1 Designed | 22 | Largest remaining implementation backlog. |
+| A2 Service | 20 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 3 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 68 | Automated slice is green; human/live acceptance still required. |
+| A4 Auto-verified | 81 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 0 | No named external validation blockers remain. |
 | **Total** | **127** | Every row must end at A6 or be explicitly retired with product-owner approval. |
 
-At least-service coverage is **92/127 capabilities (72.4%)**. This is service-foundation coverage, not end-user parity or human acceptance.
+At least-service coverage is **104/127 capabilities (81.9%)**. This is service-foundation coverage, not end-user parity or human acceptance.
 
 The PR #179 exact-head validation set was green for Documentation
 validation, the Hermes Agent harness/native-client boundary workflow, Dioxus
@@ -106,6 +106,17 @@ validation `31714415036`, Windows packaging `31714415069`, install lifecycle
 `31714414994` and footprint `31714415039` all passed for that exact head; the
 SSH interoperability workflow was the expected skip. `CH-09`…`CH-11` are
 therefore A4; A5 still requires the row-specific live composer/session review.
+
+PR #199 exact head `bb48f4d` advances the remaining machine-verifiable chat
+slice: bounded large-history hydration/windowing, session-scoped live model/tool/
+approval controls, canonical reaction writes with rollback/reconciliation, and
+bounded rich content for Markdown, code, math, ANSI, tables, diffs, images,
+Mermaid-like graphs and allowlisted social references. Rust validation
+`31747821028`, Windows packaging `31747821031`, install lifecycle `31747821027`
+and footprint `31747821023` all passed for that exact head; SSH interoperability
+was not applicable. `CH-07` and `CH-13`…`CH-21` are therefore A4. `DI-04` is A3:
+the safe Dioxus link surface is wired, but plain HTTP is still rejected by the
+native external opener and must be aligned before automated verification.
 
 PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable
 Projects/Files/Git/Terminal/SSH slice. Desktop SSH mode now routes the existing
@@ -218,21 +229,21 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | CH-04 | Session identity, lineage and profile scope | `SessionService` | chat/sidebar | A4 Auto-verified | Stored/runtime identities, lineage-root behavior and profile-scoped contracts are implemented/tested. | Open/resume sessions across profiles and restarts; verify correct history, cwd/project and no cross-profile leakage. | ⬜ |
 | CH-05 | Session list, search, pin/archive/delete/rename | `SessionService` | sidebar | A4 Auto-verified | Persisted REST list and mutation contracts are implemented with stale-response rollback guards. | Run all mutations on real persisted and active sessions, including failure/rollback cases. | ⬜ |
 | CH-06 | New, resume and switch session | `SessionService` | chat workspace | A4 Auto-verified | Create/resume/switch contracts and identity reconciliation exist with live-harness coverage. | Create multiple sessions and rapidly switch/resume while one is running; verify isolation and route selection. | ⬜ |
-| CH-07 | Transcript loading, pagination and large-history virtualization | `SessionService` | transcript | A3 Ported | Transcript loading/reconciliation exists; realistic very-large-history pagination/virtualization benchmark is not complete. | Open small, medium and very large sessions; scroll/search/revisit and compare responsiveness/memory to OG. | ⬜ |
+| CH-07 | Transcript loading, pagination and large-history virtualization | `SessionService` | transcript | A4 Auto-verified | PR #199 adds bounded 100k-history hydration coverage, an explicit million-message pagination contract and an expandable fixed-window Dioxus transcript with containment hints; exact-head Rust/distribution gates pass. Real-device responsiveness and memory comparison remain A5 evidence. | Open small, medium and very large sessions; scroll/search/revisit and compare responsiveness/memory to OG. | ⬜ |
 | CH-08 | Streaming deltas, reasoning and tool event reconciliation | `SessionService` | assistant turns/tool cards | A4 Auto-verified | Delta coalescing, interim settlement, reasoning, tool upsert, terminal completion and runtime isolation are tested. | Run real multi-tool/long-reasoning turns, interrupt mid-stream and verify ordering, completion and no duplicate/stranded UI. | ⬜ |
 | CH-09 | Prompt queue and background sessions | `SessionService` | composer/status | A4 Auto-verified | PR #192 exact head `655995db` implements a route-persistent typed prompt queue with stored/runtime identity binding, FIFO background draining, park/resume/remove/clear controls and failed-submit requeue semantics. Rust validation `31699023935`, packaging `31699023859`, install lifecycle `31699023843` and footprint `31699023864` all passed; SSH was not applicable. | Queue multiple prompts and run background sessions; verify ordering, cancellation and foreground isolation. | ⬜ |
 | CH-10 | Composer drafts, undo and directives | `SessionService` | composer | A4 Auto-verified | PR #195 exact head `df9920cf` adds bounded per-session draft persistence, undo/redo, restore across route/restart, typed slash-directive execution and queue-aware directive sends. Rust validation `31703681496`, packaging `31703681390`, install lifecycle `31703681477` and footprint `31703681363` all passed; SSH was not applicable. | Type/edit drafts, switch routes/sessions, restart, undo and exercise supported directives. | ⬜ |
 | CH-11 | Attachments, images and path selection | `FileService` + attachment protocol | composer/preview | A4 Auto-verified | PR #196 exact head `e90cc709` ports the native multi-file picker behind opaque capability IDs, bounded previews/size limits, local path staging, remote/SSH byte staging, file context refs, image fallback prompting, attachment-aware background queues/retries and staged-image cleanup. Exact-head Rust validation `31714415036`, packaging `31714415069`, install lifecycle `31714414994` and footprint `31714415039` all passed; SSH interoperability was the expected skip. | Attach representative text/image/binary files, invalid/oversize files and paths; verify preview/send/cancel/security behavior. | ⬜ |
 | CH-12 | Voice recording, transcription and playback | future `MediaService` | composer/settings | A1 Designed | Voice settings exist; media capture/playback runtime is not ported. | Grant/deny microphone permission, record, cancel, transcribe and play audio; verify device/failure behavior. | ⬜ |
-| CH-13 | Model, tool and YOLO controls | runtime/trust services | composer/model menus | A1 Designed | Settings-side model controls exist; composer-time control parity is incomplete. | Change model/tool/approval modes before and during chats; verify scope and safety semantics. | ⬜ |
-| CH-14 | Reactions and message metadata | `SessionService` | message actions | A1 Designed | Not ported. | Exercise all OG message actions/reactions and verify persistence/identity after reload. | ⬜ |
-| CH-15 | Markdown and safe links | bounded rich-content renderer | transcript | A1 Designed | Current transcript rendering is basic; full Markdown/security policy is pending. | Review headings/lists/quotes/links and malicious HTML/URL fixtures; verify external-link policy. | ⬜ |
-| CH-16 | Code blocks and syntax highlighting | bounded rich renderer | transcript/code card | A1 Designed | Not ported to OG parity. | Review representative languages, long lines, copy, fallback and large-block performance. | ⬜ |
-| CH-17 | Math/KaTeX-equivalent behavior | bounded rich renderer | transcript | A1 Designed | Not ported. | Render inline/display math and malformed expressions; compare wrapping and fallback. | ⬜ |
-| CH-18 | ANSI, tables and diffs | Rust parsers/read models | transcript/review | A1 Designed | Not ported as full rich content. | Exercise ANSI color/control sequences, wide tables and large diffs; compare readability and safety. | ⬜ |
-| CH-19 | Images and generated-image results | `FileService` + safe media protocol | transcript/preview | A1 Designed | Not ported. | Render local/generated/remote image cases, failures and oversized files; verify containment and MIME handling. | ⬜ |
-| CH-20 | Mermaid diagrams | bounded non-privileged helper if retained | transcript | A1 Designed | Not ported. | Render valid/invalid diagrams and hostile labels/URLs under CSP/sanitization policy. | ⬜ |
-| CH-21 | External/social embeds | allowlisted embed policy | transcript | A1 Designed | Not ported. | Test each supported provider plus blocked origins, navigation escape and privacy/offline behavior. | ⬜ |
+| CH-13 | Model, tool and YOLO controls | runtime/trust services | composer/model menus | A4 Auto-verified | PR #199 wires session-scoped live model/tool/approval controls through typed directives and configured-session startup, without mutating global defaults; unsafe pre-chat approval modes are constrained and failure cleanup is covered. Exact-head gates pass. | Change model/tool/approval modes before and during chats; verify scope and safety semantics. | ⬜ |
+| CH-14 | Reactions and message metadata | `SessionService` | message actions | A4 Auto-verified | PR #199 implements canonical `message.react` writes with durable row identity, optimistic Tapback UI, authoritative event reconciliation, rollback and reload-safe local projection; focused protocol/service/UI contracts and exact-head gates pass. | Exercise all OG message actions/reactions and verify persistence/identity after reload. | ⬜ |
+| CH-15 | Markdown and safe links | bounded rich-content renderer | transcript | A4 Auto-verified | PR #199 adds a bounded Markdown subset for headings, lists, quotes, emphasis, inline code and safe HTTP(S) links; raw HTML remains literal, credentialed/unsafe targets are blocked and navigation uses the typed platform boundary. Exact-head gates pass. | Review headings/lists/quotes/links and malicious HTML/URL fixtures; verify external-link policy. | ⬜ |
+| CH-16 | Code blocks and syntax highlighting | bounded rich renderer | transcript/code card | A4 Auto-verified | PR #199 adds bounded fenced-code cards with language labels and conservative Rust/Python/JavaScript token styling, including long-content truncation/fallback contracts; exact-head gates pass. Copy behavior and visual language parity remain A5 evidence. | Review representative languages, long lines, copy, fallback and large-block performance. | ⬜ |
+| CH-17 | Math/KaTeX-equivalent behavior | bounded rich renderer | transcript | A4 Auto-verified | PR #199 adds bounded non-executing inline/display math recognition with safe text fallback and malformed-input coverage; exact-head gates pass. This slice does not claim full KaTeX visual equivalence, which remains an A5 comparison item. | Render inline/display math and malformed expressions; compare wrapping and fallback. | ⬜ |
+| CH-18 | ANSI, tables and diffs | Rust parsers/read models | transcript/review | A4 Auto-verified | PR #199 adds bounded ANSI styling, Markdown tables and diff blocks with control-sequence stripping, size caps and deterministic parser/render contracts; exact-head gates pass. | Exercise ANSI color/control sequences, wide tables and large diffs; compare readability and safety. | ⬜ |
+| CH-19 | Images and generated-image results | `FileService` + safe media protocol | transcript/preview | A4 Auto-verified | PR #199 adds lazy contained remote images and allowlisted image-data URLs while rejecting credentialed, unsupported and active-content targets; exact-head security/render contracts pass. Local/generated failure and MIME parity remain A5 evidence. | Render local/generated/remote image cases, failures and oversized files; verify containment and MIME handling. | ⬜ |
+| CH-20 | Mermaid diagrams | bounded non-privileged helper if retained | transcript | A4 Auto-verified | PR #199 adds a bounded in-process graph renderer for simple Mermaid edge syntax; active click/href/URL/script directives are rejected and no privileged helper is exposed. Exact-head gates pass; broader diagram-family visual parity remains A5 evidence. | Render valid/invalid diagrams and hostile labels/URLs under CSP/sanitization policy. | ⬜ |
+| CH-21 | External/social embeds | allowlisted embed policy | transcript | A4 Auto-verified | PR #199 identifies allowlisted YouTube, X/Twitter, Reddit, Bluesky and GitHub references as explicit external cards without automatic third-party embeds, preserving offline/privacy behavior; blocked-origin contracts and exact-head gates pass. | Test each supported provider plus blocked origins, navigation escape and privacy/offline behavior. | ⬜ |
 
 ### Projects, files, Git, terminal and SSH
 
@@ -317,7 +328,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | DI-01 | Native notifications and action routing | `NotificationPlatform` | session/settings | A2 Service | Native Windows notification wrapper uses a fixed PowerShell/WinForms helper with bounded/sanitized title/body passed through child environment variables and no shell interpolation; notification preferences UI exists. AppUserModelID/toast action registration remains incomplete. | Trigger each notification kind in packaged app; click actions, test duplicates/focus/background and Windows notification settings. | ⬜ |
 | DI-02 | Clipboard text/images and save dialogs | `ClipboardService` | chat/context actions | A2 Service | Native Windows text read/write and PNG clipboard-image export use trusted STA PowerShell helpers with stdin/environment data, transient-busy retries, UTF-8/size/NUL/PNG/path checks and fixed helper paths. Dioxus consumers and save-dialog parity remain incomplete. | Copy/paste text/images, WSL edge cases, save dialogs, unsupported formats and size limits. | ⬜ |
 | DI-03 | Camera/microphone/media permissions | future `MediaService` | permission surfaces | A1 Designed | Not ported. | Grant/deny/revoke permissions, restart and verify only trusted app origin receives media capability. | ⬜ |
-| DI-04 | External browser opening and safe link policy | `PlatformService` | links/preview | A2 Service | Typed external URL opener allowlists schemes; link-title/SSRF/full rich-link UX remains incomplete. | Open allowed HTTP(S) links, reject unsafe schemes/credentialed/private targets where policy applies and verify no in-app navigation escape. | ⬜ |
+| DI-04 | External browser opening and safe link policy | `PlatformService` | links/preview | A3 Ported | PR #199 wires bounded rich-link cards to the typed external opener and rejects unsafe/credentialed targets. HTTPS is end-to-end; the Dioxus renderer permits plain HTTP but the native opener still rejects it, so the boundary and its tests must be aligned before A4. | Open allowed HTTP(S) links, reject unsafe schemes/credentialed/private targets where policy applies and verify no in-app navigation escape. | ⬜ |
 | DI-05 | Deep links and protocol registration | native deep-link service | routed surfaces | A2 Service | Native `hermes://` parsing and per-user Windows protocol registration exist with exact executable command identity and deterministic malformed-input tests; running-instance/single-instance Dioxus delivery is incomplete. | Register/use protocol from cold/running app, malformed payloads, duplicate instance and route/state handling. | ⬜ |
 | DI-06 | Session and secondary app windows | native window-state service | shared Dioxus roots | A2 Service | Rust Desktop now consumes the existing bounded `window-state.json` contract, restores the historical 1220×800 default/minimum 400×620 size and maximized state, and unit-tests sanitization, display caps and 48px visibility rules. Safe x/y restoration, live move/resize persistence and secondary/session-window orchestration remain incomplete. | Open multiple session windows, focus/reuse/close/restore and test bounds across monitors/DPI. | ⬜ |
 | DI-07 | Quick Entry global shortcut/window | `QuickEntryShortcutController` + native window geometry | Quick Entry | A2 Service | Native shortcut parsing/settings/controller and 640×168 window-geometry foundation matches Electron alias/order/reserved-key semantics, uses bounded fail-soft settings loading and deterministic controller/monitor tests. Actual OS global-hotkey registration, secondary Dioxus window lifecycle and composer submission remain unported. | Register shortcut, summon/dismiss across apps, submit, move monitors and restart. | ⬜ |
