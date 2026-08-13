@@ -19,7 +19,13 @@ pub struct KeyChord {
 }
 
 impl KeyChord {
-    pub fn new(key: impl Into<String>, primary: bool, control: bool, shift: bool, alt: bool) -> Self {
+    pub fn new(
+        key: impl Into<String>,
+        primary: bool,
+        control: bool,
+        shift: bool,
+        alt: bool,
+    ) -> Self {
         Self {
             key: key.into().to_ascii_lowercase(),
             primary,
@@ -125,7 +131,6 @@ pub fn resolve_shortcut(context: FocusContext, chord: &KeyChord) -> Option<Short
     // but the dedicated terminal visibility chord remains global.
     if context == FocusContext::Terminal
         && chord.control
-        && !chord.primary
         && matches!(key, "c" | "v" | "x" | "z" | "a" | "f" | "g")
     {
         return Some(ShortcutAction::SurfaceOwned);
@@ -259,10 +264,7 @@ mod tests {
     #[test]
     fn terminal_keeps_control_sequences_but_shell_toggle_survives() {
         assert_eq!(
-            resolve_shortcut(
-                FocusContext::Terminal,
-                &KeyChord::new("c", false, true, false, false)
-            ),
+            resolve_shortcut(FocusContext::Terminal, &primary("c")),
             Some(ShortcutAction::SurfaceOwned)
         );
         assert_eq!(
@@ -276,10 +278,7 @@ mod tests {
 
     #[test]
     fn modal_scope_blocks_background_navigation() {
-        assert_eq!(
-            resolve_shortcut(FocusContext::Dialog, &primary("1")),
-            None
-        );
+        assert_eq!(resolve_shortcut(FocusContext::Dialog, &primary("1")), None);
         assert_eq!(
             resolve_shortcut(
                 FocusContext::Dialog,
