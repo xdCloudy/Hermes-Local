@@ -80,7 +80,9 @@ pub(super) fn FreshModelControl() -> Element {
             .await;
             busy.set(false);
             match result {
-                Ok(id) => navigator.push(Route::Session { id }),
+                Ok(id) => {
+                    let _ = navigator.push(Route::Session { id });
+                }
                 Err(problem) => error.set(problem.to_string()),
             }
         });
