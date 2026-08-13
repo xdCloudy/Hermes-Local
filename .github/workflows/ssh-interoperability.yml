@@ -123,7 +123,16 @@ jobs:
           export HERMES_SSH_TEST_USER="hermes-ssh"
           export HERMES_SSH_TEST_KEY="$RUNNER_TEMP/id_ed25519"
           export HERMES_SSH_TEST_HERMES="/home/hermes-ssh/hermes-live-ssh-fixture"
-          cargo test -p hermes-local --test ssh_live --locked -- --ignored --nocapture
+          cargo test -p hermes-local --test ssh_live --locked -- --ignored --nocapture 2>&1 | tee "$RUNNER_TEMP/ssh-live.log"
+
+      - name: Upload live SSH diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ssh-live-output
+          path: ${{ runner.temp }}/ssh-live.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Record SSH interoperability evidence
         if: always()
