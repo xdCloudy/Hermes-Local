@@ -1199,6 +1199,97 @@ pub struct TaskSummary {
     pub detail: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MemoryProviderSummary {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub configured: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MemoryBuiltinFiles {
+    #[serde(default)]
+    pub memory: u64,
+    #[serde(default)]
+    pub user: u64,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MemoryStatus {
+    #[serde(default)]
+    pub active: String,
+    #[serde(default)]
+    pub providers: Vec<MemoryProviderSummary>,
+    #[serde(default)]
+    pub builtin_files: MemoryBuiltinFiles,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MemoryResetResult {
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub deleted: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryResetTarget {
+    All,
+    Memory,
+    User,
+}
+
+impl MemoryResetTarget {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Memory => "memory",
+            Self::User => "user",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct CuratorStatus {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub paused: bool,
+    #[serde(default)]
+    pub interval_hours: Option<f64>,
+    #[serde(default)]
+    pub last_run_at: Option<String>,
+    #[serde(default)]
+    pub min_idle_hours: Option<f64>,
+    #[serde(default)]
+    pub stale_after_days: Option<f64>,
+    #[serde(default)]
+    pub archive_after_days: Option<f64>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CuratorPauseResult {
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub paused: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CuratorRunResult {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub pid: u64,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct TrustSnapshot {
     #[serde(default)]

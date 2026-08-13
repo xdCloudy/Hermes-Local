@@ -16,9 +16,9 @@ use base64::{
 use hermes_agent_client::GatewayClient;
 use hermes_core::{
     AgentConfigService, AppServices, ConnectionService, EventStream, FileService, GitService,
-    ModelService, PlatformService, ProjectService, ProviderService, RuntimeService, ServiceError,
-    ServiceFuture, ServiceResult, SessionService, SettingsService, SkillsService, TerminalService,
-    TrustService, UnavailableDiagnosticsService, UnavailableGitBranchService,
+    MemoryService, ModelService, PlatformService, ProjectService, ProviderService, RuntimeService,
+    ServiceError, ServiceFuture, ServiceResult, SessionService, SettingsService, SkillsService,
+    TerminalService, TrustService, UnavailableDiagnosticsService, UnavailableGitBranchService,
     UnavailableGitDiscardService, UnavailableGitRepoScanService, UnavailableGitShipService,
     UnavailableGitWorktreeService, UnavailablePreviewService, UpdateService, validate_identifier,
     validate_relative_path,
@@ -27,16 +27,17 @@ use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, AttachmentKind, AuthProvider, AuxiliaryModels,
     ConfigSchemaResponse, ConnectionConfig, ConnectionConfigInput, ConnectionMode,
     ConnectionOauthLoginResult, ConnectionOauthLogoutResult, ConnectionProbeResult,
-    ConnectionState, ConnectionTestResult, CustomEndpointUpdate, CustomEndpointValidation,
-    CustomEndpointsResponse, EnvVarInfo, FileEntry, GitStatus, MoaConfig, ModelAssignmentRequest,
-    ModelAssignmentResponse, ModelInfo, ModelOptions, ModelSettingsSnapshot, OAuthPoll,
-    OAuthProvider, OAuthStart, OAuthSubmit, ProbeAuthMode, ProjectFilesDeleteResult,
-    ProjectSummary, ProjectsSnapshot, ProviderActivation, RemoteAuthMode, RuntimeStatus,
-    SelectedAttachment, SessionAttachmentResult, SessionCreateRequest, SessionCreateResponse,
-    SessionDirectiveResult, SessionMessagesResponse, SessionReactionResult, SessionResumeResponse,
-    SessionSummary, SkillActionStart, SkillActionStatus, SkillHubPreview, SkillHubScanResult,
-    SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary, SkillToggleResult, TaskSummary,
-    TrustSnapshot,
+    ConnectionState, ConnectionTestResult, CuratorPauseResult, CuratorRunResult, CuratorStatus,
+    CustomEndpointUpdate, CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry,
+    GitStatus, MemoryResetResult, MemoryResetTarget, MemoryStatus, MoaConfig,
+    ModelAssignmentRequest, ModelAssignmentResponse, ModelInfo, ModelOptions,
+    ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit, ProbeAuthMode,
+    ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation, RemoteAuthMode,
+    RuntimeStatus, SelectedAttachment, SessionAttachmentResult, SessionCreateRequest,
+    SessionCreateResponse, SessionDirectiveResult, SessionMessagesResponse, SessionReactionResult,
+    SessionResumeResponse, SessionSummary, SkillActionStart, SkillActionStatus, SkillHubPreview,
+    SkillHubScanResult, SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary,
+    SkillToggleResult, TaskSummary, TrustSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use reqwest::Method;
@@ -759,6 +760,7 @@ impl NativeApp {
                 models: remote.clone(),
                 providers: remote.clone(),
                 runtime: remote.clone(),
+                memory: remote.clone(),
                 trust: remote.clone(),
                 skills: remote,
                 preview: Arc::new(UnavailablePreviewService),
@@ -2184,6 +2186,91 @@ impl RuntimeService for GatewayServices {
                 .await
                 .map_err(transport)?;
             Ok(())
+        })
+    }
+}
+
+const MEMORY_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+const MAX_MEMORY_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
+
+impl MemoryService for GatewayServices {
+    fn status(&self) -> ServiceFuture<'_, MemoryStatus> {
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::GET,
+                    "/api/memory",
+                    None,
+                    MEMORY_REQUEST_TIMEOUT,
+                    MAX_MEMORY_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn reset(&self, target: MemoryResetTarget) -> ServiceFuture<'_, MemoryResetResult> {
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::POST,
+                    "/api/memory/reset",
+                    Some(json!({ "target": target.as_str() })),
+                    MEMORY_REQUEST_TIMEOUT,
+                    MAX_MEMORY_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn curator_status(&self) -> ServiceFuture<'_, CuratorStatus> {
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::GET,
+                    "/api/curator",
+                    None,
+                    MEMORY_REQUEST_TIMEOUT,
+                    MAX_MEMORY_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn set_curator_paused(&self, paused: bool) -> ServiceFuture<'_, CuratorPauseResult> {
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::PUT,
+                    "/api/curator/paused",
+                    Some(json!({ "paused": paused })),
+                    MEMORY_REQUEST_TIMEOUT,
+                    MAX_MEMORY_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn run_curator(&self) -> ServiceFuture<'_, CuratorRunResult> {
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::POST,
+                    "/api/curator/run",
+                    Some(json!({})),
+                    MEMORY_REQUEST_TIMEOUT,
+                    MAX_MEMORY_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
         })
     }
 }
