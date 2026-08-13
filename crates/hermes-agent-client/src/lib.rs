@@ -342,9 +342,7 @@ async fn reconnect(
             Err(error) => {
                 warn!(%error, "gateway reconnect attempt failed");
                 state.send_replace(ConnectionState::Error);
-                delay = delay
-                    .saturating_mul(2)
-                    .min(options.reconnect_max_delay);
+                delay = delay.saturating_mul(2).min(options.reconnect_max_delay);
             }
         }
     }
