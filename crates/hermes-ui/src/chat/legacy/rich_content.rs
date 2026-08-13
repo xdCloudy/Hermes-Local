@@ -5,7 +5,7 @@ mod base;
 
 #[component]
 pub(super) fn RichContent(text: String, on_open_link: Callback<String>) -> Element {
-    if ansi::has_ansi(&text) {
+    if ansi::has_ansi(&text) && !text.contains("```") {
         return rsx! { ansi::AnsiContent { text } };
     }
     rsx! { base::RichContent { text, on_open_link } }
