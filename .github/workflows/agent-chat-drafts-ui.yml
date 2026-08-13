@@ -1,0 +1,40 @@
+name: Agent chat drafts UI
+
+on:
+  push:
+    branches:
+      - agent/chat-composer-a4
+    paths:
+      - "agent-patches/chat-drafts-ui.py"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+      - run: python agent-patches/chat-drafts-ui.py
+      - run: cargo fmt --all
+      - shell: bash
+        run: |
+          git diff --check
+          grep -q 'DRAFTS_SETTINGS_KEY' crates/hermes-ui/src/chat.rs
+          grep -q 'ComposerDraftStore' crates/hermes-ui/src/chat.rs
+      - shell: bash
+        run: |
+          rm -f agent-patches/chat-drafts-ui.py
+          rm -f .github/workflows/agent-chat-drafts-ui.yml
+      - shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: persist per-session composer drafts with undo redo"
+          git push origin HEAD:${{ github.ref_name }}
