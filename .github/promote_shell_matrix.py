@@ -10,7 +10,8 @@ replacements = [
         "> **Implementation audit checkpoint:** `0d72892f2d4fef76da407706e9d38d077667e5c9` (2026-08-13)",
     ),
     ("| A1 Designed | 37 | Largest remaining implementation backlog. |", "| A1 Designed | 35 | Largest remaining implementation backlog. |"),
-    ("| A3 Ported | 6 | User-facing implementation exists; more evidence required. |", "| A3 Ported | 1 | User-facing implementation exists; more evidence required. |"),
+    ("| A2 Service | 23 | Native/core foundations exist; UI/parity work remains. |", "| A2 Service | 21 | Native/core foundations exist; UI/parity work remains. |"),
+    ("| A3 Ported | 6 | User-facing implementation exists; more evidence required. |", "| A3 Ported | 3 | User-facing implementation exists; more evidence required. |"),
     ("| A4 Auto-verified | 59 | Automated slice is green; human/live acceptance still required. |", "| A4 Auto-verified | 66 | Automated slice is green; human/live acceptance still required. |"),
     ("At least-service coverage is **88/127 capabilities (69.3%)**. This is service-foundation coverage, not end-user parity or human acceptance.", "At least-service coverage is **90/127 capabilities (70.9%)**. This is service-foundation coverage, not end-user parity or human acceptance."),
     (
@@ -89,8 +90,8 @@ if len(capability_rows) != 127:
 expected = {
     "A0 Audited": 1,
     "A1 Designed": 35,
-    "A2 Service": 23,
-    "A3 Ported": 1,
+    "A2 Service": 21,
+    "A3 Ported": 3,
     "A4 Auto-verified": 66,
     "A5 Human-ready": 0,
     "A6 Human-validated": 0,
