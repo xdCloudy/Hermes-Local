@@ -40,6 +40,7 @@ mod ssh;
 mod ssh_config;
 mod ssh_lifecycle;
 mod ssh_service;
+mod ssh_terminal;
 #[cfg(windows)]
 mod ssh_windows;
 mod startup;
@@ -177,6 +178,7 @@ fn main() {
     preview_watcher::install(&mut native.services);
     startup::install_local_bootstrap(&mut native.services);
     ssh_service::install_ssh_probe(&mut native.services, data_dir);
+    ssh_terminal::install(&mut native.services);
     let window = WindowBuilder::new()
         .with_title("Hermes Local")
         .with_inner_size(LogicalSize::new(
