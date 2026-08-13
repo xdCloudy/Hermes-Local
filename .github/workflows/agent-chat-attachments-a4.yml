@@ -1,4 +1,4 @@
-name: Agent CH-11 source export
+name: Agent CH-11 workspace export
 
 on:
   push:
@@ -17,12 +17,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/upload-artifact@v4
         with:
-          name: ch11-generated-sources
+          name: ch11-validation-workspace
           path: |
-            crates/hermes-core/src/lib.rs
-            crates/hermes-desktop/src/lib.rs
-            crates/hermes-protocol/src/lib.rs
-            crates/hermes-ui/src/chat.rs
-            crates/hermes-ui/assets/app.css
+            .
+            !.git/**
+            !target/**
+            !node_modules/**
+          hidden-files: true
           if-no-files-found: error
           retention-days: 1
