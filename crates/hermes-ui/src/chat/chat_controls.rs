@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use hermes_core::AppServices;
-use hermes_protocol::{ModelAssignmentRequest, ModelSettingsSnapshot};
+use hermes_protocol::ModelSettingsSnapshot;
 
 fn model_pair(value: &str) -> Option<(String, String)> {
     let (provider, model) = value.split_once('\u{1f}')?;
@@ -18,6 +18,10 @@ async fn session_runtime(services: &AppServices, stored: &str) -> Result<String,
 
 #[component]
 pub(super) fn ChatControls(session: Option<String>) -> Element {
+    let Some(stored_session) = session else {
+        return rsx! {};
+    };
+
     let services = use_context::<AppServices>();
     let mut models = use_signal(|| None::<ModelSettingsSnapshot>);
     let mut selected = use_signal(String::new);
@@ -39,43 +43,26 @@ pub(super) fn ChatControls(session: Option<String>) -> Element {
     });
 
     let change_services = services.clone();
-    let change_session = session.clone();
+    let change_stored = stored_session.clone();
     let change_model = move |event: Event<FormData>| {
         let Some((provider, model)) = model_pair(&event.value()) else {
             return;
         };
         selected.set(format!("{provider}\u{1f}{model}"));
         let services = change_services.clone();
-        let session = change_session.clone();
+        let stored = change_stored.clone();
         busy.set(true);
         spawn(async move {
-            let result = if let Some(stored) = session {
-                match session_runtime(&services, &stored).await {
-                    Ok(runtime) => services
-                        .sessions
-                        .execute_directive(
-                            &runtime,
-                            &format!("/model {model} --provider {provider} --session"),
-                        )
-                        .await
-                        .map(|_| "Session model updated".to_owned()),
-                    Err(error) => Err(hermes_core::ServiceError::Platform(error)),
-                }
-            } else {
-                services
-                    .models
-                    .assign(
-                        None,
-                        &ModelAssignmentRequest {
-                            model,
-                            provider,
-                            scope: "main".into(),
-                            task: None,
-                            base_url: None,
-                        },
+            let result = match session_runtime(&services, &stored).await {
+                Ok(runtime) => services
+                    .sessions
+                    .execute_directive(
+                        &runtime,
+                        &format!("/model {model} --provider {provider} --session"),
                     )
                     .await
-                    .map(|_| "Default model updated".to_owned())
+                    .map(|_| "Session model updated".to_owned()),
+                Err(error) => Err(hermes_core::ServiceError::Platform(error)),
             };
             status.set(result.unwrap_or_else(|error| error.to_string()));
             busy.set(false);
@@ -113,63 +100,47 @@ pub(super) fn ChatControls(session: Option<String>) -> Element {
                     }
                 }
             }
-            if let Some(stored) = session.clone() {
-                select { disabled: busy(), aria_label: "Approval mode", onchange: {
-                    let services = services.clone();
-                    let stored = stored.clone();
-                    move |event: Event<FormData>| {
-                        busy.set(true);
-                        directive(
-                            format!("/approvals {}", event.value()),
-                            services.clone(),
-                            stored.clone(),
-                            status,
-                            busy,
-                        );
-                    }
-                },
-                    option { value: "manual", "Approvals: manual" }
-                    option { value: "smart", "Approvals: smart" }
-                    option { value: "off", "Approvals: off" }
+            select { disabled: busy(), aria_label: "Approval mode", onchange: {
+                let services = services.clone();
+                let stored = stored_session.clone();
+                move |event: Event<FormData>| {
+                    busy.set(true);
+                    directive(
+                        format!("/approvals {}", event.value()),
+                        services.clone(),
+                        stored.clone(),
+                        status,
+                        busy,
+                    );
                 }
-                input {
-                    value: "{tools}",
-                    aria_label: "Tool control",
-                    placeholder: "tools: list | +name | -name",
-                    oninput: move |event| tools.set(event.value()),
-                }
-                button { disabled: busy(), onclick: {
-                    let services = services.clone();
-                    let stored = stored.clone();
-                    move |_| {
-                        let value = tools().trim().to_owned();
-                        if !value.is_empty() && value.len() <= 256 {
-                            busy.set(true);
-                            directive(
-                                format!("/tools {value}"),
-                                services.clone(),
-                                stored.clone(),
-                                status,
-                                busy,
-                            );
-                        }
-                    }
-                }, "Apply tools" }
-                button { disabled: busy(), onclick: {
-                    let services = services.clone();
-                    let stored = stored.clone();
-                    move |_| {
-                        busy.set(true);
-                        directive(
-                            "/approvals off".into(),
-                            services.clone(),
-                            stored.clone(),
-                            status,
-                            busy,
-                        );
-                    }
-                }, "YOLO" }
+            },
+                option { value: "manual", "Approvals: manual" }
+                option { value: "smart", "Approvals: smart" }
+                option { value: "off", "Approvals: off" }
             }
+            input {
+                value: "{tools}",
+                aria_label: "Tool control",
+                placeholder: "tools: list | +name | -name",
+                oninput: move |event| tools.set(event.value()),
+            }
+            button { disabled: busy(), onclick: {
+                let services = services.clone();
+                let stored = stored_session.clone();
+                move |_| {
+                    let value = tools().trim().to_owned();
+                    if !value.is_empty() && value.len() <= 256 {
+                        busy.set(true);
+                        directive(
+                            format!("/tools {value}"),
+                            services.clone(),
+                            stored.clone(),
+                            status,
+                            busy,
+                        );
+                    }
+                }
+            }, "Apply tools" }
         }
         if !status().is_empty() {
             small { role: "status", "{status}" }
