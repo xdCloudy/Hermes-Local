@@ -13,7 +13,10 @@ mod reaction_view;
 
 #[component]
 pub(super) fn ChatRuntimeProvider() -> Element {
-    rsx! { legacy::ChatRuntimeProvider {} }
+    rsx! {
+        style { ".transcript > article { content-visibility: auto; contain-intrinsic-size: auto 128px; }" }
+        legacy::ChatRuntimeProvider {}
+    }
 }
 
 #[component]
