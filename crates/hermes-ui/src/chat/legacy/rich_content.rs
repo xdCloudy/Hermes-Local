@@ -31,7 +31,10 @@ enum Inline {
         url: String,
         provider: Option<&'static str>,
     },
-    Image { alt: String, url: String },
+    Image {
+        alt: String,
+        url: String,
+    },
     Blocked(String),
 }
 
@@ -158,7 +161,10 @@ fn parse(value: &str) -> Vec<Block> {
                 "math" | "tex" | "latex" => Block::Math(body),
                 "diff" | "patch" => Block::Diff(body),
                 "ansi" | "terminal" => Block::Ansi(body),
-                _ => Block::Code { language, text: body },
+                _ => Block::Code {
+                    language,
+                    text: body,
+                },
             });
             continue;
         }
@@ -288,10 +294,15 @@ fn parse_inline(text: &str) -> Vec<Inline> {
     let mut out = Vec::new();
     let mut rest = text;
     while !rest.is_empty() && out.len() < 256 {
-        let start = [rest.find("!["), rest.find('['), rest.find('`'), rest.find('$')]
-            .into_iter()
-            .flatten()
-            .min();
+        let start = [
+            rest.find("!["),
+            rest.find('['),
+            rest.find('`'),
+            rest.find('$'),
+        ]
+        .into_iter()
+        .flatten()
+        .min();
         let Some(start) = start else {
             out.push(Inline::Text(rest.to_owned()));
             break;
@@ -372,31 +383,29 @@ fn strip_ansi(value: &str) -> String {
     output
 }
 
+const RUST_KEYWORDS: &[&str] = &[
+    "as", "async", "await", "const", "crate", "else", "enum", "fn", "for", "if", "impl",
+    "in", "let", "match", "mod", "move", "mut", "pub", "ref", "return", "self", "Self",
+    "static", "struct", "super", "trait", "type", "use", "where", "while",
+];
+const PYTHON_KEYWORDS: &[&str] = &[
+    "and", "as", "async", "await", "break", "class", "continue", "def", "elif", "else",
+    "except", "False", "finally", "for", "from", "if", "import", "in", "is", "lambda", "None",
+    "not", "or", "pass", "raise", "return", "True", "try", "while", "with", "yield",
+];
+const JS_KEYWORDS: &[&str] = &[
+    "async", "await", "break", "case", "catch", "class", "const", "continue", "default",
+    "delete", "do", "else", "export", "extends", "false", "finally", "for", "from", "function",
+    "if", "import", "in", "instanceof", "let", "new", "null", "of", "return", "static", "super",
+    "switch", "this", "throw", "true", "try", "typeof", "undefined", "var", "while",
+];
+
 fn syntax_class(language: &str, token: &str) -> &'static str {
     let word = token.trim_matches(|ch: char| !ch.is_alphanumeric() && ch != '_');
     let keyword = match language {
-        "rust" | "rs" => matches!(
-            word,
-            "as" | "async" | "await" | "const" | "crate" | "else" | "enum" | "fn" | "for"
-                | "if" | "impl" | "in" | "let" | "match" | "mod" | "move" | "mut" | "pub"
-                | "ref" | "return" | "self" | "Self" | "static" | "struct" | "super" | "trait"
-                | "type" | "use" | "where" | "while"
-        ),
-        "python" | "py" => matches!(
-            word,
-            "and" | "as" | "async" | "await" | "break" | "class" | "continue" | "def" | "elif"
-                | "else" | "except" | "False" | "finally" | "for" | "from" | "if" | "import"
-                | "in" | "is" | "lambda" | "None" | "not" | "or" | "pass" | "raise" | "return"
-                | "True" | "try" | "while" | "with" | "yield"
-        ),
-        "javascript" | "js" | "typescript" | "ts" | "tsx" | "jsx" => matches!(
-            word,
-            "async" | "await" | "break" | "case" | "catch" | "class" | "const" | "continue"
-                | "default" | "delete" | "do" | "else" | "export" | "extends" | "false" | "finally"
-                | "for" | "from" | "function" | "if" | "import" | "in" | "instanceof" | "let"
-                | "new" | "null" | "of" | "return" | "static" | "super" | "switch" | "this"
-                | "throw" | "true" | "try" | "typeof" | "undefined" | "var" | "while"
-        ),
+        "rust" | "rs" => RUST_KEYWORDS.contains(&word),
+        "python" | "py" => PYTHON_KEYWORDS.contains(&word),
+        "javascript" | "js" | "typescript" | "ts" | "tsx" | "jsx" => JS_KEYWORDS.contains(&word),
         _ => false,
     };
     if keyword {
@@ -654,11 +663,7 @@ mod tests {
                 .iter()
                 .any(|block| matches!(block, Block::Code { .. }))
         );
-        assert!(
-            blocks
-                .iter()
-                .any(|block| matches!(block, Block::Table(_)))
-        );
+        assert!(blocks.iter().any(|block| matches!(block, Block::Table(_))));
         assert!(
             blocks
                 .iter()
