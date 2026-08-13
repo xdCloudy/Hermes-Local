@@ -7,7 +7,7 @@ use hermes_protocol::{
 };
 
 #[derive(Clone, Debug, Default)]
-pub(super) struct DraftRuntimeOverrides {
+pub(in crate::chat) struct DraftRuntimeOverrides {
     inner: Arc<RwLock<DraftRuntimeSelection>>,
 }
 
@@ -19,7 +19,7 @@ struct DraftRuntimeSelection {
 }
 
 impl DraftRuntimeOverrides {
-    pub(super) fn set_model(&self, provider: String, model: String) {
+    pub(in crate::chat) fn set_model(&self, provider: String, model: String) {
         let mut state = self
             .inner
             .write()
@@ -28,7 +28,7 @@ impl DraftRuntimeOverrides {
         state.model = model;
     }
 
-    pub(super) fn model(&self) -> Option<(String, String)> {
+    pub(in crate::chat) fn model(&self) -> Option<(String, String)> {
         let state = self
             .inner
             .read()
@@ -37,14 +37,14 @@ impl DraftRuntimeOverrides {
             .then(|| (state.provider.clone(), state.model.clone()))
     }
 
-    pub(super) fn set_yolo(&self, enabled: bool) {
+    pub(in crate::chat) fn set_yolo(&self, enabled: bool) {
         self.inner
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .yolo = enabled;
     }
 
-    pub(super) fn yolo(&self) -> bool {
+    pub(in crate::chat) fn yolo(&self) -> bool {
         self.inner
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
