@@ -963,6 +963,7 @@ macro_rules! simple_surface {
 mod about;
 mod files;
 mod logs;
+mod memory;
 mod review;
 mod runtime;
 mod skills;
@@ -971,6 +972,7 @@ mod terminal;
 use about::About;
 use files::Files;
 use logs::Logs;
+use memory::Memory;
 use review::Review;
 use runtime::{Benchmarks, Runtime, Security, Tasks};
 use skills::Skills;
@@ -1011,12 +1013,6 @@ simple_surface!(
     "Hermes Local",
     "Tools",
     "Inspect the tools available to the local Hermes Agent."
-);
-simple_surface!(
-    Memory,
-    "Hermes Local",
-    "Memory",
-    "Local state, session index and explicit memory controls."
 );
 simple_surface!(
     Sessions,

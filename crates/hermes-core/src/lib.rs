@@ -15,15 +15,17 @@ use futures_core::Stream;
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, AttachmentKind, ChatMessage, ConnectionConfig,
     ConnectionConfigInput, ConnectionOauthLoginResult, ConnectionOauthLogoutResult,
-    ConnectionProbeResult, ConnectionState, ConnectionTestResult, CustomEndpointUpdate,
-    CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry, GatewayEvent,
-    GitStatus, MessageRole, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse,
-    ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit,
-    ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation, RuntimeStatus,
-    SelectedAttachment, SessionAttachmentResult, SessionCreateRequest, SessionDirectiveResult,
-    SessionReactionResult, SessionResumeResponse, SessionSummary, SkillActionStart,
-    SkillActionStatus, SkillHubPreview, SkillHubScanResult, SkillHubSearchResponse,
-    SkillHubSourcesResponse, SkillSummary, SkillToggleResult, TaskSummary, TrustSnapshot,
+    ConnectionProbeResult, ConnectionState, ConnectionTestResult, CuratorPauseResult,
+    CuratorRunResult, CuratorStatus, CustomEndpointUpdate, CustomEndpointValidation,
+    CustomEndpointsResponse, EnvVarInfo, FileEntry, GatewayEvent, GitStatus, MemoryResetResult,
+    MemoryResetTarget, MemoryStatus, MessageRole, MoaConfig, ModelAssignmentRequest,
+    ModelAssignmentResponse, ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart,
+    OAuthSubmit, ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation,
+    RuntimeStatus, SelectedAttachment, SessionAttachmentResult, SessionCreateRequest,
+    SessionDirectiveResult, SessionReactionResult, SessionResumeResponse, SessionSummary,
+    SkillActionStart, SkillActionStatus, SkillHubPreview, SkillHubScanResult,
+    SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary, SkillToggleResult, TaskSummary,
+    TrustSnapshot,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -1057,6 +1059,14 @@ pub trait RuntimeService: Send + Sync {
     fn cancel_action(&self, id: &str) -> ServiceFuture<'_, ()>;
 }
 
+pub trait MemoryService: Send + Sync {
+    fn status(&self) -> ServiceFuture<'_, MemoryStatus>;
+    fn reset(&self, target: MemoryResetTarget) -> ServiceFuture<'_, MemoryResetResult>;
+    fn curator_status(&self) -> ServiceFuture<'_, CuratorStatus>;
+    fn set_curator_paused(&self, paused: bool) -> ServiceFuture<'_, CuratorPauseResult>;
+    fn run_curator(&self) -> ServiceFuture<'_, CuratorRunResult>;
+}
+
 pub trait TrustService: Send + Sync {
     fn snapshot(&self) -> ServiceFuture<'_, TrustSnapshot>;
     fn set_policy(&self, policy: &str) -> ServiceFuture<'_, TrustSnapshot>;
@@ -1633,6 +1643,7 @@ pub struct AppServices {
     pub models: Arc<dyn ModelService>,
     pub providers: Arc<dyn ProviderService>,
     pub runtime: Arc<dyn RuntimeService>,
+    pub memory: Arc<dyn MemoryService>,
     pub trust: Arc<dyn TrustService>,
     pub preview: Arc<dyn PreviewService>,
     pub files: Arc<dyn FileService>,
