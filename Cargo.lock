@@ -2340,6 +2340,7 @@ dependencies = [
  "hermes-protocol",
  "hermes-ui",
  "keyring",
+ "portable-pty",
  "reqwest",
  "serde",
  "serde_json",
