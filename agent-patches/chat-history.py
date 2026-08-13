@@ -1,3 +1,4 @@
+# Retry after a verification-only failure; source transforms are unchanged.
 from pathlib import Path
 
 PROTOCOL = Path("crates/hermes-protocol/src/lib.rs")
