@@ -108,12 +108,11 @@ pub fn ParityShellHost(children: Element) -> Element {
     use_effect(move || {
         spawn(async move {
             let raw = document::eval(&layout_read_script()).join::<String>().await.unwrap_or_default();
-            if !raw.trim().is_empty() {
-                if let Ok(restored) = LayoutModel::from_json(&raw) {
-                    if restored.validate().is_ok() {
-                        layout.set(restored);
-                    }
-                }
+            if !raw.trim().is_empty()
+                && let Ok(restored) = LayoutModel::from_json(&raw)
+                && restored.validate().is_ok()
+            {
+                layout.set(restored);
             }
         });
     });
