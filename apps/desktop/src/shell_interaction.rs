@@ -1,10 +1,15 @@
+use std::time::Duration;
+
 use dioxus::prelude::*;
+use hermes_core::AppServices;
+use hermes_protocol::{ConnectionState, RuntimeStatus, TaskSummary};
 
 const SHELL_CSS: &str = r#"
 .shell-host{height:100vh;display:flex;min-width:0;overflow:hidden;background:rgb(9 11 16)}
 .shell-host-content{position:relative;min-width:0;flex:1;overflow:hidden}
 .shell-host.sidebar-hidden .rail{display:none!important}
-.shell-host.status-hidden .connection-state{display:none!important}
+.shell-host .connection-state{visibility:hidden!important}
+.shell-host.status-hidden .shell-status{display:none!important}
 .shell-right-rail{width:292px;min-width:292px;border-left:1px solid rgb(51 65 85);background:rgb(12 15 22);color:rgb(226 232 240);display:flex;flex-direction:column;font:12px system-ui,sans-serif}
 .shell-right-rail header{height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;border-bottom:1px solid rgb(51 65 85)}
 .shell-right-rail header strong{font-size:11px;letter-spacing:.08em;text-transform:uppercase}
@@ -29,6 +34,8 @@ const SHELL_CSS: &str = r#"
 .shell-find{position:fixed;z-index:10001;right:20px;top:44px;display:flex;align-items:center;gap:6px;padding:6px;border:1px solid rgb(71 85 105);border-radius:6px;background:rgb(15 23 42);box-shadow:0 10px 32px rgb(0 0 0 / .32);font:12px system-ui,sans-serif}
 .shell-find input{width:240px;border:1px solid rgb(71 85 105);border-radius:4px;background:rgb(2 6 23);color:rgb(241 245 249);padding:6px 8px;outline:0}
 .shell-find button{border:0;background:transparent;color:rgb(203 213 225);cursor:pointer;padding:4px 6px}
+.shell-status{position:fixed;z-index:9990;left:0;right:0;bottom:0;height:22px;box-sizing:border-box;display:flex;align-items:center;gap:12px;padding:0 8px;border-top:1px solid rgb(30 41 59);background:rgb(12 15 22);color:rgb(148 163 184);font:11px system-ui,sans-serif;white-space:nowrap;overflow:hidden}
+.shell-status .status-brand{color:rgb(226 232 240);font-weight:600}.shell-status .status-spacer{min-width:0;flex:1}.shell-status .online{color:rgb(74 222 128)}.shell-status .connecting{color:rgb(250 204 21)}.shell-status .offline{color:rgb(248 113 113)}.shell-status .runtime-phase{color:rgb(203 213 225)}.shell-status .model{max-width:300px;overflow:hidden;text-overflow:ellipsis}.shell-status .tasks{color:rgb(147 197 253)}
 .shell-skip{position:fixed;z-index:10050;left:10px;top:-60px;border:1px solid rgb(96 165 250);border-radius:4px;background:rgb(15 23 42);color:white;padding:8px 10px;font:12px system-ui,sans-serif}
 .shell-skip:focus{top:8px}
 .shell-host :focus-visible{outline:2px solid rgb(96 165 250)!important;outline-offset:2px}
@@ -91,6 +98,13 @@ struct Command {
     category: &'static str,
     shortcut: &'static str,
     action: CommandAction,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct ShellStatusSnapshot {
+    gateway: ConnectionState,
+    runtime: Option<RuntimeStatus>,
+    tasks: Vec<TaskSummary>,
 }
 
 const COMMANDS: &[Command] = &[
@@ -253,6 +267,35 @@ fn zoom_percent(level: f64) -> i64 {
     (zoom_factor(level) * 100.0).round() as i64
 }
 
+fn gateway_status(state: ConnectionState) -> (&'static str, &'static str) {
+    match state {
+        ConnectionState::Open => ("online", "Agent connected"),
+        ConnectionState::Connecting => ("connecting", "Connecting to Agent"),
+        ConnectionState::Error => ("offline", "Agent error"),
+        ConnectionState::Idle | ConnectionState::Closed => ("offline", "Agent offline"),
+    }
+}
+
+fn task_is_active(task: &TaskSummary) -> bool {
+    let state = task.state.trim().to_ascii_lowercase();
+    !matches!(
+        state.as_str(),
+        "" | "complete"
+            | "completed"
+            | "cancelled"
+            | "canceled"
+            | "failed"
+            | "error"
+            | "done"
+            | "success"
+            | "succeeded"
+    )
+}
+
+fn active_task_count(tasks: &[TaskSummary]) -> usize {
+    tasks.iter().filter(|task| task_is_active(task)).count()
+}
+
 fn persist_zoom_script(level: f64) -> String {
     let level = clamp_zoom_level(level);
     format!("localStorage.setItem('{ZOOM_STORAGE_KEY}', String({level}));")
@@ -292,6 +335,7 @@ fn focus_workspace_script() -> String {
 #[component]
 pub fn ShellHost(children: Element) -> Element {
     let desktop = dioxus::desktop::window();
+    let services = use_context::<AppServices>();
     let mut overlay = use_signal(|| None::<Overlay>);
     let mut palette_query = use_signal(String::new);
     let mut selected = use_signal(|| 0_usize);
@@ -302,6 +346,7 @@ pub fn ShellHost(children: Element) -> Element {
     let mut find_open = use_signal(|| false);
     let mut find_query = use_signal(String::new);
     let mut zoom_level = use_signal(default_zoom_level);
+    let mut shell_status = use_signal(ShellStatusSnapshot::default);
 
     {
         let desktop = desktop.clone();
@@ -317,6 +362,29 @@ pub fn ShellHost(children: Element) -> Element {
                 desktop.set_zoom_level(zoom_factor(level));
                 run_js(persist_zoom_script(level));
             });
+        });
+    }
+
+    {
+        let services = services.clone();
+        let _status_poll = use_future(move || {
+            let services = services.clone();
+            async move {
+                loop {
+                    let gateway = services
+                        .connection
+                        .state()
+                        .unwrap_or(ConnectionState::Error);
+                    let runtime = services.runtime.status().await.ok();
+                    let tasks = services.runtime.actions().await.unwrap_or_default();
+                    shell_status.set(ShellStatusSnapshot {
+                        gateway,
+                        runtime,
+                        tasks,
+                    });
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                }
+            }
         });
     }
 
@@ -357,6 +425,9 @@ pub fn ShellHost(children: Element) -> Element {
             " status-hidden"
         },
     );
+    let status = shell_status();
+    let (gateway_class, gateway_label) = gateway_status(status.gateway);
+    let active_tasks = active_task_count(&status.tasks);
 
     rsx! {
         style { dangerous_inner_html: SHELL_CSS }
@@ -454,6 +525,26 @@ pub fn ShellHost(children: Element) -> Element {
                         button { onclick: move |_| execute.call(CommandAction::Navigate(active_tool().path())), "Open {active_tool().label()}" }
                     }
                 }
+            }
+            footer { class: "shell-status", aria_live: "polite",
+                span { class: "status-brand", "Hermes Local" }
+                span { class: "{gateway_class}", "● {gateway_label}" }
+                if let Some(runtime) = &status.runtime {
+                    if !runtime.phase.trim().is_empty() {
+                        span { class: "runtime-phase", title: "Runtime phase", "{runtime.phase}" }
+                    }
+                    if let Some(model) = runtime.model.as_deref().filter(|value| !value.is_empty()) {
+                        span { class: "model", title: "Active model", "{model}" }
+                    }
+                    if let Some(provider) = runtime.provider.as_deref().filter(|value| !value.is_empty()) {
+                        span { title: "Model provider", "{provider}" }
+                    }
+                }
+                span { class: "status-spacer" }
+                if active_tasks > 0 {
+                    span { class: "tasks", title: "Active runtime tasks", "{active_tasks} task{if active_tasks == 1 { "" } else { "s" }} active" }
+                }
+                span { "UTF-8" }
             }
         }
         if find_open() {
@@ -590,6 +681,41 @@ mod tests {
         assert_eq!(clamp_zoom_level(-100.0), MIN_ZOOM_LEVEL);
         assert_eq!(clamp_zoom_level(100.0), MAX_ZOOM_LEVEL);
         assert!(zoom_percent(MAX_ZOOM_LEVEL) > zoom_percent(MIN_ZOOM_LEVEL));
+    }
+
+    #[test]
+    fn gateway_status_maps_every_connection_state() {
+        assert_eq!(gateway_status(ConnectionState::Open), ("online", "Agent connected"));
+        assert_eq!(
+            gateway_status(ConnectionState::Connecting),
+            ("connecting", "Connecting to Agent")
+        );
+        assert_eq!(gateway_status(ConnectionState::Error), ("offline", "Agent error"));
+        assert_eq!(gateway_status(ConnectionState::Closed), ("offline", "Agent offline"));
+        assert_eq!(gateway_status(ConnectionState::Idle), ("offline", "Agent offline"));
+    }
+
+    #[test]
+    fn active_task_count_excludes_terminal_states() {
+        let tasks = [
+            TaskSummary {
+                state: "running".into(),
+                ..TaskSummary::default()
+            },
+            TaskSummary {
+                state: "queued".into(),
+                ..TaskSummary::default()
+            },
+            TaskSummary {
+                state: "completed".into(),
+                ..TaskSummary::default()
+            },
+            TaskSummary {
+                state: "failed".into(),
+                ..TaskSummary::default()
+            },
+        ];
+        assert_eq!(active_task_count(&tasks), 2);
     }
 
     #[test]
