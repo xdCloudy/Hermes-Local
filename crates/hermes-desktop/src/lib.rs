@@ -27,10 +27,10 @@ use hermes_protocol::{
     GitStatus, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse, ModelInfo, ModelOptions,
     ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit, ProbeAuthMode,
     ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation, RemoteAuthMode,
-    RuntimeStatus, SessionCreateRequest, SessionCreateResponse, SessionMessagesResponse,
-    SessionResumeResponse, SessionSummary, SkillActionStart, SkillActionStatus, SkillHubPreview,
-    SkillHubScanResult, SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary,
-    SkillToggleResult, TaskSummary, TrustSnapshot,
+    RuntimeStatus, SessionCreateRequest, SessionCreateResponse, SessionDirectiveResult,
+    SessionMessagesResponse, SessionResumeResponse, SessionSummary, SkillActionStart,
+    SkillActionStatus, SkillHubPreview, SkillHubScanResult, SkillHubSearchResponse,
+    SkillHubSourcesResponse, SkillSummary, SkillToggleResult, TaskSummary, TrustSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use reqwest::Method;
@@ -956,6 +956,61 @@ impl SessionService for GatewayServices {
             let response: SessionMessagesResponse =
                 serde_json::from_value(value).map_err(protocol)?;
             Ok(response.messages)
+        })
+    }
+
+    fn execute_directive(
+        &self,
+        session_id: &str,
+        command: &str,
+    ) -> ServiceFuture<'_, SessionDirectiveResult> {
+        let session_id = session_id.to_owned();
+        let command = command.trim().trim_start_matches('/').trim().to_owned();
+        Box::pin(async move {
+            validate_identifier(&session_id, "session")?;
+            if command.is_empty()
+                || command.len() > 32_768
+                || command.chars().any(|char| char == '\0')
+            {
+                return Err(ServiceError::InvalidInput(
+                    "invalid session directive".into(),
+                ));
+            }
+            let mut parts = command.splitn(2, char::is_whitespace);
+            let name = parts.next().unwrap_or_default().to_owned();
+            let arg = parts.next().unwrap_or_default().trim().to_owned();
+            let client = self.client()?;
+            let value = match client
+                .request::<_, Value>(
+                    "slash.exec",
+                    json!({ "session_id": session_id, "command": command }),
+                )
+                .await
+            {
+                Ok(value) => value,
+                Err(_) => client
+                    .request::<_, Value>(
+                        "command.dispatch",
+                        json!({ "session_id": session_id, "name": name, "arg": arg }),
+                    )
+                    .await
+                    .map_err(transport)?,
+            };
+            let mut result: SessionDirectiveResult =
+                serde_json::from_value(value.clone()).map_err(protocol)?;
+            if result.output.is_none()
+                && let Some(output) = value.as_str()
+            {
+                result.output = Some(output.to_owned());
+            }
+            if result.kind.is_empty() {
+                result.kind = if result.message.is_some() {
+                    "send".into()
+                } else {
+                    "exec".into()
+                };
+            }
+            Ok(result)
         })
     }
 

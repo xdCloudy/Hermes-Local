@@ -469,6 +469,24 @@ pub struct SessionMessagesResponse {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct SessionDirectiveResult {
+    #[serde(default, rename = "type")]
+    pub kind: String,
+    #[serde(default)]
+    pub output: Option<String>,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub notice: Option<String>,
+    #[serde(default)]
+    pub target: Option<String>,
+    #[serde(default)]
+    pub display: Option<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct ProjectFolder {
     pub path: String,
     #[serde(default)]
