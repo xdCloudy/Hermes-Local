@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `39ed10477f9cdceabfcd369064f37a01abcada59` (2026-08-13)
+> **Implementation audit checkpoint:** `7cf5cefe3cdebea2f9820e6287f1a667c77ff633` (2026-08-13)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -54,9 +54,9 @@ At the audit checkpoint above:
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
 | A1 Designed | 20 | Largest remaining implementation backlog. |
-| A2 Service | 16 | Native/core foundations exist; UI/parity work remains. |
+| A2 Service | 15 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 4 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 86 | Automated slice is green; human/live acceptance still required. |
+| A4 Auto-verified | 87 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 0 | No named external validation blockers remain. |
@@ -148,6 +148,15 @@ accepted, while empty, oversized, control-character, hostless, credentialed and
 privileged-scheme targets are rejected. Rust validation `31752025260`, Windows
 packaging `31752025345`, install lifecycle `31752025322` and footprint
 `31752025377` all passed before merge as `39ed1047`, so `DI-04` is A4.
+
+PR #203 exact composed head `ea6660e4` wires the Logs surface to a typed,
+sanitized diagnostics snapshot and native folder-picker export. Log tails are
+allowlisted and bounded to 200 lines/2 MiB, exports include crash state and a
+SHA-256 sidecar, and privacy-negative tests cover credentials, tokens, private
+paths and private addresses. Rust validation `31753324310`, Windows packaging
+`31753324266`, install lifecycle `31753324257`, footprint `31753324291` and the
+native-client boundary `31753324245` passed before merge as `7cf5cefe`, so
+`AG-13` is A4.
 
 PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable
 Projects/Files/Git/Terminal/SSH slice. Desktop SSH mode now routes the existing
@@ -349,7 +358,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | AG-10 | Starmap | Agent services | Starmap overlay | A1 Designed | Not ported. | Load large graph, navigate/select/filter and review performance/visual parity. | ⬜ |
 | AG-11 | Hermes TUI panel | Runtime/terminal adapter | TUI page | A1 Designed | Hermes Agent owns the TUI; Dioxus integration/embedding is not ported. | Launch/use TUI inside Hermes Local, verify input/resize/exit/reconnect and no duplicate runtime. | ⬜ |
 | AG-12 | Embedded Hermes Agent dashboard | future `DashboardService` | Dashboard/workstation | A1 Designed | Agent dashboard exists upstream; secure Dioxus embed/launch partition is not ported. | Open dashboard, verify exact-loopback/auth partition, navigation restrictions, TUI tab and no token exposure. | ⬜ |
-| AG-13 | Logs and diagnostics export | `DiagnosticsExportService` | Logs/About | A2 Service | Native diagnostics export writes bounded allowlisted/redacted support data plus a SHA-256 sidecar; it blocks forbidden secrets and redacts credentialed URLs, private roots/private IPs and opaque token-like values. Windows crash/log fixtures and privacy-negative tests pass. Logs/About UI is not wired. | View/filter/copy/export logs, trigger failures and verify secrets/private paths are redacted. | ⬜ |
+| AG-13 | Logs and diagnostics export | `DiagnosticsExportService` | Logs/About | A4 Auto-verified | PR #203 wires a typed sanitized snapshot, filter/refresh states and native folder-picker export. Allowlisted log tails are bounded to 200 lines/2 MiB; exports include crash state and a SHA-256 sidecar, while privacy-negative tests cover credentials, tokens, private paths and addresses. Exact-head Rust `31753324310`, packaging `31753324266`, install `31753324257`, footprint `31753324291` and native-client `31753324245` gates passed before merge as `7cf5cefe`. | View/filter/copy/export logs, trigger failures and verify secrets/private paths are redacted. | ⬜ |
 | AG-14 | About, version and provenance | `PlatformService` | About | A4 Auto-verified | PR #201 wires a typed About surface for product, Agent and runtime versions, sanitized update status, build provenance, SBOM, checksum and attestation availability. Exact-head Rust validation `31750226260`, packaging `31750226289`, install lifecycle `31750226295` and footprint `31750226317` passed before merge as `097f31b2`; packaged visual and manifest-by-manifest comparison remain A5 evidence. | Compare product/Agent/runtime/build versions to manifests and packaged artifact; verify copy/open actions. | ⬜ |
 
 ### Desktop integration, lifecycle, distribution and cutover
