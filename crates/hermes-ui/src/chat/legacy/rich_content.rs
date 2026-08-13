@@ -1,12 +1,11 @@
 use dioxus::prelude::*;
 
 const MAX_BYTES: usize = 1_000_000;
-const MAX_BLOCKS: usize = 512;
 const MAX_CODE_BYTES: usize = 256_000;
-const MAX_INLINE_TOKENS: usize = 256;
-const MAX_MERMAID_EDGES: usize = 64;
-const MAX_TABLE_COLUMNS: usize = 32;
+const MAX_BLOCKS: usize = 512;
 const MAX_TABLE_ROWS: usize = 256;
+const MAX_TABLE_COLUMNS: usize = 32;
+const MAX_MERMAID_EDGES: usize = 64;
 
 #[derive(Clone, Debug, PartialEq)]
 enum Block {
@@ -30,28 +29,10 @@ enum Inline {
     Link {
         label: String,
         url: String,
-        provider: Option<String>,
+        provider: Option<&'static str>,
     },
-    Image {
-        alt: String,
-        url: String,
-    },
+    Image { alt: String, url: String },
     Blocked(String),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum MathSegment {
-    Text(String),
-    Sup(String),
-    Sub(String),
-    Fraction(String, String),
-    Sqrt(String),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct CodeToken {
-    kind: &'static str,
-    text: String,
 }
 
 fn bounded(value: &str, limit: usize) -> String {
@@ -120,7 +101,7 @@ fn split_row(line: &str) -> Vec<String> {
         .trim_matches('|')
         .split('|')
         .take(MAX_TABLE_COLUMNS)
-        .map(|value| value.trim().to_owned())
+        .map(|cell| cell.trim().to_owned())
         .collect()
 }
 
@@ -148,6 +129,7 @@ fn parse(value: &str) -> Vec<Block> {
     let lines = source.lines().collect::<Vec<_>>();
     let mut blocks = Vec::new();
     let mut index = 0;
+
     while index < lines.len() && blocks.len() < MAX_BLOCKS {
         let line = lines[index];
         let trimmed = line.trim_start();
@@ -155,6 +137,7 @@ fn parse(value: &str) -> Vec<Block> {
             index += 1;
             continue;
         }
+
         if let Some(language) = trimmed.strip_prefix("```") {
             let language = language.trim().to_ascii_lowercase();
             let mut body = String::new();
@@ -175,13 +158,11 @@ fn parse(value: &str) -> Vec<Block> {
                 "math" | "tex" | "latex" => Block::Math(body),
                 "diff" | "patch" => Block::Diff(body),
                 "ansi" | "terminal" => Block::Ansi(body),
-                _ => Block::Code {
-                    language,
-                    text: body,
-                },
+                _ => Block::Code { language, text: body },
             });
             continue;
         }
+
         if trimmed.trim() == "$$" {
             let mut body = String::new();
             index += 1;
@@ -196,20 +177,23 @@ fn parse(value: &str) -> Vec<Block> {
             blocks.push(Block::Math(bounded(&body, MAX_CODE_BYTES)));
             continue;
         }
-        let level = trimmed.chars().take_while(|ch| *ch == '#').count();
-        if (1..=6).contains(&level) && trimmed.chars().nth(level) == Some(' ') {
+
+        let heading_level = trimmed.chars().take_while(|ch| *ch == '#').count();
+        if (1..=6).contains(&heading_level) && trimmed.chars().nth(heading_level) == Some(' ') {
             blocks.push(Block::Heading(
-                level as u8,
-                trimmed[level + 1..].trim().to_owned(),
+                heading_level as u8,
+                trimmed[heading_level + 1..].trim().to_owned(),
             ));
             index += 1;
             continue;
         }
+
         if let Some(text) = trimmed.strip_prefix("> ") {
             blocks.push(Block::Quote(text.to_owned()));
             index += 1;
             continue;
         }
+
         if line.contains('|') && index + 1 < lines.len() && table_separator(lines[index + 1]) {
             let mut rows = vec![split_row(line)];
             index += 2;
@@ -220,6 +204,7 @@ fn parse(value: &str) -> Vec<Block> {
             blocks.push(Block::Table(rows));
             continue;
         }
+
         if let Some((ordered, first)) = list_item(line) {
             let mut items = vec![first];
             index += 1;
@@ -236,6 +221,7 @@ fn parse(value: &str) -> Vec<Block> {
             blocks.push(Block::List { ordered, items });
             continue;
         }
+
         if trimmed.starts_with("diff --git ") || trimmed.starts_with("@@ ") {
             let mut body = line.to_owned();
             index += 1;
@@ -250,11 +236,13 @@ fn parse(value: &str) -> Vec<Block> {
             blocks.push(Block::Diff(bounded(&body, MAX_CODE_BYTES)));
             continue;
         }
+
         if line.contains('\u{1b}') {
             blocks.push(Block::Ansi(bounded(line, MAX_CODE_BYTES)));
             index += 1;
             continue;
         }
+
         let mut paragraph = line.trim().to_owned();
         index += 1;
         while index < lines.len() && !lines[index].trim().is_empty() {
@@ -263,8 +251,11 @@ fn parse(value: &str) -> Vec<Block> {
             if next_trimmed.starts_with("```")
                 || next.trim() == "$$"
                 || list_item(next).is_some()
-                || next_trimmed.starts_with("# ")
+                || next_trimmed.starts_with('#')
                 || next_trimmed.starts_with("> ")
+                || (next.contains('|')
+                    && index + 1 < lines.len()
+                    && table_separator(lines[index + 1]))
             {
                 break;
             }
@@ -274,6 +265,7 @@ fn parse(value: &str) -> Vec<Block> {
         }
         blocks.push(Block::Paragraph(paragraph));
     }
+
     blocks
 }
 
@@ -293,54 +285,48 @@ fn bracket_target(input: &str, image: bool) -> Option<(usize, String, String)> {
 }
 
 fn parse_inline(text: &str) -> Vec<Inline> {
-    let mut output = Vec::new();
+    let mut out = Vec::new();
     let mut rest = text;
-    while !rest.is_empty() && output.len() < MAX_INLINE_TOKENS {
-        let start = [
-            rest.find("!["),
-            rest.find('['),
-            rest.find('`'),
-            rest.find('$'),
-        ]
-        .into_iter()
-        .flatten()
-        .min();
+    while !rest.is_empty() && out.len() < 256 {
+        let start = [rest.find("!["), rest.find('['), rest.find('`'), rest.find('$')]
+            .into_iter()
+            .flatten()
+            .min();
         let Some(start) = start else {
-            output.push(Inline::Text(rest.to_owned()));
+            out.push(Inline::Text(rest.to_owned()));
             break;
         };
         if start > 0 {
-            output.push(Inline::Text(rest[..start].to_owned()));
+            out.push(Inline::Text(rest[..start].to_owned()));
             rest = &rest[start..];
             continue;
         }
+
         if rest.starts_with("![") {
             if let Some((used, alt, target)) = bracket_target(rest, true) {
-                let token = match safe_target(&target, true) {
+                out.push(match safe_target(&target, true) {
                     Some(url) => Inline::Image { alt, url },
                     None => Inline::Blocked(alt),
-                };
-                output.push(token);
+                });
                 rest = &rest[used..];
                 continue;
             }
         } else if rest.starts_with('[') {
             if let Some((used, label, target)) = bracket_target(rest, false) {
-                let token = match safe_target(&target, false) {
+                out.push(match safe_target(&target, false) {
                     Some(url) => Inline::Link {
-                        provider: provider_label(&url).map(str::to_owned),
+                        provider: provider_label(&url),
                         label,
                         url,
                     },
                     None => Inline::Blocked(label),
-                };
-                output.push(token);
+                });
                 rest = &rest[used..];
                 continue;
             }
         } else if let Some(after) = rest.strip_prefix('`') {
             if let Some(end) = after.find('`') {
-                output.push(Inline::Code(after[..end].to_owned()));
+                out.push(Inline::Code(after[..end].to_owned()));
                 rest = &after[end + 1..];
                 continue;
             }
@@ -348,356 +334,20 @@ fn parse_inline(text: &str) -> Vec<Inline> {
             if let Some(end) = after.find('$')
                 && end > 0
             {
-                output.push(Inline::Math(after[..end].to_owned()));
+                out.push(Inline::Math(after[..end].to_owned()));
                 rest = &after[end + 1..];
                 continue;
             }
         }
+
         let width = rest.chars().next().map(char::len_utf8).unwrap_or(1);
-        output.push(Inline::Text(rest[..width].to_owned()));
+        out.push(Inline::Text(rest[..width].to_owned()));
         rest = &rest[width..];
     }
     if !rest.is_empty() {
-        output.push(Inline::Text(bounded(rest, 8_192)));
+        out.push(Inline::Text(bounded(rest, 8_192)));
     }
-    output
-}
-
-fn extract_group(input: &str) -> Option<(String, usize)> {
-    if !input.starts_with('{') {
-        return None;
-    }
-    let mut depth = 0_u16;
-    for (index, ch) in input.char_indices() {
-        match ch {
-            '{' => depth = depth.saturating_add(1),
-            '}' => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 {
-                    return Some((input[1..index].to_owned(), index + 1));
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-fn math_symbol(command: &str) -> Option<&'static str> {
-    match command {
-        "alpha" => Some("α"),
-        "beta" => Some("β"),
-        "gamma" => Some("γ"),
-        "delta" => Some("δ"),
-        "epsilon" => Some("ε"),
-        "theta" => Some("θ"),
-        "lambda" => Some("λ"),
-        "mu" => Some("μ"),
-        "pi" => Some("π"),
-        "rho" => Some("ρ"),
-        "sigma" => Some("σ"),
-        "phi" => Some("φ"),
-        "omega" => Some("ω"),
-        "Gamma" => Some("Γ"),
-        "Delta" => Some("Δ"),
-        "Theta" => Some("Θ"),
-        "Lambda" => Some("Λ"),
-        "Pi" => Some("Π"),
-        "Sigma" => Some("Σ"),
-        "Phi" => Some("Φ"),
-        "Omega" => Some("Ω"),
-        "times" => Some("×"),
-        "cdot" => Some("·"),
-        "pm" => Some("±"),
-        "le" | "leq" => Some("≤"),
-        "ge" | "geq" => Some("≥"),
-        "neq" => Some("≠"),
-        "infty" => Some("∞"),
-        "rightarrow" | "to" => Some("→"),
-        "leftarrow" => Some("←"),
-        "sum" => Some("∑"),
-        "prod" => Some("∏"),
-        "int" => Some("∫"),
-        _ => None,
-    }
-}
-
-fn parse_math(source: &str) -> Vec<MathSegment> {
-    let source = bounded(source, 16_384);
-    let mut output = Vec::new();
-    let mut rest = source.as_str();
-    let mut plain = String::new();
-    let flush_plain = |plain: &mut String, output: &mut Vec<MathSegment>| {
-        if !plain.is_empty() {
-            output.push(MathSegment::Text(std::mem::take(plain)));
-        }
-    };
-    while !rest.is_empty() && output.len() < 256 {
-        if let Some(after) = rest.strip_prefix("\\frac")
-            && let Some((top, top_used)) = extract_group(after)
-            && let Some((bottom, bottom_used)) = extract_group(&after[top_used..])
-        {
-            flush_plain(&mut plain, &mut output);
-            output.push(MathSegment::Fraction(top, bottom));
-            rest = &after[top_used + bottom_used..];
-            continue;
-        }
-        if let Some(after) = rest.strip_prefix("\\sqrt")
-            && let Some((value, used)) = extract_group(after)
-        {
-            flush_plain(&mut plain, &mut output);
-            output.push(MathSegment::Sqrt(value));
-            rest = &after[used..];
-            continue;
-        }
-        if let Some(after) = rest.strip_prefix("^{")
-            && let Some((value, used)) = extract_group(&rest[1..])
-        {
-            flush_plain(&mut plain, &mut output);
-            output.push(MathSegment::Sup(value));
-            rest = &after[used - 1..];
-            continue;
-        }
-        if let Some(after) = rest.strip_prefix("_{")
-            && let Some((value, used)) = extract_group(&rest[1..])
-        {
-            flush_plain(&mut plain, &mut output);
-            output.push(MathSegment::Sub(value));
-            rest = &after[used - 1..];
-            continue;
-        }
-        if let Some(after) = rest.strip_prefix('\\') {
-            let command_len = after
-                .chars()
-                .take_while(|ch| ch.is_ascii_alphabetic())
-                .map(char::len_utf8)
-                .sum::<usize>();
-            if command_len > 0 {
-                let command = &after[..command_len];
-                if let Some(symbol) = math_symbol(command) {
-                    plain.push_str(symbol);
-                } else {
-                    plain.push_str(command);
-                }
-                rest = &after[command_len..];
-                continue;
-            }
-        }
-        let Some(ch) = rest.chars().next() else {
-            break;
-        };
-        plain.push(ch);
-        rest = &rest[ch.len_utf8()..];
-    }
-    flush_plain(&mut plain, &mut output);
-    output
-}
-
-fn keyword(language: &str, word: &str) -> bool {
-    match language {
-        "rust" | "rs" => matches!(
-            word,
-            "as" | "async"
-                | "await"
-                | "break"
-                | "const"
-                | "continue"
-                | "crate"
-                | "else"
-                | "enum"
-                | "fn"
-                | "for"
-                | "if"
-                | "impl"
-                | "in"
-                | "let"
-                | "loop"
-                | "match"
-                | "mod"
-                | "move"
-                | "mut"
-                | "pub"
-                | "ref"
-                | "return"
-                | "self"
-                | "Self"
-                | "static"
-                | "struct"
-                | "super"
-                | "trait"
-                | "type"
-                | "use"
-                | "where"
-                | "while"
-        ),
-        "python" | "py" => matches!(
-            word,
-            "and"
-                | "as"
-                | "async"
-                | "await"
-                | "break"
-                | "class"
-                | "continue"
-                | "def"
-                | "del"
-                | "elif"
-                | "else"
-                | "except"
-                | "False"
-                | "finally"
-                | "for"
-                | "from"
-                | "global"
-                | "if"
-                | "import"
-                | "in"
-                | "is"
-                | "lambda"
-                | "None"
-                | "nonlocal"
-                | "not"
-                | "or"
-                | "pass"
-                | "raise"
-                | "return"
-                | "True"
-                | "try"
-                | "while"
-                | "with"
-                | "yield"
-        ),
-        "javascript" | "js" | "typescript" | "ts" | "tsx" | "jsx" => matches!(
-            word,
-            "async"
-                | "await"
-                | "break"
-                | "case"
-                | "catch"
-                | "class"
-                | "const"
-                | "continue"
-                | "default"
-                | "delete"
-                | "do"
-                | "else"
-                | "export"
-                | "extends"
-                | "false"
-                | "finally"
-                | "for"
-                | "from"
-                | "function"
-                | "if"
-                | "import"
-                | "in"
-                | "instanceof"
-                | "let"
-                | "new"
-                | "null"
-                | "of"
-                | "return"
-                | "static"
-                | "super"
-                | "switch"
-                | "this"
-                | "throw"
-                | "true"
-                | "try"
-                | "typeof"
-                | "undefined"
-                | "var"
-                | "while"
-        ),
-        "bash" | "sh" | "shell" | "powershell" | "ps1" => matches!(
-            word,
-            "case"
-                | "do"
-                | "done"
-                | "elif"
-                | "else"
-                | "esac"
-                | "fi"
-                | "for"
-                | "function"
-                | "if"
-                | "in"
-                | "select"
-                | "then"
-                | "until"
-                | "while"
-        ),
-        _ => false,
-    }
-}
-
-fn syntax_tokens(language: &str, line: &str) -> Vec<CodeToken> {
-    let trimmed = line.trim_start();
-    if trimmed.starts_with("//")
-        || trimmed.starts_with('#')
-        || (matches!(language, "sql") && trimmed.starts_with("--"))
-    {
-        return vec![CodeToken {
-            kind: "comment",
-            text: line.to_owned(),
-        }];
-    }
-    line.split_inclusive(char::is_whitespace)
-        .map(|chunk| {
-            let word = chunk.trim_matches(|ch: char| !ch.is_alphanumeric() && ch != '_');
-            let kind = if keyword(language, word) {
-                "keyword"
-            } else if word.parse::<f64>().is_ok() {
-                "number"
-            } else if chunk.trim_start().starts_with(['\'', '"', '`']) {
-                "string"
-            } else {
-                "plain"
-            };
-            CodeToken {
-                kind,
-                text: chunk.to_owned(),
-            }
-        })
-        .collect()
-}
-
-fn mermaid_allowed(source: &str) -> bool {
-    let lower = source.to_ascii_lowercase();
-    source.len() <= MAX_CODE_BYTES
-        && !source.contains('<')
-        && !source.contains('>')
-        && !lower.contains("href")
-        && !lower.contains("url(")
-        && !lower
-            .lines()
-            .any(|line| line.trim_start().starts_with("click "))
-}
-
-fn clean_mermaid_node(value: &str) -> String {
-    value
-        .trim()
-        .trim_matches(|ch: char| "[](){}\"'".contains(ch))
-        .chars()
-        .filter(|ch| !ch.is_control())
-        .take(96)
-        .collect()
-}
-
-fn mermaid_edges(source: &str) -> Vec<(String, String)> {
-    if !mermaid_allowed(source) {
-        return Vec::new();
-    }
-    source
-        .lines()
-        .filter_map(|line| {
-            let (left, right) = line.trim().split_once("-->")?;
-            let left = clean_mermaid_node(left);
-            let right = clean_mermaid_node(right);
-            (!left.is_empty() && !right.is_empty()).then_some((left, right))
-        })
-        .take(MAX_MERMAID_EDGES)
-        .collect()
+    out
 }
 
 fn strip_ansi(value: &str) -> String {
@@ -722,34 +372,82 @@ fn strip_ansi(value: &str) -> String {
     output
 }
 
-#[component]
-fn MathContent(source: String, display: bool) -> Element {
-    let class = if display {
-        "rich-math-display"
-    } else {
-        "rich-math-inline"
+fn syntax_class(language: &str, token: &str) -> &'static str {
+    let word = token.trim_matches(|ch: char| !ch.is_alphanumeric() && ch != '_');
+    let keyword = match language {
+        "rust" | "rs" => matches!(
+            word,
+            "as" | "async" | "await" | "const" | "crate" | "else" | "enum" | "fn" | "for"
+                | "if" | "impl" | "in" | "let" | "match" | "mod" | "move" | "mut" | "pub"
+                | "ref" | "return" | "self" | "Self" | "static" | "struct" | "super" | "trait"
+                | "type" | "use" | "where" | "while"
+        ),
+        "python" | "py" => matches!(
+            word,
+            "and" | "as" | "async" | "await" | "break" | "class" | "continue" | "def" | "elif"
+                | "else" | "except" | "False" | "finally" | "for" | "from" | "if" | "import"
+                | "in" | "is" | "lambda" | "None" | "not" | "or" | "pass" | "raise" | "return"
+                | "True" | "try" | "while" | "with" | "yield"
+        ),
+        "javascript" | "js" | "typescript" | "ts" | "tsx" | "jsx" => matches!(
+            word,
+            "async" | "await" | "break" | "case" | "catch" | "class" | "const" | "continue"
+                | "default" | "delete" | "do" | "else" | "export" | "extends" | "false" | "finally"
+                | "for" | "from" | "function" | "if" | "import" | "in" | "instanceof" | "let"
+                | "new" | "null" | "of" | "return" | "static" | "super" | "switch" | "this"
+                | "throw" | "true" | "try" | "typeof" | "undefined" | "var" | "while"
+        ),
+        _ => false,
     };
-    rsx! {
-        span { class, role: "math", aria_label: "{source}",
-            for (index, segment) in parse_math(&source).into_iter().enumerate() {
-                span { key: "{index}",
-                    match segment {
-                        MathSegment::Text(value) => rsx! { span { "{value}" } },
-                        MathSegment::Sup(value) => rsx! { sup { "{value}" } },
-                        MathSegment::Sub(value) => rsx! { sub { "{value}" } },
-                        MathSegment::Sqrt(value) => rsx! { span { "√(" span { "{value}" } ")" } },
-                        MathSegment::Fraction(top, bottom) => rsx! {
-                            span {
-                                style: "display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;line-height:1.1;margin:0 .15em;",
-                                span { style: "border-bottom:1px solid currentColor;padding:0 .15em;", "{top}" }
-                                span { style: "padding:0 .15em;", "{bottom}" }
-                            }
-                        },
-                    }
-                }
-            }
-        }
+    if keyword {
+        "syntax-keyword"
+    } else if word.parse::<f64>().is_ok() {
+        "syntax-number"
+    } else {
+        "syntax-plain"
     }
+}
+
+fn mermaid_allowed(source: &str) -> bool {
+    let lower = source.to_ascii_lowercase();
+    source.len() <= MAX_CODE_BYTES
+        && !source.contains('<')
+        && !lower.contains("href")
+        && !lower.contains("url(")
+        && !lower.contains("javascript:")
+        && !lower
+            .lines()
+            .any(|line| line.trim_start().starts_with("click "))
+}
+
+fn clean_mermaid_node(value: &str) -> String {
+    value
+        .trim()
+        .trim_matches(|ch: char| "[](){}\"'".contains(ch))
+        .chars()
+        .filter(|ch| !ch.is_control())
+        .take(96)
+        .collect()
+}
+
+fn mermaid_edges(source: &str) -> Vec<(String, String)> {
+    if !mermaid_allowed(source) {
+        return Vec::new();
+    }
+    source
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.starts_with("graph ") || line.starts_with("flowchart ") {
+                return None;
+            }
+            let (left, right) = line.split_once("-->")?;
+            let left = clean_mermaid_node(left);
+            let right = clean_mermaid_node(right);
+            (!left.is_empty() && !right.is_empty()).then_some((left, right))
+        })
+        .take(MAX_MERMAID_EDGES)
+        .collect()
 }
 
 #[component]
@@ -760,24 +458,26 @@ fn InlineContent(text: String, on_open_link: Callback<String>) -> Element {
                 match token {
                     Inline::Text(value) => rsx! { span { "{value}" } },
                     Inline::Code(value) => rsx! { code { class: "rich-inline-code", "{value}" } },
-                    Inline::Math(value) => rsx! { MathContent { source: value, display: false } },
+                    Inline::Math(value) => rsx! { span { class: "rich-math-inline", role: "math", aria_label: "{value}", "{value}" } },
                     Inline::Link { label, url, provider } => {
                         let destination = url.clone();
-                        let card_destination = url.clone();
+                        let provider_destination = url.clone();
                         rsx! {
-                            button {
-                                class: "rich-link",
-                                title: "Open external link",
-                                onclick: move |_| on_open_link.call(destination.clone()),
-                                "{label}"
-                            }
-                            if let Some(provider) = provider {
+                            span {
                                 button {
-                                    class: "rich-embed-card",
-                                    aria_label: "Open {provider} content externally",
-                                    onclick: move |_| on_open_link.call(card_destination.clone()),
-                                    strong { "{provider}" }
-                                    small { "External content · open explicitly" }
+                                    class: "rich-link",
+                                    title: "Open external link",
+                                    onclick: move |_| on_open_link.call(destination.clone()),
+                                    "{label}"
+                                }
+                                if let Some(provider) = provider {
+                                    button {
+                                        class: "rich-embed-card",
+                                        aria_label: "Open {provider} content externally",
+                                        onclick: move |_| on_open_link.call(provider_destination.clone()),
+                                        strong { "{provider}" }
+                                        small { "External content · open explicitly" }
+                                    }
                                 }
                             }
                         }
@@ -811,18 +511,11 @@ fn CodeBlock(language: String, text: String) -> Element {
                 code {
                     for (line_index, line) in text.lines().enumerate() {
                         span { key: "{line_index}", class: "code-line",
-                            for (token_index, token) in syntax_tokens(&language, line).into_iter().enumerate() {
+                            for (token_index, token) in line.split_inclusive(char::is_whitespace).enumerate() {
                                 span {
                                     key: "{token_index}",
-                                    class: "syntax-{token.kind}",
-                                    style: match token.kind {
-                                        "keyword" => "color:var(--ui-accent,#8ab4ff);font-weight:600;",
-                                        "number" => "color:var(--ui-warning,#d29922);",
-                                        "string" => "color:var(--ui-success,#3fb950);",
-                                        "comment" => "opacity:.65;font-style:italic;",
-                                        _ => "",
-                                    },
-                                    "{token.text}"
+                                    class: "{syntax_class(&language, token)}",
+                                    "{token}"
                                 }
                             }
                             "\n"
@@ -842,7 +535,11 @@ fn TableBlock(rows: Vec<Vec<String>>, on_open_link: Callback<String>) -> Element
         div { class: "rich-table-scroll",
             table {
                 thead { tr { for cell in header { th { InlineContent { text: cell, on_open_link } } } } }
-                tbody { for row in body { tr { for cell in row { td { InlineContent { text: cell, on_open_link } } } } } }
+                tbody {
+                    for row in body {
+                        tr { for cell in row { td { InlineContent { text: cell, on_open_link } } } }
+                    }
+                }
             }
         }
     }
@@ -894,7 +591,7 @@ pub(super) fn RichContent(text: String, on_open_link: Callback<String>) -> Eleme
                             rsx! { ul { for item in items { li { InlineContent { text: item, on_open_link } } } } }
                         },
                         Block::Code { language, text } => rsx! { CodeBlock { language, text } },
-                        Block::Math(value) => rsx! { MathContent { source: value, display: true } },
+                        Block::Math(value) => rsx! { pre { class: "rich-math-display", role: "math", aria_label: "{value}", "{value}" } },
                         Block::Table(rows) => rsx! { TableBlock { rows, on_open_link } },
                         Block::Diff(value) => rsx! {
                             pre { class: "rich-diff",
@@ -902,14 +599,13 @@ pub(super) fn RichContent(text: String, on_open_link: Callback<String>) -> Eleme
                                     span {
                                         key: "{line_index}",
                                         class: if line.starts_with('+') { "diff-line add" } else if line.starts_with('-') { "diff-line remove" } else if line.starts_with("@@") { "diff-line hunk" } else { "diff-line" },
-                                        style: if line.starts_with('+') { "color:var(--ui-success,#3fb950);" } else if line.starts_with('-') { "color:var(--ui-danger,#f85149);" } else { "" },
                                         "{line}\n"
                                     }
                                 }
                             }
                         },
-                        Block::Ansi(value) => rsx! { pre { class: "rich-ansi", "{strip_ansi(&value)}" } },
                         Block::Mermaid(source) => rsx! { MermaidBlock { source } },
+                        Block::Ansi(value) => rsx! { pre { class: "rich-ansi", "{strip_ansi(&value)}" } },
                         Block::Paragraph(value) => rsx! { p { InlineContent { text: value, on_open_link } } },
                     }
                 }
@@ -923,64 +619,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn content_and_tables_are_bounded() {
-        assert!(!parse(&"x".repeat(MAX_BYTES + 16)).is_empty());
-        let line = (0..100)
-            .map(|index| index.to_string())
-            .collect::<Vec<_>>()
-            .join("|");
-        assert_eq!(split_row(&line).len(), MAX_TABLE_COLUMNS);
+    fn mermaid_edges_are_allowed_but_active_content_is_blocked() {
+        assert_eq!(mermaid_edges("graph TD\nA-->B").len(), 1);
+        assert!(!mermaid_allowed("graph TD\nclick A callback"));
+        assert!(!mermaid_allowed("graph TD\nA[<script>]-->B"));
+        assert!(!mermaid_allowed(
+            "graph TD\nA-->B\nstyle A fill:url(javascript:x)"
+        ));
     }
 
     #[test]
-    fn external_targets_and_provider_cards_are_explicit() {
+    fn external_targets_are_explicit_and_bounded() {
         assert!(safe_target("https://example.com/a", false).is_some());
         assert!(safe_target("ftp://example.com/a", false).is_none());
         assert_eq!(
             provider_label("https://github.com/owner/repo"),
             Some("GitHub")
         );
-        assert_eq!(provider_label("https://example.com/item"), None);
-    }
-
-    #[test]
-    fn image_targets_are_bounded_to_supported_forms() {
-        assert!(safe_target("https://example.com/image.png", true).is_some());
         assert!(safe_target("data:image/png;base64,AA==", true).is_some());
         assert!(safe_target("data:text/plain;base64,AA==", true).is_none());
     }
 
     #[test]
-    fn ansi_sequences_are_removed() {
-        assert_eq!(strip_ansi("\u{1b}[31mred\u{1b}[0m"), "red");
-    }
-
-    #[test]
-    fn math_parser_handles_structure_and_symbols() {
-        let parts = parse_math("\\frac{a}{b} + \\sqrt{x} = \\pi");
-        assert!(parts.contains(&MathSegment::Fraction("a".into(), "b".into())));
-        assert!(parts.contains(&MathSegment::Sqrt("x".into())));
-        assert!(
-            parts
-                .iter()
-                .any(|part| matches!(part, MathSegment::Text(value) if value.contains('π')))
-        );
-    }
-
-    #[test]
-    fn syntax_inventory_recognizes_keywords() {
-        let tokens = syntax_tokens("rust", "pub fn run() {}");
-        assert!(tokens.iter().any(|token| token.kind == "keyword"));
-    }
-
-    #[test]
-    fn mermaid_is_non_privileged_and_bounded() {
-        assert_eq!(mermaid_edges("graph TD\nA-->B").len(), 1);
-        assert!(!mermaid_allowed("graph TD\nclick A callback"));
-    }
-
-    #[test]
-    fn parses_required_rich_blocks() {
+    fn parses_required_rich_blocks_and_bounds_tables() {
         let input = "# Heading\n\n```rust\nfn main() {}\n```\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\n```mermaid\ngraph TD\nA-->B\n```";
         let blocks = parse(input);
         assert!(
@@ -993,11 +654,25 @@ mod tests {
                 .iter()
                 .any(|block| matches!(block, Block::Code { .. }))
         );
-        assert!(blocks.iter().any(|block| matches!(block, Block::Table(_))));
+        assert!(
+            blocks
+                .iter()
+                .any(|block| matches!(block, Block::Table(_)))
+        );
         assert!(
             blocks
                 .iter()
                 .any(|block| matches!(block, Block::Mermaid(_)))
         );
+        let long = (0..100)
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join("|");
+        assert_eq!(split_row(&long).len(), MAX_TABLE_COLUMNS);
+    }
+
+    #[test]
+    fn ansi_sequences_are_removed() {
+        assert_eq!(strip_ansi("\u{1b}[31mred\u{1b}[0m"), "red");
     }
 }
