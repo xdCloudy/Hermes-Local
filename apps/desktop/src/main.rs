@@ -25,6 +25,7 @@ mod preview_normalization;
 mod preview_service;
 mod preview_watcher;
 mod quick_entry;
+mod shell_accessibility;
 mod shell_i18n;
 mod shell_interaction;
 mod shell_keymap;
