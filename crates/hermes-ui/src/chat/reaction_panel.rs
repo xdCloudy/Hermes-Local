@@ -131,6 +131,7 @@ pub(super) fn ReactionPanel(session_id: String) -> Element {
         async move {
             if let Ok(settings) = services.settings.load().await {
                 reactions.set(reaction_store::load(&settings));
+                agent_reactions.set(reaction_store::load_agent(&settings));
             }
             match services.sessions.resume(&stored_id).await {
                 Ok(session) => {
@@ -143,15 +144,15 @@ pub(super) fn ReactionPanel(session_id: String) -> Element {
         }
     });
 
-    let event_service = services.sessions.clone();
+    let event_services = services.clone();
     let _events = use_resource(move || {
         let runtime = runtime_id();
-        let service = event_service.clone();
+        let services = event_services.clone();
         async move {
             if runtime.is_empty() {
                 return;
             }
-            let Ok(mut events) = service.events() else {
+            let Ok(mut events) = services.sessions.events() else {
                 return;
             };
             while let Some(event) = events.next().await {
@@ -173,6 +174,14 @@ pub(super) fn ReactionPanel(session_id: String) -> Element {
                     agent_reactions
                         .write()
                         .insert(update.key.clone(), update.agent);
+                }
+
+                let user_snapshot = reactions();
+                let agent_snapshot = agent_reactions();
+                if let Ok(mut settings) = services.settings.load().await {
+                    reaction_store::store(&mut settings, &user_snapshot);
+                    reaction_store::store_agent(&mut settings, &agent_snapshot);
+                    let _ = services.settings.save(&settings).await;
                 }
             }
         }
