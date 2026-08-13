@@ -3073,13 +3073,7 @@ impl PlatformService for DesktopPlatform {
     fn open_external(&self, url: &str) -> ServiceFuture<'_, ()> {
         let url = url.to_owned();
         Box::pin(async move {
-            let parsed = url::Url::parse(&url)
-                .map_err(|error| ServiceError::InvalidInput(error.to_string()))?;
-            if !matches!(parsed.scheme(), "https" | "mailto") {
-                return Err(ServiceError::PermissionDenied(
-                    "external URL scheme is blocked".into(),
-                ));
-            }
+            let parsed = validate_external_url(&url)?;
             open::that_detached(parsed.as_str()).map_err(platform)
         })
     }
@@ -3095,6 +3089,45 @@ impl PlatformService for DesktopPlatform {
     fn version(&self) -> ServiceFuture<'_, String> {
         Box::pin(async { Ok(env!("CARGO_PKG_VERSION").to_owned()) })
     }
+}
+
+fn validate_external_url(value: &str) -> ServiceResult<url::Url> {
+    let value = value.trim();
+    if value.is_empty() || value.len() > 16_384 || value.chars().any(char::is_control) {
+        return Err(ServiceError::InvalidInput(
+            "external URL is empty, oversized, or contains control characters".into(),
+        ));
+    }
+
+    let parsed =
+        url::Url::parse(value).map_err(|error| ServiceError::InvalidInput(error.to_string()))?;
+    match parsed.scheme() {
+        "http" | "https" => {
+            if parsed.cannot_be_a_base() || parsed.host_str().is_none() {
+                return Err(ServiceError::InvalidInput(
+                    "external HTTP(S) URL must include a host".into(),
+                ));
+            }
+            if !parsed.username().is_empty() || parsed.password().is_some() {
+                return Err(ServiceError::PermissionDenied(
+                    "credentialed external URLs are blocked".into(),
+                ));
+            }
+        }
+        "mailto" => {
+            if parsed.path().is_empty() {
+                return Err(ServiceError::InvalidInput(
+                    "external mail URL must include a recipient".into(),
+                ));
+            }
+        }
+        _ => {
+            return Err(ServiceError::PermissionDenied(
+                "external URL scheme is blocked".into(),
+            ));
+        }
+    }
+    Ok(parsed)
 }
 
 fn decode_list<T: serde::de::DeserializeOwned>(value: Value, key: &str) -> ServiceResult<Vec<T>> {
@@ -3922,6 +3955,44 @@ mod tests {
         let detached = parse_git_status("## HEAD (no branch)\n").expect("detached");
         assert_eq!(detached.branch, None);
         assert!(detached.changed.is_empty());
+    }
+
+    #[test]
+    fn external_url_policy_allows_web_and_mail_targets() {
+        assert_eq!(
+            validate_external_url("http://example.com/path")
+                .expect("plain HTTP")
+                .as_str(),
+            "http://example.com/path"
+        );
+        assert_eq!(
+            validate_external_url("https://example.com/path")
+                .expect("HTTPS")
+                .as_str(),
+            "https://example.com/path"
+        );
+        assert_eq!(
+            validate_external_url("mailto:person@example.com")
+                .expect("mail target")
+                .as_str(),
+            "mailto:person@example.com"
+        );
+    }
+
+    #[test]
+    fn external_url_policy_rejects_privileged_or_ambiguous_targets() {
+        for blocked in [
+            "javascript:alert(1)",
+            "file:///C:/Windows/System32/config/SAM",
+            "https://user:secret@example.com/path",
+            "https://example.com/\nheader: value",
+            "mailto:",
+        ] {
+            assert!(
+                validate_external_url(blocked).is_err(),
+                "unexpectedly allowed {blocked:?}"
+            );
+        }
     }
 
     #[test]
