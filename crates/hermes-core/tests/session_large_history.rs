@@ -37,17 +37,37 @@ fn hydrates_a_large_transcript_without_losing_identity() {
     assert_eq!(transcript.messages.len(), LARGE_HISTORY);
     assert_eq!(transcript.message_count, LARGE_HISTORY);
     assert!(!transcript.messages_omitted);
-    assert_eq!(transcript.messages.first().map(|message| message.id.as_str()), Some("0"));
     assert_eq!(
-        transcript.messages.last().map(|message| message.id.as_str()),
+        transcript
+            .messages
+            .first()
+            .map(|message| message.id.as_str()),
+        Some("0")
+    );
+    assert_eq!(
+        transcript
+            .messages
+            .last()
+            .map(|message| message.id.as_str()),
         Some("99999")
     );
-    assert_eq!(transcript.messages.iter().rev().take(TRANSCRIPT_WINDOW).count(), TRANSCRIPT_WINDOW);
+    assert_eq!(
+        transcript
+            .messages
+            .iter()
+            .rev()
+            .take(TRANSCRIPT_WINDOW)
+            .count(),
+        TRANSCRIPT_WINDOW
+    );
 
     // This is deliberately a generous regression ceiling rather than a
     // microbenchmark: CI runners vary, but hydration should remain linear and
     // comfortably bounded for a six-figure transcript.
-    assert!(elapsed < Duration::from_secs(15), "large transcript hydration took {elapsed:?}");
+    assert!(
+        elapsed < Duration::from_secs(15),
+        "large transcript hydration took {elapsed:?}"
+    );
 }
 
 #[test]
