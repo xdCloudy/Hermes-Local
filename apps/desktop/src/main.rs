@@ -26,6 +26,7 @@ mod preview_service;
 mod preview_watcher;
 mod quick_entry;
 mod shell_accessibility;
+mod shell_focus_guard;
 mod shell_i18n;
 mod shell_instance;
 mod shell_interaction;
@@ -90,9 +91,11 @@ fn desktop_root() -> Element {
             }
         },
         Some(Ok(())) => rsx! {
-            shell_parity::ParityShellHost {
-                shell_interaction::ShellHost {
-                    hermes_ui::App {}
+            shell_focus_guard::FocusGuard {
+                shell_parity::ParityShellHost {
+                    shell_interaction::ShellHost {
+                        hermes_ui::App {}
+                    }
                 }
             }
         },
