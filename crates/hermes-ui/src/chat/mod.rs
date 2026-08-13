@@ -5,6 +5,7 @@ use super::{
 };
 
 mod chat_controls;
+mod fresh_model;
 mod legacy;
 mod reaction_panel;
 mod reaction_store;
@@ -19,7 +20,7 @@ pub(super) fn ChatRuntimeProvider() -> Element {
 pub(super) fn Chat() -> Element {
     rsx! {
         div { class: "chat-runtime-wrapper",
-            chat_controls::ChatControls { session: None }
+            fresh_model::FreshModelControl {}
             legacy::Chat {}
         }
     }
