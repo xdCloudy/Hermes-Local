@@ -346,7 +346,9 @@ fn resolve_ssh_executable() -> ServiceResult<PathBuf> {
             return Ok(native);
         }
         let where_exe = system_root.join("System32/where.exe");
-        if let Ok(output) = std::process::Command::new(where_exe).arg("ssh.exe").output()
+        if let Ok(output) = std::process::Command::new(where_exe)
+            .arg("ssh.exe")
+            .output()
             && output.status.success()
             && let Some(path) = String::from_utf8_lossy(&output.stdout)
                 .lines()
@@ -404,7 +406,10 @@ mod tests {
                 .any(|pair| pair[0] == "-i" && pair[1] == r"C:\keys\id_ed25519")
         );
         let separator = args.iter().position(|arg| arg == "--").expect("separator");
-        assert_eq!(args.get(separator + 1).map(String::as_str), Some("cloudy@example.test"));
+        assert_eq!(
+            args.get(separator + 1).map(String::as_str),
+            Some("cloudy@example.test")
+        );
         assert_eq!(separator + 2, args.len());
     }
 
