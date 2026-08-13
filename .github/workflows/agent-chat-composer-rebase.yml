@@ -1,0 +1,30 @@
+name: Agent CH-10 composer rebase
+
+on:
+  push:
+    branches:
+      - agent/chat-composer-a4
+    paths:
+      - .github/workflows/agent-chat-composer-rebase.yml
+
+permissions:
+  contents: write
+
+jobs:
+  rebase:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/chat-composer-a4
+      - name: Rebase composer tranche onto current Dioxus migration branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin refactor/dioxus-rust-client
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rebase --onto origin/refactor/dioxus-rust-client 4e2280cbce9b899259d2b14101ddf5fbec61f342
+          git push --force-with-lease origin HEAD:agent/chat-composer-a4
