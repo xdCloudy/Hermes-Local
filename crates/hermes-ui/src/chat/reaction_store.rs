@@ -47,10 +47,7 @@ pub(super) fn load_agent(settings: &AppSettings) -> BTreeMap<String, Vec<String>
         .unwrap_or_default()
 }
 
-pub(super) fn store_agent(
-    settings: &mut AppSettings,
-    reactions: &BTreeMap<String, Vec<String>>,
-) {
+pub(super) fn store_agent(settings: &mut AppSettings, reactions: &BTreeMap<String, Vec<String>>) {
     let value = serde_json::to_value(reactions).unwrap_or(Value::Object(Default::default()));
     settings.extra.insert(AGENT_KEY.into(), value);
 }
