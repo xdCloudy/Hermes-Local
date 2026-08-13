@@ -6,7 +6,7 @@ use futures_util::StreamExt;
 use hermes_core::{AppServices, PromptQueueCoordinator, SessionTranscript};
 use hermes_protocol::{MessageRole, SessionCreateRequest};
 
-use super::{Codicon, ProjectPicker, ProjectUiState, Route};
+use super::{Codicon, ErrorState, LoadingState, ProjectPicker, ProjectUiState, Route};
 
 const TRANSCRIPT_WINDOW: usize = 80;
 
@@ -184,10 +184,11 @@ pub(super) fn Session(id: String) -> Element {
             match load_service.resume(&session_id).await {
                 Ok(response) => {
                     let state = SessionTranscript::load(session_id, response);
-                    chat_runtime
-                        .queue
-                        .write()
-                        .bind(&state.stored_id, &state.runtime_id, state.busy);
+                    chat_runtime.queue.write().bind(
+                        &state.stored_id,
+                        &state.runtime_id,
+                        state.busy,
+                    );
                     transcript.set(Some(state));
                     visible_limit.set(TRANSCRIPT_WINDOW);
                     load_error.set(None);
