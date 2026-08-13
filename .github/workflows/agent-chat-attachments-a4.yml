@@ -20,12 +20,16 @@ jobs:
       - name: Apply typed attachment migration
         shell: pwsh
         run: |
-          python agent-patches/chat-attachments-core.py
-          python agent-patches/chat-attachments-desktop-selection.py
-          python agent-patches/chat-attachments-local-rpc.py
-          python agent-patches/chat-attachments-new-chat.py
-          python agent-patches/chat-attachments-session.py
-          python agent-patches/chat-attachments-css.py
+          function Invoke-Patch([string]$Path) {
+            python $Path
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          Invoke-Patch 'agent-patches/chat-attachments-core.py'
+          Invoke-Patch 'agent-patches/chat-attachments-desktop-selection.py'
+          Invoke-Patch 'agent-patches/chat-attachments-local-rpc.py'
+          Invoke-Patch 'agent-patches/chat-attachments-new-chat.py'
+          Invoke-Patch 'agent-patches/chat-attachments-session.py'
+          Invoke-Patch 'agent-patches/chat-attachments-css.py'
       - name: Format Rust
         run: cargo fmt --all
       - name: Check workspace
