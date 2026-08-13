@@ -34,6 +34,25 @@ pub type FileWatchStream = Pin<Box<dyn Stream<Item = FileWatchEvent> + Send>>;
 pub type ServiceResult<T> = Result<T, ServiceError>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DiagnosticLog {
+    pub source: String,
+    pub lines: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DiagnosticsSnapshot {
+    pub logs: Vec<DiagnosticLog>,
+    pub crash: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DiagnosticsExportResult {
+    pub report_path: PathBuf,
+    pub checksum_path: PathBuf,
+    pub sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FileWatchEvent {
     pub path: PathBuf,
 }
@@ -1556,6 +1575,31 @@ pub trait UpdateService: Send + Sync {
     fn apply(&self, options: Value) -> ServiceFuture<'_, ()>;
 }
 
+pub trait DiagnosticsService: Send + Sync {
+    fn snapshot(&self) -> ServiceFuture<'_, DiagnosticsSnapshot>;
+    fn export(&self) -> ServiceFuture<'_, Option<DiagnosticsExportResult>>;
+}
+
+pub struct UnavailableDiagnosticsService;
+
+impl DiagnosticsService for UnavailableDiagnosticsService {
+    fn snapshot(&self) -> ServiceFuture<'_, DiagnosticsSnapshot> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "diagnostics are unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn export(&self) -> ServiceFuture<'_, Option<DiagnosticsExportResult>> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "diagnostics export is unavailable on this platform".into(),
+            ))
+        })
+    }
+}
+
 pub trait PlatformService: Send + Sync {
     fn pick_attachments(
         &self,
@@ -1601,6 +1645,7 @@ pub struct AppServices {
     pub skills: Arc<dyn SkillsService>,
     pub terminal: Arc<dyn TerminalService>,
     pub updates: Arc<dyn UpdateService>,
+    pub diagnostics: Arc<dyn DiagnosticsService>,
     pub platform: Arc<dyn PlatformService>,
 }
 

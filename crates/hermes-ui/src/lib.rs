@@ -962,6 +962,7 @@ macro_rules! simple_surface {
 
 mod about;
 mod files;
+mod logs;
 mod review;
 mod runtime;
 mod skills;
@@ -969,6 +970,7 @@ mod source_control;
 mod terminal;
 use about::About;
 use files::Files;
+use logs::Logs;
 use review::Review;
 use runtime::{Benchmarks, Runtime, Security, Tasks};
 use skills::Skills;
@@ -1027,12 +1029,6 @@ simple_surface!(
     "Hermes Local",
     "Integrations",
     "Connect explicit, trusted local and messaging services."
-);
-simple_surface!(
-    Logs,
-    "Hermes Local",
-    "Logs",
-    "Live, redacted output from each local service."
 );
 simple_surface!(
     Model,

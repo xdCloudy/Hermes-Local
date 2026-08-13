@@ -8,6 +8,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use hermes_core::{
+    AppServices, DiagnosticLog, DiagnosticsExportResult, DiagnosticsService, DiagnosticsSnapshot,
+    ServiceError, ServiceFuture,
+};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -37,6 +41,74 @@ const SAFE_LOGS: [(&str, &str); 4] = [
     ("launcher", "logs/launcher/launcher.log"),
     ("security", "logs/security/security.log"),
 ];
+
+#[derive(Clone)]
+struct DesktopDiagnostics {
+    data_dir: PathBuf,
+}
+
+pub fn install(services: &mut AppServices, data_dir: PathBuf) {
+    services.diagnostics = std::sync::Arc::new(DesktopDiagnostics { data_dir });
+}
+
+impl DiagnosticsService for DesktopDiagnostics {
+    fn snapshot(&self) -> ServiceFuture<'_, DiagnosticsSnapshot> {
+        let data_dir = self.data_dir.clone();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || diagnostics_snapshot(&data_dir))
+                .await
+                .map_err(|error| ServiceError::Platform(error.to_string()))?
+                .map_err(platform)
+        })
+    }
+
+    fn export(&self) -> ServiceFuture<'_, Option<DiagnosticsExportResult>> {
+        let data_dir = self.data_dir.clone();
+        Box::pin(async move {
+            let selected = rfd::AsyncFileDialog::new()
+                .set_title("Export redacted Hermes diagnostics")
+                .pick_folder()
+                .await;
+            let Some(selected) = selected else {
+                return Ok(None);
+            };
+            let destination = selected.path().to_owned();
+            let exported = tokio::task::spawn_blocking(move || {
+                DiagnosticsExportService.export(&data_dir, &destination, &[])
+            })
+            .await
+            .map_err(|error| ServiceError::Platform(error.to_string()))?
+            .map_err(platform)?;
+            Ok(Some(DiagnosticsExportResult {
+                report_path: exported.report_path,
+                checksum_path: exported.checksum_path,
+                sha256: exported.sha256,
+            }))
+        })
+    }
+}
+
+fn diagnostics_snapshot(data_dir: &Path) -> Result<DiagnosticsSnapshot, String> {
+    let root = canonical_directory(data_dir, "Hermes Local data")?;
+    let private_roots = private_roots(&root);
+    let logs = SAFE_LOGS
+        .into_iter()
+        .map(|(source, relative)| {
+            read_safe_log_tail(&root, Path::new(relative), &private_roots).map(|lines| {
+                DiagnosticLog {
+                    source: source.to_owned(),
+                    lines,
+                }
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let crash = read_safe_crash_record(&root, &private_roots)?.map(|value| value.to_string());
+    Ok(DiagnosticsSnapshot { logs, crash })
+}
+
+fn platform(message: String) -> ServiceError {
+    ServiceError::Platform(message)
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DiagnosticExport {
