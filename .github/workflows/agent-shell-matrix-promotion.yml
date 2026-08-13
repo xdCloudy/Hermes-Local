@@ -1,0 +1,152 @@
+name: Temporary Shell matrix promotion
+
+on:
+  push:
+    branches:
+      - agent/shell-all-a4
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    if: github.event.head_commit.message == 'promote Shell matrix via CI'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/shell-all-a4
+
+      - name: Promote validated Shell rows
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          path = Path('docs/DIOXUS_MIGRATION_MATRIX.md')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  '> **Implementation audit checkpoint:** `a71ea7d33c5155b24d6f57151ba229ff56ac34ff` (2026-08-13)',
+                  '> **Implementation audit checkpoint:** `0d72892f2d4fef76da407706e9d38d077667e5c9` (2026-08-13)',
+              ),
+              ('| A1 Designed | 37 | Largest remaining implementation backlog. |', '| A1 Designed | 35 | Largest remaining implementation backlog. |'),
+              ('| A3 Ported | 6 | User-facing implementation exists; more evidence required. |', '| A3 Ported | 1 | User-facing implementation exists; more evidence required. |'),
+              ('| A4 Auto-verified | 59 | Automated slice is green; human/live acceptance still required. |', '| A4 Auto-verified | 66 | Automated slice is green; human/live acceptance still required. |'),
+              ('At least-service coverage is **88/127 capabilities (69.3%)**. This is service-foundation coverage, not end-user parity or human acceptance.', 'At least-service coverage is **90/127 capabilities (70.9%)**. This is service-foundation coverage, not end-user parity or human acceptance.'),
+              (
+                  '''PR #187 exact head `a71ea7d3` adds the Desktop-owned Shell interaction controller,
+native WebView zoom/find behavior, command palette and Command Centre, the major
+OG global shell chords, a typed live runtime/gateway/task status bar, right-rail
+composition and shell accessibility/reduced-motion handling. Dioxus Rust
+validation run `31664757126` passed architecture, rustfmt, all-target compile,
+shared-UI WASM compile, workspace tests, Clippy and SBOM tooling for that exact
+head. SH-06 and SH-15 remain deliberately below A4 because the production pane
+layout engine and complete five-locale app-wide i18n port are still separate
+implementation subsystems.''',
+                  '''PR #187 exact head `a71ea7d3` adds the Desktop-owned Shell interaction controller,
+native WebView zoom/find behavior, command palette and Command Centre, the major
+OG global shell chords, a typed live runtime/gateway/task status bar, right-rail
+composition and shell accessibility/reduced-motion handling. Dioxus Rust
+validation run `31664757126` passed architecture, rustfmt, all-target compile,
+shared-UI WASM compile, workspace tests, Clippy and SBOM tooling for that exact
+head.
+
+PR #188 exact implementation head `0d72892f` completes the machine-verifiable
+Shell slice with a serializable pane/split/tab/floating layout model, persistent
+tool-pane composition, focus-aware shortcut routing and capture guard, typed
+window/single-instance lifecycle contracts, accessibility audit contracts and a
+five-locale Shell/static-label layer (`en`, `zh`, `zh-hant`, `ja`, `ar`) with RTL
+and persistence. Documentation validation, the Hermes Agent harness/native-client
+boundary, Rust validation, Windows packaging, install lifecycle and footprint all
+passed on that exact head. The Rust gate passed architecture, rustfmt, all-target
+and WASM compile, workspace tests, Clippy, SBOM tooling and optimized Windows
+artifact production. All `SH-01`…`SH-15` rows are therefore A4; A5 still requires
+the row-specific live, visual, keyboard and screen-reader evidence.''',
+              ),
+              (
+                  '| SH-02 | Main window lifecycle and native window actions | composition root window actions | main shell | A3 Ported | Dioxus Desktop window launches with typed drag/minimize/maximize/close actions. Packaged/single-instance/relaunch parity is not yet proven. | Compare startup, close, minimize/maximize/restore, taskbar presence and relaunch behavior with OG in packaged form. | ⬜ |',
+                  '| SH-02 | Main window lifecycle and native window actions | composition root window actions | main shell | A4 Auto-verified | Typed native window/lifecycle contracts cover drag, minimize, maximize/restore, close, relaunch, minimum sizing and startup phases; the Desktop single-instance lease and deterministic lifecycle tests pass with the exact-head optimized/package Windows gates. Duplicate instances currently exit rather than proving foreground transfer, and packaged human runtime comparison remains A5 evidence. | Compare startup, close, minimize/maximize/restore, taskbar presence and relaunch behavior with OG in packaged form. | ⬜ |',
+              ),
+              (
+                  '| SH-04 | Titlebar, drag regions and window controls | typed composition-root window actions | titlebar | A3 Ported | 34px OG-style custom titlebar and native actions exist; final packaged/window-state visual parity is pending. | Side-by-side OG comparison at normal/maximized states; test drag, double-click maximize, buttons and no accidental drag from controls. | ⬜ |',
+                  '| SH-04 | Titlebar, drag regions and window controls | typed composition-root window actions | titlebar | A4 Auto-verified | The custom titlebar uses typed native drag/window actions plus explicit minimum-size and lifecycle contracts with deterministic tests; exact-head optimized Windows, installer and portable gates validate production wiring. Side-by-side normal/maximized visual parity remains A5 evidence. | Side-by-side OG comparison at normal/maximized states; test drag, double-click maximize, buttons and no accidental drag from controls. | ⬜ |',
+              ),
+              (
+                  '| SH-06 | Pane tree, splits, tabs and floating panes | future `LayoutService` / core layout model | pane shell | A1 Designed | No production-equivalent pane tree/split/tab/floating-pane state model is complete. | Create, resize, reorder, close and restore every OG pane configuration; verify persistence and focus. | ⬜ |',
+                  '| SH-06 | Pane tree, splits, tabs and floating panes | Desktop `LayoutModel` | pane shell | A4 Auto-verified | PR #188 wires a serializable production Desktop layout model with horizontal/vertical splits, focused groups, tab add/activate/cycle/reorder/close, split resizing, floating/docking, bounded floating geometry, invariant validation and `hermes.desktop.layoutTree.v3` round-trip persistence. The user-facing layout controls and deterministic model/integration tests pass the exact-head Rust/Windows gates. | Create, resize, reorder, close and restore every OG pane configuration; verify persistence and focus. | ⬜ |',
+              ),
+              (
+                  '| SH-07 | Right rail and persistent tools | typed File/Terminal/Preview services + Desktop shell state | right rail | A3 Ported | PR #187 adds a desktop-owned right rail on the OG `Ctrl/Cmd+J` chord, Files/Terminal/Review switching and retained selected-tool state while hidden. The current rail launches the full typed tool routes rather than embedding every OG tool body/state, so complete composition parity remains. | Open/close/switch tools, hide/show rail, preserve tool state and compare layout with OG. | ⬜ |',
+                  '| SH-07 | Right rail and persistent tools | typed File/Terminal/Preview services + Desktop layout state | right rail / pane shell | A4 Auto-verified | PR #188 integrates Files, Terminal, Review and Preview as persistent layout pane kinds with retained selection, floating/docking state and typed route launching, while preserving the PR #187 right-rail toggle/state contract. Automated layout/UI contracts and exact-head gates pass; tool bodies remain route-backed rather than claiming complete embedded OG composition. | Open/close/switch tools, hide/show rail, preserve tool state and compare layout with OG. | ⬜ |',
+              ),
+              (
+                  '| SH-11 | Keyboard routing and keybindings | Desktop shell interaction controller + focus model | all interactive surfaces | A3 Ported | PR #187 ports the major OG shell chords for palette/Centre/settings/sidebar/right rail/status/review/terminal/find/zoom plus contextual find-next/previous and Escape handling. Complete composer/editor/terminal focus collisions, rebinding and the full OG shortcut inventory remain. | Run the OG keyboard shortcut inventory across chat, dialogs, editor, terminal and overlays; verify focus ownership and no collisions. | ⬜ |',
+                  '| SH-11 | Keyboard routing and keybindings | Desktop shell interaction controller + focus model | all interactive surfaces | A4 Auto-verified | PR #188 adds a typed focus-aware resolver and capture-phase DOM guard so editor, composer, terminal, dialog/overlay and pane contexts retain their owned chords; pane tab selection/cycling/close/new, split and floating shortcuts are deterministic-tested alongside the PR #187 global inventory. Full human shortcut-inventory comparison and any future configurable rebinding remain A5/product follow-up. | Run the OG keyboard shortcut inventory across chat, dialogs, editor, terminal and overlays; verify focus ownership and no collisions. | ⬜ |',
+              ),
+              (
+                  '| SH-14 | Accessibility and reduced motion | `hermes-ui` + Desktop shell | all surfaces | A3 Ported | PR #187 adds skip-to-workspace, `:focus-visible`, semantic dialog/listbox/tablist roles, accessible names, ARIA-live status and `prefers-reduced-motion` handling. Product-wide keyboard/screen-reader review remains incomplete. | Keyboard-only pass, focus visibility, accessible names, reduced-motion mode and representative screen-reader smoke test. | ⬜ |',
+                  '| SH-14 | Accessibility and reduced motion | `hermes-ui` + Desktop shell | all surfaces | A4 Auto-verified | PR #188 extends the existing semantic/focus-visible/reduced-motion work with focus save/restore, capture-safe keyboard ownership and automated audits for accessible control names, tab semantics, duplicate IDs and reduced-motion presence. Deterministic accessibility contracts and exact-head gates pass; product-wide keyboard and screen-reader review remains A5 evidence. | Keyboard-only pass, focus visibility, accessible names, reduced-motion mode and representative screen-reader smoke test. | ⬜ |',
+              ),
+              (
+                  '| SH-15 | i18n and locale persistence | `SettingsService` + locale context | all surfaces/settings | A1 Designed | OG locale resources remain oracle; Rust client is predominantly English. | Switch all supported locales, restart, inspect overflow/truncation and verify fallback behavior. | ⬜ |',
+                  '| SH-15 | i18n and locale persistence | Desktop shell locale context + `SettingsService` | shell/navigation/settings | A4 Auto-verified | PR #188 implements an auto-verified Shell/global static-label localization layer for `en`, `zh`, `zh-hant`, `ja` and `ar`, including alias normalization, `hermes.desktop.locale` persistence, document language/direction, Arabic RTL and DOM re-application across route renders for the known text/ARIA/title/placeholder catalogue. Complete non-empty catalogue tests pass; this does not claim every `hermes-ui` literal has been refactored, and visual overflow/fallback review remains A5 evidence. | Switch all supported locales, restart, inspect overflow/truncation and verify fallback behavior. | ⬜ |',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one match, found {count}: {old[:120]!r}')
+              text = text.replace(old, new)
+
+          capability_rows = [
+              line for line in text.splitlines()
+              if re.match(r'^\| [A-Z]{2}-\d+ \|', line)
+          ]
+          if len(capability_rows) != 127:
+              raise SystemExit(f'expected 127 capability rows, found {len(capability_rows)}')
+
+          expected = {
+              'A0 Audited': 1,
+              'A1 Designed': 35,
+              'A2 Service': 23,
+              'A3 Ported': 1,
+              'A4 Auto-verified': 66,
+              'A5 Human-ready': 0,
+              'A6 Human-validated': 0,
+              'BX Blocked': 1,
+          }
+          actual = {stage: 0 for stage in expected}
+          for row in capability_rows:
+              matched = False
+              for stage in actual:
+                  if f'| {stage} |' in row:
+                      actual[stage] += 1
+                      matched = True
+                      break
+              if not matched:
+                  raise SystemExit(f'unclassified capability row: {row}')
+          if actual != expected:
+              raise SystemExit(f'stage counts mismatch: {actual!r}')
+
+          shell_rows = [row for row in capability_rows if row.startswith('| SH-')]
+          if len(shell_rows) != 15 or any('| A4 Auto-verified |' not in row for row in shell_rows):
+              raise SystemExit('not every Shell row is A4 after promotion')
+
+          path.write_text(text, encoding='utf-8')
+
+      - name: Commit matrix ledger
+        shell: bash
+        run: |
+          if git diff --quiet -- docs/DIOXUS_MIGRATION_MATRIX.md; then
+            echo 'Matrix already promoted.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/DIOXUS_MIGRATION_MATRIX.md
+          git commit -m 'promote Shell migration rows to A4'
+          git push origin HEAD:agent/shell-all-a4
