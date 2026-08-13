@@ -13,6 +13,9 @@ use super::{
     Codicon, ErrorState, LoadingState, ProjectPicker, ProjectUiState, Route, SettingsUiState,
 };
 
+mod rich_content;
+use rich_content::RichContent;
+
 const TRANSCRIPT_WINDOW: usize = 80;
 const DRAFTS_SETTINGS_KEY: &str = "hermes.chat.drafts.v1";
 const NEW_CHAT_DRAFT_KEY: &str = "__new_chat__";
@@ -418,6 +421,7 @@ pub(super) fn Session(id: String) -> Element {
     let interrupt_service = services.sessions.clone();
     let queue_resume_service = services.sessions.clone();
     let events_service = services.sessions.clone();
+    let external_service = services.platform.clone();
     let session_id = id.clone();
     let history_stored_id = id.clone();
     let mut transcript = use_signal(|| None::<SessionTranscript>);
@@ -427,6 +431,12 @@ pub(super) fn Session(id: String) -> Element {
     let mut visible_limit = use_signal(|| TRANSCRIPT_WINDOW);
     let mut history_loading = use_signal(|| false);
     let mut history_error = use_signal(|| None::<String>);
+    let open_link = Callback::new(move |url: String| {
+        let service = external_service.clone();
+        spawn(async move {
+            let _ = service.open_external(&url).await;
+        });
+    });
     let _load = use_resource(move || {
         let load_service = load_service.clone();
         let session_id = session_id.clone();
@@ -889,7 +899,13 @@ pub(super) fn Session(id: String) -> Element {
                                             if let Some(reasoning) = message.metadata.get("reasoning").and_then(serde_json::Value::as_str) {
                                                 details { class: "reasoning", summary { "Thinking" } p { "{reasoning}" } }
                                             }
-                                            if !message.text.is_empty() { p { "{message.text}" } }
+                                            if !message.text.is_empty() {
+                                                if message.role == MessageRole::User {
+                                                    p { "{message.text}" }
+                                                } else {
+                                                    RichContent { text: message.text.clone(), on_open_link: open_link }
+                                                }
+                                            }
                                             if message.streaming { span { class: "stream-cursor", aria_label: "Hermes is responding" } }
                                         }
                                     }
