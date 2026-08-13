@@ -428,6 +428,10 @@ pub fn ShellHost(children: Element) -> Element {
     let status = shell_status();
     let (gateway_class, gateway_label) = gateway_status(status.gateway);
     let active_tasks = active_task_count(&status.tasks);
+    let active_task_label = match active_tasks {
+        1 => "1 task active".to_string(),
+        count => format!("{count} tasks active"),
+    };
 
     rsx! {
         style { dangerous_inner_html: SHELL_CSS }
@@ -542,7 +546,7 @@ pub fn ShellHost(children: Element) -> Element {
                 }
                 span { class: "status-spacer" }
                 if active_tasks > 0 {
-                    span { class: "tasks", title: "Active runtime tasks", "{active_tasks} task{if active_tasks == 1 { "" } else { "s" }} active" }
+                    span { class: "tasks", title: "Active runtime tasks", "{active_task_label}" }
                 }
                 span { "UTF-8" }
             }
