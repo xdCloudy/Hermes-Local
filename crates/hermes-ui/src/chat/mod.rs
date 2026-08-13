@@ -4,8 +4,8 @@ use super::{
     Codicon, ErrorState, LoadingState, ProjectPicker, ProjectUiState, Route, SettingsUiState,
 };
 
+mod chat_controls;
 mod legacy;
-mod runtime_controls;
 
 #[component]
 pub(super) fn ChatRuntimeProvider() -> Element {
@@ -16,7 +16,7 @@ pub(super) fn ChatRuntimeProvider() -> Element {
 pub(super) fn Chat() -> Element {
     rsx! {
         div { class: "chat-runtime-wrapper",
-            runtime_controls::RuntimeControls { session_id: None }
+            chat_controls::ChatControls { session: None }
             legacy::Chat {}
         }
     }
@@ -27,7 +27,7 @@ pub(super) fn Session(id: String) -> Element {
     let control_id = id.clone();
     rsx! {
         div { class: "chat-runtime-wrapper",
-            runtime_controls::RuntimeControls { session_id: Some(control_id) }
+            chat_controls::ChatControls { session: Some(control_id) }
             legacy::Session { id }
         }
     }
