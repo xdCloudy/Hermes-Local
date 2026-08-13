@@ -8,6 +8,12 @@ use hermes_protocol::{MessageRole, SessionCreateRequest};
 
 use super::{Codicon, ProjectPicker, ProjectUiState, Route};
 
+const TRANSCRIPT_WINDOW: usize = 80;
+
+fn visible_message_start(total: usize, requested: usize) -> usize {
+    total.saturating_sub(requested.max(1))
+}
+
 #[component]
 pub(super) fn Chat() -> Element {
     let services = use_context::<AppServices>();
@@ -105,14 +111,19 @@ pub(super) fn Chat() -> Element {
 pub(super) fn Session(id: String) -> Element {
     let services = use_context::<AppServices>();
     let load_service = services.sessions.clone();
+    let history_service = services.sessions.clone();
     let submit_service = services.sessions.clone();
     let interrupt_service = services.sessions.clone();
     let events_service = services.sessions.clone();
     let session_id = id.clone();
+    let history_stored_id = id.clone();
     let mut transcript = use_signal(|| None::<SessionTranscript>);
     let mut loading = use_signal(|| true);
     let mut load_error = use_signal(|| None::<String>);
     let mut events_ready = use_signal(|| false);
+    let mut visible_limit = use_signal(|| TRANSCRIPT_WINDOW);
+    let mut history_loading = use_signal(|| false);
+    let mut history_error = use_signal(|| None::<String>);
     let _load = use_resource(move || {
         let load_service = load_service.clone();
         let session_id = session_id.clone();
@@ -121,7 +132,9 @@ pub(super) fn Session(id: String) -> Element {
             match load_service.resume(&session_id).await {
                 Ok(response) => {
                     transcript.set(Some(SessionTranscript::load(session_id, response)));
+                    visible_limit.set(TRANSCRIPT_WINDOW);
                     load_error.set(None);
+                    history_error.set(None);
                     events_ready.set(true);
                 }
                 Err(error) => load_error.set(Some(error.to_string())),
@@ -145,6 +158,34 @@ pub(super) fn Session(id: String) -> Element {
                 }
             }
         }
+    });
+    let load_older = Callback::new(move |()| {
+        let Some(state) = transcript() else {
+            return;
+        };
+        if history_loading() {
+            return;
+        }
+        if !state.messages_omitted {
+            visible_limit.set(visible_limit().saturating_add(TRANSCRIPT_WINDOW));
+            return;
+        }
+        history_loading.set(true);
+        history_error.set(None);
+        let service = history_service.clone();
+        let stored_id = history_stored_id.clone();
+        spawn(async move {
+            match service.history(&stored_id).await {
+                Ok(messages) => {
+                    if let Some(state) = transcript.write().as_mut() {
+                        state.merge_history(messages);
+                    }
+                    visible_limit.set(visible_limit().saturating_add(TRANSCRIPT_WINDOW));
+                }
+                Err(error) => history_error.set(Some(error.to_string())),
+            }
+            history_loading.set(false);
+        });
     });
     let mut draft = use_signal(String::new);
     let mut send_error = use_signal(|| None::<String>);
@@ -207,20 +248,54 @@ pub(super) fn Session(id: String) -> Element {
                         if state.messages.is_empty() {
                             div { class: "conversation-empty", "Write a message below to continue this conversation." }
                         }
-                        for message in state.messages {
-                            if message.role == MessageRole::Tool {
-                                article { class: "tool-message",
-                                    div { class: "tool-message-head", Codicon { name: "tools" } strong { if let Some(name) = message.tool_name.as_deref() { "{name}" } else { "Tool" } } span { if message.streaming { "Running" } else { "Done" } } }
-                                    if !message.text.is_empty() { pre { "{message.text}" } }
-                                }
-                            } else {
-                                article { class: if message.role == MessageRole::User { "message user" } else { "message assistant" },
-                                    div { class: "message-role", if message.role == MessageRole::User { "You" } else { "Hermes" } }
-                                    if let Some(reasoning) = message.metadata.get("reasoning").and_then(serde_json::Value::as_str) {
-                                        details { class: "reasoning", summary { "Thinking" } p { "{reasoning}" } }
+                        {
+                            let total = state.messages.len();
+                            let start = visible_message_start(total, visible_limit());
+                            let has_local_earlier = start > 0;
+                            let has_server_earlier = state.messages_omitted;
+                            rsx! {
+                                if has_local_earlier || has_server_earlier {
+                                    div { class: "history-window-controls",
+                                        button {
+                                            class: "secondary-button",
+                                            disabled: history_loading(),
+                                            onclick: move |_| load_older.call(()),
+                                            if history_loading() {
+                                                "Loading earlier history…"
+                                            } else if has_server_earlier {
+                                                "Load earlier history"
+                                            } else {
+                                                "Show {TRANSCRIPT_WINDOW.min(start)} earlier messages"
+                                            }
+                                        }
+                                        small {
+                                            if state.message_count > total {
+                                                "Showing a bounded window from {total} loaded / {state.message_count} total messages"
+                                            } else {
+                                                "Rendering {total.saturating_sub(start)} of {total} loaded messages"
+                                            }
+                                        }
                                     }
-                                    if !message.text.is_empty() { p { "{message.text}" } }
-                                    if message.streaming { span { class: "stream-cursor", aria_label: "Hermes is responding" } }
+                                }
+                                if let Some(error) = history_error() {
+                                    p { class: "inline-error transcript-error", role: "alert", "{error}" }
+                                }
+                                for message in state.messages.into_iter().skip(start) {
+                                    if message.role == MessageRole::Tool {
+                                        article { class: "tool-message",
+                                            div { class: "tool-message-head", Codicon { name: "tools" } strong { if let Some(name) = message.tool_name.as_deref() { "{name}" } else { "Tool" } } span { if message.streaming { "Running" } else { "Done" } } }
+                                            if !message.text.is_empty() { pre { "{message.text}" } }
+                                        }
+                                    } else {
+                                        article { class: if message.role == MessageRole::User { "message user" } else { "message assistant" },
+                                            div { class: "message-role", if message.role == MessageRole::User { "You" } else { "Hermes" } }
+                                            if let Some(reasoning) = message.metadata.get("reasoning").and_then(serde_json::Value::as_str) {
+                                                details { class: "reasoning", summary { "Thinking" } p { "{reasoning}" } }
+                                            }
+                                            if !message.text.is_empty() { p { "{message.text}" } }
+                                            if message.streaming { span { class: "stream-cursor", aria_label: "Hermes is responding" } }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -269,5 +344,25 @@ pub(super) fn Session(id: String) -> Element {
                 if let Some(error) = send_error() { p { class: "inline-error composer-error", role: "alert", "{error}" } }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TRANSCRIPT_WINDOW, visible_message_start};
+
+    #[test]
+    fn transcript_window_stays_bounded_for_very_large_histories() {
+        let total = 100_000;
+        let start = visible_message_start(total, TRANSCRIPT_WINDOW);
+        assert_eq!(start, 99_920);
+        assert_eq!(total - start, TRANSCRIPT_WINDOW);
+    }
+
+    #[test]
+    fn transcript_window_expands_in_fixed_chunks_without_underflow() {
+        assert_eq!(visible_message_start(25, TRANSCRIPT_WINDOW), 0);
+        assert_eq!(visible_message_start(500, TRANSCRIPT_WINDOW * 2), 340);
+        assert_eq!(visible_message_start(0, TRANSCRIPT_WINDOW), 0);
     }
 }
