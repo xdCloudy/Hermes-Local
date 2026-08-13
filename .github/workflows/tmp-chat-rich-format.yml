@@ -1,0 +1,34 @@
+name: Temporary chat rich formatter
+
+on:
+  push:
+    branches:
+      - chat-rich-a4-clean-20260813
+    paths:
+      - .github/workflows/tmp-chat-rich-format.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chat-rich-a4-clean-20260813
+          fetch-depth: 0
+      - name: Format Rust workspace
+        shell: pwsh
+        run: cargo fmt --all
+      - name: Commit formatted source and remove temporary workflow
+        shell: pwsh
+        run: |
+          Remove-Item .github/workflows/tmp-chat-rich-format.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if (-not (git diff --cached --quiet)) {
+            git commit -m "style(chat): apply rustfmt to rich renderer"
+            git push origin HEAD:chat-rich-a4-clean-20260813
+          }
