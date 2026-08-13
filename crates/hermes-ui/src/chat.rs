@@ -281,6 +281,7 @@ pub(super) fn Session(id: String) -> Element {
     let load_service = services.sessions.clone();
     let history_service = services.sessions.clone();
     let submit_service = services.sessions.clone();
+    let directive_service = services.sessions.clone();
     let interrupt_service = services.sessions.clone();
     let queue_resume_service = services.sessions.clone();
     let events_service = services.sessions.clone();
@@ -385,6 +386,119 @@ pub(super) fn Session(id: String) -> Element {
             return;
         }
         let stored_id = before.stored_id.clone();
+
+        if text.starts_with('/') {
+            let runtime_id = before.runtime_id.clone();
+            let service = directive_service.clone();
+            let submit = submit_service.clone();
+            draft.set(String::new());
+            chat_runtime.drafts.write().clear(&stored_id);
+            mark_draft_changed(chat_runtime.draft_revision);
+            send_error.set(None);
+            spawn(async move {
+                let mut command = text.clone();
+                for _ in 0..4 {
+                    let result = match service.execute_directive(&runtime_id, &command).await {
+                        Ok(result) => result,
+                        Err(error) => {
+                            draft.set(text.clone());
+                            chat_runtime
+                                .drafts
+                                .write()
+                                .replace_without_history(&stored_id, text.clone());
+                            mark_draft_changed(chat_runtime.draft_revision);
+                            send_error.set(Some(error.to_string()));
+                            return;
+                        }
+                    };
+
+                    if let Some(notice) = result.notice.filter(|notice| !notice.trim().is_empty())
+                        && let Some(state) = transcript.write().as_mut()
+                    {
+                        state.push_system(notice);
+                    }
+
+                    match result.kind.as_str() {
+                        "alias" => {
+                            let Some(target) =
+                                result.target.filter(|target| !target.trim().is_empty())
+                            else {
+                                send_error
+                                    .set(Some("directive alias did not provide a target".into()));
+                                return;
+                            };
+                            let arg = command
+                                .split_once(char::is_whitespace)
+                                .map(|(_, arg)| arg.trim())
+                                .unwrap_or_default();
+                            command = if arg.is_empty() || target.chars().any(char::is_whitespace) {
+                                target
+                            } else {
+                                format!("{target} {arg}")
+                            };
+                        }
+                        "prefill" => {
+                            let value = result.message.unwrap_or_default();
+                            draft.set(value.clone());
+                            chat_runtime.drafts.write().edit(&stored_id, value);
+                            mark_draft_changed(chat_runtime.draft_revision);
+                            return;
+                        }
+                        "send" | "skill" => {
+                            let message = result.message.unwrap_or_default();
+                            if message.trim().is_empty() {
+                                send_error.set(Some("directive returned an empty message".into()));
+                                return;
+                            }
+                            if before.busy {
+                                chat_runtime.queue.write().enqueue(&stored_id, message);
+                                return;
+                            }
+                            let display = result
+                                .display
+                                .filter(|display| !display.trim().is_empty())
+                                .unwrap_or_else(|| message.clone());
+                            chat_runtime.queue.write().mark_busy(&stored_id, true);
+                            if let Some(state) = transcript.write().as_mut() {
+                                let optimistic_id =
+                                    format!("user-directive-{}", state.messages.len());
+                                state.push_user(optimistic_id, display);
+                            }
+                            if let Err(error) = submit.submit(&runtime_id, &message).await {
+                                chat_runtime.queue.write().mark_busy(&stored_id, false);
+                                draft.set(text.clone());
+                                chat_runtime
+                                    .drafts
+                                    .write()
+                                    .replace_without_history(&stored_id, text.clone());
+                                mark_draft_changed(chat_runtime.draft_revision);
+                                send_error.set(Some(error.to_string()));
+                            }
+                            return;
+                        }
+                        _ => {
+                            let output = result
+                                .output
+                                .or(result.message)
+                                .unwrap_or_else(|| "Command completed.".into());
+                            if let Some(state) = transcript.write().as_mut() {
+                                state.push_system(output);
+                            }
+                            return;
+                        }
+                    }
+                }
+                draft.set(text.clone());
+                chat_runtime
+                    .drafts
+                    .write()
+                    .replace_without_history(&stored_id, text);
+                mark_draft_changed(chat_runtime.draft_revision);
+                send_error.set(Some("directive alias depth exceeded".into()));
+            });
+            return;
+        }
+
         if before.busy {
             chat_runtime.queue.write().enqueue(&stored_id, text);
             draft.set(String::new());
@@ -529,8 +643,9 @@ pub(super) fn Session(id: String) -> Element {
                                             if !message.text.is_empty() { pre { "{message.text}" } }
                                         }
                                     } else {
-                                        article { class: if message.role == MessageRole::User { "message user" } else { "message assistant" },
-                                            div { class: "message-role", if message.role == MessageRole::User { "You" } else { "Hermes" } }
+                                        article {
+                                            class: if message.role == MessageRole::User { "message user" } else if message.role == MessageRole::System { "message system" } else { "message assistant" },
+                                            div { class: "message-role", if message.role == MessageRole::User { "You" } else if message.role == MessageRole::System { "System" } else { "Hermes" } }
                                             if let Some(reasoning) = message.metadata.get("reasoning").and_then(serde_json::Value::as_str) {
                                                 details { class: "reasoning", summary { "Thinking" } p { "{reasoning}" } }
                                             }
