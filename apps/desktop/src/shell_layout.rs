@@ -347,9 +347,7 @@ impl LayoutModel {
 
     pub fn split_focused(&mut self, axis: SplitAxis, kind: PaneKind) -> Option<String> {
         let target = self.focused_group.clone();
-        if self.root.find_group(&target).is_none() {
-            return None;
-        }
+        self.root.find_group(&target)?;
         let group_id = self.alloc("group");
         let pane_id = self.alloc("pane");
         let split_id = self.alloc("split");
