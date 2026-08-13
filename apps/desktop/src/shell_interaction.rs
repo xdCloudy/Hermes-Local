@@ -244,8 +244,25 @@ fn clamp_zoom_level(level: f64) -> f64 {
     }
 }
 
+fn zoom_factor(level: f64) -> f64 {
+    ZOOM_FACTOR_BASE.powf(clamp_zoom_level(level))
+}
+
+#[cfg(test)]
 fn zoom_percent(level: f64) -> i64 {
-    (ZOOM_FACTOR_BASE.powf(clamp_zoom_level(level)) * 100.0).round() as i64
+    (zoom_factor(level) * 100.0).round() as i64
+}
+
+fn persist_zoom_script(level: f64) -> String {
+    let level = clamp_zoom_level(level);
+    format!("localStorage.setItem('{ZOOM_STORAGE_KEY}', String({level}));")
+}
+
+fn read_zoom_script() -> String {
+    let default = default_zoom_level();
+    format!(
+        "const key='{ZOOM_STORAGE_KEY}',min={MIN_ZOOM_LEVEL},max={MAX_ZOOM_LEVEL},fallback={default}; let level=Number.parseFloat(localStorage.getItem(key)); if(!Number.isFinite(level)) level=fallback; return Math.min(max,Math.max(min,level));"
+    )
 }
 
 fn run_js(script: String) {
@@ -258,24 +275,6 @@ fn navigation_script(path: &str) -> String {
     let path = serde_json::to_string(path).expect("static route serializes");
     format!(
         "(() => {{ const path={path}; const link=[...document.querySelectorAll('a[href]')].find(a => a.getAttribute('href') === path); if (link) {{ link.click(); return; }} history.pushState(null,'',path); window.dispatchEvent(new PopStateEvent('popstate')); }})()"
-    )
-}
-
-fn zoom_script(delta: Option<f64>) -> String {
-    let default = default_zoom_level();
-    let update = delta.map_or_else(
-        || format!("level={default};"),
-        |value| format!("level+=({value});"),
-    );
-    format!(
-        "(() => {{ const key='{ZOOM_STORAGE_KEY}',base={ZOOM_FACTOR_BASE},min={MIN_ZOOM_LEVEL},max={MAX_ZOOM_LEVEL},fallback={default}; let level=Number.parseFloat(localStorage.getItem(key)); if(!Number.isFinite(level)) level=fallback; {update} level=Math.min(max,Math.max(min,level)); localStorage.setItem(key,String(level)); document.documentElement.style.zoom=String(Math.pow(base,level)); document.documentElement.dataset.hermesZoomPercent=String(Math.round(Math.pow(base,level)*100)); }})()"
-    )
-}
-
-fn restore_zoom_script() -> String {
-    let default = default_zoom_level();
-    format!(
-        "(() => {{ const key='{ZOOM_STORAGE_KEY}',base={ZOOM_FACTOR_BASE},min={MIN_ZOOM_LEVEL},max={MAX_ZOOM_LEVEL},fallback={default}; let level=Number.parseFloat(localStorage.getItem(key)); if(!Number.isFinite(level)) level=fallback; level=Math.min(max,Math.max(min,level)); document.documentElement.style.zoom=String(Math.pow(base,level)); document.documentElement.dataset.hermesZoomPercent=String(Math.round(Math.pow(base,level)*100)); }})()"
     )
 }
 
@@ -292,6 +291,7 @@ fn focus_workspace_script() -> String {
 
 #[component]
 pub fn ShellHost(children: Element) -> Element {
+    let desktop = dioxus::desktop::window();
     let mut overlay = use_signal(|| None::<Overlay>);
     let mut palette_query = use_signal(String::new);
     let mut selected = use_signal(|| 0_usize);
@@ -301,8 +301,32 @@ pub fn ShellHost(children: Element) -> Element {
     let mut active_tool = use_signal(|| ToolPane::Files);
     let mut find_open = use_signal(|| false);
     let mut find_query = use_signal(String::new);
+    let mut zoom_level = use_signal(default_zoom_level);
 
-    use_effect(move || run_js(restore_zoom_script()));
+    {
+        let desktop = desktop.clone();
+        use_effect(move || {
+            let desktop = desktop.clone();
+            spawn(async move {
+                let script = read_zoom_script();
+                let level = document::eval(&script)
+                    .join::<f64>()
+                    .await
+                    .map_or_else(|_| default_zoom_level(), clamp_zoom_level);
+                zoom_level.set(level);
+                desktop.set_zoom_level(zoom_factor(level));
+                run_js(persist_zoom_script(level));
+            });
+        });
+    }
+
+    let zoom_desktop = desktop.clone();
+    let apply_zoom = Callback::new(move |level: f64| {
+        let level = clamp_zoom_level(level);
+        zoom_level.set(level);
+        zoom_desktop.set_zoom_level(zoom_factor(level));
+        run_js(persist_zoom_script(level));
+    });
 
     let execute = Callback::new(move |action: CommandAction| {
         match action {
@@ -311,9 +335,9 @@ pub fn ShellHost(children: Element) -> Element {
             CommandAction::ToggleRightRail => right_rail_visible.toggle(),
             CommandAction::ToggleStatus => status_visible.toggle(),
             CommandAction::OpenFind => find_open.set(true),
-            CommandAction::ZoomIn => run_js(zoom_script(Some(ZOOM_STEP))),
-            CommandAction::ZoomOut => run_js(zoom_script(Some(-ZOOM_STEP))),
-            CommandAction::ZoomReset => run_js(zoom_script(None)),
+            CommandAction::ZoomIn => apply_zoom.call(zoom_level() + ZOOM_STEP),
+            CommandAction::ZoomOut => apply_zoom.call(zoom_level() - ZOOM_STEP),
+            CommandAction::ZoomReset => apply_zoom.call(default_zoom_level()),
         }
         overlay.set(None);
         palette_query.set(String::new());
@@ -392,13 +416,13 @@ pub fn ShellHost(children: Element) -> Element {
                     run_js(navigation_script("/terminal"));
                 } else if primary && key == "0" {
                     event.prevent_default();
-                    run_js(zoom_script(None));
+                    execute.call(CommandAction::ZoomReset);
                 } else if primary && matches!(key.as_str(), "+" | "=") {
                     event.prevent_default();
-                    run_js(zoom_script(Some(ZOOM_STEP)));
+                    execute.call(CommandAction::ZoomIn);
                 } else if primary && key == "-" {
                     event.prevent_default();
-                    run_js(zoom_script(Some(-ZOOM_STEP)));
+                    execute.call(CommandAction::ZoomOut);
                 }
             },
             button {
@@ -562,6 +586,7 @@ mod tests {
     fn zoom_contract_matches_the_og_scale() {
         assert_eq!(zoom_percent(default_zoom_level()), 90);
         assert_eq!(zoom_percent(f64::NAN), 90);
+        assert!((zoom_factor(default_zoom_level()) - 0.9).abs() < f64::EPSILON * 8.0);
         assert_eq!(clamp_zoom_level(-100.0), MIN_ZOOM_LEVEL);
         assert_eq!(clamp_zoom_level(100.0), MAX_ZOOM_LEVEL);
         assert!(zoom_percent(MAX_ZOOM_LEVEL) > zoom_percent(MIN_ZOOM_LEVEL));
