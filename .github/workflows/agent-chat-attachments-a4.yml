@@ -1,52 +1,28 @@
-name: Agent CH-11 attachment transform
+name: Agent CH-11 source export
 
 on:
   push:
     branches:
       - agent/chat-attachments-a4
     paths:
-      - agent-patches/chat-attachments-*.py
       - .github/workflows/agent-chat-attachments-a4.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply:
-    if: github.actor != 'github-actions[bot]'
-    runs-on: windows-2025
+  export:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Apply typed attachment migration
-        shell: pwsh
-        run: |
-          function Invoke-Patch([string]$Path) {
-            python $Path
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-          Invoke-Patch 'agent-patches/chat-attachments-core.py'
-          Invoke-Patch 'agent-patches/chat-attachments-desktop-selection.py'
-          Invoke-Patch 'agent-patches/chat-attachments-local-rpc.py'
-          Invoke-Patch 'agent-patches/chat-attachments-new-chat.py'
-          Invoke-Patch 'agent-patches/chat-attachments-session.py'
-          Invoke-Patch 'agent-patches/chat-attachments-css.py'
-      - name: Format Rust
-        run: cargo fmt --all
-      - name: Check workspace
-        run: cargo check --workspace --all-targets --locked
-      - name: Check shared UI for WebAssembly
-        run: cargo check -p hermes-ui --target wasm32-unknown-unknown --locked
-      - name: Run deterministic Rust tests
-        run: cargo test --workspace --locked
-      - name: Verify patch whitespace
-        shell: pwsh
-        run: git diff --check
-      - name: Commit transformed sources
-        shell: pwsh
-        run: |
-          git rm agent-patches/chat-attachments-core.py agent-patches/chat-attachments-desktop-selection.py agent-patches/chat-attachments-local-rpc.py agent-patches/chat-attachments-new-chat.py agent-patches/chat-attachments-session.py agent-patches/chat-attachments-css.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/hermes-protocol/src/lib.rs crates/hermes-core/src/lib.rs crates/hermes-desktop/src/lib.rs crates/hermes-ui/src/chat.rs crates/hermes-ui/assets/app.css
-          git commit -m "feat: port native chat attachments to Rust"
-          git push
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ch11-generated-sources
+          path: |
+            crates/hermes-core/src/lib.rs
+            crates/hermes-desktop/src/lib.rs
+            crates/hermes-protocol/src/lib.rs
+            crates/hermes-ui/src/chat.rs
+            crates/hermes-ui/assets/app.css
+          if-no-files-found: error
+          retention-days: 1
