@@ -384,7 +384,10 @@ fn platform(error: impl std::fmt::Display) -> ServiceError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{thread, time::{Duration, Instant}};
+    use std::{
+        thread,
+        time::{Duration, Instant},
+    };
 
     fn config() -> SshConfig {
         SshConfig::new(
