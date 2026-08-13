@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `2413ce42f24a6cf9cfa0ff6edb93dede40636639` (2026-08-12)
+> **Implementation audit checkpoint:** `a71ea7d33c5155b24d6f57151ba229ff56ac34ff` (2026-08-13)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -53,16 +53,16 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 43 | Largest remaining implementation backlog. |
+| A1 Designed | 37 | Largest remaining implementation backlog. |
 | A2 Service | 23 | Native/core foundations exist; UI/parity work remains. |
-| A3 Ported | 4 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 55 | Automated slice is green; human/live acceptance still required. |
+| A3 Ported | 6 | User-facing implementation exists; more evidence required. |
+| A4 Auto-verified | 59 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 1 | Named external validation blocker. |
 | **Total** | **127** | Every row must end at A6 or be explicitly retired with product-owner approval. |
 
-At least-service coverage is **82/127 capabilities (64.6%)**. This is service-foundation coverage, not end-user parity or human acceptance.
+At least-service coverage is **88/127 capabilities (69.3%)**. This is service-foundation coverage, not end-user parity or human acceptance.
 
 The PR #179 exact-head validation set was green for Documentation
 validation, the Hermes Agent harness/native-client boundary workflow, Dioxus
@@ -75,6 +75,16 @@ also exercises silent install/uninstall, package identity and data-preserving
 repair. DI-07 remains A2 because its OS global-hotkey, secondary-window lifecycle and
 submission surface are not wired. AG-01 is now A4 after PR #185 wired the typed
 Dioxus Skills/Hub surface and passed its applicable exact-head release gates.
+
+PR #187 exact head `a71ea7d3` adds the Desktop-owned Shell interaction controller,
+native WebView zoom/find behavior, command palette and Command Centre, the major
+OG global shell chords, a typed live runtime/gateway/task status bar, right-rail
+composition and shell accessibility/reduced-motion handling. Dioxus Rust
+validation run `31664757126` passed architecture, rustfmt, all-target compile,
+shared-UI WASM compile, workspace tests, Clippy and SBOM tooling for that exact
+head. SH-06 and SH-15 remain deliberately below A4 because the production pane
+layout engine and complete five-locale app-wide i18n port are still separate
+implementation subsystems.
 
 ## Roadmap waves
 
@@ -154,14 +164,14 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | SH-04 | Titlebar, drag regions and window controls | typed composition-root window actions | titlebar | A3 Ported | 34px OG-style custom titlebar and native actions exist; final packaged/window-state visual parity is pending. | Side-by-side OG comparison at normal/maximized states; test drag, double-click maximize, buttons and no accidental drag from controls. | ⬜ |
 | SH-05 | Sidebar, session navigation and row actions | `SessionService` | sidebar | A4 Auto-verified | Persisted-session list, search, pin/recent sections, active state, rename/archive/delete, optimistic rollback and lineage-root pinning are implemented with deterministic coverage. | Exercise search, pin/unpin, rename, archive, delete/cancel and active/running states on real sessions; compare geometry and hover/context behavior to OG. | ⬜ |
 | SH-06 | Pane tree, splits, tabs and floating panes | future `LayoutService` / core layout model | pane shell | A1 Designed | No production-equivalent pane tree/split/tab/floating-pane state model is complete. | Create, resize, reorder, close and restore every OG pane configuration; verify persistence and focus. | ⬜ |
-| SH-07 | Right rail and persistent tools | typed File/Terminal/Preview services | right rail | A1 Designed | Native service foundations exist for some tools, but right-rail composition and retained-state behavior are not ported. | Open/close/switch tools, hide/show rail, preserve tool state and compare layout with OG. | ⬜ |
-| SH-08 | Status bar and model/gateway state | runtime/session/connection read models | status bar | A3 Ported | OG-style status bar exists with connection state; full runtime/model/task parity remains incomplete. | Verify every status indicator under connected, connecting, offline, model-switching and task-active states. | ⬜ |
+| SH-07 | Right rail and persistent tools | typed File/Terminal/Preview services + Desktop shell state | right rail | A3 Ported | PR #187 adds a desktop-owned right rail on the OG `Ctrl/Cmd+J` chord, Files/Terminal/Review switching and retained selected-tool state while hidden. The current rail launches the full typed tool routes rather than embedding every OG tool body/state, so complete composition parity remains. | Open/close/switch tools, hide/show rail, preserve tool state and compare layout with OG. | ⬜ |
+| SH-08 | Status bar and model/gateway state | runtime/session/connection read models | status bar | A4 Auto-verified | PR #187 polls typed connection/runtime/task read models and renders gateway state, runtime phase, active model/provider and active task count; deterministic connection/task-state coverage plus the exact-head Rust/Dioxus gates pass. | Verify every status indicator under connected, connecting, offline, model-switching and task-active states. | ⬜ |
 | SH-09 | Dark, light, system themes and skin persistence | `SettingsService` + typed window actions | theme provider/settings | A4 Auto-verified | Appearance settings apply immediately, persist atomically and roll back on failure; shared CSS compiles for Desktop and WASM. | Review dark/light/system side-by-side with OG, restart in each mode and test live OS theme changes. | ⬜ |
-| SH-10 | Zoom and find-in-page | future `WindowService` | settings/find bar | A1 Designed | Not ported. | Test zoom bounds/reset/persistence and find-next/previous/close on long pages. | ⬜ |
-| SH-11 | Keyboard routing and keybindings | future `ShortcutService` + focus model | all interactive surfaces | A1 Designed | Not ported as a complete collision/focus system. | Run the OG keyboard shortcut inventory across chat, dialogs, editor, terminal and overlays; verify focus ownership and no collisions. | ⬜ |
-| SH-12 | Command palette | typed command registry | palette | A1 Designed | Not ported. | Open by keyboard, search/rank commands, invoke representative commands and verify disabled/contextual states. | ⬜ |
-| SH-13 | Command Centre | typed command registry | overlay | A1 Designed | Not ported. | Review sections, actions, keyboard navigation and visual parity against OG. | ⬜ |
-| SH-14 | Accessibility and reduced motion | `hermes-ui` | all surfaces | A1 Designed | Some semantic labels/reduced-motion CSS exist, but product-wide accessibility review is incomplete. | Keyboard-only pass, focus visibility, accessible names, reduced-motion mode and representative screen-reader smoke test. | ⬜ |
+| SH-10 | Zoom and find-in-page | Desktop shell/WebView authority | settings/find bar | A4 Auto-verified | PR #187 ports the OG 90% baseline, `1.2^level` scale, `[-9,9]` bounds, 0.1 step and `hermes:desktop:zoomLevel` persistence using native Dioxus/WebView zoom. Find-in-page supports live search, next/previous and Escape close; zoom invariants are deterministic-tested and exact-head gates pass. | Test zoom bounds/reset/persistence and find-next/previous/close on long pages. | ⬜ |
+| SH-11 | Keyboard routing and keybindings | Desktop shell interaction controller + focus model | all interactive surfaces | A3 Ported | PR #187 ports the major OG shell chords for palette/Centre/settings/sidebar/right rail/status/review/terminal/find/zoom plus contextual find-next/previous and Escape handling. Complete composer/editor/terminal focus collisions, rebinding and the full OG shortcut inventory remain. | Run the OG keyboard shortcut inventory across chat, dialogs, editor, terminal and overlays; verify focus ownership and no collisions. | ⬜ |
+| SH-12 | Command palette | typed command registry | palette | A4 Auto-verified | PR #187 implements the typed shell command registry, `Ctrl/Cmd+K/P` opening, label/id/category search, arrow selection and Enter invocation with deterministic registry/search coverage; exact-head Rust/Dioxus gates pass. | Open by keyboard, search/rank commands, invoke representative commands and verify disabled/contextual states. | ⬜ |
+| SH-13 | Command Centre | typed command registry | overlay | A4 Auto-verified | PR #187 implements `Ctrl/Cmd+.` Command Centre on the same typed registry with grouped Navigation/View actions and native keyboard-focusable controls; exact-head Rust/Dioxus gates pass. | Review sections, actions, keyboard navigation and visual parity against OG. | ⬜ |
+| SH-14 | Accessibility and reduced motion | `hermes-ui` + Desktop shell | all surfaces | A3 Ported | PR #187 adds skip-to-workspace, `:focus-visible`, semantic dialog/listbox/tablist roles, accessible names, ARIA-live status and `prefers-reduced-motion` handling. Product-wide keyboard/screen-reader review remains incomplete. | Keyboard-only pass, focus visibility, accessible names, reduced-motion mode and representative screen-reader smoke test. | ⬜ |
 | SH-15 | i18n and locale persistence | `SettingsService` + locale context | all surfaces/settings | A1 Designed | OG locale resources remain oracle; Rust client is predominantly English. | Switch all supported locales, restart, inspect overflow/truncation and verify fallback behavior. | ⬜ |
 
 ### Chat, sessions and rich content

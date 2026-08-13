@@ -25,6 +25,7 @@ mod preview_normalization;
 mod preview_service;
 mod preview_watcher;
 mod quick_entry;
+mod shell_interaction;
 mod skills_service;
 mod ssh;
 mod ssh_config;
@@ -81,7 +82,11 @@ fn desktop_root() -> Element {
                 }
             }
         },
-        Some(Ok(())) => rsx! { hermes_ui::App {} },
+        Some(Ok(())) => rsx! {
+            shell_interaction::ShellHost {
+                hermes_ui::App {}
+            }
+        },
         Some(Err(error)) => rsx! {
             div {
                 style: "height:100vh;display:grid;place-items:center;background:rgb(9 11 16);color:rgb(229 231 235);font:13px system-ui,sans-serif;padding:32px;box-sizing:border-box;",
