@@ -3,8 +3,11 @@
 
 use dioxus::prelude::*;
 use futures_util::StreamExt;
-use hermes_core::{AppServices, ComposerDraftStore, PromptQueueCoordinator, SessionTranscript};
-use hermes_protocol::{MessageRole, SessionCreateRequest};
+use hermes_core::{
+    AppServices, ComposerDraftStore, PromptQueueCoordinator, ServiceResult, SessionService,
+    SessionTranscript, attachment_context_text,
+};
+use hermes_protocol::{AttachmentKind, MessageRole, SelectedAttachment, SessionCreateRequest};
 
 use super::{
     Codicon, ErrorState, LoadingState, ProjectPicker, ProjectUiState, Route, SettingsUiState,
@@ -21,6 +24,77 @@ fn mark_draft_changed(mut revision: Signal<u64>) {
 
 fn visible_message_start(total: usize, requested: usize) -> usize {
     total.saturating_sub(requested.max(1))
+}
+
+fn attachment_size_label(bytes: u64) -> String {
+    if bytes >= 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else if bytes >= 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
+async fn prepare_prompt_attachments(
+    service: &dyn SessionService,
+    runtime_id: &str,
+    visible_text: &str,
+    attachments: &[SelectedAttachment],
+) -> ServiceResult<(String, Vec<SelectedAttachment>)> {
+    let mut results = Vec::with_capacity(attachments.len());
+    let mut staged = Vec::with_capacity(attachments.len());
+    for attachment in attachments {
+        let result = service.attach(runtime_id, attachment).await?;
+        let mut next = attachment.clone();
+        next.attached_session_id = Some(runtime_id.to_owned());
+        next.ref_text.clone_from(&result.ref_text);
+        next.staged_path.clone_from(&result.path);
+        results.push(result);
+        staged.push(next);
+    }
+    Ok((attachment_context_text(visible_text, &results), staged))
+}
+
+#[component]
+fn AttachmentTray(
+    attachments: Signal<Vec<SelectedAttachment>>,
+    on_remove: Callback<SelectedAttachment>,
+) -> Element {
+    let items = attachments();
+    rsx! {
+        if !items.is_empty() {
+            div { class: "composer-attachments", aria_label: "Attachments",
+                for attachment in items {
+                    {
+                        let remove = attachment.clone();
+                        let size = attachment_size_label(attachment.size);
+                        let icon = if attachment.kind == AttachmentKind::Image { "file-media" } else { "file" };
+                        rsx! {
+                            div { class: "composer-attachment-chip", key: "{attachment.id}",
+                                if let Some(preview) = attachment.preview_data_url.as_deref() {
+                                    img { class: "composer-attachment-preview", src: "{preview}", alt: "{attachment.label}" }
+                                } else {
+                                    span { class: "composer-attachment-icon", Codicon { name: icon } }
+                                }
+                                span { class: "composer-attachment-copy",
+                                    strong { "{attachment.label}" }
+                                    small { "{size}" }
+                                }
+                                button {
+                                    class: "composer-attachment-remove",
+                                    title: "Remove attachment",
+                                    aria_label: "Remove {attachment.label}",
+                                    onclick: move |_| on_remove.call(remove.clone()),
+                                    Codicon { name: "close" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -44,7 +118,7 @@ pub(super) fn ChatRuntimeProvider() -> Element {
     let mut queue = use_signal(PromptQueueCoordinator::default);
     let mut drafts = use_signal(ComposerDraftStore::default);
     let mut drafts_hydrated = use_signal(|| false);
-    let mut draft_revision = use_signal(|| 0_u64);
+    let draft_revision = use_signal(|| 0_u64);
     let mut draft_saved_revision = use_signal(|| 0_u64);
     use_context_provider(|| ChatRuntimeState {
         queue,
@@ -150,6 +224,8 @@ pub(super) fn Chat() -> Element {
     let navigator = use_navigator();
     let mut prompt = use_signal(String::new);
     let mut prompt_bound = use_signal(|| false);
+    let mut attachments = use_signal(Vec::<SelectedAttachment>::new);
+    let attachment_picker = services.platform.clone();
     let _restore_prompt = use_resource(move || {
         let hydrated = (chat_runtime.drafts_hydrated)();
         async move {
@@ -161,10 +237,24 @@ pub(super) fn Chat() -> Element {
     });
     let mut submitting = use_signal(|| false);
     let mut submit_error = use_signal(|| None::<String>);
+    let remove_attachment = Callback::new(move |attachment: SelectedAttachment| {
+        attachments.write().retain(|item| item.id != attachment.id);
+    });
+    let pick_attachments = Callback::new(move |()| {
+        let service = attachment_picker.clone();
+        submit_error.set(None);
+        spawn(async move {
+            match service.pick_attachments("Attach files", None, false).await {
+                Ok(selected) => attachments.write().extend(selected),
+                Err(error) => submit_error.set(Some(error.to_string())),
+            }
+        });
+    });
     let send = Callback::new(move |()| {
         let service = create_service.clone();
         let text = prompt().trim().to_owned();
-        if text.is_empty() || submitting() {
+        let pending_attachments = attachments();
+        if (text.is_empty() && pending_attachments.is_empty()) || submitting() {
             return;
         }
         submitting.set(true);
@@ -187,9 +277,15 @@ pub(super) fn Chat() -> Element {
                         ..SessionCreateRequest::default()
                     })
                     .await?;
-                service
-                    .submit(session.runtime_id.as_deref().unwrap_or(&session.id), &text)
-                    .await?;
+                let runtime_id = session.runtime_id.as_deref().unwrap_or(&session.id);
+                let (model_text, _) = prepare_prompt_attachments(
+                    service.as_ref(),
+                    runtime_id,
+                    &text,
+                    &pending_attachments,
+                )
+                .await?;
+                service.submit(runtime_id, &model_text).await?;
                 Ok::<_, hermes_core::ServiceError>(session.id)
             }
             .await;
@@ -197,6 +293,7 @@ pub(super) fn Chat() -> Element {
             match result {
                 Ok(id) => {
                     prompt.set(String::new());
+                    attachments.set(Vec::new());
                     chat_runtime.drafts.write().clear(NEW_CHAT_DRAFT_KEY);
                     mark_draft_changed(chat_runtime.draft_revision);
                     navigator.push(Route::Session { id });
@@ -215,7 +312,11 @@ pub(super) fn Chat() -> Element {
             div { class: "chat-composer-dock",
                 ProjectPicker {}
                 div { class: "composer-card",
-                    button { class: "composer-tool", title: "Attach", aria_label: "Attach", Codicon { name: "add" } }
+                    button {
+                        class: "composer-tool", title: "Attach files", aria_label: "Attach files",
+                        onclick: move |_| pick_attachments.call(()), Codicon { name: "add" }
+                    }
+                    AttachmentTray { attachments, on_remove: remove_attachment }
                     textarea {
                         aria_label: "Start a conversation",
                         placeholder: "What are we building?",
@@ -262,7 +363,7 @@ pub(super) fn Chat() -> Element {
                         button {
                             class: "send-button",
                             aria_label: "Send message",
-                            disabled: submitting() || prompt().trim().is_empty(),
+                            disabled: submitting() || (prompt().trim().is_empty() && attachments().is_empty()),
                             onclick: move |_| send.call(()),
                             if submitting() { "…" } else { "↑" }
                         }
@@ -365,6 +466,8 @@ pub(super) fn Session(id: String) -> Element {
     });
     let mut draft = use_signal(String::new);
     let mut draft_bound = use_signal(|| false);
+    let mut attachments = use_signal(Vec::<SelectedAttachment>::new);
+    let attachment_picker = services.platform.clone();
     let restore_draft_id = id.clone();
     let _restore_draft = use_resource(move || {
         let hydrated = (chat_runtime.drafts_hydrated)();
@@ -377,15 +480,36 @@ pub(super) fn Session(id: String) -> Element {
         }
     });
     let mut send_error = use_signal(|| None::<String>);
+    let remove_attachment = Callback::new(move |attachment: SelectedAttachment| {
+        attachments.write().retain(|item| item.id != attachment.id);
+    });
+    let pick_attachments = Callback::new(move |()| {
+        let service = attachment_picker.clone();
+        send_error.set(None);
+        spawn(async move {
+            match service.pick_attachments("Attach files", None, false).await {
+                Ok(selected) => attachments.write().extend(selected),
+                Err(error) => send_error.set(Some(error.to_string())),
+            }
+        });
+    });
     let send = Callback::new(move |()| {
         let text = draft().trim().to_owned();
+        let pending_attachments = attachments();
         let Some(before) = transcript() else {
             return;
         };
-        if text.is_empty() {
+        if text.is_empty() && pending_attachments.is_empty() {
             return;
         }
         let stored_id = before.stored_id.clone();
+        if text.starts_with('/') && !pending_attachments.is_empty() {
+            send_error.set(Some(
+                "Send attachments with a normal prompt; slash directives do not accept files."
+                    .into(),
+            ));
+            return;
+        }
 
         if text.starts_with('/') {
             let runtime_id = before.runtime_id.clone();
@@ -500,6 +624,12 @@ pub(super) fn Session(id: String) -> Element {
         }
 
         if before.busy {
+            if !pending_attachments.is_empty() {
+                send_error.set(Some(
+                    "Wait for the current turn to finish before sending attachments.".into(),
+                ));
+                return;
+            }
             chat_runtime.queue.write().enqueue(&stored_id, text);
             draft.set(String::new());
             chat_runtime.drafts.write().clear(&stored_id);
@@ -509,20 +639,44 @@ pub(super) fn Session(id: String) -> Element {
         }
         let runtime_id = before.runtime_id.clone();
         let optimistic_id = format!("user-local-{}", before.messages.len());
+        let display_text = if text.is_empty() {
+            pending_attachments
+                .iter()
+                .map(|attachment| attachment.label.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        } else {
+            text.clone()
+        };
         chat_runtime.queue.write().mark_busy(&stored_id, true);
         if let Some(state) = transcript.write().as_mut() {
-            state.push_user(optimistic_id, text.clone());
+            state.push_user(optimistic_id, display_text);
         }
         draft.set(String::new());
+        attachments.set(Vec::new());
         chat_runtime.drafts.write().clear(&stored_id);
         mark_draft_changed(chat_runtime.draft_revision);
         send_error.set(None);
         let service = submit_service.clone();
         spawn(async move {
-            if let Err(error) = service.submit(&runtime_id, &text).await {
+            let prepared = prepare_prompt_attachments(
+                service.as_ref(),
+                &runtime_id,
+                &text,
+                &pending_attachments,
+            )
+            .await;
+            let (result, restore_attachments) = match prepared {
+                Ok((model_text, staged)) => {
+                    (service.submit(&runtime_id, &model_text).await, staged)
+                }
+                Err(error) => (Err(error), pending_attachments.clone()),
+            };
+            if let Err(error) = result {
                 chat_runtime.queue.write().mark_busy(&stored_id, false);
                 transcript.set(Some(before));
                 draft.set(text.clone());
+                attachments.set(restore_attachments);
                 chat_runtime
                     .drafts
                     .write()
@@ -571,6 +725,9 @@ pub(super) fn Session(id: String) -> Element {
     let composer_interrupt = interrupt_service;
     let header_queue_id = id.clone();
     let composer_queue_id = id.clone();
+    let input_draft_id = id.clone();
+    let undo_draft_id = id.clone();
+    let redo_draft_id = id.clone();
     rsx! {
         section { class: "conversation-surface",
             header { class: "conversation-header",
@@ -690,7 +847,11 @@ pub(super) fn Session(id: String) -> Element {
                     p { class: "inline-error composer-error", role: "alert", "Queued prompt failed: {error}" }
                 }
                 div { class: "composer-card",
-                    button { class: "composer-tool", title: "Attach", aria_label: "Attach", Codicon { name: "add" } }
+                    button {
+                        class: "composer-tool", title: "Attach files", aria_label: "Attach files",
+                        onclick: move |_| pick_attachments.call(()), Codicon { name: "add" }
+                    }
+                    AttachmentTray { attachments, on_remove: remove_attachment }
                     textarea {
                         aria_label: "Message Hermes",
                         placeholder: if busy { "Type and press Enter to queue another prompt…" } else { "What are we building?" },
@@ -700,7 +861,7 @@ pub(super) fn Session(id: String) -> Element {
                         oninput: move |event| {
                             let value = event.value();
                             draft.set(value.clone());
-                            chat_runtime.drafts.write().edit(&id, value);
+                            chat_runtime.drafts.write().edit(&input_draft_id, value);
                             mark_draft_changed(chat_runtime.draft_revision);
                         },
                         onkeydown: move |event| {
@@ -714,7 +875,7 @@ pub(super) fn Session(id: String) -> Element {
                         button {
                             class: "composer-tool", title: "Undo", aria_label: "Undo draft",
                             onclick: move |_| {
-                                let restored = chat_runtime.drafts.write().undo(&id);
+                                let restored = chat_runtime.drafts.write().undo(&undo_draft_id);
                                 if let Some(value) = restored {
                                     draft.set(value);
                                     mark_draft_changed(chat_runtime.draft_revision);
@@ -725,7 +886,7 @@ pub(super) fn Session(id: String) -> Element {
                         button {
                             class: "composer-tool", title: "Redo", aria_label: "Redo draft",
                             onclick: move |_| {
-                                let restored = chat_runtime.drafts.write().redo(&id);
+                                let restored = chat_runtime.drafts.write().redo(&redo_draft_id);
                                 if let Some(value) = restored {
                                     draft.set(value);
                                     mark_draft_changed(chat_runtime.draft_revision);
@@ -745,7 +906,7 @@ pub(super) fn Session(id: String) -> Element {
                         button {
                             class: if busy { "send-button stop" } else { "send-button" },
                             aria_label: if busy { "Stop response" } else { "Send message" },
-                            disabled: !busy && draft().trim().is_empty(),
+                            disabled: !busy && draft().trim().is_empty() && attachments().is_empty(),
                             onclick: move |_| {
                                 if busy {
                                     let service = composer_interrupt.clone();

@@ -13,16 +13,17 @@ use std::{
 
 use futures_core::Stream;
 use hermes_protocol::{
-    AgentConfigSnapshot, AppSettings, ChatMessage, ConnectionConfig, ConnectionConfigInput,
-    ConnectionOauthLoginResult, ConnectionOauthLogoutResult, ConnectionProbeResult,
-    ConnectionState, ConnectionTestResult, CustomEndpointUpdate, CustomEndpointValidation,
-    CustomEndpointsResponse, EnvVarInfo, FileEntry, GatewayEvent, GitStatus, MessageRole,
-    MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse, ModelSettingsSnapshot, OAuthPoll,
-    OAuthProvider, OAuthStart, OAuthSubmit, ProjectFilesDeleteResult, ProjectSummary,
-    ProjectsSnapshot, ProviderActivation, RuntimeStatus, SessionCreateRequest,
-    SessionDirectiveResult, SessionResumeResponse, SessionSummary, SkillActionStart,
-    SkillActionStatus, SkillHubPreview, SkillHubScanResult, SkillHubSearchResponse,
-    SkillHubSourcesResponse, SkillSummary, SkillToggleResult, TaskSummary, TrustSnapshot,
+    AgentConfigSnapshot, AppSettings, AttachmentKind, ChatMessage, ConnectionConfig,
+    ConnectionConfigInput, ConnectionOauthLoginResult, ConnectionOauthLogoutResult,
+    ConnectionProbeResult, ConnectionState, ConnectionTestResult, CustomEndpointUpdate,
+    CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry, GatewayEvent,
+    GitStatus, MessageRole, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse,
+    ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit,
+    ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation, RuntimeStatus,
+    SelectedAttachment, SessionAttachmentResult, SessionCreateRequest, SessionDirectiveResult,
+    SessionResumeResponse, SessionSummary, SkillActionStart, SkillActionStatus, SkillHubPreview,
+    SkillHubScanResult, SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary,
+    SkillToggleResult, TaskSummary, TrustSnapshot,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -74,6 +75,24 @@ pub trait SessionService: Send + Sync {
         Box::pin(async move {
             Err(ServiceError::Unavailable(
                 "session directives are unavailable on this host".into(),
+            ))
+        })
+    }
+    fn attach(
+        &self,
+        _session_id: &str,
+        _attachment: &SelectedAttachment,
+    ) -> ServiceFuture<'_, SessionAttachmentResult> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "session attachments are unavailable on this host".into(),
+            ))
+        })
+    }
+    fn detach_image(&self, _session_id: &str, _path: &str) -> ServiceFuture<'_, ()> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "image detach is unavailable on this host".into(),
             ))
         })
     }
@@ -394,6 +413,31 @@ impl SessionTranscript {
             ..ChatMessage::default()
         });
     }
+}
+
+pub fn attachment_context_text(
+    visible_text: &str,
+    attachments: &[SessionAttachmentResult],
+) -> String {
+    let mut parts = attachments
+        .iter()
+        .filter_map(|attachment| attachment.ref_text.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    let visible_text = visible_text.trim();
+    if !visible_text.is_empty() {
+        parts.push(visible_text.to_owned());
+    }
+    if parts.is_empty()
+        && attachments
+            .iter()
+            .any(|attachment| attachment.kind == AttachmentKind::Image && attachment.attached)
+    {
+        return "What do you see in this image?".into();
+    }
+    parts.join("\n\n")
 }
 
 const COMPOSER_UNDO_LIMIT: usize = 64;
@@ -1407,6 +1451,18 @@ pub trait UpdateService: Send + Sync {
 }
 
 pub trait PlatformService: Send + Sync {
+    fn pick_attachments(
+        &self,
+        _title: &str,
+        _starting_directory: Option<&Path>,
+        _images_only: bool,
+    ) -> ServiceFuture<'_, Vec<SelectedAttachment>> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "native attachment selection is unavailable on this host".into(),
+            ))
+        })
+    }
     fn pick_folder(
         &self,
         title: &str,
@@ -1598,5 +1654,37 @@ mod tests {
         assert_eq!(state.messages[0].role, MessageRole::User);
         assert_eq!(state.messages[1].text, "partial answer");
         assert!(state.messages[1].streaming);
+    }
+}
+
+#[cfg(test)]
+mod attachment_context_tests {
+    use super::*;
+
+    #[test]
+    fn file_refs_precede_visible_text() {
+        let attachments = vec![SessionAttachmentResult {
+            attached: true,
+            kind: AttachmentKind::File,
+            ref_text: Some("@file:`notes/a b.txt`".into()),
+            ..SessionAttachmentResult::default()
+        }];
+        assert_eq!(
+            attachment_context_text("summarise this", &attachments),
+            "@file:`notes/a b.txt`\n\nsummarise this"
+        );
+    }
+
+    #[test]
+    fn image_only_gets_fallback_prompt() {
+        let attachments = vec![SessionAttachmentResult {
+            attached: true,
+            kind: AttachmentKind::Image,
+            ..SessionAttachmentResult::default()
+        }];
+        assert_eq!(
+            attachment_context_text("", &attachments),
+            "What do you see in this image?"
+        );
     }
 }

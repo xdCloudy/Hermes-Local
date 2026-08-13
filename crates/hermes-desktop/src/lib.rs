@@ -6,10 +6,13 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     process::Command,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex, OnceLock, RwLock},
 };
 
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{
+    Engine as _,
+    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
+};
 use hermes_agent_client::GatewayClient;
 use hermes_core::{
     AgentConfigService, AppServices, ConnectionService, EventStream, FileService, GitService,
@@ -20,17 +23,19 @@ use hermes_core::{
     UnavailablePreviewService, UpdateService, validate_identifier, validate_relative_path,
 };
 use hermes_protocol::{
-    AgentConfigSnapshot, AppSettings, AuthProvider, AuxiliaryModels, ConfigSchemaResponse,
-    ConnectionConfig, ConnectionConfigInput, ConnectionMode, ConnectionOauthLoginResult,
-    ConnectionOauthLogoutResult, ConnectionProbeResult, ConnectionState, ConnectionTestResult,
-    CustomEndpointUpdate, CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry,
-    GitStatus, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse, ModelInfo, ModelOptions,
-    ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit, ProbeAuthMode,
-    ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation, RemoteAuthMode,
-    RuntimeStatus, SessionCreateRequest, SessionCreateResponse, SessionDirectiveResult,
-    SessionMessagesResponse, SessionResumeResponse, SessionSummary, SkillActionStart,
-    SkillActionStatus, SkillHubPreview, SkillHubScanResult, SkillHubSearchResponse,
-    SkillHubSourcesResponse, SkillSummary, SkillToggleResult, TaskSummary, TrustSnapshot,
+    AgentConfigSnapshot, AppSettings, AttachmentKind, AuthProvider, AuxiliaryModels,
+    ConfigSchemaResponse, ConnectionConfig, ConnectionConfigInput, ConnectionMode,
+    ConnectionOauthLoginResult, ConnectionOauthLogoutResult, ConnectionProbeResult,
+    ConnectionState, ConnectionTestResult, CustomEndpointUpdate, CustomEndpointValidation,
+    CustomEndpointsResponse, EnvVarInfo, FileEntry, GitStatus, MoaConfig, ModelAssignmentRequest,
+    ModelAssignmentResponse, ModelInfo, ModelOptions, ModelSettingsSnapshot, OAuthPoll,
+    OAuthProvider, OAuthStart, OAuthSubmit, ProbeAuthMode, ProjectFilesDeleteResult,
+    ProjectSummary, ProjectsSnapshot, ProviderActivation, RemoteAuthMode, RuntimeStatus,
+    SelectedAttachment, SessionAttachmentResult, SessionCreateRequest, SessionCreateResponse,
+    SessionDirectiveResult, SessionMessagesResponse, SessionResumeResponse, SessionSummary,
+    SkillActionStart, SkillActionStatus, SkillHubPreview, SkillHubScanResult,
+    SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary, SkillToggleResult, TaskSummary,
+    TrustSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use reqwest::Method;
@@ -45,6 +50,103 @@ struct GatewayServices {
     client: Arc<RwLock<Option<GatewayClient>>>,
     rest: Arc<RwLock<Option<GatewayRest>>>,
     connection_store: Arc<ConnectionConfigStore>,
+}
+
+const MAX_ATTACHMENT_SELECTIONS: usize = 256;
+const MAX_IMAGE_PREVIEW_BYTES: u64 = 8 * 1024 * 1024;
+
+#[derive(Default)]
+struct AttachmentSelectionStore {
+    paths: Mutex<HashMap<String, PathBuf>>,
+}
+
+static ATTACHMENT_SELECTIONS: OnceLock<AttachmentSelectionStore> = OnceLock::new();
+
+fn attachment_selections() -> &'static AttachmentSelectionStore {
+    ATTACHMENT_SELECTIONS.get_or_init(AttachmentSelectionStore::default)
+}
+
+impl AttachmentSelectionStore {
+    fn register(&self, path: &Path) -> ServiceResult<String> {
+        let mut paths = self.paths.lock().map_err(|_| {
+            ServiceError::Platform("attachment selection store lock was poisoned".into())
+        })?;
+        if paths.len() >= MAX_ATTACHMENT_SELECTIONS {
+            paths.clear();
+        }
+        let id = Uuid::new_v4().to_string();
+        paths.insert(id.clone(), path.to_owned());
+        Ok(id)
+    }
+
+    fn resolve(&self, id: &str) -> ServiceResult<PathBuf> {
+        if id.is_empty() || id.len() > 128 {
+            return Err(ServiceError::InvalidInput(
+                "invalid attachment selection".into(),
+            ));
+        }
+        self.paths
+            .lock()
+            .map_err(|_| {
+                ServiceError::Platform("attachment selection store lock was poisoned".into())
+            })?
+            .get(id)
+            .cloned()
+            .ok_or_else(|| ServiceError::NotFound("attachment selection expired".into()))
+    }
+}
+
+fn attachment_image_mime(path: &Path) -> Option<&'static str> {
+    match path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "bmp" => Some("image/bmp"),
+        "tif" | "tiff" => Some("image/tiff"),
+        _ => None,
+    }
+}
+
+fn selected_attachment(path: &Path) -> ServiceResult<SelectedAttachment> {
+    let metadata = fs::metadata(path).map_err(platform)?;
+    if !metadata.is_file() {
+        return Err(ServiceError::InvalidInput(format!(
+            "attachment is not a file: {}",
+            path.display()
+        )));
+    }
+    let kind = if attachment_image_mime(path).is_some() {
+        AttachmentKind::Image
+    } else {
+        AttachmentKind::File
+    };
+    let preview_data_url =
+        if kind == AttachmentKind::Image && metadata.len() <= MAX_IMAGE_PREVIEW_BYTES {
+            let mime = attachment_image_mime(path).unwrap_or("application/octet-stream");
+            let bytes = fs::read(path).map_err(platform)?;
+            Some(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
+        } else {
+            None
+        };
+    Ok(SelectedAttachment {
+        id: attachment_selections().register(path)?,
+        kind,
+        label: path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("attachment")
+            .to_owned(),
+        size: metadata.len(),
+        preview_data_url,
+        ..SelectedAttachment::default()
+    })
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -1011,6 +1113,122 @@ impl SessionService for GatewayServices {
                 };
             }
             Ok(result)
+        })
+    }
+
+    fn attach(
+        &self,
+        session_id: &str,
+        attachment: &SelectedAttachment,
+    ) -> ServiceFuture<'_, SessionAttachmentResult> {
+        let session_id = session_id.to_owned();
+        let attachment = attachment.clone();
+        Box::pin(async move {
+            validate_identifier(&session_id, "session")?;
+            if attachment.attached_session_id.as_deref() == Some(session_id.as_str()) {
+                return Ok(SessionAttachmentResult {
+                    attached: true,
+                    kind: attachment.kind,
+                    path: attachment.staged_path.clone(),
+                    ref_text: attachment.ref_text.clone(),
+                    message: None,
+                });
+            }
+            let path = attachment_selections().resolve(&attachment.id)?;
+            let metadata = fs::metadata(&path).map_err(platform)?;
+            if !metadata.is_file() {
+                return Err(ServiceError::InvalidInput(
+                    "attachment is not a file".into(),
+                ));
+            }
+            let limit = if attachment.kind == AttachmentKind::Image {
+                64 * 1024 * 1024
+            } else {
+                256 * 1024 * 1024
+            };
+            if metadata.len() > limit {
+                return Err(ServiceError::InvalidInput(format!(
+                    "{} is too large to attach ({} bytes; limit {} bytes)",
+                    attachment.label,
+                    metadata.len(),
+                    limit
+                )));
+            }
+            if self.connection_store.load(None)?.mode != ConnectionMode::Local {
+                return Err(ServiceError::Unavailable(
+                    "remote attachment byte staging is not enabled in this tranche".into(),
+                ));
+            }
+            let value: Value = match attachment.kind {
+                AttachmentKind::Image => self
+                    .client()?
+                    .request_with_timeout(
+                        "image.attach",
+                        json!({ "session_id": session_id, "path": path.to_string_lossy() }),
+                        std::time::Duration::from_mins(5),
+                    )
+                    .await
+                    .map_err(transport)?,
+                AttachmentKind::File => self
+                    .client()?
+                    .request_with_timeout(
+                        "file.attach",
+                        json!({
+                            "session_id": session_id,
+                            "name": attachment.label,
+                            "path": path.to_string_lossy(),
+                        }),
+                        std::time::Duration::from_mins(5),
+                    )
+                    .await
+                    .map_err(transport)?,
+            };
+            let result = SessionAttachmentResult {
+                attached: value
+                    .get("attached")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                kind: attachment.kind,
+                path: value.get("path").and_then(Value::as_str).map(str::to_owned),
+                ref_text: value
+                    .get("ref_text")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+                message: value
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+            };
+            if !result.attached {
+                return Err(ServiceError::Transport(
+                    result
+                        .message
+                        .clone()
+                        .unwrap_or_else(|| "attachment rejected".into()),
+                ));
+            }
+            Ok(result)
+        })
+    }
+
+    fn detach_image(&self, session_id: &str, path: &str) -> ServiceFuture<'_, ()> {
+        let session_id = session_id.to_owned();
+        let path = path.trim().to_owned();
+        Box::pin(async move {
+            validate_identifier(&session_id, "session")?;
+            if path.is_empty() || path.len() > 32_768 {
+                return Err(ServiceError::InvalidInput("invalid image path".into()));
+            }
+            let _: Value = self
+                .client()?
+                .request_with_timeout(
+                    "image.detach",
+                    json!({ "session_id": session_id, "path": path }),
+                    std::time::Duration::from_secs(30),
+                )
+                .await
+                .map_err(transport)?;
+            Ok(())
         })
     }
 
@@ -2710,6 +2928,33 @@ impl UpdateService for DesktopUpdates {
 struct DesktopPlatform;
 
 impl PlatformService for DesktopPlatform {
+    fn pick_attachments(
+        &self,
+        title: &str,
+        starting_directory: Option<&Path>,
+        images_only: bool,
+    ) -> ServiceFuture<'_, Vec<SelectedAttachment>> {
+        let title = title.to_owned();
+        let starting_directory = starting_directory.map(Path::to_owned);
+        Box::pin(async move {
+            let mut dialog = rfd::AsyncFileDialog::new().set_title(title);
+            if let Some(directory) = starting_directory.filter(|path| path.is_dir()) {
+                dialog = dialog.set_directory(directory);
+            }
+            if images_only {
+                dialog = dialog.add_filter(
+                    "Images",
+                    &["png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff"],
+                );
+            }
+            let handles = dialog.pick_files().await.unwrap_or_default();
+            handles
+                .into_iter()
+                .map(|handle| selected_attachment(handle.path()))
+                .collect()
+        })
+    }
+
     fn pick_folder(
         &self,
         title: &str,
