@@ -6,6 +6,9 @@ use super::{
 
 mod chat_controls;
 mod legacy;
+mod reaction_panel;
+mod reaction_store;
+mod reaction_view;
 
 #[component]
 pub(super) fn ChatRuntimeProvider() -> Element {
@@ -25,10 +28,12 @@ pub(super) fn Chat() -> Element {
 #[component]
 pub(super) fn Session(id: String) -> Element {
     let control_id = id.clone();
+    let reaction_id = id.clone();
     rsx! {
         div { class: "chat-runtime-wrapper",
             chat_controls::ChatControls { session: Some(control_id) }
             legacy::Session { id }
+            reaction_panel::ReactionPanel { session_id: reaction_id }
         }
     }
 }
