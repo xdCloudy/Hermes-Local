@@ -2,7 +2,7 @@
 
 mod chat;
 
-use chat::{Chat, Session};
+use chat::{Chat, ChatRuntimeProvider, Session};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
@@ -187,7 +187,7 @@ pub fn App() -> Element {
         div { class: "icon-sprite", aria_hidden: "true", dangerous_inner_html: CODICON_SPRITE }
         div { class: "window-root{theme_class}{skin_class}",
             Titlebar {}
-            Router::<Route> {}
+            ChatRuntimeProvider {}
             footer { class: "connection-state",
                 span { class: "status-brand", "Hermes Local" }
                 match &*boot.read_unchecked() {
