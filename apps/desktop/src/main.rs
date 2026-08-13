@@ -25,7 +25,16 @@ mod preview_normalization;
 mod preview_service;
 mod preview_watcher;
 mod quick_entry;
+mod shell_accessibility;
+mod shell_focus_guard;
+mod shell_i18n;
+mod shell_instance;
 mod shell_interaction;
+mod shell_keymap;
+mod shell_layout;
+mod shell_parity;
+mod shell_validation;
+mod shell_window_contract;
 mod skills_service;
 mod ssh;
 mod ssh_config;
@@ -83,8 +92,12 @@ fn desktop_root() -> Element {
             }
         },
         Some(Ok(())) => rsx! {
-            shell_interaction::ShellHost {
-                hermes_ui::App {}
+            shell_focus_guard::FocusGuard {
+                shell_parity::ParityShellHost {
+                    shell_interaction::ShellHost {
+                        hermes_ui::App {}
+                    }
+                }
             }
         },
         Some(Err(error)) => rsx! {
@@ -123,6 +136,17 @@ fn main() {
     let data_dir = std::env::var_os("APPDATA")
         .map_or_else(std::env::temp_dir, PathBuf::from)
         .join("Hermes Local");
+    let _instance_guard = match shell_instance::InstanceGuard::acquire(&data_dir) {
+        Ok(Some(guard)) => guard,
+        Ok(None) => {
+            eprintln!("Hermes Local is already running; refusing a second Desktop authority.");
+            return;
+        }
+        Err(error) => {
+            eprintln!("Hermes Local single-instance guard is unavailable: {error}");
+            return;
+        }
+    };
     if let Err(error) = crash_forensics::install(&data_dir) {
         eprintln!("Hermes Local crash diagnostics are unavailable: {error}");
     }
@@ -160,8 +184,8 @@ fn main() {
             window_options.height as f64,
         ))
         .with_min_inner_size(LogicalSize::new(
-            window_state::MIN_WIDTH as f64,
-            window_state::MIN_HEIGHT as f64,
+            shell_window_contract::WINDOW_MIN_WIDTH as f64,
+            shell_window_contract::WINDOW_MIN_HEIGHT as f64,
         ))
         .with_maximized(window_options.is_maximized)
         .with_decorations(false);

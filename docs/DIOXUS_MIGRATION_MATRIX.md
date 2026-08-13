@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `a71ea7d33c5155b24d6f57151ba229ff56ac34ff` (2026-08-13)
+> **Implementation audit checkpoint:** `0d72892f2d4fef76da407706e9d38d077667e5c9` (2026-08-13)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -53,16 +53,16 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 37 | Largest remaining implementation backlog. |
-| A2 Service | 23 | Native/core foundations exist; UI/parity work remains. |
-| A3 Ported | 6 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 59 | Automated slice is green; human/live acceptance still required. |
+| A1 Designed | 35 | Largest remaining implementation backlog. |
+| A2 Service | 21 | Native/core foundations exist; UI/parity work remains. |
+| A3 Ported | 3 | User-facing implementation exists; more evidence required. |
+| A4 Auto-verified | 66 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 1 | Named external validation blocker. |
 | **Total** | **127** | Every row must end at A6 or be explicitly retired with product-owner approval. |
 
-At least-service coverage is **88/127 capabilities (69.3%)**. This is service-foundation coverage, not end-user parity or human acceptance.
+At least-service coverage is **90/127 capabilities (70.9%)**. This is service-foundation coverage, not end-user parity or human acceptance.
 
 The PR #179 exact-head validation set was green for Documentation
 validation, the Hermes Agent harness/native-client boundary workflow, Dioxus
@@ -82,9 +82,19 @@ OG global shell chords, a typed live runtime/gateway/task status bar, right-rail
 composition and shell accessibility/reduced-motion handling. Dioxus Rust
 validation run `31664757126` passed architecture, rustfmt, all-target compile,
 shared-UI WASM compile, workspace tests, Clippy and SBOM tooling for that exact
-head. SH-06 and SH-15 remain deliberately below A4 because the production pane
-layout engine and complete five-locale app-wide i18n port are still separate
-implementation subsystems.
+head.
+
+PR #188 exact implementation head `0d72892f` completes the machine-verifiable
+Shell slice with a serializable pane/split/tab/floating layout model, persistent
+tool-pane composition, focus-aware shortcut routing and capture guard, typed
+window/single-instance lifecycle contracts, accessibility audit contracts and a
+five-locale Shell/static-label layer (`en`, `zh`, `zh-hant`, `ja`, `ar`) with RTL
+and persistence. Documentation validation, the Hermes Agent harness/native-client
+boundary, Rust validation, Windows packaging, install lifecycle and footprint all
+passed on that exact head. The Rust gate passed architecture, rustfmt, all-target
+and WASM compile, workspace tests, Clippy, SBOM tooling and optimized Windows
+artifact production. All `SH-01`…`SH-15` rows are therefore A4; A5 still requires
+the row-specific live, visual, keyboard and screen-reader evidence.
 
 ## Roadmap waves
 
@@ -159,20 +169,20 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | ID | Capability | Rust owner | Dioxus surface | Stage | Current evidence / gap | Human acceptance | Human |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | SH-01 | Startup, local Agent bootstrap and failure recovery | `ConnectionService` + Desktop startup authority | boot/failure recovery | A4 Auto-verified | Local mode boots through canonical `Start-Hermes-Local.ps1`; loopback/token validation, bounded diagnostics and retry path are implemented and covered by Rust tests. | Launch from a cold machine state; verify healthy boot, Agent-not-ready, bad/missing runtime, Retry, and recovery without restarting the client. | ⬜ |
-| SH-02 | Main window lifecycle and native window actions | composition root window actions | main shell | A3 Ported | Dioxus Desktop window launches with typed drag/minimize/maximize/close actions. Packaged/single-instance/relaunch parity is not yet proven. | Compare startup, close, minimize/maximize/restore, taskbar presence and relaunch behavior with OG in packaged form. | ⬜ |
+| SH-02 | Main window lifecycle and native window actions | composition root window actions | main shell | A4 Auto-verified | Typed native window/lifecycle contracts cover drag, minimize, maximize/restore, close, relaunch, minimum sizing and startup phases; the Desktop single-instance lease and deterministic lifecycle tests pass with the exact-head optimized/package Windows gates. Duplicate instances currently exit rather than proving foreground transfer, and packaged human runtime comparison remains A5 evidence. | Compare startup, close, minimize/maximize/restore, taskbar presence and relaunch behavior with OG in packaged form. | ⬜ |
 | SH-03 | Routes and legacy session redirects | `hermes-ui` route model | workspace router | A4 Auto-verified | All audited top-level destinations have typed Dioxus routes; route compilation and architecture checks pass. | Navigate every route and legacy session URL; verify correct destination, back/forward behavior and no state loss. | ⬜ |
-| SH-04 | Titlebar, drag regions and window controls | typed composition-root window actions | titlebar | A3 Ported | 34px OG-style custom titlebar and native actions exist; final packaged/window-state visual parity is pending. | Side-by-side OG comparison at normal/maximized states; test drag, double-click maximize, buttons and no accidental drag from controls. | ⬜ |
+| SH-04 | Titlebar, drag regions and window controls | typed composition-root window actions | titlebar | A4 Auto-verified | The custom titlebar uses typed native drag/window actions plus explicit minimum-size and lifecycle contracts with deterministic tests; exact-head optimized Windows, installer and portable gates validate production wiring. Side-by-side normal/maximized visual parity remains A5 evidence. | Side-by-side OG comparison at normal/maximized states; test drag, double-click maximize, buttons and no accidental drag from controls. | ⬜ |
 | SH-05 | Sidebar, session navigation and row actions | `SessionService` | sidebar | A4 Auto-verified | Persisted-session list, search, pin/recent sections, active state, rename/archive/delete, optimistic rollback and lineage-root pinning are implemented with deterministic coverage. | Exercise search, pin/unpin, rename, archive, delete/cancel and active/running states on real sessions; compare geometry and hover/context behavior to OG. | ⬜ |
-| SH-06 | Pane tree, splits, tabs and floating panes | future `LayoutService` / core layout model | pane shell | A1 Designed | No production-equivalent pane tree/split/tab/floating-pane state model is complete. | Create, resize, reorder, close and restore every OG pane configuration; verify persistence and focus. | ⬜ |
-| SH-07 | Right rail and persistent tools | typed File/Terminal/Preview services + Desktop shell state | right rail | A3 Ported | PR #187 adds a desktop-owned right rail on the OG `Ctrl/Cmd+J` chord, Files/Terminal/Review switching and retained selected-tool state while hidden. The current rail launches the full typed tool routes rather than embedding every OG tool body/state, so complete composition parity remains. | Open/close/switch tools, hide/show rail, preserve tool state and compare layout with OG. | ⬜ |
+| SH-06 | Pane tree, splits, tabs and floating panes | Desktop `LayoutModel` | pane shell | A4 Auto-verified | PR #188 wires a serializable production Desktop layout model with horizontal/vertical splits, focused groups, tab add/activate/cycle/reorder/close, split resizing, floating/docking, bounded floating geometry, invariant validation and `hermes.desktop.layoutTree.v3` round-trip persistence. The user-facing layout controls and deterministic model/integration tests pass the exact-head Rust/Windows gates. | Create, resize, reorder, close and restore every OG pane configuration; verify persistence and focus. | ⬜ |
+| SH-07 | Right rail and persistent tools | typed File/Terminal/Preview services + Desktop layout state | right rail / pane shell | A4 Auto-verified | PR #188 integrates Files, Terminal, Review and Preview as persistent layout pane kinds with retained selection, floating/docking state and typed route launching, while preserving the PR #187 right-rail toggle/state contract. Automated layout/UI contracts and exact-head gates pass; tool bodies remain route-backed rather than claiming complete embedded OG composition. | Open/close/switch tools, hide/show rail, preserve tool state and compare layout with OG. | ⬜ |
 | SH-08 | Status bar and model/gateway state | runtime/session/connection read models | status bar | A4 Auto-verified | PR #187 polls typed connection/runtime/task read models and renders gateway state, runtime phase, active model/provider and active task count; deterministic connection/task-state coverage plus the exact-head Rust/Dioxus gates pass. | Verify every status indicator under connected, connecting, offline, model-switching and task-active states. | ⬜ |
 | SH-09 | Dark, light, system themes and skin persistence | `SettingsService` + typed window actions | theme provider/settings | A4 Auto-verified | Appearance settings apply immediately, persist atomically and roll back on failure; shared CSS compiles for Desktop and WASM. | Review dark/light/system side-by-side with OG, restart in each mode and test live OS theme changes. | ⬜ |
 | SH-10 | Zoom and find-in-page | Desktop shell/WebView authority | settings/find bar | A4 Auto-verified | PR #187 ports the OG 90% baseline, `1.2^level` scale, `[-9,9]` bounds, 0.1 step and `hermes:desktop:zoomLevel` persistence using native Dioxus/WebView zoom. Find-in-page supports live search, next/previous and Escape close; zoom invariants are deterministic-tested and exact-head gates pass. | Test zoom bounds/reset/persistence and find-next/previous/close on long pages. | ⬜ |
-| SH-11 | Keyboard routing and keybindings | Desktop shell interaction controller + focus model | all interactive surfaces | A3 Ported | PR #187 ports the major OG shell chords for palette/Centre/settings/sidebar/right rail/status/review/terminal/find/zoom plus contextual find-next/previous and Escape handling. Complete composer/editor/terminal focus collisions, rebinding and the full OG shortcut inventory remain. | Run the OG keyboard shortcut inventory across chat, dialogs, editor, terminal and overlays; verify focus ownership and no collisions. | ⬜ |
+| SH-11 | Keyboard routing and keybindings | Desktop shell interaction controller + focus model | all interactive surfaces | A4 Auto-verified | PR #188 adds a typed focus-aware resolver and capture-phase DOM guard so editor, composer, terminal, dialog/overlay and pane contexts retain their owned chords; pane tab selection/cycling/close/new, split and floating shortcuts are deterministic-tested alongside the PR #187 global inventory. Full human shortcut-inventory comparison and any future configurable rebinding remain A5/product follow-up. | Run the OG keyboard shortcut inventory across chat, dialogs, editor, terminal and overlays; verify focus ownership and no collisions. | ⬜ |
 | SH-12 | Command palette | typed command registry | palette | A4 Auto-verified | PR #187 implements the typed shell command registry, `Ctrl/Cmd+K/P` opening, label/id/category search, arrow selection and Enter invocation with deterministic registry/search coverage; exact-head Rust/Dioxus gates pass. | Open by keyboard, search/rank commands, invoke representative commands and verify disabled/contextual states. | ⬜ |
 | SH-13 | Command Centre | typed command registry | overlay | A4 Auto-verified | PR #187 implements `Ctrl/Cmd+.` Command Centre on the same typed registry with grouped Navigation/View actions and native keyboard-focusable controls; exact-head Rust/Dioxus gates pass. | Review sections, actions, keyboard navigation and visual parity against OG. | ⬜ |
-| SH-14 | Accessibility and reduced motion | `hermes-ui` + Desktop shell | all surfaces | A3 Ported | PR #187 adds skip-to-workspace, `:focus-visible`, semantic dialog/listbox/tablist roles, accessible names, ARIA-live status and `prefers-reduced-motion` handling. Product-wide keyboard/screen-reader review remains incomplete. | Keyboard-only pass, focus visibility, accessible names, reduced-motion mode and representative screen-reader smoke test. | ⬜ |
-| SH-15 | i18n and locale persistence | `SettingsService` + locale context | all surfaces/settings | A1 Designed | OG locale resources remain oracle; Rust client is predominantly English. | Switch all supported locales, restart, inspect overflow/truncation and verify fallback behavior. | ⬜ |
+| SH-14 | Accessibility and reduced motion | `hermes-ui` + Desktop shell | all surfaces | A4 Auto-verified | PR #188 extends the existing semantic/focus-visible/reduced-motion work with focus save/restore, capture-safe keyboard ownership and automated audits for accessible control names, tab semantics, duplicate IDs and reduced-motion presence. Deterministic accessibility contracts and exact-head gates pass; product-wide keyboard and screen-reader review remains A5 evidence. | Keyboard-only pass, focus visibility, accessible names, reduced-motion mode and representative screen-reader smoke test. | ⬜ |
+| SH-15 | i18n and locale persistence | Desktop shell locale context + `SettingsService` | shell/navigation/settings | A4 Auto-verified | PR #188 implements an auto-verified Shell/global static-label localization layer for `en`, `zh`, `zh-hant`, `ja` and `ar`, including alias normalization, `hermes.desktop.locale` persistence, document language/direction, Arabic RTL and DOM re-application across route renders for the known text/ARIA/title/placeholder catalogue. Complete non-empty catalogue tests pass; this does not claim every `hermes-ui` literal has been refactored, and visual overflow/fallback review remains A5 evidence. | Switch all supported locales, restart, inspect overflow/truncation and verify fallback behavior. | ⬜ |
 
 ### Chat, sessions and rich content
 
