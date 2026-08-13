@@ -962,11 +962,13 @@ macro_rules! simple_surface {
 
 mod files;
 mod review;
+mod runtime;
 mod skills;
 mod source_control;
 mod terminal;
 use files::Files;
 use review::Review;
+use runtime::{Benchmarks, Runtime, Security, Tasks};
 use skills::Skills;
 use source_control::{Git, Worktrees};
 use terminal::Terminal;
@@ -1025,40 +1027,16 @@ simple_surface!(
     "Connect explicit, trusted local and messaging services."
 );
 simple_surface!(
-    Benchmarks,
-    "Hermes Local",
-    "Benchmarks",
-    "Measured performance, stability and profile selection evidence."
-);
-simple_surface!(
-    Security,
-    "Hermes Local",
-    "Security",
-    "Loopback trust boundaries, audits and remediation evidence."
-);
-simple_surface!(
     Logs,
     "Hermes Local",
     "Logs",
     "Live, redacted output from each local service."
 );
 simple_surface!(
-    Tasks,
-    "Activity",
-    "Tasks",
-    "Track local work without losing context."
-);
-simple_surface!(
     Model,
     "Intelligence",
     "Model",
     "Manage the on-device inference runtime."
-);
-simple_surface!(
-    Runtime,
-    "Intelligence",
-    "Runtime",
-    "See Agent and model health at a glance."
 );
 simple_surface!(
     Trust,
