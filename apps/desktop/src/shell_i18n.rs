@@ -35,7 +35,11 @@ impl Locale {
     }
 
     pub const fn direction(self) -> &'static str {
-        if matches!(self, Self::Ar) { "rtl" } else { "ltr" }
+        if matches!(self, Self::Ar) {
+            "rtl"
+        } else {
+            "ltr"
+        }
     }
 
     pub fn from_code(value: &str) -> Self {
@@ -123,6 +127,7 @@ pub enum Message {
     Retry,
 }
 
+#[rustfmt::skip]
 impl Message {
     pub const ALL: [Self; 70] = [
         Self::Home, Self::Chat, Self::Tui, Self::WebDashboard, Self::Tasks,
@@ -155,6 +160,7 @@ pub const fn translate(locale: Locale, message: Message) -> &'static str {
     }
 }
 
+#[rustfmt::skip]
 const fn english(message: Message) -> &'static str {
     match message {
         Message::Home => "Home", Message::Chat => "Chat", Message::Tui => "TUI",
@@ -186,6 +192,7 @@ const fn english(message: Message) -> &'static str {
     }
 }
 
+#[rustfmt::skip]
 const fn simplified_chinese(message: Message) -> &'static str {
     match message {
         Message::Home => "首页", Message::Chat => "聊天", Message::Tui => "终端界面",
@@ -213,6 +220,7 @@ const fn simplified_chinese(message: Message) -> &'static str {
     }
 }
 
+#[rustfmt::skip]
 const fn traditional_chinese(message: Message) -> &'static str {
     match message {
         Message::Home => "首頁", Message::Chat => "聊天", Message::Tui => "終端介面",
@@ -240,6 +248,7 @@ const fn traditional_chinese(message: Message) -> &'static str {
     }
 }
 
+#[rustfmt::skip]
 const fn japanese(message: Message) -> &'static str {
     match message {
         Message::Home => "ホーム", Message::Chat => "チャット", Message::Tui => "TUI", Message::WebDashboard => "Web ダッシュボード",
@@ -267,6 +276,7 @@ const fn japanese(message: Message) -> &'static str {
     }
 }
 
+#[rustfmt::skip]
 const fn arabic(message: Message) -> &'static str {
     match message {
         Message::Home => "الرئيسية", Message::Chat => "الدردشة", Message::Tui => "واجهة الطرفية", Message::WebDashboard => "لوحة الويب",
@@ -310,7 +320,8 @@ pub fn locale_apply_script(locale: Locale) -> String {
         .expect("static locale dictionary serializes");
     let code = locale.code();
     let direction = locale.direction();
-    format!(r#"(() => {{
+    format!(
+        r#"(() => {{
       const dict={dictionary};
       const translateText=(raw)=>{{
         if(typeof raw!=='string') return raw;
@@ -329,13 +340,12 @@ pub fn locale_apply_script(locale: Locale) -> String {
         }}
       }}
       return '{code}';
-    }})()"#)
+    }})()"#
+    )
 }
 
 pub fn locale_read_script() -> String {
-    format!(
-        "return localStorage.getItem('{LOCALE_STORAGE_KEY}') || navigator.language || 'en';"
-    )
+    format!("return localStorage.getItem('{LOCALE_STORAGE_KEY}') || navigator.language || 'en';")
 }
 
 #[cfg(test)]
@@ -346,7 +356,10 @@ mod tests {
     fn every_supported_locale_has_complete_non_empty_shell_catalogue() {
         for locale in Locale::ALL {
             for message in Message::ALL {
-                assert!(!translate(locale, message).trim().is_empty(), "{locale:?} {message:?}");
+                assert!(
+                    !translate(locale, message).trim().is_empty(),
+                    "{locale:?} {message:?}"
+                );
             }
         }
     }
