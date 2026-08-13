@@ -145,7 +145,7 @@ pub(super) fn ChatRuntimeProvider() -> Element {
 pub(super) fn Chat() -> Element {
     let services = use_context::<AppServices>();
     let projects = use_context::<ProjectUiState>();
-    let chat_runtime = use_context::<ChatRuntimeState>();
+    let mut chat_runtime = use_context::<ChatRuntimeState>();
     let create_service = services.sessions.clone();
     let navigator = use_navigator();
     let mut prompt = use_signal(String::new);
@@ -277,7 +277,7 @@ pub(super) fn Chat() -> Element {
 #[component]
 pub(super) fn Session(id: String) -> Element {
     let services = use_context::<AppServices>();
-    let chat_runtime = use_context::<ChatRuntimeState>();
+    let mut chat_runtime = use_context::<ChatRuntimeState>();
     let load_service = services.sessions.clone();
     let history_service = services.sessions.clone();
     let submit_service = services.sessions.clone();
