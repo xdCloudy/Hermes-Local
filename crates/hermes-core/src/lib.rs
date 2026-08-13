@@ -58,6 +58,13 @@ pub trait SessionService: Send + Sync {
     fn list(&self) -> ServiceFuture<'_, Vec<SessionSummary>>;
     fn create(&self, request: SessionCreateRequest) -> ServiceFuture<'_, SessionSummary>;
     fn resume(&self, session_id: &str) -> ServiceFuture<'_, SessionResumeResponse>;
+    fn history(&self, _session_id: &str) -> ServiceFuture<'_, Vec<ChatMessage>> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "full session history is unavailable on this host".into(),
+            ))
+        })
+    }
     fn submit(&self, session_id: &str, text: &str) -> ServiceFuture<'_, ()>;
     fn interrupt(&self, session_id: &str) -> ServiceFuture<'_, ()>;
     fn set_pinned(&self, session_id: &str, pinned: bool) -> ServiceFuture<'_, ()>;
@@ -77,6 +84,8 @@ pub struct SessionTranscript {
     pub stored_id: String,
     pub runtime_id: String,
     pub messages: Vec<ChatMessage>,
+    pub message_count: usize,
+    pub messages_omitted: bool,
     pub busy: bool,
     pub needs_input: bool,
     pub error: Option<String>,
@@ -91,6 +100,8 @@ impl SessionTranscript {
                 .and_then(|info| info.get("running"))
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
+        let message_count = response.message_count.max(response.messages.len());
+        let messages_omitted = response.messages_omitted || message_count > response.messages.len();
         let inflight = response.inflight.as_ref();
         let mut messages = response.messages;
         for (index, message) in messages.iter_mut().enumerate() {
@@ -147,10 +158,48 @@ impl SessionTranscript {
             stored_id,
             runtime_id: response.session_id,
             messages,
+            message_count,
+            messages_omitted,
             busy,
             needs_input: false,
             error,
         }
+    }
+
+    pub fn merge_history(&mut self, mut history: Vec<ChatMessage>) {
+        for (index, message) in history.iter_mut().enumerate() {
+            if message.id.is_empty() {
+                message.id = format!("history-{index}");
+            }
+            if message.text.is_empty() {
+                message.text.clone_from(&message.content_text);
+            }
+            if let Some(reasoning) = message.reasoning.take().filter(|value| !value.is_empty()) {
+                message
+                    .metadata
+                    .insert("reasoning".into(), Value::String(reasoning));
+            }
+            if let Some(tool_call_id) = &message.tool_call_id {
+                message
+                    .metadata
+                    .insert("tool_id".into(), Value::String(tool_call_id.clone()));
+            }
+        }
+
+        for message in std::mem::take(&mut self.messages) {
+            let duplicate = history.iter().any(|candidate| {
+                candidate.role == message.role
+                    && candidate.text == message.text
+                    && candidate.tool_call_id == message.tool_call_id
+                    && candidate.tool_name == message.tool_name
+            });
+            if message.streaming || !duplicate {
+                history.push(message);
+            }
+        }
+        self.message_count = self.message_count.max(history.len());
+        self.messages_omitted = false;
+        self.messages = history;
     }
 
     pub fn push_user(&mut self, id: String, text: String) {
