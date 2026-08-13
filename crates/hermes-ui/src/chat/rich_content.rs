@@ -56,7 +56,10 @@ fn strip_ansi(value: &str) -> String {
 fn image_target(line: &str) -> Option<(String, String)> {
     let rest = line.strip_prefix("![")?;
     let alt_end = rest.find(']')?;
-    let target = rest.get(alt_end + 1..)?.strip_prefix('(')?.strip_suffix(')')?;
+    let target = rest
+        .get(alt_end + 1..)?
+        .strip_prefix('(')?
+        .strip_suffix(')')?;
     let lower = target.to_ascii_lowercase();
     let allowed = lower.starts_with("https://")
         || lower.starts_with("http://")
