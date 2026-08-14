@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 use dioxus::prelude::*;
 use hermes_core::AppServices;
@@ -34,6 +34,31 @@ fn progress_label(progress: Option<f64>) -> String {
     )
 }
 
+fn export_file_name(id: &str) -> PathBuf {
+    let slug = id
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .take(80)
+        .collect::<String>();
+    let slug = slug.trim_matches(['-', '.']);
+    PathBuf::from(format!(
+        "hermes-task-{}.json",
+        if slug.is_empty() { "report" } else { slug }
+    ))
+}
+
+fn timestamp(value: Option<&str>) -> &str {
+    value
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("—")
+}
+
 fn action_for_route(route: &'static str) -> Option<(&'static str, &'static str)> {
     match route {
         "benchmarks" => Some(("benchmark", "Run benchmark")),
@@ -49,8 +74,10 @@ fn RuntimeSurface(route: &'static str, title: &'static str, subtitle: &'static s
     let mut tasks = use_signal(Vec::<TaskSummary>::new);
     let mut loading = use_signal(|| true);
     let mut error = use_signal(|| None::<String>);
+    let mut notice = use_signal(|| None::<String>);
     let mut refresh = use_signal(|| 0_u64);
     let mut busy = use_signal(|| None::<String>);
+    let mut selected = use_signal(|| None::<String>);
 
     let load_services = services.clone();
     let _load = use_resource(move || {
@@ -91,6 +118,7 @@ fn RuntimeSurface(route: &'static str, title: &'static str, subtitle: &'static s
         }
         busy.set(Some(action.clone()));
         error.set(None);
+        notice.set(None);
         let services = start_services.clone();
         spawn(async move {
             match services.runtime.start_action(&action, Value::Null).await {
@@ -108,6 +136,7 @@ fn RuntimeSurface(route: &'static str, title: &'static str, subtitle: &'static s
         }
         busy.set(Some(id.clone()));
         error.set(None);
+        notice.set(None);
         let services = cancel_services.clone();
         spawn(async move {
             match services.runtime.cancel_action(&id).await {
@@ -115,6 +144,51 @@ fn RuntimeSurface(route: &'static str, title: &'static str, subtitle: &'static s
                 Err(problem) => error.set(Some(problem.to_string())),
             }
             busy.set(None);
+        });
+    });
+
+    let export_services = services.clone();
+    let export = Callback::new(move |task: TaskSummary| {
+        if busy().is_some() {
+            return;
+        }
+        let busy_id = format!("export:{}", task.id);
+        busy.set(Some(busy_id.clone()));
+        error.set(None);
+        notice.set(None);
+        let services = export_services.clone();
+        spawn(async move {
+            let result = async {
+                let Some(folder) = services
+                    .platform
+                    .pick_folder("Export task report", None)
+                    .await?
+                else {
+                    return Ok::<Option<PathBuf>, hermes_core::ServiceError>(None);
+                };
+                let file_name = export_file_name(&task.id);
+                let content = serde_json::to_string_pretty(&task).map_err(|problem| {
+                    hermes_core::ServiceError::Platform(format!(
+                        "Could not serialize task report: {problem}"
+                    ))
+                })?;
+                services
+                    .files
+                    .write_text(&folder, &file_name, &content)
+                    .await?;
+                Ok(Some(file_name))
+            }
+            .await;
+            match result {
+                Ok(Some(file_name)) => {
+                    notice.set(Some(format!("Exported {}", file_name.display())))
+                }
+                Ok(None) => {}
+                Err(problem) => error.set(Some(problem.to_string())),
+            }
+            if busy().as_deref() == Some(busy_id.as_str()) {
+                busy.set(None);
+            }
         });
     });
 
@@ -135,7 +209,12 @@ fn RuntimeSurface(route: &'static str, title: &'static str, subtitle: &'static s
         .as_ref()
         .and_then(|value| value.agent_version.clone())
         .unwrap_or_else(|| "Not reported".into());
-    let filtered = tasks()
+    let all_tasks = tasks();
+    let selected_task = selected()
+        .as_deref()
+        .and_then(|id| all_tasks.iter().find(|task| task.id == id))
+        .cloned();
+    let filtered = all_tasks
         .into_iter()
         .filter(|task| match route {
             "benchmarks" => task.name.to_ascii_lowercase().contains("benchmark"),
@@ -151,6 +230,9 @@ fn RuntimeSurface(route: &'static str, title: &'static str, subtitle: &'static s
             }
             if let Some(problem) = error() {
                 div { class: "error-state", role: "alert", h2 { "Runtime request failed" } p { "{problem}" } }
+            }
+            if let Some(message) = notice() {
+                div { class: "success-state", role: "status", "{message}" }
             }
             if let Some(current) = current {
                 section { class: "panel",
@@ -186,6 +268,7 @@ fn RuntimeSurface(route: &'static str, title: &'static str, subtitle: &'static s
                                 let task_name = display(&task.name, &task.id);
                                 let task_state = display(&task.state, "unknown");
                                 let task_progress = progress_label(task.progress);
+                                let detail_id = task.id.clone();
                                 rsx! { div { class: "settings-list-row", key: "{task.id}",
                                     div { class: "settings-row-copy",
                                         strong { "{task_name}" }
@@ -193,6 +276,7 @@ fn RuntimeSurface(route: &'static str, title: &'static str, subtitle: &'static s
                                         if let Some(detail) = task.detail.as_deref() { p { class: "muted", "{detail}" } }
                                     }
                                     div { class: "settings-row-action",
+                                        button { class: "button", disabled: busy().is_some(), onclick: move |_| selected.set(Some(detail_id.clone())), "Details" }
                                         if active {
                                             button { class: "button danger", disabled: busy().is_some(), onclick: move |_| cancel.call(task_id.clone()), "Cancel" }
                                         }
@@ -201,6 +285,56 @@ fn RuntimeSurface(route: &'static str, title: &'static str, subtitle: &'static s
                             }
                         }
                     }
+                }
+            }
+            if let Some(task) = selected_task {
+                {
+                    let action_label = display(&task.name, &task.id);
+                    let state_label = display(&task.state, "unknown");
+                    let stage_label = task.stage.as_deref().unwrap_or("—").to_owned();
+                    let started_label = timestamp(task.started_at.as_deref()).to_owned();
+                    let completed_label = timestamp(task.completed_at.as_deref()).to_owned();
+                    let exit_label = task.exit_code.map_or_else(|| "—".into(), |value| value.to_string());
+                    let export_busy_id = format!("export:{}", task.id);
+                    let is_exporting = busy().as_deref() == Some(export_busy_id.as_str());
+                    rsx! { section { class: "panel",
+                        header { class: "panel-title", "Task result" }
+                        div { class: "integrity-grid",
+                            div { class: "integrity-item", span { "Action" } strong { "{action_label}" } }
+                            div { class: "integrity-item", span { "State" } strong { "{state_label}" } }
+                            div { class: "integrity-item", span { "Stage" } strong { "{stage_label}" } }
+                            div { class: "integrity-item", span { "Started" } strong { "{started_label}" } }
+                            div { class: "integrity-item", span { "Completed" } strong { "{completed_label}" } }
+                            div { class: "integrity-item", span { "Exit code" } strong { "{exit_label}" } }
+                        }
+                        if let Some(result) = task.result.as_ref() {
+                            {
+                                let result_label = display(&result.kind, "Result");
+                                rsx! { div { class: "settings-list-row",
+                                    div { class: "settings-row-copy", strong { "{result_label}" } p { class: "muted", "{result.path}" } }
+                                } }
+                            }
+                        }
+                        if let Some(failure) = task.failure.as_ref() {
+                            {
+                                let failure_label = display(&failure.code, "Task failed");
+                                rsx! { div { class: "error-state", role: "alert", h2 { "{failure_label}" } p { "{failure.message}" } } }
+                            }
+                        }
+                        if !task.output.is_empty() {
+                            pre { class: "terminal-output", "{task.output}" }
+                            if task.output_truncated { p { class: "muted", "Output was truncated by the task service." } }
+                        }
+                        button {
+                            class: "button",
+                            disabled: busy().is_some(),
+                            onclick: {
+                                let task = task.clone();
+                                move |_| export.call(task.clone())
+                            },
+                            if is_exporting { "Exporting…" } else { "Export report" }
+                        }
+                    } }
                 }
             }
         }
@@ -249,5 +383,17 @@ mod tests {
         assert_eq!(progress_label(Some(1.4)), "100%");
         assert_eq!(progress_label(Some(-1.0)), "0%");
         assert_eq!(progress_label(None), "—");
+    }
+
+    #[test]
+    fn export_names_never_escape_the_selected_folder() {
+        assert_eq!(
+            export_file_name("../security?scope=all"),
+            PathBuf::from("hermes-task-security-scope-all.json")
+        );
+        assert_eq!(
+            export_file_name("..."),
+            PathBuf::from("hermes-task-report.json")
+        );
     }
 }

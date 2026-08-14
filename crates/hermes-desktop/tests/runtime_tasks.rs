@@ -23,8 +23,18 @@ async fn runtime_task_service_matches_agent_contract_and_rejects_path_injection(
                 json!({
                     "tasks": [{
                         "id": "task-1",
-                        "name": "Security scan",
-                        "state": "running"
+                        "action": "security",
+                        "status": "succeeded",
+                        "progress": { "percent": 100 },
+                        "stage": "report",
+                        "output": "x".repeat(300_000),
+                        "outputTruncated": true,
+                        "completedAt": "2026-08-14T00:00:00Z",
+                        "exitCode": 0,
+                        "result": {
+                            "kind": "report",
+                            "path": "security/reports/latest-scan.json"
+                        }
                     }]
                 }),
             ),
@@ -90,7 +100,17 @@ async fn runtime_task_service_matches_agent_contract_and_rejects_path_injection(
     let tasks = app.services.runtime.actions().await.expect("list tasks");
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].id, "task-1");
-    assert_eq!(tasks[0].state, "running");
+    assert_eq!(tasks[0].name, "security");
+    assert_eq!(tasks[0].state, "succeeded");
+    assert_eq!(tasks[0].progress, Some(1.0));
+    assert_eq!(tasks[0].stage.as_deref(), Some("report"));
+    assert_eq!(tasks[0].output.len(), 256 * 1024);
+    assert!(tasks[0].output_truncated);
+    assert_eq!(tasks[0].exit_code, Some(0));
+    assert_eq!(
+        tasks[0].result.as_ref().map(|result| result.path.as_str()),
+        Some("security/reports/latest-scan.json")
+    );
 
     let started = app
         .services

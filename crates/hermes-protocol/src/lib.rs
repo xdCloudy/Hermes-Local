@@ -1216,17 +1216,72 @@ pub struct RuntimeStatus {
     pub detail: Option<String>,
 }
 
+fn deserialize_task_progress<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<Value>::deserialize(deserializer)?;
+    let percent = value.and_then(|value| match value {
+        Value::Number(number) => number.as_f64(),
+        Value::Object(object) => object.get("percent").and_then(Value::as_f64),
+        _ => None,
+    });
+    Ok(percent.map(|value| {
+        if value > 1.0 && value <= 100.0 {
+            value / 100.0
+        } else {
+            value
+        }
+    }))
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct RuntimeTaskFailure {
+    #[serde(default)]
+    pub code: String,
+    #[serde(default)]
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct RuntimeTaskResult {
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub path: String,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct TaskSummary {
     pub id: String,
-    #[serde(default)]
+    #[serde(default, alias = "action")]
     pub name: String,
-    #[serde(default)]
+    #[serde(default, alias = "status")]
     pub state: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_task_progress")]
     pub progress: Option<f64>,
     #[serde(default)]
     pub detail: Option<String>,
+    #[serde(default)]
+    pub stage: Option<String>,
+    #[serde(default)]
+    pub output: String,
+    #[serde(default, alias = "outputTruncated")]
+    pub output_truncated: bool,
+    #[serde(default, alias = "createdAt")]
+    pub created_at: Option<String>,
+    #[serde(default, alias = "startedAt")]
+    pub started_at: Option<String>,
+    #[serde(default, alias = "completedAt")]
+    pub completed_at: Option<String>,
+    #[serde(default, alias = "updatedAt")]
+    pub updated_at: Option<String>,
+    #[serde(default, alias = "exitCode")]
+    pub exit_code: Option<i32>,
+    #[serde(default)]
+    pub failure: Option<RuntimeTaskFailure>,
+    #[serde(default)]
+    pub result: Option<RuntimeTaskResult>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
