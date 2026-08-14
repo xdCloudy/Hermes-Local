@@ -701,6 +701,36 @@ pub struct AppSettings {
     pub extra: BTreeMap<String, Value>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DesktopPowerStatus {
+    #[serde(default)]
+    pub available: bool,
+    #[serde(default)]
+    pub keep_awake: bool,
+    #[serde(default)]
+    pub on_ac_power: Option<bool>,
+    #[serde(default)]
+    pub battery_percent: Option<u8>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DesktopLoginStatus {
+    #[serde(default)]
+    pub available: bool,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub executable: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DesktopGeneralStatus {
+    #[serde(default)]
+    pub power: DesktopPowerStatus,
+    #[serde(default)]
+    pub login: DesktopLoginStatus,
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {

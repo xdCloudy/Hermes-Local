@@ -963,6 +963,7 @@ macro_rules! simple_surface {
 mod about;
 mod automations;
 mod files;
+mod general;
 mod integrations;
 mod logs;
 mod memory;
@@ -974,6 +975,7 @@ mod terminal;
 use about::About;
 use automations::Automations;
 use files::Files;
+use general::GeneralSettings;
 use integrations::Integrations;
 use logs::Logs;
 use memory::Memory;
@@ -1071,12 +1073,6 @@ simple_surface!(
     "Capture",
     "Quick entry",
     "Start a thought from anywhere."
-);
-simple_surface!(
-    GeneralSettings,
-    "Preferences",
-    "General",
-    "Control startup and desktop behaviour."
 );
 simple_surface!(
     ProviderSettings,

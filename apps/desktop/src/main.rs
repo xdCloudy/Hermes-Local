@@ -10,6 +10,7 @@ mod crash_forensics;
 mod cron_service;
 mod deep_link;
 mod diagnostics_export;
+mod general_settings;
 mod git_branch_service;
 mod git_discard_service;
 mod git_repo_scan_service;
@@ -174,6 +175,7 @@ fn main() {
     git_repo_scan_service::install(&mut native.services);
     git_ship_service::install(&mut native.services);
     git_worktree_service::install(&mut native.services);
+    general_settings::install(&mut native.services, &data_dir);
     preview_service::install(&mut native.services);
     preview_watcher::install(&mut native.services);
     diagnostics_export::install(&mut native.services, data_dir.clone());
