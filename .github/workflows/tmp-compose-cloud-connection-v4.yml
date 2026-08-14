@@ -1,0 +1,67 @@
+name: Temporary compose Cloud connection v4
+
+on:
+  push:
+    branches:
+      - agent/cloud-connection
+    paths:
+      - ".github/workflows/tmp-compose-cloud-connection-v4.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/cloud-connection
+      - name: Run structural Cloud composition
+        shell: python
+        run: |
+          import textwrap
+          from pathlib import Path
+          workflow = Path('.github/workflows/tmp-compose-cloud-connection-v2.yml').read_text(encoding='utf-8')
+          start = '      - name: Compose Cloud connection source\n        shell: python\n        run: |\n'
+          end = '      - name: Format and focused validation\n'
+          script = textwrap.dedent(workflow.split(start, 1)[1].split(end, 1)[0])
+          override = r'''
+          def replace_once(path: str, old: str, new: str) -> None:
+              import re
+              from pathlib import Path
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              if text.count(old) == 1:
+                  file.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
+                  return
+              parts = re.split(r'(\s+)', old)
+              pattern = ''.join(r'\s+' if part.isspace() else re.escape(part) for part in parts if part)
+              matches = list(re.finditer(pattern, text, flags=re.S))
+              if len(matches) != 1:
+                  raise SystemExit(f"{path}: structural anchor count={len(matches)}: {old[:100]!r}")
+              match = matches[0]
+              file.write_text(text[:match.start()] + new + text[match.end():], encoding="utf-8", newline="\n")
+
+          '''
+          needle = 'core = "crates/hermes-core/src/lib.rs"\n'
+          script = script.replace(needle, textwrap.dedent(override) + needle)
+          exec(compile(script, '<cloud-compose-v2>', 'exec'), {'__name__': '__main__'})
+      - name: Format and focused validation
+        shell: bash
+        run: |
+          cargo fmt --all
+          cargo check -p hermes-core --locked
+          cargo test -p hermes-desktop --locked cloud -- --nocapture
+          cargo test -p hermes-ui --locked cloud -- --nocapture
+          cargo check -p hermes-local --bin hermes-local --locked
+      - name: Commit composed source
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/hermes-core/src/lib.rs crates/hermes-desktop/src/lib.rs crates/hermes-ui/src/lib.rs crates/hermes-ui/src/cloud.rs apps/desktop/src/main.rs apps/desktop/src/cloud_bridge.rs apps/desktop/src/local_gateway.rs apps/desktop/src/ssh_service.rs
+          git diff --cached --check
+          git commit -m "feat(cn-06): port Hermes Cloud discovery and connection"
+          git push origin HEAD:agent/cloud-connection
