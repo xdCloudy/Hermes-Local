@@ -5,6 +5,7 @@ mod base64_impl;
 pub use base64_impl::{Engine, engine};
 extern crate self as base64;
 
+mod clipboard_bridge;
 mod clipboard_service;
 mod crash_forensics;
 mod cron_service;
@@ -94,10 +95,12 @@ fn desktop_root() -> Element {
             }
         },
         Some(Ok(())) => rsx! {
-            shell_focus_guard::FocusGuard {
-                shell_parity::ParityShellHost {
-                    shell_interaction::ShellHost {
-                        hermes_ui::App {}
+            clipboard_bridge::ClipboardBridge {
+                shell_focus_guard::FocusGuard {
+                    shell_parity::ParityShellHost {
+                        shell_interaction::ShellHost {
+                            hermes_ui::App {}
+                        }
                     }
                 }
             }
