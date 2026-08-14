@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `51395de4fa76fb76b249735157f2556c6b735030` (2026-08-14)
+> **Implementation audit checkpoint:** `a0f323c20f2894a5d538dce3997fd9126ebce866` (2026-08-14)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -53,16 +53,16 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 20 | Largest remaining implementation backlog. |
+| A1 Designed | 19 | Largest remaining implementation backlog. |
 | A2 Service | 7 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 2 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 97 | Automated slice is green; human/live acceptance still required. |
+| A4 Auto-verified | 98 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 0 | No named external validation blockers remain. |
 | **Total** | **127** | Every row must end at A6 or be explicitly retired with product-owner approval. |
 
-At least-service coverage is **106/127 capabilities (83.5%)**. This is service-foundation coverage, not end-user parity or human acceptance.
+At least-service coverage is **107/127 capabilities (84.3%)**. This is service-foundation coverage, not end-user parity or human acceptance.
 
 The PR #179 exact-head validation set was green for Documentation
 validation, the Hermes Agent harness/native-client boundary workflow, Dioxus
@@ -212,6 +212,19 @@ Windows packaging `31760519412`, install lifecycle `31760519440`, footprint
 head; SSH interoperability was the expected skip. It merged as `51395de4`, so
 `DI-14` and `DI-15` are A4. Forced native/Agent failures and unusual real Windows
 environment configurations remain A5 evidence.
+
+PR #210 exact head `8a217751` adds the first-class Dioxus Artifacts route. It
+collects and deduplicates URLs, paths and structured artifact metadata from a
+bounded window of recent session history (30 sessions, 2,000 messages per
+session, six concurrent history requests and 1,000 displayed artifacts), then
+routes preview/open actions through the typed native preview service. The same
+credentialed-URL, sensitive-path, MIME and size guards used by Files protect
+Artifacts, and focused tests cover collection bounds, unsafe inputs and the
+native/UI boundary. Rust validation `31761763025`, Windows packaging
+`31761763062`, install lifecycle `31761762972`, footprint `31761763007` and
+native-client boundary `31761762975` all passed for that exact head; SSH
+interoperability was the expected skip. It merged as `a0f323c2`, so `AG-08` is
+A4. Live Agent artifact diversity and visual comparison remain A5 evidence.
 
 PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable
 Projects/Files/Git/Terminal/SSH slice. Desktop SSH mode now routes the existing
@@ -408,7 +421,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | AG-05 | Cron and scheduled tasks | `NativeCronClient` | Cron overlay | A4 Auto-verified | PR #205 wires typed Cron list/run history, create/update, pause/resume, trigger and confirmed delete into Dioxus with live refresh. Routing-vs-filter profile semantics, encoded IDs, bounded history/input, authenticated transport and 30/60-second timeouts remain enforced. Exact-head Rust `31756212001`, packaging `31756211983`, install `31756212034` and footprint `31756211990` passed before merge as `9b5f2b58`. | Create/edit/enable/disable/run/delete schedules; verify persistence and timezone/error cases. | ⬜ |
 | AG-06 | Messaging integrations | `NativeMessagingClient` | Integrations/Messaging | A4 Auto-verified | PR #205 wires platform state/test/configuration and pairing approval/revocation into Dioxus. Read DTOs remain redacted; secret inputs are write-only and mutation payloads are bounded behind encoded IDs and header-only auth. Exact-head Rust `31756212001`, packaging `31756211983`, install `31756212034` and footprint `31756211990` passed before merge as `9b5f2b58`. | Configure supported messaging connectors, test connection/state/errors and secret handling. | ⬜ |
 | AG-07 | Webhooks | `NativeWebhookClient` | Integrations/Webhooks | A4 Auto-verified | PR #205 wires webhook gateway enablement, create, enable/disable and confirmed delete into Dioxus, with one-time secret display/dismissal and secret-free read DTOs. Profile scope, encoded one-segment names, bounded authenticated transport and input checks remain enforced. Exact-head Rust `31756212001`, packaging `31756211983`, install `31756212034` and footprint `31756211990` passed before merge as `9b5f2b58`. | Create/test/update/delete webhooks, invalid URLs, secret redaction and scope behavior. | ⬜ |
-| AG-08 | Artifacts | Agent + `FileService` | Artifacts | A1 Designed | Not ported. | Open representative artifacts, previews/actions, missing files and unsafe path/URL cases. | ⬜ |
+| AG-08 | Artifacts | Agent + `FileService` | Artifacts | A4 Auto-verified | PR #210 adds a bounded Dioxus artifact index over recent assistant/tool history, with deduplication, search/filter/session links and typed safe preview/open actions. Collection bounds, credentialed URL and sensitive-path negatives, UI contracts, WASM and exact-head Rust/distribution gates pass. | Open representative artifacts, previews/actions, missing files and unsafe path/URL cases. | ⬜ |
 | AG-09 | Agents/subagents | Agent services | Agents overlay | A1 Designed | Not ported. | Launch/observe/cancel subagents, switching/background states and error/reconnect behavior. | ⬜ |
 | AG-10 | Starmap | Agent services | Starmap overlay | A1 Designed | Not ported. | Load large graph, navigate/select/filter and review performance/visual parity. | ⬜ |
 | AG-11 | Hermes TUI panel | Runtime/terminal adapter | TUI page | A1 Designed | Hermes Agent owns the TUI; Dioxus integration/embedding is not ported. | Launch/use TUI inside Hermes Local, verify input/resize/exit/reconnect and no duplicate runtime. | ⬜ |
