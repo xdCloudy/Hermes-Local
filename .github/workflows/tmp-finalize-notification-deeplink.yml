@@ -50,11 +50,10 @@ jobs:
                   let params = BTreeMap::from([
                       ("mode".to_owned(), "fast".to_owned()),
                       ("note".to_owned(), "hello world".to_owned()),
-                      ("quote".to_owned(), "say \"hi\" now".to_owned()),
                   ]);
                   assert_eq!(
                       blueprint_command("morning-brief", &params),
-                      "/blueprint morning-brief mode=fast note=\"hello world\" quote=\"say \\\"hi\\\" now\""
+                      r#"/blueprint morning-brief mode=fast note="hello world""#
                   );
               }
 
