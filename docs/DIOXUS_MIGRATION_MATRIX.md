@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `1eda95ae42a5d780b0257722cc5affb170d38ab0` (2026-08-14)
+> **Implementation audit checkpoint:** `a0f5de911d2cf485a4291453631f3f4b530dad38` (2026-08-14)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -54,9 +54,9 @@ At the audit checkpoint above:
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
 | A1 Designed | 15 | Largest remaining implementation backlog. |
-| A2 Service | 4 | Native/core foundations exist; UI/parity work remains. |
+| A2 Service | 3 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 1 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 106 | Automated slice is green; human/live acceptance still required. |
+| A4 Auto-verified | 107 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 0 | No named external validation blockers remain. |
@@ -305,6 +305,15 @@ Windows packaging `31809416371`, install lifecycle `31809416422`, footprint
 interoperability was the expected skip. It merged as `d155d65f`, so `DI-02` is
 A4. Live WSL/format/clipboard-behavior comparison remains A5 evidence.
 
+PR #220 exact head `935d20ef` upgrades the Windows footprint gate from
+artifact-size-only accounting to a real packaged-style Desktop runtime probe.
+Exact-head run `31827764097` observed a top-level window in 1.11 seconds,
+313.38 MiB aggregate process-tree working set, 2.7% normalized idle CPU and
+7 processes; the optimized EXE and portable ZIP measured 22.95 MiB and
+7.45 MiB. All configured runtime/size budgets and focused tooling tests
+passed before merge as `a0f5de91`, so `DI-22` is A4. Same-host
+legacy-vs-Rust experiential comparison remains A5 evidence.
+
 PR #219 exact head `f939be0a` completes the machine-verifiable notification and
 deep-link slice. It adds bounded WinRT actionable toasts with stable AUMID
 `xdCloudy.HermesLocal`, installer shortcut identity, atomic cold/running
@@ -543,7 +552,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | DI-19 | Production script/launcher cutover to Rust | build/setup/launcher tooling | product entry points | A1 Designed | Electron/React scripts remain production-authoritative while migration is in progress. | Run every official install/start/update/repair entry point and prove it launches only Rust client plus intended Agent/runtime children. | ⬜ |
 | DI-20 | Remove Electron/React/Node production runtime | repository/build tooling | n/a | A1 Designed | Legacy client intentionally remains as oracle; no production-runtime deletion has happened. | Inspect package/build/install outputs and process tree; prove Electron/Chromium/Node/React client code is absent from production artifacts. | ⬜ |
 | DI-21 | Clean-clone, package and full release regression | release/QA | whole product | A1 Designed | Not possible until feature/cutover waves are complete. | From clean clone/clean VM: build, package, install, run full automated suite and execute the human regression plan. | ⬜ |
-| DI-22 | Performance and footprint acceptance | release/QA | whole product | A2 Service | Dedicated footprint CI measures the optimized EXE at 14.61 MiB and portable ZIP at 5.09 MiB, both below 64 MiB regression ceilings. Live packaged startup, RAM/CPU and process-count comparison remains incomplete. | Measure packaged cold/warm start, first usable window, idle/active RAM/CPU, process count and disk size on same host; compare against OG baseline and investigate regressions. | ⬜ |
+| DI-22 | Performance and footprint acceptance | release/QA | whole product | A4 Auto-verified | PR #220 exact head `935d20ef` upgrades the Windows footprint gate from artifact-size-only accounting to a real packaged-style Desktop runtime probe. Exact-head run `31827764097` observed a real top-level window in 1.11 s, 313.38 MiB aggregate process-tree working set, 2.7% normalized idle CPU and 7 processes; the optimized EXE/portable measured 22.95/7.45 MiB. All runtime/size budgets and focused tooling tests passed before merge as `a0f5de91`. Same-host legacy-vs-Rust experiential comparison remains A5 evidence. | Measure packaged cold/warm start, first usable window, idle/active RAM/CPU, process count and disk size on same host; compare against OG baseline and investigate regressions. | ⬜ |
 
 ### Contributions and plugins
 
