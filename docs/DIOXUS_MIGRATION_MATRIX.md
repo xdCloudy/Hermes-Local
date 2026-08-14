@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `19b5c7dc55ead913c865089fe73efd7b346ca65b` (2026-08-14)
+> **Implementation audit checkpoint:** `2a4a49b338dcd7d723c71f033b730f7e2d529d62` (2026-08-14)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -53,16 +53,16 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 17 | Largest remaining implementation backlog. |
-| A2 Service | 7 | Native/core foundations exist; UI/parity work remains. |
-| A3 Ported | 2 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 100 | Automated slice is green; human/live acceptance still required. |
+| A1 Designed | 15 | Largest remaining implementation backlog. |
+| A2 Service | 6 | Native/core foundations exist; UI/parity work remains. |
+| A3 Ported | 4 | User-facing implementation exists; more evidence required. |
+| A4 Auto-verified | 101 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 0 | No named external validation blockers remain. |
 | **Total** | **127** | Every row must end at A6 or be explicitly retired with product-owner approval. |
 
-At least-service coverage is **109/127 capabilities (85.8%)**. This is service-foundation coverage, not end-user parity or human acceptance.
+At least-service coverage is **111/127 capabilities (87.4%)**. This is service-foundation coverage, not end-user parity or human acceptance.
 
 The PR #179 exact-head validation set was green for Documentation
 validation, the Hermes Agent harness/native-client boundary workflow, Dioxus
@@ -269,6 +269,15 @@ passed for that exact head; SSH interoperability was the expected skip. It
 merged as `19b5c7dc`, so `AG-02` is A4. Live server/catalog diversity and visual
 comparison remain A5 evidence.
 
+PR #213 exact head `18a96ff6` adds the typed bounded built-in contribution
+registry and composes shared navigation/home launchers plus Desktop command
+palette, tool panes and status slots from validated descriptors. Rust validation
+`31768394182`, Windows packaging `31768394254`, install lifecycle `31768394190`,
+footprint `31768394180` and native-client boundary `31768394214` all passed; SSH
+interoperability was the expected skip. It merged as `2a4a49b3`, so `PL-01` is
+A4. External runtime JavaScript plugins and broader Agent integration plumbing
+remain tracked separately by `PL-02` and `PL-03`.
+
 PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable
 Projects/Files/Git/Terminal/SSH slice. Desktop SSH mode now routes the existing
 typed Terminal surface through an OpenSSH-backed native PTY while local terminals
@@ -465,7 +474,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | AG-06 | Messaging integrations | `NativeMessagingClient` | Integrations/Messaging | A4 Auto-verified | PR #205 wires platform state/test/configuration and pairing approval/revocation into Dioxus. Read DTOs remain redacted; secret inputs are write-only and mutation payloads are bounded behind encoded IDs and header-only auth. Exact-head Rust `31756212001`, packaging `31756211983`, install `31756212034` and footprint `31756211990` passed before merge as `9b5f2b58`. | Configure supported messaging connectors, test connection/state/errors and secret handling. | ⬜ |
 | AG-07 | Webhooks | `NativeWebhookClient` | Integrations/Webhooks | A4 Auto-verified | PR #205 wires webhook gateway enablement, create, enable/disable and confirmed delete into Dioxus, with one-time secret display/dismissal and secret-free read DTOs. Profile scope, encoded one-segment names, bounded authenticated transport and input checks remain enforced. Exact-head Rust `31756212001`, packaging `31756211983`, install `31756212034` and footprint `31756211990` passed before merge as `9b5f2b58`. | Create/test/update/delete webhooks, invalid URLs, secret redaction and scope behavior. | ⬜ |
 | AG-08 | Artifacts | Agent + `FileService` | Artifacts | A4 Auto-verified | PR #210 adds a bounded Dioxus artifact index over recent assistant/tool history, with deduplication, search/filter/session links and typed safe preview/open actions. Collection bounds, credentialed URL and sensitive-path negatives, UI contracts, WASM and exact-head Rust/distribution gates pass. | Open representative artifacts, previews/actions, missing files and unsafe path/URL cases. | ⬜ |
-| AG-09 | Agents/subagents | Agent services | Agents overlay | A1 Designed | Not ported. | Launch/observe/cancel subagents, switching/background states and error/reconnect behavior. | ⬜ |
+| AG-09 | Agents/subagents | Agent services | Agents overlay | A3 Ported | PR #215 reconstructs the unpublished Dioxus lifecycle slice: globally scoped `subagent.*` observation, background-safe ownership, bounded delegation launch, child transcript drilldown and typed cancellation. Exact-head release gates are still running, so A4 is not yet claimed. | Launch/observe/cancel subagents, switching/background states and error/reconnect behavior. | ⬜ |
 | AG-10 | Starmap | `LearningService` + authenticated `GatewayServices` | Starmap overlay | A4 Auto-verified | PR #211 wires a profile-scoped, bounded learning graph into a deterministic Dioxus radial view with search, kind/category filters, ranked navigation and selection. Native and render budgets, identifier/edge validation, source contracts, WASM and exact-head Rust/distribution gates pass. | Load large graph, navigate/select/filter and review performance/visual parity. | ⬜ |
 | AG-11 | Hermes TUI panel | Runtime/terminal adapter | TUI page | A1 Designed | Hermes Agent owns the TUI; Dioxus integration/embedding is not ported. | Launch/use TUI inside Hermes Local, verify input/resize/exit/reconnect and no duplicate runtime. | ⬜ |
 | AG-12 | Embedded Hermes Agent dashboard | future `DashboardService` | Dashboard/workstation | A1 Designed | Agent dashboard exists upstream; secure Dioxus embed/launch partition is not ported. | Open dashboard, verify exact-loopback/auth partition, navigation restrictions, TUI tab and no token exposure. | ⬜ |
@@ -477,7 +486,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | ID | Capability | Rust owner | Dioxus surface | Stage | Current evidence / gap | Human acceptance | Human |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | DI-01 | Native notifications and action routing | `NotificationPlatform` | session/settings | A2 Service | Native Windows notification wrapper uses a fixed PowerShell/WinForms helper with bounded/sanitized title/body passed through child environment variables and no shell interpolation; notification preferences UI exists. AppUserModelID/toast action registration remains incomplete. | Trigger each notification kind in packaged app; click actions, test duplicates/focus/background and Windows notification settings. | ⬜ |
-| DI-02 | Clipboard text/images and save dialogs | `ClipboardService` | chat/context actions | A2 Service | Native Windows text read/write and PNG clipboard-image export use trusted STA PowerShell helpers with stdin/environment data, transient-busy retries, UTF-8/size/NUL/PNG/path checks and fixed helper paths. Dioxus consumers and save-dialog parity remain incomplete. | Copy/paste text/images, WSL edge cases, save dialogs, unsupported formats and size limits. | ⬜ |
+| DI-02 | Clipboard text/images and save dialogs | `ClipboardService` | chat/context actions | A3 Ported | PR #214 wires the existing bounded native clipboard text read/write service into a Desktop-owned Dioxus consumer. PNG image consumption and save-dialog parity remain incomplete, so this row stays A3 even if the text slice exact-head gates pass. | Copy/paste text/images, WSL edge cases, save dialogs, unsupported formats and size limits. | ⬜ |
 | DI-03 | Camera/microphone/media permissions | future `MediaService` | permission surfaces | A1 Designed | Not ported. | Grant/deny/revoke permissions, restart and verify only trusted app origin receives media capability. | ⬜ |
 | DI-04 | External browser opening and safe link policy | `PlatformService` | links/preview | A4 Auto-verified | PR #199 wires bounded rich-link cards to the typed external opener; PR #202 exact composed head `ffda6b8a` aligns the native boundary by allowing bounded HTTP, HTTPS and `mailto` targets while rejecting empty, oversized, control-character, hostless, credentialed and privileged-scheme targets. Rust validation `31752025260`, packaging `31752025345`, install lifecycle `31752025322` and footprint `31752025377` passed before merge as `39ed1047`. | Open allowed HTTP(S) links, reject unsafe schemes/credentialed/private targets where policy applies and verify no in-app navigation escape. | ⬜ |
 | DI-05 | Deep links and protocol registration | native deep-link service | routed surfaces | A2 Service | Native `hermes://` parsing and per-user Windows protocol registration exist with exact executable command identity and deterministic malformed-input tests; running-instance/single-instance Dioxus delivery is incomplete. | Register/use protocol from cold/running app, malformed payloads, duplicate instance and route/state handling. | ⬜ |
@@ -503,7 +512,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 
 | ID | Capability | Rust owner | Dioxus surface | Stage | Current evidence / gap | Human acceptance | Human |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| PL-01 | Built-in contribution registry | typed contribution model | routes/panes/menus/status | A1 Designed | Not ported as complete extension composition model. | Load built-in contributions and verify route/menu/pane/status composition and isolation. | ⬜ |
+| PL-01 | Built-in contribution registry | typed contribution model | routes/panes/menus/status | A4 Auto-verified | PR #213 exact head `18a96ff6` adds a typed bounded registry and composes built-in routes, panes, menus and status slots from validated descriptors. Rust validation `31768394182`, packaging `31768394254`, install lifecycle `31768394190`, footprint `31768394180` and native-client boundary `31768394214` passed before merge as `2a4a49b3`. External runtime plugins remain PL-02/PL-03 scope. | Load built-in contributions and verify route/menu/pane/status composition and isolation. | ⬜ |
 | PL-02 | Local runtime JavaScript UI plugins | migration adapter or explicit versioned replacement | contributed surfaces | A0 Audited | Legacy capability is inventoried; final migration/sandbox strategy is intentionally unresolved. | After design: install representative plugin, verify sandbox/CSP/no-native-authority and migration/error UX. | ⬜ |
 | PL-03 | Agent integrations and built-in features | Agent protocol/services | native Dioxus surfaces | A1 Designed | Individual Agent feature surfaces are tracked under AG rows; contribution plumbing is incomplete. | Enable representative Agent integrations and verify they appear/behave without giving UI arbitrary native authority. | ⬜ |
 
