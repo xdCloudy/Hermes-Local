@@ -47,7 +47,7 @@ fn format_bytes(bytes: u64) -> String {
 }
 
 #[component]
-fn SafePreview(document: PreviewDocument) -> Element {
+pub(super) fn SafePreview(document: PreviewDocument) -> Element {
     let size = document.byte_size.map(format_bytes);
     rsx! {
         div { style: "display:flex;flex-direction:column;gap:.75rem;min-height:0;flex:1;",

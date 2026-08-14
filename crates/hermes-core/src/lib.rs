@@ -1284,6 +1284,14 @@ pub trait PreviewService: Send + Sync {
         raw_target: &str,
         base_dir: Option<&Path>,
     ) -> ServiceFuture<'_, Option<PreviewDocument>>;
+
+    fn open(&self, _raw_target: &str, _base_dir: Option<&Path>) -> ServiceFuture<'_, ()> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "safe artifact opening is unavailable on this platform".into(),
+            ))
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]

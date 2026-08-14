@@ -2340,6 +2340,7 @@ dependencies = [
  "hermes-protocol",
  "hermes-ui",
  "keyring",
+ "open",
  "portable-pty",
  "reqwest",
  "rfd",
