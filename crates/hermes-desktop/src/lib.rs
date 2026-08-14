@@ -844,15 +844,12 @@ impl GatewayServices {
                 Ok(access_token) => client
                     .post(format!("{base_url}/api/auth/ws-ticket"))
                     .bearer_auth(access_token),
-                Err(ServiceError::PermissionDenied(_)) if cloud_session.is_some() => client
-                    .post(format!("{base_url}/api/auth/ws-ticket"))
-                    .header(
-                        COOKIE,
-                        cloud_session
-                            .as_ref()
-                            .expect("checked Cloud session")
-                            .header()?,
-                    ),
+                Err(error @ ServiceError::PermissionDenied(_)) => match cloud_session.as_ref() {
+                    Some(session) => client
+                        .post(format!("{base_url}/api/auth/ws-ticket"))
+                        .header(COOKIE, session.header()?),
+                    None => return Err(error),
+                },
                 Err(error) => return Err(error),
             }
         } else if let Some(session) = cloud_session.as_ref() {
