@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `f5fd27934dff500989a2c656b32e4b446631be63` (2026-08-14)
+> **Implementation audit checkpoint:** `51395de4fa76fb76b249735157f2556c6b735030` (2026-08-14)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -54,9 +54,9 @@ At the audit checkpoint above:
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
 | A1 Designed | 20 | Largest remaining implementation backlog. |
-| A2 Service | 9 | Native/core foundations exist; UI/parity work remains. |
+| A2 Service | 7 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 2 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 95 | Automated slice is green; human/live acceptance still required. |
+| A4 Auto-verified | 97 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 0 | No named external validation blockers remain. |
@@ -199,6 +199,19 @@ covered by focused tests. Rust validation `31758991026`, Windows packaging
 passed for that exact head; SSH interoperability was the expected skip. It
 merged as `f5fd2793`, so `RT-05` and `RT-06` are A4. Live benchmark and scan
 quality, redaction and report-content comparison remain A5 evidence.
+
+PR #209 exact head `368f9f8e` completes the machine-verifiable diagnostics
+recovery slice. The typed snapshot exposes only environment-variable presence
+and aggregate counts, never values. The Dioxus Logs surface can clear only the
+bounded latest crash record and open the fixed Windows environment settings
+surface. Native recovery rejects symlinks and non-files, is idempotent when no
+record exists, and launches `SystemPropertiesAdvanced.exe` through explicit
+process arguments without shell interpolation. Rust validation `31760519540`,
+Windows packaging `31760519412`, install lifecycle `31760519440`, footprint
+`31760519408` and native-client boundary `31760519411` all passed for that exact
+head; SSH interoperability was the expected skip. It merged as `51395de4`, so
+`DI-14` and `DI-15` are A4. Forced native/Agent failures and unusual real Windows
+environment configurations remain A5 evidence.
 
 PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable
 Projects/Files/Git/Terminal/SSH slice. Desktop SSH mode now routes the existing
@@ -420,8 +433,8 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | DI-11 | Login item/startup | native login-item service | startup settings | A4 Auto-verified | PR #207 wires the current-user Run-key service into General settings with live read-back, optimistic interaction rollback and atomic setting persistence. Registration remains bound to the exact executable plus `--hermes-local-autostart` through trusted explicit registry argv and deterministic identity/negative tests. Exact-head Rust `31757593207`, packaging `31757593161`, install `31757593172`, footprint `31757593235` and native-client `31757593199` gates passed before merge as `7e8250b5`. | Enable/disable per-user startup, reboot/sign-in and verify correct executable/arguments. | ⬜ |
 | DI-12 | Bootstrap, install and uninstall | Rust/Inno install tooling | onboarding/uninstall | A4 Auto-verified | Windows CI verifies clean per-user install, exact payload identity, same-version repair/reinstall, uninstall cleanup and byte-preserving `%APPDATA%\Hermes Local` user data. Older-version upgrade/manual clean-VM review remains. | Clean install, upgrade, repair, uninstall choices and data preservation on a disposable Windows user/VM. | ⬜ |
 | DI-13 | Desktop update, stage, promote and rollback | native update activation service | updates/recovery | A2 Service | Native staged activation/rollback verifies exact SHA-256 and PE identity, uses schema-versioned operation-local plans, a copied offline helper, capped retries and probation rollback; tamper/path-escape/non-PE/promotion/rollback tests pass. Update discovery/download/UI/cutover remain incomplete. | Test update available/no-update, interrupted download/apply, locked files, rollback, relaunch and data preservation. | ⬜ |
-| DI-14 | Crash forensics and recovery | native crash diagnostics | boot/recovery | A2 Service | Native startup panic hook writes bounded timestamp/version/location plus a panic SHA-256 without persisting raw panic text, env, argv or tokens; replacement/redaction tests pass. Renderer/runtime crash capture and recovery UI remain. | Force renderer/native/runtime crashes/corrupt state; verify bounded diagnostics, recovery and no secret leakage. | ⬜ |
-| DI-15 | Windows environment, PATH, CA and platform recovery | native platform diagnostics | no direct surface | A2 Service | Privacy-safe diagnostics normalize/dedupe PATH and report only presence for proxy/CA/WSL/display/app-data state; tests prove sensitive values are not retained. Recovery actions/UI remain incomplete. | Test unusual PATH, user env, custom CA/proxy, WSL/remote display and representative broken-install recovery. | ⬜ |
+| DI-14 | Crash forensics and recovery | native crash diagnostics | boot/recovery | A4 Auto-verified | PR #209 wires the bounded privacy-safe crash record into the Dioxus Logs recovery surface and adds a typed clear action that removes only `crashes/latest.json`, rejects symlinks/non-files and is idempotent when absent. Panic hashing/redaction, replacement and UI/native boundary tests plus exact-head gates pass. | Force renderer/native/runtime crashes/corrupt state; verify bounded diagnostics, recovery and no secret leakage. | ⬜ |
+| DI-15 | Windows environment, PATH, CA and platform recovery | native platform diagnostics | Logs recovery | A4 Auto-verified | PR #209 exposes only presence/counts for PATH, proxy, CA, WSL, display and app-data state, proves values never cross the DTO/UI boundary, and adds a fixed `SystemPropertiesAdvanced.exe` recovery action without shell interpolation. Focused privacy/action contracts and exact-head gates pass. | Test unusual PATH, user env, custom CA/proxy, WSL/remote display and representative broken-install recovery. | ⬜ |
 | DI-16 | Optimized Windows Rust executable build | Rust/Dioxus release tooling | release artifact | A4 Auto-verified | CI builds `hermes-local.exe` with pinned Rust 1.97.1, architecture/WASM/tests/Clippy gates and uploads a Windows x64 artifact. | Run the exact CI artifact on the target Windows machine, verify launch/identity/icon/version and basic navigation. | ⬜ |
 | DI-17 | Installer/portable package, install stamp and artifact identity | Rust/Dioxus packaging | installer/portable | A4 Auto-verified | Windows CI builds a per-user Inno installer and exact portable ZIP, verifies install stamp/payload hashes, Start Menu/uninstall registration, silent install/uninstall cleanup and package identity. Trusted attestation wiring exists; no human package review is recorded. | Install both supported distribution forms on clean Windows; verify paths, shortcuts, icon, version, uninstall registration and no Electron runtime. | ⬜ |
 | DI-18 | SBOM, hashes and release provenance | release tooling | About/update | A4 Auto-verified | PR #140 / Dioxus Rust validation run #150 passed the optimized Windows build, resolved Cargo CycloneDX generation, SHA-256 release manifest/checksums, focused SBOM tests and artifact upload. Trusted-run attestation wiring is implemented; no human provenance/package review has been recorded. | Verify SBOM/hashes/signatures/version provenance against exact packaged binaries and dependencies. | ⬜ |
