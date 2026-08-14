@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `a0f323c20f2894a5d538dce3997fd9126ebce866` (2026-08-14)
+> **Implementation audit checkpoint:** `452a44f1a9136a2df69e03b984d9b7cdcd4cfd9f` (2026-08-14)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -53,16 +53,16 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 19 | Largest remaining implementation backlog. |
+| A1 Designed | 18 | Largest remaining implementation backlog. |
 | A2 Service | 7 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 2 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 98 | Automated slice is green; human/live acceptance still required. |
+| A4 Auto-verified | 99 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 0 | No named external validation blockers remain. |
 | **Total** | **127** | Every row must end at A6 or be explicitly retired with product-owner approval. |
 
-At least-service coverage is **107/127 capabilities (84.3%)**. This is service-foundation coverage, not end-user parity or human acceptance.
+At least-service coverage is **108/127 capabilities (85.0%)**. This is service-foundation coverage, not end-user parity or human acceptance.
 
 The PR #179 exact-head validation set was green for Documentation
 validation, the Hermes Agent harness/native-client boundary workflow, Dioxus
@@ -225,6 +225,18 @@ native/UI boundary. Rust validation `31761763025`, Windows packaging
 native-client boundary `31761762975` all passed for that exact head; SSH
 interoperability was the expected skip. It merged as `a0f323c2`, so `AG-08` is
 A4. Live Agent artifact diversity and visual comparison remain A5 evidence.
+
+PR #211 exact head `d248b42d` ports the Starmap through a typed, profile-scoped
+learning-graph service. The native Gateway adapter bounds responses to 4 MiB,
+2,000 nodes, 8,000 edges, 256 clusters and 512 memory cards; rejects invalid,
+self-referential and dangling graph identifiers; and never exposes connection
+controls to the WebView. The Dioxus route applies a second deterministic render
+budget of 300 nodes and 1,200 edges and provides search, kind/category filters,
+ranked navigation and selection. Rust validation `31763053007`, Windows
+packaging `31763053040`, install lifecycle `31763052975` and footprint
+`31763052971` all passed for that exact head; SSH interoperability was the
+expected skip. It merged as `452a44f1`, so `AG-10` is A4. Large live graphs,
+navigation feel and visual comparison remain A5 evidence.
 
 PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable
 Projects/Files/Git/Terminal/SSH slice. Desktop SSH mode now routes the existing
@@ -423,7 +435,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | AG-07 | Webhooks | `NativeWebhookClient` | Integrations/Webhooks | A4 Auto-verified | PR #205 wires webhook gateway enablement, create, enable/disable and confirmed delete into Dioxus, with one-time secret display/dismissal and secret-free read DTOs. Profile scope, encoded one-segment names, bounded authenticated transport and input checks remain enforced. Exact-head Rust `31756212001`, packaging `31756211983`, install `31756212034` and footprint `31756211990` passed before merge as `9b5f2b58`. | Create/test/update/delete webhooks, invalid URLs, secret redaction and scope behavior. | ⬜ |
 | AG-08 | Artifacts | Agent + `FileService` | Artifacts | A4 Auto-verified | PR #210 adds a bounded Dioxus artifact index over recent assistant/tool history, with deduplication, search/filter/session links and typed safe preview/open actions. Collection bounds, credentialed URL and sensitive-path negatives, UI contracts, WASM and exact-head Rust/distribution gates pass. | Open representative artifacts, previews/actions, missing files and unsafe path/URL cases. | ⬜ |
 | AG-09 | Agents/subagents | Agent services | Agents overlay | A1 Designed | Not ported. | Launch/observe/cancel subagents, switching/background states and error/reconnect behavior. | ⬜ |
-| AG-10 | Starmap | Agent services | Starmap overlay | A1 Designed | Not ported. | Load large graph, navigate/select/filter and review performance/visual parity. | ⬜ |
+| AG-10 | Starmap | `LearningService` + authenticated `GatewayServices` | Starmap overlay | A4 Auto-verified | PR #211 wires a profile-scoped, bounded learning graph into a deterministic Dioxus radial view with search, kind/category filters, ranked navigation and selection. Native and render budgets, identifier/edge validation, source contracts, WASM and exact-head Rust/distribution gates pass. | Load large graph, navigate/select/filter and review performance/visual parity. | ⬜ |
 | AG-11 | Hermes TUI panel | Runtime/terminal adapter | TUI page | A1 Designed | Hermes Agent owns the TUI; Dioxus integration/embedding is not ported. | Launch/use TUI inside Hermes Local, verify input/resize/exit/reconnect and no duplicate runtime. | ⬜ |
 | AG-12 | Embedded Hermes Agent dashboard | future `DashboardService` | Dashboard/workstation | A1 Designed | Agent dashboard exists upstream; secure Dioxus embed/launch partition is not ported. | Open dashboard, verify exact-loopback/auth partition, navigation restrictions, TUI tab and no token exposure. | ⬜ |
 | AG-13 | Logs and diagnostics export | `DiagnosticsExportService` | Logs/About | A4 Auto-verified | PR #203 wires a typed sanitized snapshot, filter/refresh states and native folder-picker export. Allowlisted log tails are bounded to 200 lines/2 MiB; exports include crash state and a SHA-256 sidecar, while privacy-negative tests cover credentials, tokens, private paths and addresses. Exact-head Rust `31753324310`, packaging `31753324266`, install `31753324257`, footprint `31753324291` and native-client `31753324245` gates passed before merge as `7cf5cefe`. | View/filter/copy/export logs, trigger failures and verify secrets/private paths are redacted. | ⬜ |
