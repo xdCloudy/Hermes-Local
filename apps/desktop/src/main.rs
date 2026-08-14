@@ -10,6 +10,7 @@ mod clipboard_service;
 mod crash_forensics;
 mod cron_service;
 mod deep_link;
+mod deep_link_bridge;
 mod diagnostics_export;
 mod general_settings;
 mod git_branch_service;
@@ -58,6 +59,9 @@ use dioxus::prelude::*;
 use hermes_core::AppServices;
 use hermes_desktop::NativeApp;
 
+#[derive(Clone)]
+struct DesktopDataDir(PathBuf);
+
 fn desktop_root() -> Element {
     let desktop = dioxus::desktop::window();
     use_context_provider(move || hermes_ui::WindowActions {
@@ -96,12 +100,14 @@ fn desktop_root() -> Element {
             }
         },
         Some(Ok(())) => rsx! {
-            clipboard_bridge::ClipboardBridge {
-                subagent_bridge::SubagentBridge {
-                    shell_focus_guard::FocusGuard {
-                        shell_parity::ParityShellHost {
-                            shell_interaction::ShellHost {
-                                hermes_ui::App {}
+            deep_link_bridge::DeepLinkBridge {
+                clipboard_bridge::ClipboardBridge {
+                    subagent_bridge::SubagentBridge {
+                        shell_focus_guard::FocusGuard {
+                            shell_parity::ParityShellHost {
+                                shell_interaction::ShellHost {
+                                    hermes_ui::App {}
+                                }
                             }
                         }
                     }
@@ -144,10 +150,17 @@ fn main() {
     let data_dir = std::env::var_os("APPDATA")
         .map_or_else(std::env::temp_dir, PathBuf::from)
         .join("Hermes Local");
+    let startup_deep_link = deep_link::extract_from_args(std::env::args_os());
     let _instance_guard = match shell_instance::InstanceGuard::acquire(&data_dir) {
         Ok(Some(guard)) => guard,
         Ok(None) => {
-            eprintln!("Hermes Local is already running; refusing a second Desktop authority.");
+            if let Some(uri) = startup_deep_link.as_deref() {
+                if let Err(error) = deep_link::enqueue(&data_dir, uri) {
+                    eprintln!("Hermes Local could not forward the deep-link activation: {error}");
+                }
+            } else {
+                eprintln!("Hermes Local is already running; refusing a second Desktop authority.");
+            }
             return;
         }
         Err(error) => {
@@ -160,6 +173,11 @@ fn main() {
     }
     if let Err(error) = deep_link::register() {
         eprintln!("Hermes Local protocol registration is unavailable: {error}");
+    }
+    if let Some(uri) = startup_deep_link.as_deref()
+        && let Err(error) = deep_link::enqueue(&data_dir, uri)
+    {
+        eprintln!("Hermes Local could not queue the startup deep link: {error}");
     }
     let saved_window_state = match window_state::load(&data_dir.join("window-state.json")) {
         Ok(state) => state,
@@ -186,7 +204,7 @@ fn main() {
     preview_watcher::install(&mut native.services);
     diagnostics_export::install(&mut native.services, data_dir.clone());
     local_gateway::install(&mut native.services);
-    ssh_service::install_ssh_probe(&mut native.services, data_dir);
+    ssh_service::install_ssh_probe(&mut native.services, data_dir.clone());
     ssh_terminal::install(&mut native.services);
 
     let window = WindowBuilder::new()
@@ -210,6 +228,7 @@ fn main() {
     dioxus::LaunchBuilder::desktop()
         .with_cfg(config)
         .with_context(native.services)
+        .with_context(DesktopDataDir(data_dir))
         .launch(desktop_root);
     local_gateway::shutdown();
 }

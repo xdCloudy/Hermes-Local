@@ -17,6 +17,7 @@ PRODUCT_NAME = "Hermes Local"
 PACKAGE_NAME = "hermes-local"
 ARCHITECTURE = "x86_64"
 APP_ID = "F55A89C1-897E-4A89-9E07-11851CE65E51"
+APP_USER_MODEL_ID = "xdCloudy.HermesLocal"
 PORTABLE_NAME = "Hermes-Local-Portable-x64.zip"
 INSTALLER_NAME = "Hermes-Local-Setup.exe"
 INSTALL_STAMP_NAME = "install-stamp.json"
@@ -197,7 +198,7 @@ Source: "{source}\\{INSTALL_STAMP_NAME}"; DestDir: "{{app}}"; Flags: ignoreversi
 Source: "{source}\\{PACKAGE_MANIFEST_NAME}"; DestDir: "{{app}}"; Flags: ignoreversion
 
 [Icons]
-Name: "{{autoprograms}}\\Hermes Local"; Filename: "{{app}}\\{EXECUTABLE_NAME}"; WorkingDir: "{{app}}"
+Name: "{{autoprograms}}\\Hermes Local"; Filename: "{{app}}\\{EXECUTABLE_NAME}"; WorkingDir: "{{app}}"; AppUserModelID: "{APP_USER_MODEL_ID}"
 """
 
 
