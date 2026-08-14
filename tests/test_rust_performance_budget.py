@@ -39,6 +39,101 @@ class RustPerformanceBudgetTests(unittest.TestCase):
             with self.assertRaisesRegex(budget.BudgetError, "artifact not found"):
                 budget.evaluate(missing, None, 1.0, 1.0)
 
+    def test_runtime_metrics_inside_budget_are_recorded(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            binary = Path(temporary) / "hermes-local.exe"
+            binary.write_bytes(b"x")
+            runtime = {
+                "schemaVersion": 1,
+                "windowReady": True,
+                "startupSeconds": 2.75,
+                "workingSetMiB": 384.5,
+                "cpuPercent": 3.25,
+                "processCount": 9,
+            }
+            report = budget.evaluate(
+                binary,
+                None,
+                1.0,
+                1.0,
+                runtime=runtime,
+                max_startup_seconds=10.0,
+                max_working_set_mib=512.0,
+                max_cpu_percent=10.0,
+                max_process_count=12,
+            )
+            self.assertEqual(report["schemaVersion"], 2)
+            self.assertEqual(report["status"], "passed")
+            names = {check["name"] for check in report["checks"]}
+            self.assertEqual(
+                names,
+                {
+                    "optimized-binary-size",
+                    "window-ready-startup",
+                    "idle-working-set",
+                    "idle-cpu",
+                    "desktop-process-tree",
+                },
+            )
+
+    def test_runtime_metric_over_budget_fails_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            binary = Path(temporary) / "hermes-local.exe"
+            binary.write_bytes(b"x")
+            runtime = {
+                "windowReady": True,
+                "startupSeconds": 25.0,
+                "workingSetMiB": 1200.0,
+                "cpuPercent": 60.0,
+                "processCount": 24,
+            }
+            report = budget.evaluate(
+                binary,
+                None,
+                1.0,
+                1.0,
+                runtime=runtime,
+                max_startup_seconds=15.0,
+                max_working_set_mib=1024.0,
+                max_cpu_percent=50.0,
+                max_process_count=20,
+            )
+            self.assertEqual(report["status"], "failed")
+            self.assertEqual(sum(not check["passed"] for check in report["checks"]), 4)
+
+    def test_runtime_requires_ready_window_and_valid_numbers(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            binary = Path(temporary) / "hermes-local.exe"
+            binary.write_bytes(b"x")
+            with self.assertRaisesRegex(budget.BudgetError, "ready top-level window"):
+                budget.evaluate(
+                    binary,
+                    None,
+                    1.0,
+                    1.0,
+                    runtime={
+                        "windowReady": False,
+                        "startupSeconds": 1,
+                        "workingSetMiB": 1,
+                        "cpuPercent": 1,
+                        "processCount": 1,
+                    },
+                )
+            with self.assertRaisesRegex(budget.BudgetError, "workingSetMiB"):
+                budget.evaluate(
+                    binary,
+                    None,
+                    1.0,
+                    1.0,
+                    runtime={
+                        "windowReady": True,
+                        "startupSeconds": 1,
+                        "workingSetMiB": -1,
+                        "cpuPercent": 1,
+                        "processCount": 1,
+                    },
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
