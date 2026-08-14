@@ -1,0 +1,90 @@
+name: Temporary finalize notification and deep-link tranche
+
+on:
+  push:
+    branches:
+      - agent/notifications-deeplink
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/notifications-deeplink
+      - name: Add focused parity tests
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('crates/hermes-ui/src/chat/legacy.rs')
+          text = path.read_text(encoding='utf-8')
+          old = '    use super::{TRANSCRIPT_WINDOW, visible_message_start};'
+          new = '''    use std::collections::BTreeMap;
+
+              use super::{
+                  TRANSCRIPT_WINDOW, blueprint_command, insert_composer_block, visible_message_start,
+              };'''
+          if text.count(old) != 1:
+              raise SystemExit(f'legacy test import anchor count={text.count(old)}')
+          text = text.replace(old, new)
+          anchor = '''    #[test]
+              fn transcript_window_expands_in_fixed_chunks_without_underflow() {
+                  assert_eq!(visible_message_start(25, TRANSCRIPT_WINDOW), 0);
+                  assert_eq!(visible_message_start(500, TRANSCRIPT_WINDOW * 2), 340);
+                  assert_eq!(visible_message_start(0, TRANSCRIPT_WINDOW), 0);
+              }
+          }'''
+          replacement = '''    #[test]
+              fn transcript_window_expands_in_fixed_chunks_without_underflow() {
+                  assert_eq!(visible_message_start(25, TRANSCRIPT_WINDOW), 0);
+                  assert_eq!(visible_message_start(500, TRANSCRIPT_WINDOW * 2), 340);
+                  assert_eq!(visible_message_start(0, TRANSCRIPT_WINDOW), 0);
+              }
+
+              #[test]
+              fn blueprint_activation_matches_reviewable_electron_command_shape() {
+                  let params = BTreeMap::from([
+                      ("mode".to_owned(), "fast".to_owned()),
+                      ("note".to_owned(), "hello world".to_owned()),
+                      ("quote".to_owned(), "say \"hi\" now".to_owned()),
+                  ]);
+                  assert_eq!(
+                      blueprint_command("morning-brief", &params),
+                      "/blueprint morning-brief mode=fast note=\"hello world\" quote=\"say \\\"hi\\\" now\""
+                  );
+              }
+
+              #[test]
+              fn external_blueprint_insert_preserves_existing_draft_as_block() {
+                  assert_eq!(
+                      insert_composer_block("keep this", "/blueprint daily"),
+                      "keep this\\n\\n/blueprint daily"
+                  );
+                  assert_eq!(insert_composer_block("", "/blueprint daily"), "/blueprint daily");
+              }
+          }'''
+          if text.count(anchor) != 1:
+              raise SystemExit(f'legacy test tail anchor count={text.count(anchor)}')
+          path.write_text(text.replace(anchor, replacement), encoding='utf-8', newline='\n')
+      - name: Format and run focused checks
+        shell: bash
+        run: |
+          cargo fmt --all
+          python -m unittest tests/test_rust_windows_package.py
+          cargo test -p hermes-ui --locked
+          cargo test -p hermes-local --bin hermes-local --locked deep_link
+          cargo test -p hermes-local --bin hermes-local --locked notification
+      - name: Commit finalized source
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git diff --check
+          git add apps/desktop/src/deep_link.rs apps/desktop/src/deep_link_bridge.rs apps/desktop/src/notification_service.rs apps/desktop/src/main.rs crates/hermes-ui/src/lib.rs crates/hermes-ui/src/chat/legacy.rs scripts/ci/rust_windows_package.py tests/test_rust_windows_package.py
+          git diff --cached --exit-code && { echo 'No finalized source changes'; exit 1; } || true
+          git commit -m "test(di): cover notification and deep-link parity"
+          git push origin HEAD:agent/notifications-deeplink
