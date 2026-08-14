@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `9b5f2b58888c15d0fa8acdb5e965032e770b9053` (2026-08-14)
+> **Implementation audit checkpoint:** `7e8250b507ba4cc5197192abaaec780edda3b3e6` (2026-08-14)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -54,9 +54,9 @@ At the audit checkpoint above:
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
 | A1 Designed | 20 | Largest remaining implementation backlog. |
-| A2 Service | 11 | Native/core foundations exist; UI/parity work remains. |
+| A2 Service | 9 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 4 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 91 | Automated slice is green; human/live acceptance still required. |
+| A4 Auto-verified | 93 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 0 | No named external validation blockers remain. |
@@ -176,6 +176,16 @@ with encoded segments, 30/60-second timeouts, 4 MiB response bounds and redacted
 read DTOs. Rust validation `31756212001`, Windows packaging `31756211983`, install
 lifecycle `31756212034` and footprint `31756211990` passed before merge as
 `9b5f2b58`, so `AG-05`, `AG-06` and `AG-07` are A4.
+
+PR #207 exact head `77840bd7` wires the General settings power and login-item
+controls through typed protocol/core/Desktop boundaries. The UI reports bounded
+Windows power state, enables/disables the native keep-awake lease and per-user
+login item, persists the settings atomically, restores keep-awake on startup and
+rolls the UI back on native or persistence failure. Rust validation
+`31757593207`, Windows packaging `31757593161`, install lifecycle `31757593172`,
+artifact footprint `31757593235` and native-client boundary `31757593199` all
+passed for that exact head; SSH interoperability was the expected skip. It
+merged as `7e8250b5`, so `DI-10` and `DI-11` are A4.
 
 PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable
 Projects/Files/Git/Terminal/SSH slice. Desktop SSH mode now routes the existing
@@ -393,8 +403,8 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | DI-07 | Quick Entry global shortcut/window | `QuickEntryShortcutController` + native window geometry | Quick Entry | A2 Service | Native shortcut parsing/settings/controller and 640×168 window-geometry foundation matches Electron alias/order/reserved-key semantics, uses bounded fail-soft settings loading and deterministic controller/monitor tests. Actual OS global-hotkey registration, secondary Dioxus window lifecycle and composer submission remain unported. | Register shortcut, summon/dismiss across apps, submit, move monitors and restart. | ⬜ |
 | DI-08 | Pet overlay and generator | `WindowService` | pet roots | A1 Designed | Not ported. | Generate/show/hide/move pet, focus/input behavior and persistence. | ⬜ |
 | DI-09 | Wake indicator | `WindowService` | wake root | A1 Designed | Not ported. | Trigger/show/hide/reposition indicator and verify lifecycle. | ⬜ |
-| DI-10 | Keep-awake, battery and resume | native power service | settings/status | A2 Service | Dedicated Windows helper holds `ES_CONTINUOUS | ES_SYSTEM_REQUIRED` without forcing the display awake; idempotent enable/disable/drop behavior is covered by the composed Rust/Windows gate. Battery/resume/settings integration remains. | Start/stop blocker, sleep/resume laptop, battery/power changes and no leaked blocker. | ⬜ |
-| DI-11 | Login item/startup | native login-item service | startup settings | A2 Service | Current-user Run-key service binds the exact executable plus `--hermes-local-autostart`, uses trusted explicit registry argv, verifies read-back state and has deterministic negative tests. Settings UI/startup UX is not wired. | Enable/disable per-user startup, reboot/sign-in and verify correct executable/arguments. | ⬜ |
+| DI-10 | Keep-awake, battery and resume | native power service | settings/status | A4 Auto-verified | PR #207 wires bounded Windows AC/battery status plus the native keep-awake lease into General settings, with atomic persistence, startup restore, rollback on failure and deterministic fail-closed parsing/service/UI contracts. The blocker remains `ES_CONTINUOUS | ES_SYSTEM_REQUIRED`, so it never forces the display awake. Exact-head Rust `31757593207`, packaging `31757593161`, install `31757593172`, footprint `31757593235` and native-client `31757593199` gates passed before merge as `7e8250b5`. | Start/stop blocker, sleep/resume laptop, battery/power changes and no leaked blocker. | ⬜ |
+| DI-11 | Login item/startup | native login-item service | startup settings | A4 Auto-verified | PR #207 wires the current-user Run-key service into General settings with live read-back, optimistic interaction rollback and atomic setting persistence. Registration remains bound to the exact executable plus `--hermes-local-autostart` through trusted explicit registry argv and deterministic identity/negative tests. Exact-head Rust `31757593207`, packaging `31757593161`, install `31757593172`, footprint `31757593235` and native-client `31757593199` gates passed before merge as `7e8250b5`. | Enable/disable per-user startup, reboot/sign-in and verify correct executable/arguments. | ⬜ |
 | DI-12 | Bootstrap, install and uninstall | Rust/Inno install tooling | onboarding/uninstall | A4 Auto-verified | Windows CI verifies clean per-user install, exact payload identity, same-version repair/reinstall, uninstall cleanup and byte-preserving `%APPDATA%\Hermes Local` user data. Older-version upgrade/manual clean-VM review remains. | Clean install, upgrade, repair, uninstall choices and data preservation on a disposable Windows user/VM. | ⬜ |
 | DI-13 | Desktop update, stage, promote and rollback | native update activation service | updates/recovery | A2 Service | Native staged activation/rollback verifies exact SHA-256 and PE identity, uses schema-versioned operation-local plans, a copied offline helper, capped retries and probation rollback; tamper/path-escape/non-PE/promotion/rollback tests pass. Update discovery/download/UI/cutover remain incomplete. | Test update available/no-update, interrupted download/apply, locked files, rollback, relaunch and data preservation. | ⬜ |
 | DI-14 | Crash forensics and recovery | native crash diagnostics | boot/recovery | A2 Service | Native startup panic hook writes bounded timestamp/version/location plus a panic SHA-256 without persisting raw panic text, env, argv or tokens; replacement/redaction tests pass. Renderer/runtime crash capture and recovery UI remain. | Force renderer/native/runtime crashes/corrupt state; verify bounded diagnostics, recovery and no secret leakage. | ⬜ |
