@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `1f21686182b23fd8a94734544a4d76641a3b7fa3` (2026-08-14)
+> **Implementation audit checkpoint:** `19b5c7dc55ead913c865089fe73efd7b346ca65b` (2026-08-14)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -53,16 +53,16 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 18 | Largest remaining implementation backlog. |
+| A1 Designed | 17 | Largest remaining implementation backlog. |
 | A2 Service | 7 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 2 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 99 | Automated slice is green; human/live acceptance still required. |
+| A4 Auto-verified | 100 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 0 | No named external validation blockers remain. |
 | **Total** | **127** | Every row must end at A6 or be explicitly retired with product-owner approval. |
 
-At least-service coverage is **108/127 capabilities (85.0%)**. This is service-foundation coverage, not end-user parity or human acceptance.
+At least-service coverage is **109/127 capabilities (85.8%)**. This is service-foundation coverage, not end-user parity or human acceptance.
 
 The PR #179 exact-head validation set was green for Documentation
 validation, the Hermes Agent harness/native-client boundary workflow, Dioxus
@@ -251,6 +251,23 @@ Windows packaging `31764261270`, install lifecycle `31764261277` and footprint
 `31764261273` all passed for that exact head; SSH interoperability was the
 expected skip. It merged as `1f216861`. `SH-01` remains A4 with the new Rust
 owner; `CH-01` remains A3 until Cloud and full cross-mode re-home are complete.
+
+PR #212 exact head `1d92e733` replaces the MCP placeholder with typed,
+profile-scoped server and catalog management. The Dioxus surface lists, searches,
+adds, edits, enables/disables, probes and removes configured servers; installs
+catalog entries behind an explicit source/connection trust acknowledgement; and
+reloads live MCP tools while surfacing reload failures. The native adapter uses
+the exact authenticated Agent routes, encoded server names, bounded timeouts,
+4 MiB responses, cardinality/field/transport/URL validation and whole-map saves
+that preserve write-only stored environment secrets without returning them to
+the WebView. Profile-switch epochs reject stale reads and mutation completions.
+Focused tests exercise live HTTP route/profile/header/payload contracts, rename
+and secret preservation, unsafe inputs, secret-free read DTOs and the native/UI
+architecture boundary. Rust validation `31766279481`, Windows packaging
+`31766279480`, install lifecycle `31766279692` and footprint `31766279627` all
+passed for that exact head; SSH interoperability was the expected skip. It
+merged as `19b5c7dc`, so `AG-02` is A4. Live server/catalog diversity and visual
+comparison remain A5 evidence.
 
 PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable
 Projects/Files/Git/Terminal/SSH slice. Desktop SSH mode now routes the existing
@@ -441,7 +458,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | RT-06 | Security scan and reports | `RuntimeService` | Security/Tasks | A4 Auto-verified | PR #208 extends the typed security-scan launch/progress/cancel slice with bounded persisted stage/output/timing/failure/result metadata, Dioxus result detail and traversal-safe JSON export through a selected folder. Focused DTO/service/UI contracts and exact-head Rust/distribution gates pass; live finding quality/redaction remains human evidence. | Run scan against disposable targets, inspect progress/redaction/report export and cancellation. | ⬜ |
 | RT-07 | Restore and repair | `UpdateService` + `RuntimeService` | recovery | A1 Designed | Not ported. | Corrupt representative runtime/install state and verify data-preserving repair/restore/rollback. | ⬜ |
 | AG-01 | Skills hub and local skills | `SkillsService` + authenticated `GatewayServices` | Skills | A4 Auto-verified | Dioxus Skills now lists/toggles profile-scoped local skills and provides Hub sources/search/preview/on-demand scan/install/uninstall/update with independent 1.2s action polling/logs, profile-switch abandonment and trust/verdict display. Authenticated REST stays native with 4 MiB/input bounds; architecture, all-target/WASM, workspace tests and Clippy pass. | List/install/enable/disable/remove skills, trust prompts and invalid packages; compare OG. | ⬜ |
-| AG-02 | MCP servers and catalog | Agent/Trust services | Skills/MCP | A1 Designed | Not ported. | Add/config/enable/test/disable/remove MCP servers across scopes with trust/reload prompts. | ⬜ |
+| AG-02 | MCP servers and catalog | `McpService` + authenticated `GatewayServices` | Skills/MCP | A4 Auto-verified | PR #212 wires profile-scoped list/search/add/edit/enable/disable/test/remove, catalog install with explicit trust acknowledgement and live reload into Dioxus. Stored environment secrets remain write-only; bounded native route/profile/header/payload contracts, profile-switch rejection, unsafe-input negatives, architecture, WASM and exact-head Rust/distribution gates pass. | Add/config/enable/test/disable/remove MCP servers across scopes with trust/reload prompts; exercise representative stdio/HTTP/catalog/auth failures and compare OG. | ⬜ |
 | AG-03 | Trust Centre and diagnostics | `TrustService` | Trust Centre | A4 Auto-verified | Native exact `trust.get`/`trust.set_policy` contracts, typed policy decoding, forward-compatible diagnostics and invalid/path-like policy rejection are consumed by the functional Dioxus Trust Centre. Contract, architecture, WASM, workspace-test and Clippy gates are green. | Review every trust policy/diagnostic, change policy and trigger representative protected actions. | ⬜ |
 | AG-04 | Memory and curator | `NativeMemoryClient` | Memory/Starmap | A4 Auto-verified | PR #204 wires the profile-bound Memory/Curator service into Dioxus with live status/provider state, provider configuration and OAuth status, curator pause/run controls and a two-step destructive reset. Encoded provider segments, header-only auth, bounded responses/config values and cross-profile rejection remain enforced. Exact-head Rust `31754564185`, packaging `31754564160`, install `31754564163`, footprint `31754564133` and native-client `31754564091` gates passed before merge as `5b2869be`. | Inspect/search/reset memory and curator flows across profiles/sessions; verify destructive confirmation. | ⬜ |
 | AG-05 | Cron and scheduled tasks | `NativeCronClient` | Cron overlay | A4 Auto-verified | PR #205 wires typed Cron list/run history, create/update, pause/resume, trigger and confirmed delete into Dioxus with live refresh. Routing-vs-filter profile semantics, encoded IDs, bounded history/input, authenticated transport and 30/60-second timeouts remain enforced. Exact-head Rust `31756212001`, packaging `31756211983`, install `31756212034` and footprint `31756211990` passed before merge as `9b5f2b58`. | Create/edit/enable/disable/run/delete schedules; verify persistence and timezone/error cases. | ⬜ |
