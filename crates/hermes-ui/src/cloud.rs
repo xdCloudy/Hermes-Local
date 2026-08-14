@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 
+#[cfg(test)]
 const MAX_CLOUD_LABEL_BYTES: usize = 512;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -55,6 +56,7 @@ pub struct CloudActions {
     pub connect: Callback<CloudConnectRequest>,
 }
 
+#[cfg(test)]
 pub(crate) fn bounded_cloud_label(value: &str) -> String {
     value
         .chars()

@@ -7,6 +7,7 @@ extern crate self as base64;
 
 mod clipboard_bridge;
 mod clipboard_service;
+mod cloud_bridge;
 mod crash_forensics;
 mod cron_service;
 mod deep_link;
@@ -100,20 +101,22 @@ fn desktop_root() -> Element {
             }
         },
         Some(Ok(())) => rsx! {
-            deep_link_bridge::DeepLinkBridge {
-                clipboard_bridge::ClipboardBridge {
-                    subagent_bridge::SubagentBridge {
-                        shell_focus_guard::FocusGuard {
-                            shell_parity::ParityShellHost {
-                                shell_interaction::ShellHost {
-                                    hermes_ui::App {}
-                                }
-                            }
-                        }
-                    }
+          deep_link_bridge::DeepLinkBridge {
+              cloud_bridge::CloudBridge {
+        clipboard_bridge::ClipboardBridge {
+            subagent_bridge::SubagentBridge {
+                shell_focus_guard::FocusGuard {
+          shell_parity::ParityShellHost {
+              shell_interaction::ShellHost {
+        hermes_ui::App {}
+              }
+          }
                 }
             }
-        },
+        }
+              }
+          }
+                },
         Some(Err(error)) => rsx! {
             div {
                 style: "height:100vh;display:grid;place-items:center;background:rgb(9 11 16);color:rgb(229 231 235);font:13px system-ui,sans-serif;padding:32px;box-sizing:border-box;",

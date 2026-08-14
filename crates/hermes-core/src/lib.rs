@@ -83,6 +83,12 @@ pub struct FileWatchEvent {
     pub path: PathBuf,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CloudGatewayCookie {
+    pub name: String,
+    pub value: String,
+}
+
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
 pub enum ServiceError {
     #[error("{0}")]
@@ -976,6 +982,20 @@ pub trait ConnectionService: Send + Sync {
     fn probe_config(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionProbeResult>;
     fn oauth_login(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionOauthLoginResult>;
     fn oauth_logout(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionOauthLogoutResult>;
+    fn adopt_cloud_gateway_session(
+        &self,
+        _base_url: String,
+        _cookies: Vec<CloudGatewayCookie>,
+    ) -> ServiceFuture<'_, ()> {
+        Box::pin(async move {
+            Err(ServiceError::Unavailable(
+                "Hermes Cloud gateway-session adoption is unavailable on this host".into(),
+            ))
+        })
+    }
+    fn clear_cloud_gateway_session(&self, _base_url: String) -> ServiceFuture<'_, ()> {
+        Box::pin(async move { Ok(()) })
+    }
     fn list_ssh_hosts(&self) -> ServiceFuture<'_, Vec<String>> {
         Box::pin(async move { Ok(Vec::new()) })
     }

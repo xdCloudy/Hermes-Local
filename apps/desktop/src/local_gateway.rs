@@ -10,7 +10,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use hermes_core::{AppServices, ConnectionService, ServiceError, ServiceFuture, ServiceResult};
+use hermes_core::{
+    AppServices, CloudGatewayCookie, ConnectionService, ServiceError, ServiceFuture, ServiceResult,
+};
 use hermes_protocol::{
     ConnectionConfig, ConnectionConfigInput, ConnectionMode, ConnectionOauthLoginResult,
     ConnectionOauthLogoutResult, ConnectionProbeResult, ConnectionState, ConnectionTestResult,
@@ -143,9 +145,20 @@ impl ConnectionService for LocalGatewayConnection {
     fn oauth_login(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionOauthLoginResult> {
         self.inner.oauth_login(remote_url)
     }
-
     fn oauth_logout(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionOauthLogoutResult> {
         self.inner.oauth_logout(remote_url)
+    }
+
+    fn adopt_cloud_gateway_session(
+        &self,
+        base_url: String,
+        cookies: Vec<CloudGatewayCookie>,
+    ) -> ServiceFuture<'_, ()> {
+        self.inner.adopt_cloud_gateway_session(base_url, cookies)
+    }
+
+    fn clear_cloud_gateway_session(&self, base_url: String) -> ServiceFuture<'_, ()> {
+        self.inner.clear_cloud_gateway_session(base_url)
     }
 }
 

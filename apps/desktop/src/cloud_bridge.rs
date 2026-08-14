@@ -1,4 +1,8 @@
-use std::{path::Path, time::Duration};
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use dioxus::{
     desktop::{Config, DesktopContext, LogicalSize, WindowBuilder},
@@ -56,7 +60,8 @@ fn portal_base_url() -> Result<String, String> {
 }
 
 fn normalize_http_url(raw: &str) -> Result<String, String> {
-    let mut parsed = Url::parse(raw.trim()).map_err(|error| format!("invalid Cloud URL: {error}"))?;
+    let mut parsed =
+        Url::parse(raw.trim()).map_err(|error| format!("invalid Cloud URL: {error}"))?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err("Cloud URLs must use http:// or https://".into());
     }
@@ -188,9 +193,13 @@ async fn browser_fetch_json(window: &DesktopContext, target: &str) -> Result<(u1
         }})()"#
     );
     let (sender, receiver) = tokio::sync::oneshot::channel::<String>();
+    let sender = Arc::new(Mutex::new(Some(sender)));
     window
         .webview
         .evaluate_script_with_callback(&script, move |result| {
+            let Some(sender) = sender.lock().ok().and_then(|mut sender| sender.take()) else {
+                return;
+            };
             let _ = sender.send(result);
         })
         .map_err(|error| error.to_string())?;
@@ -350,7 +359,8 @@ async fn sign_in_portal(
                 let mut current = state.write();
                 current.loading = false;
                 current.signed_in = true;
-                current.message = Some("Signed in to Hermes Cloud. Discover agents to continue.".into());
+                current.message =
+                    Some("Signed in to Hermes Cloud. Discover agents to continue.".into());
                 return;
             }
             Ok(false) => {}
@@ -557,7 +567,10 @@ async fn connect_agent(
             current.loading = false;
             current.signed_in = true;
             current.connected_url = Some(base_url);
-            current.message = Some(format!("Connected to {} through Hermes Cloud.", request.agent.name));
+            current.message = Some(format!(
+                "Connected to {} through Hermes Cloud.",
+                request.agent.name
+            ));
         }
         Err(error) => {
             let mut current = state.write();
@@ -577,8 +590,9 @@ pub fn CloudBridge(children: Element) -> Element {
         .clone()
         .unwrap_or_else(|_| DEFAULT_PORTAL_BASE_URL.to_owned());
     let initial_error = portal_result.err();
+    let initial_portal = portal.clone();
     let mut state = use_signal(move || CloudState {
-        portal_base_url: portal.clone(),
+        portal_base_url: initial_portal,
         error: initial_error,
         ..CloudState::default()
     });
@@ -612,7 +626,9 @@ pub fn CloudBridge(children: Element) -> Element {
         let data_dir = connect_data_dir.clone();
         let portal = connect_portal.clone();
         let services = connect_services.clone();
-        spawn(connect_agent(desktop, data_dir, portal, services, request, state));
+        spawn(connect_agent(
+            desktop, data_dir, portal, services, request, state,
+        ));
     });
 
     let logout_desktop = desktop.clone();
@@ -698,7 +714,10 @@ mod tests {
         });
         let (_, agents, selected) = parse_discovery(200, &body).unwrap();
         assert_eq!(agents.len(), 2);
-        assert_eq!(agents[0].dashboard_url.as_deref(), Some("https://agent.example.test/base"));
+        assert_eq!(
+            agents[0].dashboard_url.as_deref(),
+            Some("https://agent.example.test/base")
+        );
         assert!(agents[1].dashboard_url.is_none());
         assert_eq!(selected.as_deref(), Some("team"));
     }
