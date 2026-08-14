@@ -25,28 +25,24 @@ jobs:
 
           path = Path("crates/hermes-desktop/src/lib.rs")
           text = path.read_text(encoding="utf-8")
-          old = '''                Err(ServiceError::PermissionDenied(_)) if cloud_session.is_some() => client
-                    .post(format!("{base_url}/api/auth/ws-ticket"))
-                    .header(
-                        COOKIE,
-                        cloud_session
-                            .as_ref()
-                            .expect("checked Cloud session")
-                            .header()?,
-                    ),
-                Err(error) => return Err(error),'''
-          new = '''                Err(error @ ServiceError::PermissionDenied(_)) => {
-                    match cloud_session.as_ref() {
-                        Some(session) => client
-                            .post(format!("{base_url}/api/auth/ws-ticket"))
-                            .header(COOKIE, session.header()?),
-                        None => return Err(error),
-                    }
-                }
-                Err(error) => return Err(error),'''
-          if text.count(old) != 1:
-              raise SystemExit(f"expected exactly one Cloud fallback anchor, found {text.count(old)}")
-          path.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
+          start_anchor = "                Err(ServiceError::PermissionDenied(_)) if cloud_session.is_some() => client"
+          end_anchor = "                Err(error) => return Err(error),"
+          if text.count(start_anchor) != 1:
+              raise SystemExit(f"expected one Cloud fallback start, found {text.count(start_anchor)}")
+          start = text.index(start_anchor)
+          end = text.index(end_anchor, start) + len(end_anchor)
+          replacement = "\n".join([
+              "                Err(error @ ServiceError::PermissionDenied(_)) => {",
+              "                    match cloud_session.as_ref() {",
+              "                        Some(session) => client",
+              "                            .post(format!(\"{base_url}/api/auth/ws-ticket\"))",
+              "                            .header(COOKIE, session.header()?),",
+              "                        None => return Err(error),",
+              "                    }",
+              "                }",
+              "                Err(error) => return Err(error),",
+          ])
+          path.write_text(text[:start] + replacement + text[end:], encoding="utf-8", newline="\n")
       - name: Format
         run: cargo fmt --all
       - name: Commit repair
