@@ -38,9 +38,9 @@ concurrency:
 
 jobs:
   footprint:
-    name: Windows artifact footprint
+    name: Windows artifact and runtime footprint
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -50,6 +50,101 @@ jobs:
 
       - name: Build optimized Windows client
         run: cargo build -p hermes-local --release --locked --features bundle
+
+      - name: Measure packaged-style Desktop runtime
+        shell: pwsh
+        run: |
+          $binary = (Resolve-Path ".\target\release\hermes-local.exe").Path
+          $buildRoot = Join-Path (Get-Location).Path "build"
+          New-Item -ItemType Directory -Force -Path $buildRoot | Out-Null
+          $runtimeReport = Join-Path $buildRoot "rust-footprint-runtime.json"
+          $rootProcess = $null
+
+          function Get-HermesProcessIds([int]$RootProcessId) {
+            $rows = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId)
+            $queue = [System.Collections.Generic.Queue[int]]::new()
+            $seen = [System.Collections.Generic.HashSet[int]]::new()
+            $queue.Enqueue($RootProcessId)
+            [void]$seen.Add($RootProcessId)
+            while ($queue.Count -gt 0) {
+              $parent = $queue.Dequeue()
+              foreach ($row in $rows) {
+                if ([int]$row.ParentProcessId -eq $parent) {
+                  $child = [int]$row.ProcessId
+                  if ($seen.Add($child)) { $queue.Enqueue($child) }
+                }
+              }
+            }
+            return @($seen)
+          }
+
+          function Get-HermesProcessSnapshot([int]$RootProcessId) {
+            $ids = @(Get-HermesProcessIds $RootProcessId)
+            $processes = @()
+            foreach ($id in $ids) {
+              $process = Get-Process -Id $id -ErrorAction SilentlyContinue
+              if ($process) { $processes += $process }
+            }
+            $cpuSeconds = ($processes | Measure-Object -Property CPU -Sum).Sum
+            if ($null -eq $cpuSeconds) { $cpuSeconds = 0.0 }
+            $workingSet = ($processes | Measure-Object -Property WorkingSet64 -Sum).Sum
+            if ($null -eq $workingSet) { $workingSet = 0 }
+            return [pscustomobject]@{
+              ids = @($processes | ForEach-Object { $_.Id })
+              processCount = $processes.Count
+              cpuSeconds = [double]$cpuSeconds
+              workingSetBytes = [int64]$workingSet
+            }
+          }
+
+          try {
+            $timer = [System.Diagnostics.Stopwatch]::StartNew()
+            $rootProcess = Start-Process -FilePath $binary -WorkingDirectory (Get-Location).Path -PassThru
+            $windowReady = $false
+            while ($timer.Elapsed.TotalSeconds -lt 15) {
+              Start-Sleep -Milliseconds 250
+              $current = Get-Process -Id $rootProcess.Id -ErrorAction SilentlyContinue
+              if (-not $current) { throw "Rust Desktop exited before exposing a top-level window." }
+              if ($current.MainWindowHandle -ne 0) {
+                $windowReady = $true
+                break
+              }
+            }
+            $startupSeconds = $timer.Elapsed.TotalSeconds
+            if (-not $windowReady) { throw "Rust Desktop did not expose a top-level window within 15 seconds." }
+
+            Start-Sleep -Seconds 2
+            $before = Get-HermesProcessSnapshot $rootProcess.Id
+            $sampleTimer = [System.Diagnostics.Stopwatch]::StartNew()
+            Start-Sleep -Seconds 4
+            $after = Get-HermesProcessSnapshot $rootProcess.Id
+            $elapsed = [Math]::Max($sampleTimer.Elapsed.TotalSeconds, 0.001)
+            $cpuDelta = [Math]::Max($after.cpuSeconds - $before.cpuSeconds, 0.0)
+            $logicalProcessors = [Math]::Max([Environment]::ProcessorCount, 1)
+            $cpuPercent = 100.0 * $cpuDelta / ($elapsed * $logicalProcessors)
+
+            $report = [ordered]@{
+              schemaVersion = 1
+              windowReady = $true
+              startupSeconds = [Math]::Round($startupSeconds, 3)
+              workingSetBytes = $after.workingSetBytes
+              workingSetMiB = [Math]::Round($after.workingSetBytes / 1MB, 2)
+              cpuPercent = [Math]::Round($cpuPercent, 2)
+              processCount = $after.processCount
+              sampledSeconds = [Math]::Round($elapsed, 3)
+              rootPid = $rootProcess.Id
+            }
+            $report | ConvertTo-Json | Set-Content -Encoding utf8 -LiteralPath $runtimeReport
+            $report | ConvertTo-Json
+          }
+          finally {
+            if ($rootProcess) {
+              $ids = @(Get-HermesProcessIds $rootProcess.Id)
+              foreach ($id in ($ids | Sort-Object -Descending)) {
+                Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
+              }
+            }
+          }
 
       - name: Prepare portable payload
         shell: pwsh
@@ -70,26 +165,37 @@ jobs:
           python ".\scripts\ci\rust_performance_budget.py" `
             --binary ".\target\release\hermes-local.exe" `
             --portable ".\build\rust-footprint\Hermes-Local-Portable-x64.zip" `
+            --runtime-report ".\build\rust-footprint-runtime.json" `
             --max-binary-mib 64 `
             --max-portable-mib 64 `
+            --max-startup-seconds 15 `
+            --max-working-set-mib 1024 `
+            --max-cpu-percent 50 `
+            --max-process-count 20 `
             --output ".\build\rust-footprint\footprint-report.json"
           if ($LASTEXITCODE -ne 0) {
-            throw "Rust artifact footprint exceeded its regression budget."
+            throw "Rust artifact/runtime footprint exceeded its regression budget."
           }
 
       - name: Record footprint
         shell: pwsh
         run: |
           $report = Get-Content -Raw -LiteralPath ".\build\rust-footprint\footprint-report.json" | ConvertFrom-Json
-          "### Rust artifact footprint" >> $env:GITHUB_STEP_SUMMARY
+          "### Rust artifact + runtime footprint" >> $env:GITHUB_STEP_SUMMARY
           "- Optimized EXE: $($report.binary.sizeMiB) MiB / 64 MiB budget" >> $env:GITHUB_STEP_SUMMARY
           "- Portable ZIP: $($report.portable.sizeMiB) MiB / 64 MiB budget" >> $env:GITHUB_STEP_SUMMARY
+          "- Window ready: $($report.runtime.startupSeconds)s / 15s budget" >> $env:GITHUB_STEP_SUMMARY
+          "- Idle process-tree working set: $($report.runtime.workingSetMiB) MiB / 1024 MiB budget" >> $env:GITHUB_STEP_SUMMARY
+          "- Idle process-tree CPU: $($report.runtime.cpuPercent)% / 50% budget" >> $env:GITHUB_STEP_SUMMARY
+          "- Desktop process tree: $($report.runtime.processCount) / 20 process budget" >> $env:GITHUB_STEP_SUMMARY
           "- Status: $($report.status)" >> $env:GITHUB_STEP_SUMMARY
 
       - name: Upload footprint evidence
         uses: actions/upload-artifact@v4
         with:
           name: hermes-local-rust-footprint
-          path: build/rust-footprint/footprint-report.json
+          path: |
+            build/rust-footprint/footprint-report.json
+            build/rust-footprint-runtime.json
           if-no-files-found: error
           retention-days: 14
