@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `d155d65f4da88744c9225543df4a37c40ed8c4ff` (2026-08-14)
+> **Implementation audit checkpoint:** `1eda95ae42a5d780b0257722cc5affb170d38ab0` (2026-08-14)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -54,9 +54,9 @@ At the audit checkpoint above:
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
 | A1 Designed | 15 | Largest remaining implementation backlog. |
-| A2 Service | 6 | Native/core foundations exist; UI/parity work remains. |
-| A3 Ported | 2 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 103 | Automated slice is green; human/live acceptance still required. |
+| A2 Service | 4 | Native/core foundations exist; UI/parity work remains. |
+| A3 Ported | 1 | User-facing implementation exists; more evidence required. |
+| A4 Auto-verified | 106 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 0 | No named external validation blockers remain. |
@@ -305,6 +305,16 @@ Windows packaging `31809416371`, install lifecycle `31809416422`, footprint
 interoperability was the expected skip. It merged as `d155d65f`, so `DI-02` is
 A4. Live WSL/format/clipboard-behavior comparison remains A5 evidence.
 
+PR #219 exact head `f939be0a` completes the machine-verifiable notification and
+deep-link slice. It adds bounded WinRT actionable toasts with stable AUMID
+`xdCloudy.HermesLocal`, installer shortcut identity, atomic cold/running
+`hermes://` activation delivery, allowlisted typed Dioxus routing and reviewable
+blueprint composer prefill. Rust validation `31819356884`, Windows packaging
+`31819356887`, install lifecycle `31819356996`, footprint `31819357019` and
+native-client boundary `31819356940` all passed before merge as `1eda95ae`; SSH
+interoperability was the expected skip. `PW-08`, `DI-01` and `DI-05` are therefore
+A4. Packaged notification/action/focus comparison remains A5 evidence.
+
 PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable
 Projects/Files/Git/Terminal/SSH slice. Desktop SSH mode now routes the existing
 typed Terminal surface through an OpenSSH-backed native PTY while local terminals
@@ -471,7 +481,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | PW-05 | Memory and Context settings | `AgentConfigService` | Memory & Context | A4 Auto-verified | Persistent memory/profile/budgets/provider/context/compression controls are ported. | Change each control, reload and run chats that expose memory/context behavior. | ⬜ |
 | PW-06 | Voice settings | `AgentConfigService` | Voice settings | A4 Auto-verified | TTS/STT controls and provider-dependent/open identifier behavior are tested; capture/playback runtime remains CH-12. | Review visibility/defaults/custom identifiers and reload across provider switches. | ⬜ |
 | PW-07 | Advanced Agent settings | `AgentConfigService` | Advanced settings | A4 Auto-verified | Curated advanced inventory including terminal, tools, checkpoints, delegation and update policy is ported with whole-record preservation. | Review every advanced field against OG/schema, save/reload and spot-check behavior. | ⬜ |
-| PW-08 | Notification preferences, sounds and native test notification | `SettingsService` + future `NotificationService` | Notifications settings | A3 Ported | Preference switches and 14 completion sounds are ported; Windows toast registration/action routing is incomplete. | Toggle each kind, preview every sound, restart, trigger real notifications and verify action routing once native registration lands. | ⬜ |
+| PW-08 | Notification preferences, sounds and native test notification | `SettingsService` + Desktop notification service | Notifications settings | A4 Auto-verified | PR #219 exact head `f939be0a` completes the machine-verifiable notification path: preferences and completion sounds feed a modern bounded WinRT toast using stable AUMID `xdCloudy.HermesLocal`, with registered `hermes://` protocol actions routed into typed Dioxus activation and the legacy balloon retained only as fallback. Rust validation `31819356884`, packaging `31819356887`, install lifecycle `31819356996`, footprint `31819357019` and native-client boundary `31819356940` all passed before merge as `1eda95ae`. | Toggle each kind, preview every sound, restart, trigger real notifications and verify packaged Windows action/focus/duplicate behavior. | ⬜ |
 | PW-09 | Main and auxiliary model configuration | `ModelService` | Model settings | A4 Auto-verified | Official info/options/auxiliary/set contracts and assignment UI are implemented/tested. | Change main and each auxiliary model/reasoning/Fast setting; apply/cancel/reset and verify Agent uses the selections. | ⬜ |
 | PW-10 | Mixture-of-Agents configuration | `ModelService` | Model settings | A4 Auto-verified | Presets, aggregator/reference slots, fanout, temperatures/tokens/timeouts/degraded policy and unknown-field preservation are implemented/tested. | Create/clone/edit/delete presets, invalid/incomplete slots and verify saved Agent config and actual MoA invocation. | ⬜ |
 | PW-11 | Provider account discovery/disconnect | `ProviderService` | Providers → Accounts | A4 Auto-verified | OG ordering/topology and account list/sign-out contracts are ported. | Review populated/empty/externally-managed accounts and perform real disconnect/reconnect. | ⬜ |
@@ -512,11 +522,11 @@ apply. `Human` is intentionally blank until the product owner records a result.
 
 | ID | Capability | Rust owner | Dioxus surface | Stage | Current evidence / gap | Human acceptance | Human |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| DI-01 | Native notifications and action routing | `NotificationPlatform` | session/settings | A2 Service | Native Windows notification wrapper uses a fixed PowerShell/WinForms helper with bounded/sanitized title/body passed through child environment variables and no shell interpolation; notification preferences UI exists. AppUserModelID/toast action registration remains incomplete. | Trigger each notification kind in packaged app; click actions, test duplicates/focus/background and Windows notification settings. | ⬜ |
+| DI-01 | Native notifications and action routing | `NotificationPlatform` | session/settings | A4 Auto-verified | PR #219 replaces the legacy-only balloon path with bounded WinRT toasts, stamps the installer Start-menu shortcut with stable AppUserModelID `xdCloudy.HermesLocal`, and routes toast body/button protocol activation through the typed Dioxus router. Exact-head Rust, packaging, install, footprint and native-client gates passed before merge as `1eda95ae`; packaged experiential behavior remains A5 evidence. | Trigger each notification kind in packaged app; click actions, test duplicates/focus/background and Windows notification settings. | ⬜ |
 | DI-02 | Clipboard text/images and save dialogs | `ClipboardService` | chat/context actions | A4 Auto-verified | PR #214 wires bounded native text read/write into the Desktop Dioxus surface; PR #217 exact head `d02c1cf7` completes PNG clipboard-image export through an explicit native save dialog while retaining absolute-path, PNG-signature, existing-parent and 64 MiB guards. Rust validation `31809416374`, packaging `31809416371`, install lifecycle `31809416422`, footprint `31809416378` and native-client boundary `31809416381` passed before merge as `d155d65f`. | Copy/paste text/images, WSL edge cases, save dialogs, unsupported formats and size limits. | ⬜ |
 | DI-03 | Camera/microphone/media permissions | future `MediaService` | permission surfaces | A1 Designed | Not ported. | Grant/deny/revoke permissions, restart and verify only trusted app origin receives media capability. | ⬜ |
 | DI-04 | External browser opening and safe link policy | `PlatformService` | links/preview | A4 Auto-verified | PR #199 wires bounded rich-link cards to the typed external opener; PR #202 exact composed head `ffda6b8a` aligns the native boundary by allowing bounded HTTP, HTTPS and `mailto` targets while rejecting empty, oversized, control-character, hostless, credentialed and privileged-scheme targets. Rust validation `31752025260`, packaging `31752025345`, install lifecycle `31752025322` and footprint `31752025377` passed before merge as `39ed1047`. | Open allowed HTTP(S) links, reject unsafe schemes/credentialed/private targets where policy applies and verify no in-app navigation escape. | ⬜ |
-| DI-05 | Deep links and protocol registration | native deep-link service | routed surfaces | A2 Service | Native `hermes://` parsing and per-user Windows protocol registration exist with exact executable command identity and deterministic malformed-input tests; running-instance/single-instance Dioxus delivery is incomplete. | Register/use protocol from cold/running app, malformed payloads, duplicate instance and route/state handling. | ⬜ |
+| DI-05 | Deep links and protocol registration | native deep-link service | routed surfaces | A4 Auto-verified | PR #219 completes bounded cold/running `hermes://` delivery: validated links are atomically queued per activation, malformed/oversized/control-character payloads are rejected, route/session destinations are allowlisted, and blueprint links insert a reviewable composer command rather than auto-executing. The per-user protocol registration and installer identity pass the exact-head Rust/distribution/native-client gates before merge as `1eda95ae`. | Register/use protocol from cold/running app, malformed payloads, duplicate instance and route/state handling. | ⬜ |
 | DI-06 | Session and secondary app windows | native window-state service | shared Dioxus roots | A2 Service | Rust Desktop now consumes the existing bounded `window-state.json` contract, restores the historical 1220×800 default/minimum 400×620 size and maximized state, and unit-tests sanitization, display caps and 48px visibility rules. Safe x/y restoration, live move/resize persistence and secondary/session-window orchestration remain incomplete. | Open multiple session windows, focus/reuse/close/restore and test bounds across monitors/DPI. | ⬜ |
 | DI-07 | Quick Entry global shortcut/window | `QuickEntryShortcutController` + native window geometry | Quick Entry | A2 Service | Native shortcut parsing/settings/controller and 640×168 window-geometry foundation matches Electron alias/order/reserved-key semantics, uses bounded fail-soft settings loading and deterministic controller/monitor tests. Actual OS global-hotkey registration, secondary Dioxus window lifecycle and composer submission remain unported. | Register shortcut, summon/dismiss across apps, submit, move monitors and restart. | ⬜ |
 | DI-08 | Pet overlay and generator | `WindowService` | pet roots | A1 Designed | Not ported. | Generate/show/hide/move pet, focus/input behavior and persistence. | ⬜ |
