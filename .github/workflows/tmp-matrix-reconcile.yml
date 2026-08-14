@@ -1,0 +1,53 @@
+name: Temporary migration matrix reconciliation
+
+on:
+  push:
+    branches:
+      - agent/matrix-reconcile
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reconcile migration ledger
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('docs/DIOXUS_MIGRATION_MATRIX.md')
+          s = p.read_text(encoding='utf-8')
+          replacements = {
+            '> **Implementation audit checkpoint:** `19b5c7dc55ead913c865089fe73efd7b346ca65b` (2026-08-14)': '> **Implementation audit checkpoint:** `2a4a49b338dcd7d723c71f033b730f7e2d529d62` (2026-08-14)',
+            '| A1 Designed | 17 | Largest remaining implementation backlog. |': '| A1 Designed | 15 | Largest remaining implementation backlog. |',
+            '| A2 Service | 7 | Native/core foundations exist; UI/parity work remains. |': '| A2 Service | 6 | Native/core foundations exist; UI/parity work remains. |',
+            '| A3 Ported | 2 | User-facing implementation exists; more evidence required. |': '| A3 Ported | 4 | User-facing implementation exists; more evidence required. |',
+            '| A4 Auto-verified | 100 | Automated slice is green; human/live acceptance still required. |': '| A4 Auto-verified | 101 | Automated slice is green; human/live acceptance still required. |',
+            'At least-service coverage is **109/127 capabilities (85.8%)**.': 'At least-service coverage is **111/127 capabilities (87.4%)**.',
+            '| AG-09 | Agents/subagents | Agent services | Agents overlay | A1 Designed | Not ported. | Launch/observe/cancel subagents, switching/background states and error/reconnect behavior. | ⬜ |': '| AG-09 | Agents/subagents | Agent services | Agents overlay | A3 Ported | PR #215 reconstructs the unpublished Dioxus lifecycle slice: globally scoped `subagent.*` observation, background-safe ownership, bounded delegation launch, child transcript drilldown and typed cancellation. Exact-head release gates are still running, so A4 is not yet claimed. | Launch/observe/cancel subagents, switching/background states and error/reconnect behavior. | ⬜ |',
+            '| DI-02 | Clipboard text/images and save dialogs | `ClipboardService` | chat/context actions | A2 Service | Native Windows text read/write and PNG clipboard-image export use trusted STA PowerShell helpers with stdin/environment data, transient-busy retries, UTF-8/size/NUL/PNG/path checks and fixed helper paths. Dioxus consumers and save-dialog parity remain incomplete. | Copy/paste text/images, WSL edge cases, save dialogs, unsupported formats and size limits. | ⬜ |': '| DI-02 | Clipboard text/images and save dialogs | `ClipboardService` | chat/context actions | A3 Ported | PR #214 wires the existing bounded native clipboard text read/write service into a Desktop-owned Dioxus consumer. PNG image consumption and save-dialog parity remain incomplete, so this row stays A3 even if the text slice exact-head gates pass. | Copy/paste text/images, WSL edge cases, save dialogs, unsupported formats and size limits. | ⬜ |',
+            '| PL-01 | Built-in contribution registry | typed contribution model | routes/panes/menus/status | A1 Designed | Not ported as complete extension composition model. | Load built-in contributions and verify route/menu/pane/status composition and isolation. | ⬜ |': '| PL-01 | Built-in contribution registry | typed contribution model | routes/panes/menus/status | A4 Auto-verified | PR #213 exact head `18a96ff6` adds a typed bounded registry and composes built-in routes, panes, menus and status slots from validated descriptors. Rust validation `31768394182`, packaging `31768394254`, install lifecycle `31768394190`, footprint `31768394180` and native-client boundary `31768394214` passed before merge as `2a4a49b3`. External runtime plugins remain PL-02/PL-03 scope. | Load built-in contributions and verify route/menu/pane/status composition and isolation. | ⬜ |',
+          }
+          for old, new in replacements.items():
+              if old not in s:
+                  raise SystemExit(f'matrix text changed; missing expected fragment: {old[:100]!r}')
+              s = s.replace(old, new, 1)
+
+          anchor = '''It\nmerged as `19b5c7dc`, so `AG-02` is A4. Live server/catalog diversity and visual\ncomparison remain A5 evidence.\n'''
+          paragraph = '''\nPR #213 exact head `18a96ff6` adds the typed bounded built-in contribution\nregistry and composes shared navigation/home launchers plus Desktop command\npalette, tool panes and status slots from validated descriptors. Rust validation\n`31768394182`, Windows packaging `31768394254`, install lifecycle `31768394190`,\nfootprint `31768394180` and native-client boundary `31768394214` all passed; SSH\ninteroperability was the expected skip. It merged as `2a4a49b3`, so `PL-01` is\nA4. External runtime JavaScript plugins and broader Agent integration plumbing\nremain tracked separately by `PL-02` and `PL-03`.\n'''
+          if anchor not in s:
+              raise SystemExit('MCP reconciliation anchor not found')
+          s = s.replace(anchor, anchor + paragraph, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/DIOXUS_MIGRATION_MATRIX.md
+          git commit -m "docs: reconcile migration matrix through PR 215"
+          git push origin HEAD:agent/matrix-reconcile
