@@ -15,29 +15,31 @@ use base64::{
 };
 use hermes_agent_client::GatewayClient;
 use hermes_core::{
-    AgentConfigService, AppServices, ConnectionService, EventStream, FileService, GitService,
-    MemoryService, ModelService, PlatformService, ProjectService, ProviderService, RuntimeService,
-    ServiceError, ServiceFuture, ServiceResult, SessionService, SettingsService, SkillsService,
-    TerminalService, TrustService, UnavailableDiagnosticsService, UnavailableGitBranchService,
-    UnavailableGitDiscardService, UnavailableGitRepoScanService, UnavailableGitShipService,
-    UnavailableGitWorktreeService, UnavailablePreviewService, UpdateService, validate_identifier,
-    validate_relative_path,
+    AgentConfigService, AppServices, ConnectionService, CronService, EventStream, FileService,
+    GitService, IntegrationService, MemoryService, ModelService, PlatformService, ProjectService,
+    ProviderService, RuntimeService, ServiceError, ServiceFuture, ServiceResult, SessionService,
+    SettingsService, SkillsService, TerminalService, TrustService, UnavailableDiagnosticsService,
+    UnavailableGitBranchService, UnavailableGitDiscardService, UnavailableGitRepoScanService,
+    UnavailableGitShipService, UnavailableGitWorktreeService, UnavailablePreviewService,
+    UpdateService, validate_identifier, validate_relative_path,
 };
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, AttachmentKind, AuthProvider, AuxiliaryModels,
     ConfigSchemaResponse, ConnectionConfig, ConnectionConfigInput, ConnectionMode,
     ConnectionOauthLoginResult, ConnectionOauthLogoutResult, ConnectionProbeResult,
-    ConnectionState, ConnectionTestResult, CuratorPauseResult, CuratorRunResult, CuratorStatus,
-    CustomEndpointUpdate, CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry,
-    GitStatus, MemoryResetResult, MemoryResetTarget, MemoryStatus, MoaConfig,
-    ModelAssignmentRequest, ModelAssignmentResponse, ModelInfo, ModelOptions,
-    ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit, ProbeAuthMode,
-    ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation, RemoteAuthMode,
-    RuntimeStatus, SelectedAttachment, SessionAttachmentResult, SessionCreateRequest,
-    SessionCreateResponse, SessionDirectiveResult, SessionMessagesResponse, SessionReactionResult,
-    SessionResumeResponse, SessionSummary, SkillActionStart, SkillActionStatus, SkillHubPreview,
-    SkillHubScanResult, SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary,
-    SkillToggleResult, TaskSummary, TrustSnapshot,
+    ConnectionState, ConnectionTestResult, CronJob, CronJobCreate, CronJobUpdate,
+    CuratorPauseResult, CuratorRunResult, CuratorStatus, CustomEndpointUpdate,
+    CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry, GitStatus,
+    MemoryResetResult, MemoryResetTarget, MemoryStatus, MessagingPlatform, MessagingPlatformTest,
+    MessagingPlatformUpdate, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse, ModelInfo,
+    ModelOptions, ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit,
+    PairingSnapshot, PairingUser, ProbeAuthMode, ProjectFilesDeleteResult, ProjectSummary,
+    ProjectsSnapshot, ProviderActivation, RemoteAuthMode, RuntimeStatus, SelectedAttachment,
+    SessionAttachmentResult, SessionCreateRequest, SessionCreateResponse, SessionDirectiveResult,
+    SessionMessagesResponse, SessionReactionResult, SessionResumeResponse, SessionSummary,
+    SkillActionStart, SkillActionStatus, SkillHubPreview, SkillHubScanResult,
+    SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary, SkillToggleResult, TaskSummary,
+    TrustSnapshot, WebhookCreate, WebhookCreated, WebhooksSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use reqwest::Method;
@@ -761,6 +763,8 @@ impl NativeApp {
                 providers: remote.clone(),
                 runtime: remote.clone(),
                 memory: remote.clone(),
+                cron: remote.clone(),
+                integrations: remote.clone(),
                 trust: remote.clone(),
                 skills: remote,
                 preview: Arc::new(UnavailablePreviewService),
@@ -2271,6 +2275,489 @@ impl MemoryService for GatewayServices {
                 )
                 .await?;
             serde_json::from_value(value).map_err(protocol)
+        })
+    }
+}
+
+const AGENT_FEATURE_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+const CRON_LIST_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+const MAX_AGENT_FEATURE_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_AGENT_FEATURE_TEXT_BYTES: usize = 1024 * 1024;
+const MAX_AGENT_FEATURE_ENV_ENTRIES: usize = 128;
+
+#[derive(Deserialize)]
+struct CronRunsResponse {
+    #[serde(default)]
+    runs: Vec<SessionSummary>,
+}
+
+#[derive(Deserialize)]
+struct MessagingPlatformsResponse {
+    #[serde(default)]
+    platforms: Vec<MessagingPlatform>,
+}
+
+#[derive(Deserialize)]
+struct PairingApproveResponse {
+    #[serde(default)]
+    ok: bool,
+    #[serde(default)]
+    user: PairingUser,
+}
+
+#[derive(Deserialize)]
+struct MutationResponse {
+    #[serde(default)]
+    ok: bool,
+}
+
+#[derive(Deserialize)]
+struct WebhookEnableResponse {
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default)]
+    ok: bool,
+}
+
+#[derive(Deserialize)]
+struct WebhookEnabledResponse {
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default)]
+    ok: bool,
+}
+
+fn agent_feature_segment(value: &str, field: &str) -> ServiceResult<String> {
+    if value.trim().is_empty() || value.len() > 256 || value.chars().any(char::is_control) {
+        return Err(ServiceError::InvalidInput(format!("invalid {field}")));
+    }
+    let mut url = url::Url::parse("https://agent-feature.invalid/")
+        .map_err(|error| ServiceError::Platform(error.to_string()))?;
+    url.path_segments_mut()
+        .map_err(|()| ServiceError::Platform("could not encode Agent feature path".into()))?
+        .push(value);
+    Ok(url.path().trim_start_matches('/').to_owned())
+}
+
+fn validate_agent_feature_text(value: &str, field: &str, allow_empty: bool) -> ServiceResult<()> {
+    if (!allow_empty && value.trim().is_empty())
+        || value.len() > MAX_AGENT_FEATURE_TEXT_BYTES
+        || value.chars().any(char::is_control)
+    {
+        return Err(ServiceError::InvalidInput(format!("invalid {field}")));
+    }
+    Ok(())
+}
+
+fn cron_job_path(id: &str, suffix: Option<&str>) -> ServiceResult<String> {
+    let id = agent_feature_segment(id, "Cron job id")?;
+    Ok(suffix.map_or_else(
+        || format!("/api/cron/jobs/{id}"),
+        |suffix| format!("/api/cron/jobs/{id}/{suffix}"),
+    ))
+}
+
+impl CronService for GatewayServices {
+    fn list(&self) -> ServiceFuture<'_, Vec<CronJob>> {
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::GET,
+                    "/api/cron/jobs",
+                    None,
+                    CRON_LIST_REQUEST_TIMEOUT,
+                    MAX_AGENT_FEATURE_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn runs(&self, id: &str, limit: u32) -> ServiceFuture<'_, Vec<SessionSummary>> {
+        let id = id.to_owned();
+        Box::pin(async move {
+            if limit == 0 || limit > 1000 {
+                return Err(ServiceError::InvalidInput(
+                    "Cron run limit must be between 1 and 1000".into(),
+                ));
+            }
+            let path = format!("{}?limit={limit}", cron_job_path(&id, Some("runs"))?);
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::GET,
+                    &path,
+                    None,
+                    AGENT_FEATURE_REQUEST_TIMEOUT,
+                    MAX_AGENT_FEATURE_RESPONSE_BYTES,
+                )
+                .await?;
+            let response: CronRunsResponse = serde_json::from_value(value).map_err(protocol)?;
+            Ok(response.runs)
+        })
+    }
+
+    fn create(&self, input: &CronJobCreate) -> ServiceFuture<'_, CronJob> {
+        let input = input.clone();
+        Box::pin(async move {
+            validate_agent_feature_text(&input.prompt, "Cron prompt", false)?;
+            validate_agent_feature_text(&input.schedule, "Cron schedule", false)?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::POST,
+                    "/api/cron/jobs",
+                    Some(serde_json::to_value(input).map_err(protocol)?),
+                    AGENT_FEATURE_REQUEST_TIMEOUT,
+                    MAX_AGENT_FEATURE_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn update(&self, id: &str, input: &CronJobUpdate) -> ServiceFuture<'_, CronJob> {
+        let id = id.to_owned();
+        let input = input.clone();
+        Box::pin(async move {
+            if let Some(prompt) = input.prompt.as_deref() {
+                validate_agent_feature_text(prompt, "Cron prompt", false)?;
+            }
+            if let Some(schedule) = input.schedule.as_deref() {
+                validate_agent_feature_text(schedule, "Cron schedule", false)?;
+            }
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::PUT,
+                    &cron_job_path(&id, None)?,
+                    Some(json!({ "updates": input })),
+                    AGENT_FEATURE_REQUEST_TIMEOUT,
+                    MAX_AGENT_FEATURE_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn pause(&self, id: &str) -> ServiceFuture<'_, CronJob> {
+        cron_action(self, id, "pause")
+    }
+
+    fn resume(&self, id: &str) -> ServiceFuture<'_, CronJob> {
+        cron_action(self, id, "resume")
+    }
+
+    fn trigger(&self, id: &str) -> ServiceFuture<'_, CronJob> {
+        cron_action(self, id, "trigger")
+    }
+
+    fn delete(&self, id: &str) -> ServiceFuture<'_, ()> {
+        let id = id.to_owned();
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::DELETE,
+                    &cron_job_path(&id, None)?,
+                    None,
+                    AGENT_FEATURE_REQUEST_TIMEOUT,
+                    MAX_AGENT_FEATURE_RESPONSE_BYTES,
+                )
+                .await?;
+            let response: MutationResponse = serde_json::from_value(value).map_err(protocol)?;
+            if response.ok {
+                Ok(())
+            } else {
+                Err(ServiceError::Transport(
+                    "Agent did not confirm Cron deletion".into(),
+                ))
+            }
+        })
+    }
+}
+
+fn cron_action<'a>(
+    services: &'a GatewayServices,
+    id: &str,
+    action: &'static str,
+) -> ServiceFuture<'a, CronJob> {
+    let id = id.to_owned();
+    Box::pin(async move {
+        let value = services
+            .rest()?
+            .request_bounded(
+                Method::POST,
+                &cron_job_path(&id, Some(action))?,
+                None,
+                AGENT_FEATURE_REQUEST_TIMEOUT,
+                MAX_AGENT_FEATURE_RESPONSE_BYTES,
+            )
+            .await?;
+        serde_json::from_value(value).map_err(protocol)
+    })
+}
+
+impl IntegrationService for GatewayServices {
+    fn messaging_platforms(&self) -> ServiceFuture<'_, Vec<MessagingPlatform>> {
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::GET,
+                    "/api/messaging/platforms",
+                    None,
+                    AGENT_FEATURE_REQUEST_TIMEOUT,
+                    MAX_AGENT_FEATURE_RESPONSE_BYTES,
+                )
+                .await?;
+            let response: MessagingPlatformsResponse =
+                serde_json::from_value(value).map_err(protocol)?;
+            Ok(response.platforms)
+        })
+    }
+
+    fn update_messaging_platform(
+        &self,
+        id: &str,
+        input: &MessagingPlatformUpdate,
+    ) -> ServiceFuture<'_, ()> {
+        let id = id.to_owned();
+        let input = input.clone();
+        Box::pin(async move {
+            if input
+                .env
+                .as_ref()
+                .is_some_and(|values| values.len() > MAX_AGENT_FEATURE_ENV_ENTRIES)
+            {
+                return Err(ServiceError::InvalidInput(
+                    "messaging update contains too many environment entries".into(),
+                ));
+            }
+            if let Some(values) = input.env.as_ref() {
+                for (key, value) in values {
+                    validate_identifier(key, "messaging environment key")?;
+                    validate_agent_feature_text(value, "messaging environment value", true)?;
+                }
+            }
+            let id = agent_feature_segment(&id, "messaging platform")?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::PUT,
+                    &format!("/api/messaging/platforms/{id}"),
+                    Some(serde_json::to_value(input).map_err(protocol)?),
+                    AGENT_FEATURE_REQUEST_TIMEOUT,
+                    MAX_AGENT_FEATURE_RESPONSE_BYTES,
+                )
+                .await?;
+            let response: MutationResponse = serde_json::from_value(value).map_err(protocol)?;
+            if response.ok {
+                Ok(())
+            } else {
+                Err(ServiceError::Transport(
+                    "Agent did not confirm messaging update".into(),
+                ))
+            }
+        })
+    }
+
+    fn test_messaging_platform(&self, id: &str) -> ServiceFuture<'_, MessagingPlatformTest> {
+        let id = id.to_owned();
+        Box::pin(async move {
+            let id = agent_feature_segment(&id, "messaging platform")?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::POST,
+                    &format!("/api/messaging/platforms/{id}/test"),
+                    None,
+                    AGENT_FEATURE_REQUEST_TIMEOUT,
+                    MAX_AGENT_FEATURE_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn pairing(&self) -> ServiceFuture<'_, PairingSnapshot> {
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::GET,
+                    "/api/pairing",
+                    None,
+                    AGENT_FEATURE_REQUEST_TIMEOUT,
+                    MAX_AGENT_FEATURE_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn approve_pairing(&self, platform: &str, request_id: &str) -> ServiceFuture<'_, PairingUser> {
+        let platform = platform.to_owned();
+        let request_id = request_id.to_owned();
+        Box::pin(async move {
+            validate_agent_feature_text(&platform, "pairing platform", false)?;
+            validate_agent_feature_text(&request_id, "pairing request", false)?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::POST,
+                    "/api/pairing/approve",
+                    Some(json!({ "platform": platform, "request_id": request_id })),
+                    AGENT_FEATURE_REQUEST_TIMEOUT,
+                    MAX_AGENT_FEATURE_RESPONSE_BYTES,
+                )
+                .await?;
+            let response: PairingApproveResponse =
+                serde_json::from_value(value).map_err(protocol)?;
+            if response.ok {
+                Ok(response.user)
+            } else {
+                Err(ServiceError::Transport(
+                    "Agent did not confirm pairing approval".into(),
+                ))
+            }
+        })
+    }
+
+    fn revoke_pairing(&self, platform: &str, user_id: &str) -> ServiceFuture<'_, ()> {
+        let platform = platform.to_owned();
+        let user_id = user_id.to_owned();
+        Box::pin(async move {
+            validate_agent_feature_text(&platform, "pairing platform", false)?;
+            validate_agent_feature_text(&user_id, "pairing user", false)?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::POST,
+                    "/api/pairing/revoke",
+                    Some(json!({ "platform": platform, "user_id": user_id })),
+                    AGENT_FEATURE_REQUEST_TIMEOUT,
+                    MAX_AGENT_FEATURE_RESPONSE_BYTES,
+                )
+                .await?;
+            let response: MutationResponse = serde_json::from_value(value).map_err(protocol)?;
+            if response.ok {
+                Ok(())
+            } else {
+                Err(ServiceError::Transport(
+                    "Agent did not confirm pairing revocation".into(),
+                ))
+            }
+        })
+    }
+
+    fn webhooks(&self) -> ServiceFuture<'_, WebhooksSnapshot> {
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::GET,
+                    "/api/webhooks",
+                    None,
+                    AGENT_FEATURE_REQUEST_TIMEOUT,
+                    MAX_AGENT_FEATURE_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn enable_webhooks(&self) -> ServiceFuture<'_, bool> {
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::POST,
+                    "/api/webhooks/enable",
+                    None,
+                    AGENT_FEATURE_REQUEST_TIMEOUT,
+                    MAX_AGENT_FEATURE_RESPONSE_BYTES,
+                )
+                .await?;
+            let response: WebhookEnableResponse =
+                serde_json::from_value(value).map_err(protocol)?;
+            if response.ok {
+                Ok(response.enabled)
+            } else {
+                Err(ServiceError::Transport(
+                    "Agent did not confirm webhook gateway enablement".into(),
+                ))
+            }
+        })
+    }
+
+    fn create_webhook(&self, input: &WebhookCreate) -> ServiceFuture<'_, WebhookCreated> {
+        let input = input.clone();
+        Box::pin(async move {
+            agent_feature_segment(&input.name, "webhook name")?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::POST,
+                    "/api/webhooks",
+                    Some(serde_json::to_value(input).map_err(protocol)?),
+                    AGENT_FEATURE_REQUEST_TIMEOUT,
+                    MAX_AGENT_FEATURE_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn set_webhook_enabled(&self, name: &str, enabled: bool) -> ServiceFuture<'_, bool> {
+        let name = name.to_owned();
+        Box::pin(async move {
+            let name = agent_feature_segment(&name, "webhook name")?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::PUT,
+                    &format!("/api/webhooks/{name}/enabled"),
+                    Some(json!({ "enabled": enabled })),
+                    AGENT_FEATURE_REQUEST_TIMEOUT,
+                    MAX_AGENT_FEATURE_RESPONSE_BYTES,
+                )
+                .await?;
+            let response: WebhookEnabledResponse =
+                serde_json::from_value(value).map_err(protocol)?;
+            if response.ok {
+                Ok(response.enabled)
+            } else {
+                Err(ServiceError::Transport(
+                    "Agent did not confirm webhook state".into(),
+                ))
+            }
+        })
+    }
+
+    fn delete_webhook(&self, name: &str) -> ServiceFuture<'_, ()> {
+        let name = name.to_owned();
+        Box::pin(async move {
+            let name = agent_feature_segment(&name, "webhook name")?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::DELETE,
+                    &format!("/api/webhooks/{name}"),
+                    None,
+                    AGENT_FEATURE_REQUEST_TIMEOUT,
+                    MAX_AGENT_FEATURE_RESPONSE_BYTES,
+                )
+                .await?;
+            let response: MutationResponse = serde_json::from_value(value).map_err(protocol)?;
+            if response.ok {
+                Ok(())
+            } else {
+                Err(ServiceError::Transport(
+                    "Agent did not confirm webhook deletion".into(),
+                ))
+            }
         })
     }
 }
@@ -4021,6 +4508,120 @@ mod tests {
             )),
             Arc::new(MemoryGatewaySecrets::default()),
         ))
+    }
+
+    #[test]
+    fn agent_feature_paths_encode_segments_and_bound_inputs() {
+        assert_eq!(
+            cron_job_path("nightly/job", Some("runs")).expect("Cron path"),
+            "/api/cron/jobs/nightly%2Fjob/runs"
+        );
+        assert_eq!(
+            agent_feature_segment("teams/plugin", "platform").expect("platform"),
+            "teams%2Fplugin"
+        );
+        assert!(agent_feature_segment("\n", "platform").is_err());
+        assert!(validate_agent_feature_text("", "prompt", false).is_err());
+        assert!(validate_agent_feature_text("value", "prompt", false).is_ok());
+    }
+
+    #[tokio::test]
+    async fn agent_feature_services_preserve_base_path_auth_and_redacted_reads() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let address = listener.local_addr().expect("address");
+        let server = tokio::spawn(async move {
+            let responses = [
+                r#"[{"id":"job-1","enabled":true}]"#,
+                r#"{"ok":true,"platform":"teams/plugin"}"#,
+                r#"{"base_url":"https://hooks.example","enabled":true,"subscriptions":[{"name":"deploy","secret_set":true}]}"#,
+                r#"{"name":"deploy","enabled":true,"secret_set":true,"secret":"once-only"}"#,
+            ];
+            let mut requests = Vec::new();
+            for body in responses {
+                let (mut stream, _) = listener.accept().await.expect("connection");
+                let mut request = Vec::new();
+                let mut chunk = [0_u8; 4096];
+                loop {
+                    let count = stream.read(&mut chunk).await.expect("request bytes");
+                    request.extend_from_slice(&chunk[..count]);
+                    let text = String::from_utf8_lossy(&request);
+                    if let Some(headers_end) = text.find("\r\n\r\n") {
+                        let content_length = text[..headers_end]
+                            .lines()
+                            .find_map(|line| line.strip_prefix("content-length: "))
+                            .and_then(|value| value.parse::<usize>().ok())
+                            .unwrap_or_default();
+                        if request.len() >= headers_end + 4 + content_length {
+                            break;
+                        }
+                    }
+                }
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("response");
+                requests.push(String::from_utf8(request).expect("UTF-8 request"));
+            }
+            requests
+        });
+        let services = GatewayServices {
+            client: Arc::new(RwLock::new(None)),
+            rest: Arc::new(RwLock::new(Some(GatewayRest {
+                client: reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .build()
+                    .expect("client"),
+                base_url: url::Url::parse(&format!("http://{address}/hermes/")).expect("URL"),
+                session_token: Some("session-secret".into()),
+            }))),
+            connection_store: test_connection_store(),
+        };
+
+        let jobs = CronService::list(&services).await.expect("Cron jobs");
+        assert_eq!(jobs[0].id, "job-1");
+        IntegrationService::update_messaging_platform(
+            &services,
+            "teams/plugin",
+            &MessagingPlatformUpdate {
+                enabled: Some(true),
+                ..MessagingPlatformUpdate::default()
+            },
+        )
+        .await
+        .expect("messaging update");
+        let hooks = IntegrationService::webhooks(&services)
+            .await
+            .expect("webhooks");
+        assert!(hooks.subscriptions[0].secret_set);
+        let created = IntegrationService::create_webhook(
+            &services,
+            &WebhookCreate {
+                name: "deploy".into(),
+                ..WebhookCreate::default()
+            },
+        )
+        .await
+        .expect("create webhook");
+        assert_eq!(created.secret, "once-only");
+
+        let requests = server.await.expect("server");
+        assert!(requests[0].starts_with("GET /hermes/api/cron/jobs HTTP/1.1"));
+        assert!(
+            requests[1].starts_with("PUT /hermes/api/messaging/platforms/teams%2Fplugin HTTP/1.1")
+        );
+        assert!(requests[2].starts_with("GET /hermes/api/webhooks HTTP/1.1"));
+        assert!(requests[3].starts_with("POST /hermes/api/webhooks HTTP/1.1"));
+        assert!(
+            requests
+                .iter()
+                .all(|request| request.contains("x-hermes-session-token: session-secret"))
+        );
     }
 
     #[test]

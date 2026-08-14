@@ -15,17 +15,18 @@ use futures_core::Stream;
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, AttachmentKind, ChatMessage, ConnectionConfig,
     ConnectionConfigInput, ConnectionOauthLoginResult, ConnectionOauthLogoutResult,
-    ConnectionProbeResult, ConnectionState, ConnectionTestResult, CuratorPauseResult,
-    CuratorRunResult, CuratorStatus, CustomEndpointUpdate, CustomEndpointValidation,
-    CustomEndpointsResponse, EnvVarInfo, FileEntry, GatewayEvent, GitStatus, MemoryResetResult,
-    MemoryResetTarget, MemoryStatus, MessageRole, MoaConfig, ModelAssignmentRequest,
+    ConnectionProbeResult, ConnectionState, ConnectionTestResult, CronJob, CronJobCreate,
+    CronJobUpdate, CuratorPauseResult, CuratorRunResult, CuratorStatus, CustomEndpointUpdate,
+    CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry, GatewayEvent,
+    GitStatus, MemoryResetResult, MemoryResetTarget, MemoryStatus, MessageRole, MessagingPlatform,
+    MessagingPlatformTest, MessagingPlatformUpdate, MoaConfig, ModelAssignmentRequest,
     ModelAssignmentResponse, ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart,
-    OAuthSubmit, ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation,
-    RuntimeStatus, SelectedAttachment, SessionAttachmentResult, SessionCreateRequest,
-    SessionDirectiveResult, SessionReactionResult, SessionResumeResponse, SessionSummary,
-    SkillActionStart, SkillActionStatus, SkillHubPreview, SkillHubScanResult,
-    SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary, SkillToggleResult, TaskSummary,
-    TrustSnapshot,
+    OAuthSubmit, PairingSnapshot, PairingUser, ProjectFilesDeleteResult, ProjectSummary,
+    ProjectsSnapshot, ProviderActivation, RuntimeStatus, SelectedAttachment,
+    SessionAttachmentResult, SessionCreateRequest, SessionDirectiveResult, SessionReactionResult,
+    SessionResumeResponse, SessionSummary, SkillActionStart, SkillActionStatus, SkillHubPreview,
+    SkillHubScanResult, SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary,
+    SkillToggleResult, TaskSummary, TrustSnapshot, WebhookCreate, WebhookCreated, WebhooksSnapshot,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -1067,6 +1068,173 @@ pub trait MemoryService: Send + Sync {
     fn run_curator(&self) -> ServiceFuture<'_, CuratorRunResult>;
 }
 
+pub trait CronService: Send + Sync {
+    fn list(&self) -> ServiceFuture<'_, Vec<CronJob>>;
+    fn runs(&self, id: &str, limit: u32) -> ServiceFuture<'_, Vec<SessionSummary>>;
+    fn create(&self, input: &CronJobCreate) -> ServiceFuture<'_, CronJob>;
+    fn update(&self, id: &str, input: &CronJobUpdate) -> ServiceFuture<'_, CronJob>;
+    fn pause(&self, id: &str) -> ServiceFuture<'_, CronJob>;
+    fn resume(&self, id: &str) -> ServiceFuture<'_, CronJob>;
+    fn trigger(&self, id: &str) -> ServiceFuture<'_, CronJob>;
+    fn delete(&self, id: &str) -> ServiceFuture<'_, ()>;
+}
+
+pub trait IntegrationService: Send + Sync {
+    fn messaging_platforms(&self) -> ServiceFuture<'_, Vec<MessagingPlatform>>;
+    fn update_messaging_platform(
+        &self,
+        id: &str,
+        input: &MessagingPlatformUpdate,
+    ) -> ServiceFuture<'_, ()>;
+    fn test_messaging_platform(&self, id: &str) -> ServiceFuture<'_, MessagingPlatformTest>;
+    fn pairing(&self) -> ServiceFuture<'_, PairingSnapshot>;
+    fn approve_pairing(&self, platform: &str, request_id: &str) -> ServiceFuture<'_, PairingUser>;
+    fn revoke_pairing(&self, platform: &str, user_id: &str) -> ServiceFuture<'_, ()>;
+    fn webhooks(&self) -> ServiceFuture<'_, WebhooksSnapshot>;
+    fn enable_webhooks(&self) -> ServiceFuture<'_, bool>;
+    fn create_webhook(&self, input: &WebhookCreate) -> ServiceFuture<'_, WebhookCreated>;
+    fn set_webhook_enabled(&self, name: &str, enabled: bool) -> ServiceFuture<'_, bool>;
+    fn delete_webhook(&self, name: &str) -> ServiceFuture<'_, ()>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnavailableCronService;
+
+impl CronService for UnavailableCronService {
+    fn list(&self) -> ServiceFuture<'_, Vec<CronJob>> {
+        Box::pin(async { Err(ServiceError::Unavailable("Cron is unavailable".into())) })
+    }
+
+    fn runs(&self, _id: &str, _limit: u32) -> ServiceFuture<'_, Vec<SessionSummary>> {
+        Box::pin(async { Err(ServiceError::Unavailable("Cron is unavailable".into())) })
+    }
+
+    fn create(&self, _input: &CronJobCreate) -> ServiceFuture<'_, CronJob> {
+        Box::pin(async { Err(ServiceError::Unavailable("Cron is unavailable".into())) })
+    }
+
+    fn update(&self, _id: &str, _input: &CronJobUpdate) -> ServiceFuture<'_, CronJob> {
+        Box::pin(async { Err(ServiceError::Unavailable("Cron is unavailable".into())) })
+    }
+
+    fn pause(&self, _id: &str) -> ServiceFuture<'_, CronJob> {
+        Box::pin(async { Err(ServiceError::Unavailable("Cron is unavailable".into())) })
+    }
+
+    fn resume(&self, _id: &str) -> ServiceFuture<'_, CronJob> {
+        Box::pin(async { Err(ServiceError::Unavailable("Cron is unavailable".into())) })
+    }
+
+    fn trigger(&self, _id: &str) -> ServiceFuture<'_, CronJob> {
+        Box::pin(async { Err(ServiceError::Unavailable("Cron is unavailable".into())) })
+    }
+
+    fn delete(&self, _id: &str) -> ServiceFuture<'_, ()> {
+        Box::pin(async { Err(ServiceError::Unavailable("Cron is unavailable".into())) })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnavailableIntegrationService;
+
+impl IntegrationService for UnavailableIntegrationService {
+    fn messaging_platforms(&self) -> ServiceFuture<'_, Vec<MessagingPlatform>> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "integrations are unavailable".into(),
+            ))
+        })
+    }
+
+    fn update_messaging_platform(
+        &self,
+        _id: &str,
+        _input: &MessagingPlatformUpdate,
+    ) -> ServiceFuture<'_, ()> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "integrations are unavailable".into(),
+            ))
+        })
+    }
+
+    fn test_messaging_platform(&self, _id: &str) -> ServiceFuture<'_, MessagingPlatformTest> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "integrations are unavailable".into(),
+            ))
+        })
+    }
+
+    fn pairing(&self) -> ServiceFuture<'_, PairingSnapshot> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "integrations are unavailable".into(),
+            ))
+        })
+    }
+
+    fn approve_pairing(
+        &self,
+        _platform: &str,
+        _request_id: &str,
+    ) -> ServiceFuture<'_, PairingUser> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "integrations are unavailable".into(),
+            ))
+        })
+    }
+
+    fn revoke_pairing(&self, _platform: &str, _user_id: &str) -> ServiceFuture<'_, ()> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "integrations are unavailable".into(),
+            ))
+        })
+    }
+
+    fn webhooks(&self) -> ServiceFuture<'_, WebhooksSnapshot> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "integrations are unavailable".into(),
+            ))
+        })
+    }
+
+    fn enable_webhooks(&self) -> ServiceFuture<'_, bool> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "integrations are unavailable".into(),
+            ))
+        })
+    }
+
+    fn create_webhook(&self, _input: &WebhookCreate) -> ServiceFuture<'_, WebhookCreated> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "integrations are unavailable".into(),
+            ))
+        })
+    }
+
+    fn set_webhook_enabled(&self, _name: &str, _enabled: bool) -> ServiceFuture<'_, bool> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "integrations are unavailable".into(),
+            ))
+        })
+    }
+
+    fn delete_webhook(&self, _name: &str) -> ServiceFuture<'_, ()> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "integrations are unavailable".into(),
+            ))
+        })
+    }
+}
+
 pub trait TrustService: Send + Sync {
     fn snapshot(&self) -> ServiceFuture<'_, TrustSnapshot>;
     fn set_policy(&self, policy: &str) -> ServiceFuture<'_, TrustSnapshot>;
@@ -1644,6 +1812,8 @@ pub struct AppServices {
     pub providers: Arc<dyn ProviderService>,
     pub runtime: Arc<dyn RuntimeService>,
     pub memory: Arc<dyn MemoryService>,
+    pub cron: Arc<dyn CronService>,
+    pub integrations: Arc<dyn IntegrationService>,
     pub trust: Arc<dyn TrustService>,
     pub preview: Arc<dyn PreviewService>,
     pub files: Arc<dyn FileService>,

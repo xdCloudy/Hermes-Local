@@ -961,7 +961,9 @@ macro_rules! simple_surface {
 }
 
 mod about;
+mod automations;
 mod files;
+mod integrations;
 mod logs;
 mod memory;
 mod review;
@@ -970,7 +972,9 @@ mod skills;
 mod source_control;
 mod terminal;
 use about::About;
+use automations::Automations;
 use files::Files;
+use integrations::Integrations;
 use logs::Logs;
 use memory::Memory;
 use review::Review;
@@ -1021,12 +1025,6 @@ simple_surface!(
     "Resume and manage persistent local Hermes conversations."
 );
 simple_surface!(
-    Integrations,
-    "Hermes Local",
-    "Integrations",
-    "Connect explicit, trusted local and messaging services."
-);
-simple_surface!(
     Model,
     "Intelligence",
     "Model",
@@ -1061,12 +1059,6 @@ simple_surface!(
     "Insights",
     "Usage",
     "Understand local and provider consumption."
-);
-simple_surface!(
-    Automations,
-    "Activity",
-    "Automations",
-    "Schedule and monitor recurring work."
 );
 simple_surface!(
     Notifications,
