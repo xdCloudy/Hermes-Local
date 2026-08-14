@@ -16,6 +16,7 @@ mod git_discard_service;
 mod git_repo_scan_service;
 mod git_ship_service;
 mod git_worktree_service;
+mod local_gateway;
 mod login_item;
 mod memory_service;
 mod messaging_service;
@@ -44,7 +45,6 @@ mod ssh_service;
 mod ssh_terminal;
 #[cfg(windows)]
 mod ssh_windows;
-mod startup;
 mod update_activation;
 mod webhook_service;
 mod window_state;
@@ -80,7 +80,7 @@ fn desktop_root() -> Element {
     let local_startup = use_resource(move || {
         let _ = startup_attempt();
         let services = startup_services.clone();
-        async move { startup::prepare_local_agent(&services).await }
+        async move { local_gateway::prepare(&services).await }
     });
 
     match &*local_startup.read() {
@@ -179,9 +179,10 @@ fn main() {
     preview_service::install(&mut native.services);
     preview_watcher::install(&mut native.services);
     diagnostics_export::install(&mut native.services, data_dir.clone());
-    startup::install_local_bootstrap(&mut native.services);
+    local_gateway::install(&mut native.services);
     ssh_service::install_ssh_probe(&mut native.services, data_dir);
     ssh_terminal::install(&mut native.services);
+
     let window = WindowBuilder::new()
         .with_title("Hermes Local")
         .with_inner_size(LogicalSize::new(
@@ -204,4 +205,5 @@ fn main() {
         .with_cfg(config)
         .with_context(native.services)
         .launch(desktop_root);
+    local_gateway::shutdown();
 }
