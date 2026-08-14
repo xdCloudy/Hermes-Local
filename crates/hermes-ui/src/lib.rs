@@ -102,6 +102,8 @@ pub enum Route {
     Logs {},
     #[route("/artifacts")]
     Artifacts {},
+    #[route("/starmap")]
+    Starmap {},
     #[route("/model")]
     Model {},
     #[route("/runtime")]
@@ -353,6 +355,7 @@ fn AppShell() -> Element {
                     NavItem { to: Route::Security {}, icon: "shield", label: "Security" }
                     NavItem { to: Route::Logs {}, icon: "output", label: "Logs" }
                     NavItem { to: Route::Artifacts {}, icon: "package", label: "Artifacts" }
+                    NavItem { to: Route::Starmap {}, icon: "type-hierarchy", label: "Starmap" }
                 }
                 div { class: "sidebar-search",
                     Codicon { name: "search" }
@@ -975,6 +978,7 @@ mod review;
 mod runtime;
 mod skills;
 mod source_control;
+mod starmap;
 mod terminal;
 use about::About;
 use artifacts::Artifacts;
@@ -988,6 +992,7 @@ use review::Review;
 use runtime::{Benchmarks, Runtime, Security, Tasks};
 use skills::Skills;
 use source_control::{Git, Worktrees};
+use starmap::Starmap;
 use terminal::Terminal;
 simple_surface!(
     Tui,

@@ -1820,8 +1820,70 @@ mod tests {
     }
 }
 
-// AG-01: forward-compatible Skills/Hub REST DTOs shared by native authority and Dioxus.
+// AG-10: bounded learning graph DTOs shared by native authority and Dioxus.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct LearningNode {
+    pub id: String,
+    pub label: String,
+    pub kind: String,
+    #[serde(default, rename = "memorySource")]
+    pub memory_source: Option<String>,
+    #[serde(default)]
+    pub timestamp: Option<f64>,
+    #[serde(default)]
+    pub category: String,
+    #[serde(default, rename = "useCount")]
+    pub use_count: u64,
+    #[serde(default)]
+    pub state: String,
+    #[serde(default, rename = "createdBy")]
+    pub created_by: Option<String>,
+    #[serde(default)]
+    pub pinned: bool,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LearningEdge {
+    pub source: String,
+    pub target: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LearningCluster {
+    #[serde(default)]
+    pub category: String,
+    #[serde(default)]
+    pub count: u64,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct LearningMemoryCard {
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub timestamp: Option<f64>,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub body: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct LearningGraph {
+    #[serde(default)]
+    pub nodes: Vec<LearningNode>,
+    #[serde(default)]
+    pub edges: Vec<LearningEdge>,
+    #[serde(default)]
+    pub clusters: Vec<LearningCluster>,
+    #[serde(default)]
+    pub memory: Vec<LearningMemoryCard>,
+    #[serde(default)]
+    pub stats: BTreeMap<String, Value>,
+}
+
+// AG-01: forward-compatible Skills/Hub REST DTOs shared by native authority and Dioxus.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct SkillSummary {
     #[serde(default)]
     pub category: String,
