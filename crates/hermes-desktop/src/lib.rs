@@ -1,7 +1,7 @@
 //! Windows desktop authority for Hermes Local.
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs,
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -16,9 +16,9 @@ use base64::{
 use hermes_agent_client::GatewayClient;
 use hermes_core::{
     AgentConfigService, AppServices, ConnectionService, CronService, EventStream, FileService,
-    GitService, IntegrationService, MemoryService, ModelService, PlatformService, ProjectService,
-    ProviderService, RuntimeService, ServiceError, ServiceFuture, ServiceResult, SessionService,
-    SettingsService, SkillsService, TerminalService, TrustService,
+    GitService, IntegrationService, LearningService, MemoryService, ModelService, PlatformService,
+    ProjectService, ProviderService, RuntimeService, ServiceError, ServiceFuture, ServiceResult,
+    SessionService, SettingsService, SkillsService, TerminalService, TrustService,
     UnavailableDesktopSettingsService, UnavailableDiagnosticsService, UnavailableGitBranchService,
     UnavailableGitDiscardService, UnavailableGitRepoScanService, UnavailableGitShipService,
     UnavailableGitWorktreeService, UnavailablePreviewService, UpdateService, validate_identifier,
@@ -31,16 +31,16 @@ use hermes_protocol::{
     ConnectionState, ConnectionTestResult, CronJob, CronJobCreate, CronJobUpdate,
     CuratorPauseResult, CuratorRunResult, CuratorStatus, CustomEndpointUpdate,
     CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry, GitStatus,
-    MemoryResetResult, MemoryResetTarget, MemoryStatus, MessagingPlatform, MessagingPlatformTest,
-    MessagingPlatformUpdate, MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse, ModelInfo,
-    ModelOptions, ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit,
-    PairingSnapshot, PairingUser, ProbeAuthMode, ProjectFilesDeleteResult, ProjectSummary,
-    ProjectsSnapshot, ProviderActivation, RemoteAuthMode, RuntimeStatus, SelectedAttachment,
-    SessionAttachmentResult, SessionCreateRequest, SessionCreateResponse, SessionDirectiveResult,
-    SessionMessagesResponse, SessionReactionResult, SessionResumeResponse, SessionSummary,
-    SkillActionStart, SkillActionStatus, SkillHubPreview, SkillHubScanResult,
-    SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary, SkillToggleResult, TaskSummary,
-    TrustSnapshot, WebhookCreate, WebhookCreated, WebhooksSnapshot,
+    LearningGraph, MemoryResetResult, MemoryResetTarget, MemoryStatus, MessagingPlatform,
+    MessagingPlatformTest, MessagingPlatformUpdate, MoaConfig, ModelAssignmentRequest,
+    ModelAssignmentResponse, ModelInfo, ModelOptions, ModelSettingsSnapshot, OAuthPoll,
+    OAuthProvider, OAuthStart, OAuthSubmit, PairingSnapshot, PairingUser, ProbeAuthMode,
+    ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation, RemoteAuthMode,
+    RuntimeStatus, SelectedAttachment, SessionAttachmentResult, SessionCreateRequest,
+    SessionCreateResponse, SessionDirectiveResult, SessionMessagesResponse, SessionReactionResult,
+    SessionResumeResponse, SessionSummary, SkillActionStart, SkillActionStatus, SkillHubPreview,
+    SkillHubScanResult, SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary,
+    SkillToggleResult, TaskSummary, TrustSnapshot, WebhookCreate, WebhookCreated, WebhooksSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use reqwest::Method;
@@ -767,7 +767,7 @@ impl NativeApp {
                 cron: remote.clone(),
                 integrations: remote.clone(),
                 trust: remote.clone(),
-                skills: remote,
+                skills: remote.clone(),
                 preview: Arc::new(UnavailablePreviewService),
                 files: Arc::new(DesktopFiles),
                 git: Arc::new(DesktopGit),
@@ -776,6 +776,7 @@ impl NativeApp {
                 git_discard: Arc::new(UnavailableGitDiscardService),
                 git_ship: Arc::new(UnavailableGitShipService),
                 git_repo_scan: Arc::new(UnavailableGitRepoScanService),
+                learning: remote.clone(),
                 terminal: Arc::new(DesktopTerminals::default()),
                 updates: Arc::new(DesktopUpdates { data_dir }),
                 diagnostics: Arc::new(UnavailableDiagnosticsService),
@@ -2885,6 +2886,130 @@ fn skill_action_status_path(
         Some(query) => format!("{}?{query}", url.path()),
         None => url.path().to_owned(),
     })
+}
+
+const MAX_LEARNING_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_LEARNING_NODES: usize = 2_000;
+const MAX_LEARNING_EDGES: usize = 8_000;
+const MAX_LEARNING_CLUSTERS: usize = 256;
+const MAX_LEARNING_MEMORY_CARDS: usize = 512;
+const MAX_LEARNING_FIELD_BYTES: usize = 4 * 1024;
+
+fn sanitize_learning_text(value: &mut String) {
+    value.retain(|character| !character.is_control() || matches!(character, '\n' | '\t'));
+    truncate_utf8(value, MAX_LEARNING_FIELD_BYTES);
+}
+
+fn sanitize_learning_graph(graph: &mut LearningGraph) {
+    graph.nodes.retain(|node| {
+        !node.id.is_empty()
+            && node.id.len() <= MAX_LEARNING_FIELD_BYTES
+            && !node.id.chars().any(char::is_control)
+    });
+    graph.nodes.truncate(MAX_LEARNING_NODES);
+    for node in &mut graph.nodes {
+        sanitize_learning_text(&mut node.id);
+        sanitize_learning_text(&mut node.label);
+        sanitize_learning_text(&mut node.kind);
+        sanitize_learning_text(&mut node.category);
+        sanitize_learning_text(&mut node.state);
+        if let Some(value) = &mut node.memory_source {
+            sanitize_learning_text(value);
+        }
+        if let Some(value) = &mut node.created_by {
+            sanitize_learning_text(value);
+        }
+    }
+    let node_ids = graph
+        .nodes
+        .iter()
+        .map(|node| node.id.as_str())
+        .collect::<BTreeSet<_>>();
+    graph.edges.retain(|edge| {
+        edge.source != edge.target
+            && node_ids.contains(edge.source.as_str())
+            && node_ids.contains(edge.target.as_str())
+    });
+    graph.edges.truncate(MAX_LEARNING_EDGES);
+    graph.clusters.truncate(MAX_LEARNING_CLUSTERS);
+    for cluster in &mut graph.clusters {
+        sanitize_learning_text(&mut cluster.category);
+    }
+    graph.memory.truncate(MAX_LEARNING_MEMORY_CARDS);
+    for card in &mut graph.memory {
+        sanitize_learning_text(&mut card.source);
+        sanitize_learning_text(&mut card.title);
+        sanitize_learning_text(&mut card.body);
+    }
+}
+
+impl LearningService for GatewayServices {
+    fn graph(&self, profile: Option<&str>) -> ServiceFuture<'_, LearningGraph> {
+        let profile = profile.map(str::to_owned);
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::GET,
+                    &profiled_path("/api/learning/graph", profile.as_deref()),
+                    None,
+                    std::time::Duration::from_secs(30),
+                    MAX_LEARNING_RESPONSE_BYTES,
+                )
+                .await?;
+            let mut graph: LearningGraph = serde_json::from_value(value).map_err(protocol)?;
+            sanitize_learning_graph(&mut graph);
+            Ok(graph)
+        })
+    }
+}
+
+#[cfg(test)]
+mod learning_graph_tests {
+    use super::*;
+    use hermes_protocol::{LearningEdge, LearningNode};
+
+    #[test]
+    fn graph_sanitization_bounds_nodes_fields_and_relationships() {
+        let mut graph = LearningGraph {
+            nodes: (0..2_100)
+                .map(|index| LearningNode {
+                    id: format!("node-{index}"),
+                    label: format!("label\0-{index}{}", "x".repeat(5_000)),
+                    ..LearningNode::default()
+                })
+                .chain([LearningNode {
+                    id: "bad\0id".into(),
+                    ..LearningNode::default()
+                }])
+                .collect(),
+            edges: vec![
+                LearningEdge {
+                    source: "node-0".into(),
+                    target: "node-1".into(),
+                },
+                LearningEdge {
+                    source: "node-0".into(),
+                    target: "missing".into(),
+                },
+                LearningEdge {
+                    source: "node-0".into(),
+                    target: "node-0".into(),
+                },
+            ],
+            ..LearningGraph::default()
+        };
+        sanitize_learning_graph(&mut graph);
+        assert_eq!(graph.nodes.len(), MAX_LEARNING_NODES);
+        assert!(
+            graph
+                .nodes
+                .iter()
+                .all(|node| node.label.len() <= MAX_LEARNING_FIELD_BYTES)
+        );
+        assert!(graph.nodes.iter().all(|node| !node.label.contains('\0')));
+        assert_eq!(graph.edges.len(), 1);
+    }
 }
 
 impl SkillsService for GatewayServices {

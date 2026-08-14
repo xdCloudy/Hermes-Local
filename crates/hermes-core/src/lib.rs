@@ -18,8 +18,8 @@ use hermes_protocol::{
     ConnectionProbeResult, ConnectionState, ConnectionTestResult, CronJob, CronJobCreate,
     CronJobUpdate, CuratorPauseResult, CuratorRunResult, CuratorStatus, CustomEndpointUpdate,
     CustomEndpointValidation, CustomEndpointsResponse, DesktopGeneralStatus, EnvVarInfo, FileEntry,
-    GatewayEvent, GitStatus, MemoryResetResult, MemoryResetTarget, MemoryStatus, MessageRole,
-    MessagingPlatform, MessagingPlatformTest, MessagingPlatformUpdate, MoaConfig,
+    GatewayEvent, GitStatus, LearningGraph, MemoryResetResult, MemoryResetTarget, MemoryStatus,
+    MessageRole, MessagingPlatform, MessagingPlatformTest, MessagingPlatformUpdate, MoaConfig,
     ModelAssignmentRequest, ModelAssignmentResponse, ModelSettingsSnapshot, OAuthPoll,
     OAuthProvider, OAuthStart, OAuthSubmit, PairingSnapshot, PairingUser, ProjectFilesDeleteResult,
     ProjectSummary, ProjectsSnapshot, ProviderActivation, RuntimeStatus, SelectedAttachment,
@@ -1596,6 +1596,23 @@ impl GitRepoScanService for UnavailableGitRepoScanService {
     }
 }
 
+pub trait LearningService: Send + Sync {
+    fn graph(&self, profile: Option<&str>) -> ServiceFuture<'_, LearningGraph>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnavailableLearningService;
+
+impl LearningService for UnavailableLearningService {
+    fn graph(&self, _profile: Option<&str>) -> ServiceFuture<'_, LearningGraph> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "learning graph is unavailable on this platform".into(),
+            ))
+        })
+    }
+}
+
 pub trait SkillsService: Send + Sync {
     fn list(&self, profile: Option<&str>) -> ServiceFuture<'_, Vec<SkillSummary>>;
     fn set_enabled(
@@ -1889,6 +1906,7 @@ pub struct AppServices {
     pub git_discard: Arc<dyn GitDiscardService>,
     pub git_ship: Arc<dyn GitShipService>,
     pub git_repo_scan: Arc<dyn GitRepoScanService>,
+    pub learning: Arc<dyn LearningService>,
     pub skills: Arc<dyn SkillsService>,
     pub terminal: Arc<dyn TerminalService>,
     pub updates: Arc<dyn UpdateService>,
