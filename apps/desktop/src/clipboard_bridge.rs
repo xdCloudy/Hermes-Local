@@ -22,7 +22,9 @@ pub fn ClipboardBridge(children: Element) -> Element {
     let write_clipboard = move |_| {
         status.set(None);
         match ClipboardService.write_text(&text()) {
-            Ok(()) => status.set(Some("Copied text through the native clipboard service.".into())),
+            Ok(()) => status.set(Some(
+                "Copied text through the native clipboard service.".into(),
+            )),
             Err(error) => status.set(Some(error)),
         }
     };
