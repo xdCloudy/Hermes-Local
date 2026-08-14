@@ -1,7 +1,10 @@
 use std::time::Duration;
 
 use dioxus::prelude::*;
-use hermes_core::AppServices;
+use hermes_core::{
+    AppServices, ContributionArea, ContributionCommand, ContributionHost, ContributionPayload,
+    ContributionRegistry, StatusContribution,
+};
 use hermes_protocol::{ConnectionState, RuntimeStatus, TaskSummary};
 
 const SHELL_CSS: &str = r#"
@@ -54,34 +57,33 @@ enum Overlay {
     Centre,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ToolPane {
-    Files,
-    Terminal,
-    Review,
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ToolPane {
+    id: String,
+    label: String,
+    path: String,
 }
 
-impl ToolPane {
-    const fn label(self) -> &'static str {
-        match self {
-            Self::Files => "Files",
-            Self::Terminal => "Terminal",
-            Self::Review => "Review",
-        }
-    }
-
-    const fn path(self) -> &'static str {
-        match self {
-            Self::Files => "/files",
-            Self::Terminal => "/terminal",
-            Self::Review => "/review",
-        }
-    }
+fn panes_from_registry(registry: &ContributionRegistry) -> Vec<ToolPane> {
+    registry
+        .entries(ContributionArea::Pane, ContributionHost::Desktop)
+        .into_iter()
+        .filter_map(|entry| {
+            let ContributionPayload::Pane { route } = entry.payload else {
+                return None;
+            };
+            Some(ToolPane {
+                id: entry.id.to_owned(),
+                label: entry.label.to_owned(),
+                path: registry.route_path(route)?.to_owned(),
+            })
+        })
+        .collect()
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum CommandAction {
-    Navigate(&'static str),
+    Navigate(String),
     ToggleSidebar,
     ToggleRightRail,
     ToggleStatus,
@@ -91,12 +93,12 @@ enum CommandAction {
     ZoomReset,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct Command {
-    id: &'static str,
-    label: &'static str,
-    category: &'static str,
-    shortcut: &'static str,
+    id: String,
+    label: String,
+    category: String,
+    shortcut: String,
     action: CommandAction,
 }
 
@@ -107,113 +109,41 @@ struct ShellStatusSnapshot {
     tasks: Vec<TaskSummary>,
 }
 
-const COMMANDS: &[Command] = &[
-    Command {
-        id: "nav.home",
-        label: "Go to Home",
-        category: "Navigation",
-        shortcut: "",
-        action: CommandAction::Navigate("/"),
-    },
-    Command {
-        id: "nav.chat",
-        label: "Go to Chat",
-        category: "Navigation",
-        shortcut: "",
-        action: CommandAction::Navigate("/chat"),
-    },
-    Command {
-        id: "nav.projects",
-        label: "Go to Projects",
-        category: "Navigation",
-        shortcut: "",
-        action: CommandAction::Navigate("/projects"),
-    },
-    Command {
-        id: "nav.skills",
-        label: "Go to Skills",
-        category: "Navigation",
-        shortcut: "",
-        action: CommandAction::Navigate("/skills"),
-    },
-    Command {
-        id: "nav.settings",
-        label: "Open Settings",
-        category: "Navigation",
-        shortcut: "Ctrl/Cmd+,",
-        action: CommandAction::Navigate("/settings"),
-    },
-    Command {
-        id: "view.showFiles",
-        label: "Show Files",
-        category: "View",
-        shortcut: "",
-        action: CommandAction::Navigate("/files"),
-    },
-    Command {
-        id: "view.showTerminal",
-        label: "Show Terminal",
-        category: "View",
-        shortcut: "Ctrl+`",
-        action: CommandAction::Navigate("/terminal"),
-    },
-    Command {
-        id: "view.toggleReview",
-        label: "Show Review",
-        category: "View",
-        shortcut: "Ctrl/Cmd+G",
-        action: CommandAction::Navigate("/review"),
-    },
-    Command {
-        id: "view.toggleSidebar",
-        label: "Toggle Sidebar",
-        category: "View",
-        shortcut: "Ctrl/Cmd+B",
-        action: CommandAction::ToggleSidebar,
-    },
-    Command {
-        id: "view.toggleRightSidebar",
-        label: "Toggle Right Sidebar",
-        category: "View",
-        shortcut: "Ctrl/Cmd+J",
-        action: CommandAction::ToggleRightRail,
-    },
-    Command {
-        id: "view.toggleStatusbar",
-        label: "Toggle Status Bar",
-        category: "View",
-        shortcut: "Ctrl/Cmd+Shift+S",
-        action: CommandAction::ToggleStatus,
-    },
-    Command {
-        id: "view.findInPage",
-        label: "Find in Page",
-        category: "View",
-        shortcut: "Ctrl/Cmd+F",
-        action: CommandAction::OpenFind,
-    },
-    Command {
-        id: "view.zoomIn",
-        label: "Zoom In",
-        category: "View",
-        shortcut: "Ctrl/Cmd++",
-        action: CommandAction::ZoomIn,
-    },
-    Command {
-        id: "view.zoomOut",
-        label: "Zoom Out",
-        category: "View",
-        shortcut: "Ctrl/Cmd+-",
-        action: CommandAction::ZoomOut,
-    },
-    Command {
-        id: "view.zoomReset",
-        label: "Reset Zoom to 90%",
-        category: "View",
-        shortcut: "Ctrl/Cmd+0",
-        action: CommandAction::ZoomReset,
-    },
-];
+fn commands_from_registry(registry: &ContributionRegistry) -> Vec<Command> {
+    registry
+        .entries(ContributionArea::Command, ContributionHost::Desktop)
+        .into_iter()
+        .filter_map(|entry| {
+            let ContributionPayload::Command {
+                action,
+                category,
+                shortcut,
+            } = entry.payload
+            else {
+                return None;
+            };
+            let action = match action {
+                ContributionCommand::Navigate(route) => {
+                    CommandAction::Navigate(registry.route_path(route)?.to_owned())
+                }
+                ContributionCommand::ToggleSidebar => CommandAction::ToggleSidebar,
+                ContributionCommand::ToggleRightRail => CommandAction::ToggleRightRail,
+                ContributionCommand::ToggleStatus => CommandAction::ToggleStatus,
+                ContributionCommand::OpenFind => CommandAction::OpenFind,
+                ContributionCommand::ZoomIn => CommandAction::ZoomIn,
+                ContributionCommand::ZoomOut => CommandAction::ZoomOut,
+                ContributionCommand::ZoomReset => CommandAction::ZoomReset,
+            };
+            Some(Command {
+                id: entry.id.to_owned(),
+                label: entry.label.to_owned(),
+                category: category.to_owned(),
+                shortcut: shortcut.to_owned(),
+                action,
+            })
+        })
+        .collect()
+}
 
 fn normalized_key(key: &Key) -> String {
     match key {
@@ -239,8 +169,8 @@ fn command_matches(command: &Command, query: &str) -> bool {
         || command.category.to_lowercase().contains(&needle)
 }
 
-fn matching_commands(query: &str) -> Vec<&'static Command> {
-    COMMANDS
+fn matching_commands<'a>(commands: &'a [Command], query: &str) -> Vec<&'a Command> {
+    commands
         .iter()
         .filter(|command| command_matches(command, query))
         .collect()
@@ -336,13 +266,29 @@ fn focus_workspace_script() -> String {
 pub fn ShellHost(children: Element) -> Element {
     let desktop = dioxus::desktop::window();
     let services = use_context::<AppServices>();
+    let registry = services.contributions.clone();
+    let commands = commands_from_registry(&registry);
+    let tool_panes = panes_from_registry(&registry);
+    let status_slots = registry
+        .entries(ContributionArea::Status, ContributionHost::Desktop)
+        .into_iter()
+        .filter_map(|entry| match entry.payload {
+            ContributionPayload::Status { slot } => Some(slot),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let initial_tool = tool_panes.first().cloned().unwrap_or_else(|| ToolPane {
+        id: "pane.unavailable".into(),
+        label: "Unavailable".into(),
+        path: "/".into(),
+    });
     let mut overlay = use_signal(|| None::<Overlay>);
     let mut palette_query = use_signal(String::new);
     let mut selected = use_signal(|| 0_usize);
     let mut sidebar_visible = use_signal(|| true);
     let mut right_rail_visible = use_signal(|| false);
     let mut status_visible = use_signal(|| true);
-    let mut active_tool = use_signal(|| ToolPane::Files);
+    let mut active_tool = use_signal(|| initial_tool);
     let mut find_open = use_signal(|| false);
     let mut find_query = use_signal(String::new);
     let mut zoom_level = use_signal(default_zoom_level);
@@ -398,7 +344,7 @@ pub fn ShellHost(children: Element) -> Element {
 
     let execute = Callback::new(move |action: CommandAction| {
         match action {
-            CommandAction::Navigate(path) => run_js(navigation_script(path)),
+            CommandAction::Navigate(path) => run_js(navigation_script(&path)),
             CommandAction::ToggleSidebar => sidebar_visible.toggle(),
             CommandAction::ToggleRightRail => right_rail_visible.toggle(),
             CommandAction::ToggleStatus => status_visible.toggle(),
@@ -513,42 +459,40 @@ pub fn ShellHost(children: Element) -> Element {
                         button { class: "shell-right-close", aria_label: "Hide right sidebar", title: "Hide right sidebar", onclick: move |_| right_rail_visible.set(false), "×" }
                     }
                     div { class: "shell-tool-tabs", role: "tablist", aria_label: "Tool panes",
-                        for tool in [ToolPane::Files, ToolPane::Terminal, ToolPane::Review] {
+                        for tool in tool_panes.clone() {
                             button {
                                 class: if active_tool() == tool { "active" } else { "" },
                                 role: "tab",
                                 aria_selected: active_tool() == tool,
-                                onclick: move |_| active_tool.set(tool),
-                                "{tool.label()}"
+                                onclick: { let tool = tool.clone(); move |_| active_tool.set(tool.clone()) },
+                                "{tool.label}"
                             }
                         }
                     }
                     div { class: "shell-tool-body",
-                        strong { "{active_tool().label()}" }
+                        strong { "{active_tool().label}" }
                         p { "Persistent shell tool selection is retained while the rail is hidden. Open the full workspace when you need the complete tool surface." }
-                        button { onclick: move |_| execute.call(CommandAction::Navigate(active_tool().path())), "Open {active_tool().label()}" }
+                        button { onclick: move |_| execute.call(CommandAction::Navigate(active_tool().path)), "Open {active_tool().label}" }
                     }
                 }
             }
             footer { class: "shell-status", aria_live: "polite",
-                span { class: "status-brand", "Hermes Local" }
-                span { class: "{gateway_class}", "● {gateway_label}" }
-                if let Some(runtime) = &status.runtime {
-                    if !runtime.phase.trim().is_empty() {
-                        span { class: "runtime-phase", title: "Runtime phase", "{runtime.phase}" }
-                    }
-                    if let Some(model) = runtime.model.as_deref().filter(|value| !value.is_empty()) {
-                        span { class: "model", title: "Active model", "{model}" }
-                    }
-                    if let Some(provider) = runtime.provider.as_deref().filter(|value| !value.is_empty()) {
-                        span { title: "Model provider", "{provider}" }
+                for slot in status_slots {
+                    match slot {
+                        StatusContribution::Brand => rsx! { span { class: "status-brand", "Hermes Local" } },
+                        StatusContribution::Gateway => rsx! { span { class: "{gateway_class}", "● {gateway_label}" } },
+                        StatusContribution::Runtime => rsx! {
+                            if let Some(runtime) = &status.runtime {
+                                if !runtime.phase.trim().is_empty() { span { class: "runtime-phase", title: "Runtime phase", "{runtime.phase}" } }
+                                if let Some(model) = runtime.model.as_deref().filter(|value| !value.is_empty()) { span { class: "model", title: "Active model", "{model}" } }
+                                if let Some(provider) = runtime.provider.as_deref().filter(|value| !value.is_empty()) { span { title: "Model provider", "{provider}" } }
+                            }
+                        },
+                        StatusContribution::Spacer => rsx! { span { class: "status-spacer" } },
+                        StatusContribution::Tasks => rsx! { if active_tasks > 0 { span { class: "tasks", title: "Active runtime tasks", "{active_task_label}" } } },
+                        StatusContribution::Encoding => rsx! { span { "UTF-8" } },
                     }
                 }
-                span { class: "status-spacer" }
-                if active_tasks > 0 {
-                    span { class: "tasks", title: "Active runtime tasks", "{active_task_label}" }
-                }
-                span { "UTF-8" }
             }
         }
         if find_open() {
@@ -595,13 +539,13 @@ pub fn ShellHost(children: Element) -> Element {
                                 oninput: move |event| { palette_query.set(event.value()); selected.set(0); },
                                 onkeydown: move |event| {
                                     event.stop_propagation();
-                                    let matches = matching_commands(&palette_query());
+                                    let matches = matching_commands(&commands, &palette_query());
                                     match event.key() {
                                         Key::ArrowDown if !matches.is_empty() => { event.prevent_default(); selected.set((selected() + 1) % matches.len()); }
                                         Key::ArrowUp if !matches.is_empty() => { event.prevent_default(); selected.set((selected() + matches.len() - 1) % matches.len()); }
                                         Key::Enter => {
                                             event.prevent_default();
-                                            if let Some(command) = matches.get(selected().min(matches.len().saturating_sub(1))) { execute.call(command.action); }
+                                            if let Some(command) = matches.get(selected().min(matches.len().saturating_sub(1))) { execute.call(command.action.clone()); }
                                         }
                                         Key::Escape => { event.prevent_default(); overlay.set(None); }
                                         _ => {}
@@ -612,7 +556,7 @@ pub fn ShellHost(children: Element) -> Element {
                         }
                         div { class: "shell-overlay-list", role: "listbox", aria_label: "Commands",
                             {
-                                let matches = matching_commands(&palette_query());
+                                let matches = matching_commands(&commands, &palette_query());
                                 if matches.is_empty() {
                                     rsx! { div { class: "shell-empty", "No matching commands" } }
                                 } else {
@@ -622,7 +566,7 @@ pub fn ShellHost(children: Element) -> Element {
                                                 class: if selected() == index { "shell-command selected" } else { "shell-command" },
                                                 role: "option",
                                                 aria_selected: selected() == index,
-                                                onclick: move |_| execute.call(command.action),
+                                                onclick: { let action = command.action.clone(); move |_| execute.call(action.clone()) },
                                                 span { "{command.label}" }
                                                 small { "{command.shortcut}" }
                                             }
@@ -636,8 +580,8 @@ pub fn ShellHost(children: Element) -> Element {
                         div { class: "shell-overlay-list",
                             for category in ["Navigation", "View"] {
                                 div { class: "shell-centre-section", "{category}" }
-                                for command in COMMANDS.iter().filter(|command| command.category == category) {
-                                    button { class: "shell-command", onclick: move |_| execute.call(command.action),
+                                for command in commands.iter().filter(|command| command.category == category) {
+                                    button { class: "shell-command", onclick: { let action = command.action.clone(); move |_| execute.call(action.clone()) },
                                         span { "{command.label}" }
                                         small { "{command.shortcut}" }
                                     }
@@ -659,22 +603,34 @@ mod tests {
 
     #[test]
     fn command_registry_has_stable_unique_ids() {
-        let ids = COMMANDS
+        let commands = commands_from_registry(&ContributionRegistry::built_in());
+        let ids = commands
             .iter()
-            .map(|command| command.id)
+            .map(|command| command.id.as_str())
             .collect::<BTreeSet<_>>();
-        assert_eq!(ids.len(), COMMANDS.len());
-        assert!(ids.contains("nav.settings"));
-        assert!(ids.contains("view.findInPage"));
-        assert!(ids.contains("view.showTerminal"));
+        assert_eq!(ids.len(), commands.len());
+        assert!(ids.contains("command.nav.settings"));
+        assert!(ids.contains("command.view.find"));
+        assert!(ids.contains("command.view.terminal"));
     }
 
     #[test]
     fn command_search_matches_id_label_and_category() {
-        assert!(command_matches(&COMMANDS[0], "home"));
-        assert!(command_matches(&COMMANDS[0], "nav.home"));
-        assert_eq!(matching_commands("Navigation").len(), 5);
-        assert_eq!(matching_commands("no-such-command").len(), 0);
+        let commands = commands_from_registry(&ContributionRegistry::built_in());
+        assert!(command_matches(&commands[0], "home"));
+        assert!(command_matches(&commands[0], "command.nav.home"));
+        assert_eq!(matching_commands(&commands, "Navigation").len(), 5);
+        assert_eq!(matching_commands(&commands, "no-such-command").len(), 0);
+    }
+
+    #[test]
+    fn pane_registry_supplies_labels_and_typed_destinations() {
+        let registry = ContributionRegistry::built_in();
+        let panes = panes_from_registry(&registry);
+        assert_eq!(panes.len(), 3);
+        assert_eq!(panes[0].id, "pane.files");
+        assert_eq!(panes[0].label, "Files");
+        assert_eq!(panes[0].path, "/files");
     }
 
     #[test]
@@ -736,8 +692,13 @@ mod tests {
 
     #[test]
     fn tool_panes_route_to_existing_typed_destinations() {
-        assert_eq!(ToolPane::Files.path(), "/files");
-        assert_eq!(ToolPane::Terminal.path(), "/terminal");
-        assert_eq!(ToolPane::Review.path(), "/review");
+        let panes = panes_from_registry(&ContributionRegistry::built_in());
+        assert_eq!(
+            panes
+                .iter()
+                .map(|pane| pane.path.as_str())
+                .collect::<Vec<_>>(),
+            ["/files", "/terminal", "/review"]
+        );
     }
 }

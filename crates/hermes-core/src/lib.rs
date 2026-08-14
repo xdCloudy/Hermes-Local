@@ -1,5 +1,12 @@
 //! Hermes Local product boundary consumed by the Dioxus UI.
 
+mod contributions;
+
+pub use contributions::{
+    Contribution, ContributionArea, ContributionCommand, ContributionHost, ContributionPayload,
+    ContributionRegistry, StatusContribution,
+};
+
 use std::{
     collections::{BTreeMap, VecDeque},
     future::Future,
@@ -1963,6 +1970,7 @@ pub trait PlatformService: Send + Sync {
 
 #[derive(Clone)]
 pub struct AppServices {
+    pub contributions: Arc<ContributionRegistry>,
     pub connection: Arc<dyn ConnectionService>,
     pub sessions: Arc<dyn SessionService>,
     pub projects: Arc<dyn ProjectService>,

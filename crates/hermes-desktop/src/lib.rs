@@ -757,6 +757,7 @@ impl NativeApp {
         let platform = Arc::new(DesktopPlatform);
         Self {
             services: AppServices {
+                contributions: Arc::new(hermes_core::ContributionRegistry::built_in()),
                 connection: remote.clone(),
                 sessions: remote.clone(),
                 projects: remote.clone(),

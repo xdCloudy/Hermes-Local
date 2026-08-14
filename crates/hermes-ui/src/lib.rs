@@ -11,7 +11,8 @@ use std::{
 
 use dioxus::prelude::*;
 use hermes_core::{
-    AgentConfigService, AppServices, DiscoveredGitRepository, ModelService, RepoScanCancellation,
+    AgentConfigService, AppServices, ContributionArea, ContributionHost, ContributionPayload,
+    DiscoveredGitRepository, ModelService, RepoScanCancellation,
 };
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, ConnectionConfig, ConnectionConfigInput, ConnectionMode,
@@ -141,6 +142,36 @@ pub enum Route {
     #[end_layout]
     #[route("/:..segments")]
     NotFound { segments: Vec<String> },
+}
+
+fn contribution_route(path: &str) -> Option<Route> {
+    Some(match path {
+        "/" => Route::Overview {},
+        "/chat" => Route::Chat {},
+        "/tui" => Route::Tui {},
+        "/dashboard" => Route::Dashboard {},
+        "/tasks" => Route::Tasks {},
+        "/services" => Route::Services {},
+        "/models" => Route::Models {},
+        "/profiles" => Route::Profiles {},
+        "/tools" => Route::Tools {},
+        "/memory" => Route::Memory {},
+        "/skills" => Route::Skills {},
+        "/sessions" => Route::Sessions {},
+        "/projects" => Route::Projects {},
+        "/integrations" => Route::Integrations {},
+        "/benchmarks" => Route::Benchmarks {},
+        "/security" => Route::Security {},
+        "/logs" => Route::Logs {},
+        "/artifacts" => Route::Artifacts {},
+        "/starmap" => Route::Starmap {},
+        "/settings" => Route::Settings {},
+        "/about" => Route::About {},
+        "/files" => Route::Files {},
+        "/terminal" => Route::Terminal {},
+        "/review" => Route::Review {},
+        _ => return None,
+    })
 }
 
 #[component]
@@ -333,29 +364,27 @@ fn AppShell() -> Element {
         .take(12)
         .cloned()
         .collect::<Vec<_>>();
+    let primary_navigation = services.contributions.entries(
+        ContributionArea::PrimaryNavigation,
+        ContributionHost::Shared,
+    );
+    let secondary_navigation = services.contributions.entries(
+        ContributionArea::SecondaryNavigation,
+        ContributionHost::Shared,
+    );
     rsx! {
         div { class: "app-shell",
             aside { class: "rail", aria_label: "Hermes navigation",
                 nav { class: "primary-nav", aria_label: "Primary navigation",
-                    NavItem { to: Route::Overview {}, icon: "home", label: "Home" }
-                    NavItem { to: Route::Chat {}, icon: "comment-discussion", label: "Chat" }
-                    NavItem { to: Route::Tui {}, icon: "terminal", label: "TUI" }
-                    NavItem { to: Route::Dashboard {}, icon: "dashboard", label: "Web Dashboard" }
-                    NavItem { to: Route::Tasks {}, icon: "checklist", label: "Tasks" }
-                    NavItem { to: Route::Services {}, icon: "server-process", label: "Services" }
-                    NavItem { to: Route::Models {}, icon: "hubot", label: "Models" }
-                    NavItem { to: Route::Profiles {}, icon: "settings-gear", label: "Profiles" }
-                    NavItem { to: Route::Tools {}, icon: "tools", label: "Tools" }
-                    NavItem { to: Route::Memory {}, icon: "database", label: "Memory" }
-                    NavItem { to: Route::Skills {}, icon: "symbol-misc", label: "Skills" }
-                    NavItem { to: Route::Sessions {}, icon: "history", label: "Sessions" }
-                    NavItem { to: Route::Projects {}, icon: "project", label: "Projects" }
-                    NavItem { to: Route::Integrations {}, icon: "plug", label: "Integrations" }
-                    NavItem { to: Route::Benchmarks {}, icon: "graph-line", label: "Benchmarks" }
-                    NavItem { to: Route::Security {}, icon: "shield", label: "Security" }
-                    NavItem { to: Route::Logs {}, icon: "output", label: "Logs" }
-                    NavItem { to: Route::Artifacts {}, icon: "package", label: "Artifacts" }
-                    NavItem { to: Route::Starmap {}, icon: "type-hierarchy", label: "Starmap" }
+                    for item in primary_navigation {
+                        if let ContributionPayload::Navigation { route } = item.payload {
+                            if let Some(path) = services.contributions.route_path(route) {
+                                if let Some(to) = contribution_route(path) {
+                                    NavItem { to, icon: item.icon.to_owned(), label: item.label.to_owned() }
+                                }
+                            }
+                        }
+                    }
                 }
                 div { class: "sidebar-search",
                     Codicon { name: "search" }
@@ -521,8 +550,15 @@ fn AppShell() -> Element {
                     }
                 }
                 nav { class: "secondary-nav", aria_label: "Application navigation",
-                    NavItem { to: Route::Settings {}, icon: "settings", label: "Settings" }
-                    NavItem { to: Route::About {}, icon: "info", label: "About" }
+                    for item in secondary_navigation {
+                        if let ContributionPayload::Navigation { route } = item.payload {
+                            if let Some(path) = services.contributions.route_path(route) {
+                                if let Some(to) = contribution_route(path) {
+                                    NavItem { to, icon: item.icon.to_owned(), label: item.label.to_owned() }
+                                }
+                            }
+                        }
+                    }
                 }
                 div { class: "sidebar-footer", span { class: "avatar", "C" } span { "Local profile" } span { class: "chevron", "›" } }
                 if let Some(id) = delete_session() {
@@ -648,9 +684,9 @@ fn SidebarSessionRow(
 }
 
 #[component]
-fn NavItem(to: Route, icon: &'static str, label: &'static str) -> Element {
+fn NavItem(to: Route, icon: String, label: String) -> Element {
     rsx! {
-        Link { class: "nav-item", to, aria_label: label, title: label,
+        Link { class: "nav-item", to, aria_label: label.clone(), title: label.clone(),
             span { class: "nav-glyph", Codicon { name: icon } }
             span { class: "nav-label", "{label}" }
         }
@@ -802,6 +838,9 @@ fn Overview() -> Element {
             "Local inference".to_owned(),
         ),
     };
+    let launchers = services
+        .contributions
+        .entries(ContributionArea::Launcher, ContributionHost::Shared);
 
     rsx! {
         Surface { eyebrow: "Hermes Local", title: "Local AI workstation", subtitle: "One control centre for the model, Hermes and local operations.",
@@ -845,9 +884,15 @@ fn Overview() -> Element {
             }
 
             div { class: "action-grid",
-                LauncherAction { to: Route::Chat {}, icon: "rocket", label: "Open Chat", detail: "Chat with Hermes through the local Agent." }
-                LauncherAction { to: Route::Tui {}, icon: "terminal", label: "Open TUI", detail: "Run the keyboard-driven Hermes terminal UI." }
-                LauncherAction { to: Route::Logs {}, icon: "output", label: "View Logs", detail: "Inspect service logs without exposing secrets." }
+                for item in launchers {
+                    if let ContributionPayload::Launcher { route, detail } = item.payload {
+                        if let Some(path) = services.contributions.route_path(route) {
+                            if let Some(to) = contribution_route(path) {
+                                LauncherAction { to, icon: item.icon.to_owned(), label: item.label.to_owned(), detail: detail.to_owned() }
+                            }
+                        }
+                    }
+                }
             }
 
             section { class: "panel integrity-panel",
@@ -904,12 +949,7 @@ fn ResourceRow(
 }
 
 #[component]
-fn LauncherAction(
-    to: Route,
-    icon: &'static str,
-    label: &'static str,
-    detail: &'static str,
-) -> Element {
+fn LauncherAction(to: Route, icon: String, label: String, detail: String) -> Element {
     rsx! {
         Link { class: "launcher-action", to,
             span { class: "action-icon", Codicon { name: icon } }
@@ -6208,11 +6248,25 @@ mod tests {
 
     use super::{
         ProviderAuthFlow, build_provider_key_groups, completion_sound_data_uri,
-        completion_sound_variant_id, config_display_value, config_value, curated_config_options,
-        custom_endpoint_form, custom_endpoint_payload, gateway_input, gateway_mode_copy,
-        moa_complete, provider_group_for_key, provider_order, provider_title, redacted_credential,
-        set_config_value, voice_config_field_visible, voice_free_input_field,
+        completion_sound_variant_id, config_display_value, config_value, contribution_route,
+        curated_config_options, custom_endpoint_form, custom_endpoint_payload, gateway_input,
+        gateway_mode_copy, moa_complete, provider_group_for_key, provider_order, provider_title,
+        redacted_credential, set_config_value, voice_config_field_visible, voice_free_input_field,
     };
+
+    #[test]
+    fn every_contributed_route_has_a_typed_dioxus_destination() {
+        let registry = hermes_core::ContributionRegistry::built_in();
+        for entry in registry.entries(
+            hermes_core::ContributionArea::Route,
+            hermes_core::ContributionHost::Shared,
+        ) {
+            let hermes_core::ContributionPayload::Route { path } = entry.payload else {
+                panic!("route area contains a non-route payload");
+            };
+            assert!(contribution_route(path).is_some(), "unmapped route {path}");
+        }
+    }
 
     #[test]
     fn voice_fields_follow_the_selected_provider_and_stt_state() {
