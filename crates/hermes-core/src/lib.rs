@@ -18,9 +18,10 @@ use hermes_protocol::{
     ConnectionProbeResult, ConnectionState, ConnectionTestResult, CronJob, CronJobCreate,
     CronJobUpdate, CuratorPauseResult, CuratorRunResult, CuratorStatus, CustomEndpointUpdate,
     CustomEndpointValidation, CustomEndpointsResponse, DesktopGeneralStatus, EnvVarInfo, FileEntry,
-    GatewayEvent, GitStatus, LearningGraph, MemoryResetResult, MemoryResetTarget, MemoryStatus,
-    MessageRole, MessagingPlatform, MessagingPlatformTest, MessagingPlatformUpdate, MoaConfig,
-    ModelAssignmentRequest, ModelAssignmentResponse, ModelSettingsSnapshot, OAuthPoll,
+    GatewayEvent, GitStatus, LearningGraph, McpCatalogInstallResult, McpCatalogResponse,
+    McpServerSummary, McpServerTestResult, McpServerUpsert, MemoryResetResult, MemoryResetTarget,
+    MemoryStatus, MessageRole, MessagingPlatform, MessagingPlatformTest, MessagingPlatformUpdate,
+    MoaConfig, ModelAssignmentRequest, ModelAssignmentResponse, ModelSettingsSnapshot, OAuthPoll,
     OAuthProvider, OAuthStart, OAuthSubmit, PairingSnapshot, PairingUser, ProjectFilesDeleteResult,
     ProjectSummary, ProjectsSnapshot, ProviderActivation, RuntimeStatus, SelectedAttachment,
     SessionAttachmentResult, SessionCreateRequest, SessionDirectiveResult, SessionReactionResult,
@@ -1613,6 +1614,82 @@ impl LearningService for UnavailableLearningService {
     }
 }
 
+pub trait McpService: Send + Sync {
+    fn list(&self, profile: Option<&str>) -> ServiceFuture<'_, Vec<McpServerSummary>>;
+    fn set_enabled(
+        &self,
+        profile: Option<&str>,
+        name: &str,
+        enabled: bool,
+    ) -> ServiceFuture<'_, ()>;
+    fn test(&self, profile: Option<&str>, name: &str) -> ServiceFuture<'_, McpServerTestResult>;
+    fn upsert(&self, profile: Option<&str>, input: &McpServerUpsert) -> ServiceFuture<'_, ()>;
+    fn remove(&self, profile: Option<&str>, name: &str) -> ServiceFuture<'_, ()>;
+    fn catalog(&self, profile: Option<&str>) -> ServiceFuture<'_, McpCatalogResponse>;
+    fn install_catalog(
+        &self,
+        profile: Option<&str>,
+        name: &str,
+        env: &BTreeMap<String, String>,
+    ) -> ServiceFuture<'_, McpCatalogInstallResult>;
+    fn reload(&self, profile: Option<&str>) -> ServiceFuture<'_, ()>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnavailableMcpService;
+
+impl McpService for UnavailableMcpService {
+    fn list(&self, _profile: Option<&str>) -> ServiceFuture<'_, Vec<McpServerSummary>> {
+        mcp_unavailable("MCP servers")
+    }
+
+    fn set_enabled(
+        &self,
+        _profile: Option<&str>,
+        _name: &str,
+        _enabled: bool,
+    ) -> ServiceFuture<'_, ()> {
+        mcp_unavailable("MCP servers")
+    }
+
+    fn test(&self, _profile: Option<&str>, _name: &str) -> ServiceFuture<'_, McpServerTestResult> {
+        mcp_unavailable("MCP servers")
+    }
+
+    fn upsert(&self, _profile: Option<&str>, _input: &McpServerUpsert) -> ServiceFuture<'_, ()> {
+        mcp_unavailable("MCP servers")
+    }
+
+    fn remove(&self, _profile: Option<&str>, _name: &str) -> ServiceFuture<'_, ()> {
+        mcp_unavailable("MCP servers")
+    }
+
+    fn catalog(&self, _profile: Option<&str>) -> ServiceFuture<'_, McpCatalogResponse> {
+        mcp_unavailable("MCP catalog")
+    }
+
+    fn install_catalog(
+        &self,
+        _profile: Option<&str>,
+        _name: &str,
+        _env: &BTreeMap<String, String>,
+    ) -> ServiceFuture<'_, McpCatalogInstallResult> {
+        mcp_unavailable("MCP catalog")
+    }
+
+    fn reload(&self, _profile: Option<&str>) -> ServiceFuture<'_, ()> {
+        mcp_unavailable("MCP reload")
+    }
+}
+
+fn mcp_unavailable<T: Send + 'static>(capability: &'static str) -> ServiceFuture<'static, T> {
+    Box::pin(async move {
+        Err(ServiceError::Unavailable(format!(
+            "{capability} is unavailable on this platform"
+        )))
+    })
+}
+
 pub trait SkillsService: Send + Sync {
     fn list(&self, profile: Option<&str>) -> ServiceFuture<'_, Vec<SkillSummary>>;
     fn set_enabled(
@@ -1907,6 +1984,7 @@ pub struct AppServices {
     pub git_ship: Arc<dyn GitShipService>,
     pub git_repo_scan: Arc<dyn GitRepoScanService>,
     pub learning: Arc<dyn LearningService>,
+    pub mcp: Arc<dyn McpService>,
     pub skills: Arc<dyn SkillsService>,
     pub terminal: Arc<dyn TerminalService>,
     pub updates: Arc<dyn UpdateService>,

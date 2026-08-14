@@ -2045,6 +2045,144 @@ pub struct SkillToggleResult {
     pub enabled: bool,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct McpServerSummary {
+    pub name: String,
+    #[serde(default)]
+    pub transport: String,
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default = "default_mcp_enabled")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub tools: Option<Vec<String>>,
+}
+
+const fn default_mcp_enabled() -> bool {
+    true
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct McpToolSummary {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct McpServerTestResult {
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub tools: Vec<McpToolSummary>,
+    #[serde(default)]
+    pub prompts: Option<u64>,
+    #[serde(default)]
+    pub resources: Option<u64>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct McpRequiredEnv {
+    pub name: String,
+    #[serde(default)]
+    pub prompt: String,
+    #[serde(default)]
+    pub required: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct McpCatalogEntry {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub transport: String,
+    #[serde(default)]
+    pub auth_type: String,
+    #[serde(default)]
+    pub required_env: Vec<McpRequiredEnv>,
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub install_url: Option<String>,
+    #[serde(default)]
+    pub install_ref: Option<String>,
+    #[serde(default)]
+    pub bootstrap: Vec<String>,
+    #[serde(default)]
+    pub default_enabled: Option<Vec<String>>,
+    #[serde(default)]
+    pub post_install: String,
+    #[serde(default)]
+    pub needs_install: bool,
+    #[serde(default)]
+    pub installed: bool,
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct McpCatalogDiagnostic {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct McpCatalogResponse {
+    #[serde(default)]
+    pub entries: Vec<McpCatalogEntry>,
+    #[serde(default)]
+    pub diagnostics: Vec<McpCatalogDiagnostic>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct McpCatalogInstallResult {
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub pid: Option<u64>,
+    #[serde(default)]
+    pub action: Option<String>,
+    #[serde(default)]
+    pub background: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct McpServerUpsert {
+    pub name: String,
+    #[serde(default)]
+    pub previous_name: Option<String>,
+    pub transport: String,
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
+    #[serde(default = "default_mcp_enabled")]
+    pub enabled: bool,
+}
+
 #[cfg(test)]
 mod agent_feature_contract_tests {
     use super::*;
@@ -2079,5 +2217,18 @@ mod agent_feature_contract_tests {
         let encoded = serde_json::to_string(&platform).expect("serialize platform");
         assert!(encoded.contains("redacted_value"));
         assert!(!encoded.contains("token-value"));
+    }
+
+    #[test]
+    fn mcp_reads_have_no_environment_secret_field() {
+        let server = McpServerSummary {
+            name: "filesystem".into(),
+            command: Some("mcp-filesystem".into()),
+            enabled: true,
+            ..McpServerSummary::default()
+        };
+        let encoded = serde_json::to_string(&server).expect("serialize MCP summary");
+        assert!(!encoded.contains("\"env\""));
+        assert!(!encoded.contains("secret"));
     }
 }

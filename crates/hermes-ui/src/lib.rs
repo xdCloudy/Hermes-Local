@@ -973,6 +973,7 @@ mod files;
 mod general;
 mod integrations;
 mod logs;
+mod mcp;
 mod memory;
 mod review;
 mod runtime;
@@ -987,6 +988,7 @@ use files::Files;
 use general::GeneralSettings;
 use integrations::Integrations;
 use logs::Logs;
+use mcp::Mcp;
 use memory::Memory;
 use review::Review;
 use runtime::{Benchmarks, Runtime, Security, Tasks};
@@ -1047,12 +1049,6 @@ simple_surface!(
     "Safety",
     "Trust",
     "Understand what Hermes may access and execute."
-);
-simple_surface!(
-    Mcp,
-    "Extensions",
-    "MCP servers",
-    "Connect explicit, trusted tool providers."
 );
 simple_surface!(
     Delegations,
