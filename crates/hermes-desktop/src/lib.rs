@@ -2167,7 +2167,12 @@ impl RuntimeService for GatewayServices {
                 .request("tasks.list", json!({}))
                 .await
                 .map_err(transport)?;
-            decode_list(value, "tasks")
+            let mut tasks: Vec<TaskSummary> = decode_list(value, "tasks")?;
+            tasks.truncate(MAX_RUNTIME_TASKS);
+            for task in &mut tasks {
+                bound_runtime_task(task)?;
+            }
+            Ok(tasks)
         })
     }
 
@@ -2175,10 +2180,13 @@ impl RuntimeService for GatewayServices {
         let action = action.to_owned();
         Box::pin(async move {
             validate_identifier(&action, "action")?;
-            self.client()?
+            let mut task = self
+                .client()?
                 .request("tasks.start", json!({ "action": action, "input": input }))
                 .await
-                .map_err(transport)
+                .map_err(transport)?;
+            bound_runtime_task(&mut task)?;
+            Ok(task)
         })
     }
 
@@ -2762,6 +2770,46 @@ impl IntegrationService for GatewayServices {
             }
         })
     }
+}
+
+const MAX_RUNTIME_TASKS: usize = 512;
+const MAX_RUNTIME_TASK_FIELD_BYTES: usize = 4 * 1024;
+const MAX_RUNTIME_TASK_OUTPUT_BYTES: usize = 256 * 1024;
+
+fn truncate_utf8(value: &mut String, max_bytes: usize) {
+    if value.len() <= max_bytes {
+        return;
+    }
+    let boundary = (0..=max_bytes)
+        .rev()
+        .find(|index| value.is_char_boundary(*index))
+        .unwrap_or(0);
+    value.truncate(boundary);
+}
+
+fn bound_runtime_task(task: &mut TaskSummary) -> ServiceResult<()> {
+    validate_identifier(&task.id, "task")?;
+    truncate_utf8(&mut task.name, MAX_RUNTIME_TASK_FIELD_BYTES);
+    truncate_utf8(&mut task.state, MAX_RUNTIME_TASK_FIELD_BYTES);
+    if let Some(detail) = &mut task.detail {
+        truncate_utf8(detail, MAX_RUNTIME_TASK_FIELD_BYTES);
+    }
+    if let Some(stage) = &mut task.stage {
+        truncate_utf8(stage, MAX_RUNTIME_TASK_FIELD_BYTES);
+    }
+    if task.output.len() > MAX_RUNTIME_TASK_OUTPUT_BYTES {
+        truncate_utf8(&mut task.output, MAX_RUNTIME_TASK_OUTPUT_BYTES);
+        task.output_truncated = true;
+    }
+    if let Some(failure) = &mut task.failure {
+        truncate_utf8(&mut failure.code, MAX_RUNTIME_TASK_FIELD_BYTES);
+        truncate_utf8(&mut failure.message, MAX_RUNTIME_TASK_FIELD_BYTES);
+    }
+    if let Some(result) = &mut task.result {
+        truncate_utf8(&mut result.kind, MAX_RUNTIME_TASK_FIELD_BYTES);
+        truncate_utf8(&mut result.path, MAX_RUNTIME_TASK_FIELD_BYTES);
+    }
+    Ok(())
 }
 
 const SKILLS_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
