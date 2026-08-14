@@ -16,6 +16,37 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: agent/notifications-deeplink
+      - name: Apply focused compile fixes
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('crates/hermes-ui/src/chat/legacy.rs')
+          text = path.read_text(encoding='utf-8')
+          edits = [
+              (
+                  'use std::collections::BTreeMap;',
+                  'use std::{collections::BTreeMap, rc::Rc};',
+              ),
+              (
+                  '''use super::{
+              Codicon, ErrorState, ExternalActivation, LoadingState, ProjectPicker, ProjectUiState, Route,
+              SettingsUiState, use_external_activation_queue,
+          };''',
+                  '''use super::{
+              Codicon, ErrorState, LoadingState, ProjectPicker, ProjectUiState, Route, SettingsUiState,
+          };
+          use crate::{ExternalActivation, use_external_activation_queue};''',
+              ),
+              (
+                  'let mut composer_element = use_signal(|| None::<MountedData>);',
+                  'let mut composer_element = use_signal(|| None::<Rc<MountedData>>);',
+              ),
+          ]
+          for old, new in edits:
+              if text.count(old) != 1:
+                  raise SystemExit(f'compile-fix anchor count={text.count(old)}: {old[:80]!r}')
+              text = text.replace(old, new)
+          path.write_text(text, encoding='utf-8', newline='\n')
       - name: Add focused parity tests
         shell: python
         run: |
