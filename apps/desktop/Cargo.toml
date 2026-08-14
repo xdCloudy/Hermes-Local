@@ -13,6 +13,7 @@ bundle = []
 [dependencies]
 async-stream.workspace = true
 dioxus = { workspace = true, features = ["desktop", "launch"] }
+futures-util.workspace = true
 hermes-core = { path = "../../crates/hermes-core" }
 hermes-desktop = { path = "../../crates/hermes-desktop" }
 hermes-protocol = { path = "../../crates/hermes-protocol" }

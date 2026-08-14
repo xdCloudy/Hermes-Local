@@ -46,6 +46,7 @@ mod ssh_service;
 mod ssh_terminal;
 #[cfg(windows)]
 mod ssh_windows;
+mod subagent_bridge;
 mod update_activation;
 mod webhook_service;
 mod window_state;
@@ -96,10 +97,12 @@ fn desktop_root() -> Element {
         },
         Some(Ok(())) => rsx! {
             clipboard_bridge::ClipboardBridge {
-                shell_focus_guard::FocusGuard {
-                    shell_parity::ParityShellHost {
-                        shell_interaction::ShellHost {
-                            hermes_ui::App {}
+                subagent_bridge::SubagentBridge {
+                    shell_focus_guard::FocusGuard {
+                        shell_parity::ParityShellHost {
+                            shell_interaction::ShellHost {
+                                hermes_ui::App {}
+                            }
                         }
                     }
                 }
