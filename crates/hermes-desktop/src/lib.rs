@@ -16,9 +16,9 @@ use base64::{
 use hermes_agent_client::GatewayClient;
 use hermes_core::{
     AgentConfigService, AppServices, ConnectionService, CronService, EventStream, FileService,
-    GitService, IntegrationService, LearningService, MemoryService, ModelService, PlatformService,
-    ProjectService, ProviderService, RuntimeService, ServiceError, ServiceFuture, ServiceResult,
-    SessionService, SettingsService, SkillsService, TerminalService, TrustService,
+    GitService, IntegrationService, LearningService, McpService, MemoryService, ModelService,
+    PlatformService, ProjectService, ProviderService, RuntimeService, ServiceError, ServiceFuture,
+    ServiceResult, SessionService, SettingsService, SkillsService, TerminalService, TrustService,
     UnavailableDesktopSettingsService, UnavailableDiagnosticsService, UnavailableGitBranchService,
     UnavailableGitDiscardService, UnavailableGitRepoScanService, UnavailableGitShipService,
     UnavailableGitWorktreeService, UnavailablePreviewService, UpdateService, validate_identifier,
@@ -31,16 +31,18 @@ use hermes_protocol::{
     ConnectionState, ConnectionTestResult, CronJob, CronJobCreate, CronJobUpdate,
     CuratorPauseResult, CuratorRunResult, CuratorStatus, CustomEndpointUpdate,
     CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry, GitStatus,
-    LearningGraph, MemoryResetResult, MemoryResetTarget, MemoryStatus, MessagingPlatform,
-    MessagingPlatformTest, MessagingPlatformUpdate, MoaConfig, ModelAssignmentRequest,
-    ModelAssignmentResponse, ModelInfo, ModelOptions, ModelSettingsSnapshot, OAuthPoll,
-    OAuthProvider, OAuthStart, OAuthSubmit, PairingSnapshot, PairingUser, ProbeAuthMode,
-    ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot, ProviderActivation, RemoteAuthMode,
-    RuntimeStatus, SelectedAttachment, SessionAttachmentResult, SessionCreateRequest,
-    SessionCreateResponse, SessionDirectiveResult, SessionMessagesResponse, SessionReactionResult,
-    SessionResumeResponse, SessionSummary, SkillActionStart, SkillActionStatus, SkillHubPreview,
-    SkillHubScanResult, SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary,
-    SkillToggleResult, TaskSummary, TrustSnapshot, WebhookCreate, WebhookCreated, WebhooksSnapshot,
+    LearningGraph, McpCatalogInstallResult, McpCatalogResponse, McpServerSummary,
+    McpServerTestResult, McpServerUpsert, MemoryResetResult, MemoryResetTarget, MemoryStatus,
+    MessagingPlatform, MessagingPlatformTest, MessagingPlatformUpdate, MoaConfig,
+    ModelAssignmentRequest, ModelAssignmentResponse, ModelInfo, ModelOptions,
+    ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart, OAuthSubmit, PairingSnapshot,
+    PairingUser, ProbeAuthMode, ProjectFilesDeleteResult, ProjectSummary, ProjectsSnapshot,
+    ProviderActivation, RemoteAuthMode, RuntimeStatus, SelectedAttachment, SessionAttachmentResult,
+    SessionCreateRequest, SessionCreateResponse, SessionDirectiveResult, SessionMessagesResponse,
+    SessionReactionResult, SessionResumeResponse, SessionSummary, SkillActionStart,
+    SkillActionStatus, SkillHubPreview, SkillHubScanResult, SkillHubSearchResponse,
+    SkillHubSourcesResponse, SkillSummary, SkillToggleResult, TaskSummary, TrustSnapshot,
+    WebhookCreate, WebhookCreated, WebhooksSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use reqwest::Method;
@@ -777,6 +779,7 @@ impl NativeApp {
                 git_ship: Arc::new(UnavailableGitShipService),
                 git_repo_scan: Arc::new(UnavailableGitRepoScanService),
                 learning: remote.clone(),
+                mcp: remote.clone(),
                 terminal: Arc::new(DesktopTerminals::default()),
                 updates: Arc::new(DesktopUpdates { data_dir }),
                 diagnostics: Arc::new(UnavailableDiagnosticsService),
@@ -2811,6 +2814,381 @@ fn bound_runtime_task(task: &mut TaskSummary) -> ServiceResult<()> {
         truncate_utf8(&mut result.path, MAX_RUNTIME_TASK_FIELD_BYTES);
     }
     Ok(())
+}
+
+const MCP_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+const MCP_ACTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+const MAX_MCP_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_MCP_SERVERS: usize = 256;
+const MAX_MCP_ARGUMENTS: usize = 128;
+const MAX_MCP_ENV_ENTRIES: usize = 128;
+const MAX_MCP_FIELD_BYTES: usize = 4 * 1024;
+const MAX_MCP_SECRET_BYTES: usize = 16 * 1024;
+
+fn mcp_text(value: &str, field: &str, allow_empty: bool) -> ServiceResult<String> {
+    let value = value.trim();
+    if (!allow_empty && value.is_empty())
+        || value.len() > MAX_MCP_FIELD_BYTES
+        || value.chars().any(char::is_control)
+    {
+        return Err(ServiceError::InvalidInput(format!("invalid MCP {field}")));
+    }
+    Ok(value.to_owned())
+}
+
+fn mcp_url(value: &str) -> ServiceResult<String> {
+    let value = mcp_text(value, "URL", false)?;
+    let parsed = url::Url::parse(&value)
+        .map_err(|error| ServiceError::InvalidInput(format!("invalid MCP URL: {error}")))?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+    {
+        return Err(ServiceError::InvalidInput(
+            "MCP URL must be non-credentialed HTTP(S) with a host".into(),
+        ));
+    }
+    Ok(value)
+}
+
+fn validate_mcp_upsert(input: &McpServerUpsert) -> ServiceResult<()> {
+    agent_feature_segment(&input.name, "MCP server")?;
+    if let Some(previous) = input.previous_name.as_deref() {
+        agent_feature_segment(previous, "previous MCP server")?;
+    }
+    if input.args.len() > MAX_MCP_ARGUMENTS || input.env.len() > MAX_MCP_ENV_ENTRIES {
+        return Err(ServiceError::InvalidInput(
+            "MCP configuration exceeds argument or environment limits".into(),
+        ));
+    }
+    for argument in &input.args {
+        mcp_text(argument, "argument", true)?;
+    }
+    for (key, value) in &input.env {
+        validate_identifier(key, "MCP environment key")?;
+        if value.len() > MAX_MCP_SECRET_BYTES || value.contains('\0') {
+            return Err(ServiceError::InvalidInput(
+                "invalid MCP environment value".into(),
+            ));
+        }
+    }
+    match input.transport.as_str() {
+        "stdio" => {
+            mcp_text(
+                input.command.as_deref().unwrap_or_default(),
+                "command",
+                false,
+            )?;
+        }
+        "http" | "sse" | "streamable-http" => {
+            mcp_url(input.url.as_deref().unwrap_or_default())?;
+        }
+        _ => {
+            return Err(ServiceError::InvalidInput(
+                "unsupported MCP transport".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn upsert_mcp_server_map(
+    servers: &mut serde_json::Map<String, Value>,
+    input: &McpServerUpsert,
+) -> ServiceResult<()> {
+    validate_mcp_upsert(input)?;
+    let previous = input.previous_name.as_deref().unwrap_or(&input.name);
+    let mut entry = servers
+        .remove(previous)
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    entry.insert("transport".into(), Value::String(input.transport.clone()));
+    entry.insert("enabled".into(), Value::Bool(input.enabled));
+    match input.transport.as_str() {
+        "stdio" => {
+            entry.insert(
+                "command".into(),
+                Value::String(input.command.clone().unwrap_or_default().trim().to_owned()),
+            );
+            entry.insert(
+                "args".into(),
+                serde_json::to_value(&input.args).map_err(protocol)?,
+            );
+            entry.remove("url");
+        }
+        _ => {
+            entry.insert(
+                "url".into(),
+                Value::String(mcp_url(input.url.as_deref().unwrap_or_default())?),
+            );
+            entry.remove("command");
+            entry.remove("args");
+        }
+    }
+    let mut stored_env = entry
+        .remove("env")
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    for (key, value) in &input.env {
+        if !value.is_empty() {
+            stored_env.insert(key.clone(), Value::String(value.clone()));
+        }
+    }
+    if !stored_env.is_empty() {
+        entry.insert("env".into(), Value::Object(stored_env));
+    }
+    servers.insert(input.name.clone(), Value::Object(entry));
+    Ok(())
+}
+
+fn mcp_servers_from_config(value: Value) -> ServiceResult<serde_json::Map<String, Value>> {
+    let config = value
+        .as_object()
+        .ok_or_else(|| ServiceError::Transport("Agent returned an invalid config record".into()))?;
+    let servers = config
+        .get("mcp_servers")
+        .or_else(|| config.get("mcpServers"));
+    match servers {
+        None | Some(Value::Null) => Ok(serde_json::Map::new()),
+        Some(Value::Object(servers)) if servers.len() <= MAX_MCP_SERVERS => Ok(servers.clone()),
+        Some(Value::Object(_)) => Err(ServiceError::Transport(
+            "Agent returned too many MCP servers".into(),
+        )),
+        Some(_) => Err(ServiceError::Transport(
+            "Agent returned an invalid MCP server map".into(),
+        )),
+    }
+}
+
+async fn load_mcp_server_map(
+    services: &GatewayServices,
+    profile: Option<&str>,
+) -> ServiceResult<serde_json::Map<String, Value>> {
+    let value = services
+        .rest()?
+        .request_bounded(
+            Method::GET,
+            &profiled_path("/api/config", profile),
+            None,
+            MCP_REQUEST_TIMEOUT,
+            MAX_MCP_RESPONSE_BYTES,
+        )
+        .await?;
+    mcp_servers_from_config(value)
+}
+
+async fn save_mcp_server_map(
+    services: &GatewayServices,
+    profile: Option<&str>,
+    servers: serde_json::Map<String, Value>,
+) -> ServiceResult<()> {
+    if servers.len() > MAX_MCP_SERVERS {
+        return Err(ServiceError::InvalidInput("too many MCP servers".into()));
+    }
+    let value = services
+        .rest()?
+        .request_bounded(
+            Method::PUT,
+            &profiled_path("/api/mcp/servers", profile),
+            Some(json!({ "servers": servers })),
+            MCP_REQUEST_TIMEOUT,
+            MAX_MCP_RESPONSE_BYTES,
+        )
+        .await?;
+    if value.get("ok").and_then(Value::as_bool) == Some(true) {
+        Ok(())
+    } else {
+        Err(ServiceError::Transport(
+            "Agent did not confirm the MCP configuration save".into(),
+        ))
+    }
+}
+
+impl McpService for GatewayServices {
+    fn list(&self, profile: Option<&str>) -> ServiceFuture<'_, Vec<McpServerSummary>> {
+        let profile = profile.map(str::to_owned);
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::GET,
+                    &profiled_path("/api/mcp/servers", profile.as_deref()),
+                    None,
+                    MCP_REQUEST_TIMEOUT,
+                    MAX_MCP_RESPONSE_BYTES,
+                )
+                .await?;
+            let mut servers: Vec<McpServerSummary> = decode_list(value, "servers")?;
+            if servers.len() > MAX_MCP_SERVERS {
+                servers.truncate(MAX_MCP_SERVERS);
+            }
+            for server in &servers {
+                agent_feature_segment(&server.name, "MCP server")?;
+            }
+            Ok(servers)
+        })
+    }
+
+    fn set_enabled(
+        &self,
+        profile: Option<&str>,
+        name: &str,
+        enabled: bool,
+    ) -> ServiceFuture<'_, ()> {
+        let profile = profile.map(str::to_owned);
+        let name = name.to_owned();
+        Box::pin(async move {
+            let name = agent_feature_segment(&name, "MCP server")?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::PUT,
+                    &profiled_path(
+                        &format!("/api/mcp/servers/{name}/enabled"),
+                        profile.as_deref(),
+                    ),
+                    Some(json!({ "enabled": enabled })),
+                    MCP_REQUEST_TIMEOUT,
+                    MAX_MCP_RESPONSE_BYTES,
+                )
+                .await?;
+            if value.get("ok").and_then(Value::as_bool) == Some(true) {
+                Ok(())
+            } else {
+                Err(ServiceError::Transport(
+                    "Agent did not confirm the MCP server state".into(),
+                ))
+            }
+        })
+    }
+
+    fn test(&self, profile: Option<&str>, name: &str) -> ServiceFuture<'_, McpServerTestResult> {
+        let profile = profile.map(str::to_owned);
+        let name = name.to_owned();
+        Box::pin(async move {
+            let name = agent_feature_segment(&name, "MCP server")?;
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::POST,
+                    &profiled_path(&format!("/api/mcp/servers/{name}/test"), profile.as_deref()),
+                    None,
+                    MCP_ACTION_TIMEOUT,
+                    MAX_MCP_RESPONSE_BYTES,
+                )
+                .await?;
+            let mut result: McpServerTestResult =
+                serde_json::from_value(value).map_err(protocol)?;
+            if result.tools.len() > 2_000 {
+                result.tools.truncate(2_000);
+            }
+            Ok(result)
+        })
+    }
+
+    fn upsert(&self, profile: Option<&str>, input: &McpServerUpsert) -> ServiceFuture<'_, ()> {
+        let profile = profile.map(str::to_owned);
+        let input = input.clone();
+        Box::pin(async move {
+            let mut servers = load_mcp_server_map(self, profile.as_deref()).await?;
+            upsert_mcp_server_map(&mut servers, &input)?;
+            save_mcp_server_map(self, profile.as_deref(), servers).await
+        })
+    }
+
+    fn remove(&self, profile: Option<&str>, name: &str) -> ServiceFuture<'_, ()> {
+        let profile = profile.map(str::to_owned);
+        let name = name.to_owned();
+        Box::pin(async move {
+            agent_feature_segment(&name, "MCP server")?;
+            let mut servers = load_mcp_server_map(self, profile.as_deref()).await?;
+            servers.remove(&name);
+            save_mcp_server_map(self, profile.as_deref(), servers).await
+        })
+    }
+
+    fn catalog(&self, profile: Option<&str>) -> ServiceFuture<'_, McpCatalogResponse> {
+        let profile = profile.map(str::to_owned);
+        Box::pin(async move {
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::GET,
+                    &profiled_path("/api/mcp/catalog", profile.as_deref()),
+                    None,
+                    MCP_REQUEST_TIMEOUT,
+                    MAX_MCP_RESPONSE_BYTES,
+                )
+                .await?;
+            let mut catalog: McpCatalogResponse =
+                serde_json::from_value(value).map_err(protocol)?;
+            if catalog.entries.len() > 1_000 {
+                catalog.entries.truncate(1_000);
+            }
+            if catalog.diagnostics.len() > 1_000 {
+                catalog.diagnostics.truncate(1_000);
+            }
+            Ok(catalog)
+        })
+    }
+
+    fn install_catalog(
+        &self,
+        profile: Option<&str>,
+        name: &str,
+        env: &BTreeMap<String, String>,
+    ) -> ServiceFuture<'_, McpCatalogInstallResult> {
+        let profile = profile.map(str::to_owned);
+        let name = name.to_owned();
+        let env = env.clone();
+        Box::pin(async move {
+            agent_feature_segment(&name, "MCP catalog entry")?;
+            if env.len() > MAX_MCP_ENV_ENTRIES {
+                return Err(ServiceError::InvalidInput(
+                    "too many MCP catalog environment values".into(),
+                ));
+            }
+            for (key, value) in &env {
+                validate_identifier(key, "MCP catalog environment key")?;
+                if value.len() > MAX_MCP_SECRET_BYTES || value.contains('\0') {
+                    return Err(ServiceError::InvalidInput(
+                        "invalid MCP catalog environment value".into(),
+                    ));
+                }
+            }
+            let value = self
+                .rest()?
+                .request_bounded(
+                    Method::POST,
+                    &profiled_path("/api/mcp/catalog/install", profile.as_deref()),
+                    Some(json!({ "name": name, "env": env, "enable": true })),
+                    MCP_ACTION_TIMEOUT,
+                    MAX_MCP_RESPONSE_BYTES,
+                )
+                .await?;
+            serde_json::from_value(value).map_err(protocol)
+        })
+    }
+
+    fn reload(&self, profile: Option<&str>) -> ServiceFuture<'_, ()> {
+        let profile = profile.map(str::to_owned);
+        Box::pin(async move {
+            let profile = validated_profile(profile.as_deref())?;
+            let value: Value = self
+                .client()?
+                .request("reload.mcp", json!({ "confirm": true, "profile": profile }))
+                .await
+                .map_err(transport)?;
+            if value.get("ok").and_then(Value::as_bool) == Some(false) {
+                Err(ServiceError::Transport(
+                    "Agent did not confirm the MCP reload".into(),
+                ))
+            } else {
+                Ok(())
+            }
+        })
+    }
 }
 
 const SKILLS_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
@@ -6341,6 +6719,176 @@ mod tests {
                 "confirmation": "DELETE Demo"
             }))
         );
+    }
+
+    #[tokio::test]
+    async fn mcp_service_matches_profile_scoped_agent_routes() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let address = listener.local_addr().expect("address");
+        let server = tokio::spawn(async move {
+            let responses = [
+                r#"{"servers":[{"name":"file system","transport":"stdio","enabled":true}]}"#,
+                r#"{"ok":true}"#,
+                r#"{"ok":true,"tools":[{"name":"read","description":"Read a file"}]}"#,
+                r#"{"entries":[{"name":"catalog-server","source":"nous","transport":"stdio"}],"diagnostics":[]}"#,
+                r#"{"ok":true,"name":"catalog-server","background":false}"#,
+            ];
+            let mut requests = Vec::new();
+            for body in responses {
+                let (mut stream, _) = listener.accept().await.expect("connection");
+                let mut request = Vec::new();
+                let mut chunk = [0_u8; 4096];
+                loop {
+                    let count = stream.read(&mut chunk).await.expect("request bytes");
+                    request.extend_from_slice(&chunk[..count]);
+                    let text = String::from_utf8_lossy(&request);
+                    if let Some(headers_end) = text.find("\r\n\r\n") {
+                        let content_length = text[..headers_end]
+                            .lines()
+                            .find_map(|line| line.strip_prefix("content-length: "))
+                            .and_then(|value| value.parse::<usize>().ok())
+                            .unwrap_or_default();
+                        if request.len() >= headers_end + 4 + content_length {
+                            break;
+                        }
+                    }
+                }
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("response");
+                requests.push(String::from_utf8(request).expect("UTF-8 request"));
+            }
+            requests
+        });
+        let services = GatewayServices {
+            client: Arc::new(RwLock::new(None)),
+            rest: Arc::new(RwLock::new(Some(GatewayRest {
+                client: reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .build()
+                    .expect("client"),
+                base_url: url::Url::parse(&format!("http://{address}/hermes/")).expect("URL"),
+                session_token: Some("session-secret".into()),
+            }))),
+            connection_store: test_connection_store(),
+        };
+
+        let listed = McpService::list(&services, Some("work profile"))
+            .await
+            .expect("MCP list");
+        assert_eq!(listed[0].name, "file system");
+        McpService::set_enabled(&services, Some("work profile"), "file system", false)
+            .await
+            .expect("MCP toggle");
+        let tested = McpService::test(&services, Some("work profile"), "file system")
+            .await
+            .expect("MCP test");
+        assert_eq!(tested.tools[0].name, "read");
+        let catalog = McpService::catalog(&services, Some("work profile"))
+            .await
+            .expect("MCP catalog");
+        assert_eq!(catalog.entries[0].name, "catalog-server");
+        let installed = McpService::install_catalog(
+            &services,
+            Some("work profile"),
+            "catalog-server",
+            &BTreeMap::from([("TOKEN".into(), "one-time-secret".into())]),
+        )
+        .await
+        .expect("MCP install");
+        assert!(installed.ok);
+
+        let requests = server.await.expect("server");
+        assert!(requests[0].starts_with("GET /hermes/api/mcp/servers?profile=work+profile "));
+        assert!(requests[1].starts_with(
+            "PUT /hermes/api/mcp/servers/file%20system/enabled?profile=work+profile "
+        ));
+        assert!(
+            requests[2].starts_with(
+                "POST /hermes/api/mcp/servers/file%20system/test?profile=work+profile "
+            )
+        );
+        assert!(requests[3].starts_with("GET /hermes/api/mcp/catalog?profile=work+profile "));
+        assert!(
+            requests[4].starts_with("POST /hermes/api/mcp/catalog/install?profile=work+profile ")
+        );
+        assert!(requests[4].contains("\"enable\":true"));
+        assert!(requests[4].contains("\"TOKEN\":\"one-time-secret\""));
+        assert!(
+            requests
+                .iter()
+                .all(|request| request.contains("x-hermes-session-token: session-secret"))
+        );
+    }
+
+    #[test]
+    fn mcp_updates_preserve_native_secrets_and_support_rename() {
+        let mut servers = json!({
+            "old-name": {
+                "transport": "stdio",
+                "command": "old-command",
+                "env": { "TOKEN": "stored-secret", "OTHER": "keep" }
+            }
+        })
+        .as_object()
+        .expect("server map")
+        .clone();
+        let input = McpServerUpsert {
+            name: "new-name".into(),
+            previous_name: Some("old-name".into()),
+            transport: "stdio".into(),
+            command: Some("safe-command".into()),
+            args: vec!["--flag".into()],
+            env: BTreeMap::from([
+                ("TOKEN".into(), String::new()),
+                ("NEW_VALUE".into(), "replacement".into()),
+            ]),
+            enabled: true,
+            ..McpServerUpsert::default()
+        };
+
+        upsert_mcp_server_map(&mut servers, &input).expect("MCP upsert");
+
+        assert!(!servers.contains_key("old-name"));
+        let updated = servers.get("new-name").expect("renamed server");
+        assert_eq!(updated["command"], "safe-command");
+        assert_eq!(updated["env"]["TOKEN"], "stored-secret");
+        assert_eq!(updated["env"]["OTHER"], "keep");
+        assert_eq!(updated["env"]["NEW_VALUE"], "replacement");
+    }
+
+    #[test]
+    fn mcp_inputs_reject_credentials_unsafe_transports_and_excess() {
+        let credentialed = McpServerUpsert {
+            name: "remote".into(),
+            transport: "http".into(),
+            url: Some("https://user:secret@example.com/mcp".into()),
+            ..McpServerUpsert::default()
+        };
+        assert!(validate_mcp_upsert(&credentialed).is_err());
+
+        let unsafe_transport = McpServerUpsert {
+            name: "unsafe".into(),
+            transport: "shell".into(),
+            command: Some("anything".into()),
+            ..McpServerUpsert::default()
+        };
+        assert!(validate_mcp_upsert(&unsafe_transport).is_err());
+
+        let oversized = McpServerUpsert {
+            name: "oversized".into(),
+            transport: "stdio".into(),
+            command: Some("x".repeat(MAX_MCP_FIELD_BYTES + 1)),
+            ..McpServerUpsert::default()
+        };
+        assert!(validate_mcp_upsert(&oversized).is_err());
     }
 
     #[tokio::test]
