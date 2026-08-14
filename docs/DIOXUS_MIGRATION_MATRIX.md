@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `5b2869be01e0e279d3e03ed20d990025127f41be` (2026-08-14)
+> **Implementation audit checkpoint:** `9b5f2b58888c15d0fa8acdb5e965032e770b9053` (2026-08-14)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -54,9 +54,9 @@ At the audit checkpoint above:
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
 | A1 Designed | 20 | Largest remaining implementation backlog. |
-| A2 Service | 14 | Native/core foundations exist; UI/parity work remains. |
+| A2 Service | 11 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 4 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 88 | Automated slice is green; human/live acceptance still required. |
+| A4 Auto-verified | 91 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 0 | No named external validation blockers remain. |
@@ -165,6 +165,17 @@ offers pause/run controls, and requires a two-step confirmation before reset.
 Rust validation `31754564185`, Windows packaging `31754564160`, install lifecycle
 `31754564163`, footprint `31754564133` and the native-client boundary
 `31754564091` passed before merge as `5b2869be`, so `AG-04` is A4.
+
+PR #205 exact composed head `1a96e16f` replaces the Automations and Integrations
+placeholders with typed Dioxus surfaces. Cron supports list/run history,
+create/update, pause/resume, trigger and confirmed deletion. Messaging supports
+state/test/configuration with write-only secret mutations plus pairing approval/
+revocation. Webhooks support gateway enablement, one-time create secrets,
+enable/disable and confirmed deletion. Authenticated REST remains Desktop-owned
+with encoded segments, 30/60-second timeouts, 4 MiB response bounds and redacted
+read DTOs. Rust validation `31756212001`, Windows packaging `31756211983`, install
+lifecycle `31756212034` and footprint `31756211990` passed before merge as
+`9b5f2b58`, so `AG-05`, `AG-06` and `AG-07` are A4.
 
 PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable
 Projects/Files/Git/Terminal/SSH slice. Desktop SSH mode now routes the existing
@@ -358,9 +369,9 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | AG-02 | MCP servers and catalog | Agent/Trust services | Skills/MCP | A1 Designed | Not ported. | Add/config/enable/test/disable/remove MCP servers across scopes with trust/reload prompts. | ⬜ |
 | AG-03 | Trust Centre and diagnostics | `TrustService` | Trust Centre | A4 Auto-verified | Native exact `trust.get`/`trust.set_policy` contracts, typed policy decoding, forward-compatible diagnostics and invalid/path-like policy rejection are consumed by the functional Dioxus Trust Centre. Contract, architecture, WASM, workspace-test and Clippy gates are green. | Review every trust policy/diagnostic, change policy and trigger representative protected actions. | ⬜ |
 | AG-04 | Memory and curator | `NativeMemoryClient` | Memory/Starmap | A4 Auto-verified | PR #204 wires the profile-bound Memory/Curator service into Dioxus with live status/provider state, provider configuration and OAuth status, curator pause/run controls and a two-step destructive reset. Encoded provider segments, header-only auth, bounded responses/config values and cross-profile rejection remain enforced. Exact-head Rust `31754564185`, packaging `31754564160`, install `31754564163`, footprint `31754564133` and native-client `31754564091` gates passed before merge as `5b2869be`. | Inspect/search/reset memory and curator flows across profiles/sessions; verify destructive confirmation. | ⬜ |
-| AG-05 | Cron and scheduled tasks | `NativeCronClient` | Cron overlay | A2 Service | Native typed Cron list/get/runs/create/update/pause/resume/trigger/delete contracts preserve routing-vs-filter profile semantics, encoded IDs, bounded history/input, HTTP(S)-only authenticated transport and startup/interactive timeouts. Cron Dioxus overlay and live reconciliation are not wired. | Create/edit/enable/disable/run/delete schedules; verify persistence and timezone/error cases. | ⬜ |
-| AG-06 | Messaging integrations | `NativeMessagingClient` | Integrations/Messaging | A2 Service | Native messaging platform list/update/test and pairing list/approve/revoke contracts preserve backend/profile placement, encoded platform IDs, redacted read DTOs, bounded secret mutation payloads and header-only auth. Dioxus Messaging integration is not wired. | Configure supported messaging connectors, test connection/state/errors and secret handling. | ⬜ |
-| AG-07 | Webhooks | `NativeWebhookClient` | Integrations/Webhooks | A2 Service | Native typed webhook list/enable/create/enabled-state/delete contracts preserve profile scope, one-segment webhook names, one-time create secrets, secret-free read DTOs, HTTP(S)-only transport and header-only auth. Dioxus Webhooks integration is not wired. | Create/test/update/delete webhooks, invalid URLs, secret redaction and scope behavior. | ⬜ |
+| AG-05 | Cron and scheduled tasks | `NativeCronClient` | Cron overlay | A4 Auto-verified | PR #205 wires typed Cron list/run history, create/update, pause/resume, trigger and confirmed delete into Dioxus with live refresh. Routing-vs-filter profile semantics, encoded IDs, bounded history/input, authenticated transport and 30/60-second timeouts remain enforced. Exact-head Rust `31756212001`, packaging `31756211983`, install `31756212034` and footprint `31756211990` passed before merge as `9b5f2b58`. | Create/edit/enable/disable/run/delete schedules; verify persistence and timezone/error cases. | ⬜ |
+| AG-06 | Messaging integrations | `NativeMessagingClient` | Integrations/Messaging | A4 Auto-verified | PR #205 wires platform state/test/configuration and pairing approval/revocation into Dioxus. Read DTOs remain redacted; secret inputs are write-only and mutation payloads are bounded behind encoded IDs and header-only auth. Exact-head Rust `31756212001`, packaging `31756211983`, install `31756212034` and footprint `31756211990` passed before merge as `9b5f2b58`. | Configure supported messaging connectors, test connection/state/errors and secret handling. | ⬜ |
+| AG-07 | Webhooks | `NativeWebhookClient` | Integrations/Webhooks | A4 Auto-verified | PR #205 wires webhook gateway enablement, create, enable/disable and confirmed delete into Dioxus, with one-time secret display/dismissal and secret-free read DTOs. Profile scope, encoded one-segment names, bounded authenticated transport and input checks remain enforced. Exact-head Rust `31756212001`, packaging `31756211983`, install `31756212034` and footprint `31756211990` passed before merge as `9b5f2b58`. | Create/test/update/delete webhooks, invalid URLs, secret redaction and scope behavior. | ⬜ |
 | AG-08 | Artifacts | Agent + `FileService` | Artifacts | A1 Designed | Not ported. | Open representative artifacts, previews/actions, missing files and unsafe path/URL cases. | ⬜ |
 | AG-09 | Agents/subagents | Agent services | Agents overlay | A1 Designed | Not ported. | Launch/observe/cancel subagents, switching/background states and error/reconnect behavior. | ⬜ |
 | AG-10 | Starmap | Agent services | Starmap overlay | A1 Designed | Not ported. | Load large graph, navigate/select/filter and review performance/visual parity. | ⬜ |
