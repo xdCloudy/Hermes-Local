@@ -46,6 +46,21 @@ pub struct DiagnosticLog {
 pub struct DiagnosticsSnapshot {
     pub logs: Vec<DiagnosticLog>,
     pub crash: Option<String>,
+    pub environment: DiagnosticsEnvironment,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[allow(clippy::struct_excessive_bools)] // Independent privacy-safe presence signals, not one state machine.
+pub struct DiagnosticsEnvironment {
+    pub path_entry_count: usize,
+    pub proxy_configured: bool,
+    pub custom_ca_configured: bool,
+    pub wsl: bool,
+    pub display_configured: bool,
+    pub wayland_configured: bool,
+    pub appdata_configured: bool,
+    pub localappdata_configured: bool,
+    pub temp_configured: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1756,6 +1771,22 @@ pub trait UpdateService: Send + Sync {
 pub trait DiagnosticsService: Send + Sync {
     fn snapshot(&self) -> ServiceFuture<'_, DiagnosticsSnapshot>;
     fn export(&self) -> ServiceFuture<'_, Option<DiagnosticsExportResult>>;
+
+    fn clear_crash(&self) -> ServiceFuture<'_, ()> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "crash-record recovery is unavailable on this platform".into(),
+            ))
+        })
+    }
+
+    fn open_environment_settings(&self) -> ServiceFuture<'_, ()> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "environment settings are unavailable on this platform".into(),
+            ))
+        })
+    }
 }
 
 pub struct UnavailableDiagnosticsService;

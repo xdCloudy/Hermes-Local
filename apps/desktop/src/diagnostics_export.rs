@@ -9,8 +9,8 @@ use std::{
 };
 
 use hermes_core::{
-    AppServices, DiagnosticLog, DiagnosticsExportResult, DiagnosticsService, DiagnosticsSnapshot,
-    ServiceError, ServiceFuture,
+    AppServices, DiagnosticLog, DiagnosticsEnvironment, DiagnosticsExportResult,
+    DiagnosticsService, DiagnosticsSnapshot, ServiceError, ServiceFuture,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -86,6 +86,25 @@ impl DiagnosticsService for DesktopDiagnostics {
             }))
         })
     }
+
+    fn clear_crash(&self) -> ServiceFuture<'_, ()> {
+        let data_dir = self.data_dir.clone();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || clear_crash_record(&data_dir))
+                .await
+                .map_err(|error| ServiceError::Platform(error.to_string()))?
+                .map_err(platform)
+        })
+    }
+
+    fn open_environment_settings(&self) -> ServiceFuture<'_, ()> {
+        Box::pin(async move {
+            tokio::task::spawn_blocking(open_windows_environment_settings)
+                .await
+                .map_err(|error| ServiceError::Platform(error.to_string()))?
+                .map_err(platform)
+        })
+    }
 }
 
 fn diagnostics_snapshot(data_dir: &Path) -> Result<DiagnosticsSnapshot, String> {
@@ -103,7 +122,57 @@ fn diagnostics_snapshot(data_dir: &Path) -> Result<DiagnosticsSnapshot, String> 
         })
         .collect::<Result<Vec<_>, _>>()?;
     let crash = read_safe_crash_record(&root, &private_roots)?.map(|value| value.to_string());
-    Ok(DiagnosticsSnapshot { logs, crash })
+    let environment = crate::platform_diagnostics::inspect();
+    Ok(DiagnosticsSnapshot {
+        logs,
+        crash,
+        environment: DiagnosticsEnvironment {
+            path_entry_count: environment.path_entries.len(),
+            proxy_configured: environment.proxy_configured,
+            custom_ca_configured: environment.custom_ca_configured,
+            wsl: environment.wsl,
+            display_configured: environment.display_configured,
+            wayland_configured: environment.wayland_configured,
+            appdata_configured: environment.appdata_configured,
+            localappdata_configured: environment.localappdata_configured,
+            temp_configured: environment.temp_configured,
+        },
+    })
+}
+
+fn clear_crash_record(data_dir: &Path) -> Result<(), String> {
+    let root = canonical_directory(data_dir, "Hermes Local data")?;
+    let path = root.join("crashes").join("latest.json");
+    let metadata = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(format!("Could not inspect crash diagnostic: {error}")),
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("Crash diagnostic is not a regular file.".to_owned());
+    }
+    fs::remove_file(path).map_err(|error| format!("Could not clear crash diagnostic: {error}"))
+}
+
+#[cfg(windows)]
+fn open_windows_environment_settings() -> Result<(), String> {
+    let system_root =
+        std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+    let executable = system_root
+        .join("System32")
+        .join("SystemPropertiesAdvanced.exe");
+    if !executable.is_absolute() || !executable.is_file() {
+        return Err("Windows environment settings executable is unavailable.".to_owned());
+    }
+    std::process::Command::new(executable)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Could not open Windows environment settings: {error}"))
+}
+
+#[cfg(not(windows))]
+fn open_windows_environment_settings() -> Result<(), String> {
+    Err("Windows environment settings are unavailable on this platform.".to_owned())
 }
 
 fn platform(message: String) -> ServiceError {
@@ -832,6 +901,23 @@ mod tests {
         );
         cleanup(data);
         cleanup(destination);
+    }
+
+    #[test]
+    fn crash_recovery_clears_only_the_latest_bounded_record() {
+        let data = test_directory("clear-crash");
+        let crash_directory = data.join("crashes");
+        fs::create_dir_all(&crash_directory).expect("crash directory");
+        let latest = crash_directory.join("latest.json");
+        let retained = crash_directory.join("retained.json");
+        fs::write(&latest, b"{\"schemaVersion\":1}").expect("latest crash");
+        fs::write(&retained, b"{\"schemaVersion\":1}").expect("retained crash");
+
+        clear_crash_record(&data).expect("clear crash");
+        assert!(!latest.exists());
+        assert!(retained.is_file());
+        clear_crash_record(&data).expect("missing crash is idempotent");
+        cleanup(data);
     }
 
     fn test_directory(label: &str) -> PathBuf {
