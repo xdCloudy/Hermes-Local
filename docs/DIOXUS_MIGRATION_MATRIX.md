@@ -1,7 +1,7 @@
 # Dioxus Migration Roadmap and Validation Matrix
 
 > **Branch source of truth:** `refactor/dioxus-rust-client`  
-> **Implementation audit checkpoint:** `452a44f1a9136a2df69e03b984d9b7cdcd4cfd9f` (2026-08-14)
+> **Implementation audit checkpoint:** `1f21686182b23fd8a94734544a4d76641a3b7fa3` (2026-08-14)
 > **Migration base:** `def1f22aabc36f1e03b9fb72edbf33da71b27cf7`  
 > **Final acceptance authority:** human product-owner review. Automation and AI may prepare a capability for review, but may **never** self-award final validation.
 
@@ -238,6 +238,20 @@ packaging `31763053040`, install lifecycle `31763052975` and footprint
 expected skip. It merged as `452a44f1`, so `AG-10` is A4. Large live graphs,
 navigation feel and visual comparison remain A5 evidence.
 
+PR #206 replacement head `bc65531a` moves Local-mode Gateway ownership from the
+legacy PowerShell bootstrap into the Rust desktop process. The app resolves
+packaged, source, managed-runtime, explicit, `HERMES_HOME` and `PATH` Hermes
+installations; launches `hermes serve` on loopback with an OS-assigned port and
+environment-only session token; accepts current and legacy readiness markers;
+and retains exactly one child behind the typed `ConnectionService`. RAII guards
+terminate and reap the child on every partial-start failure and normal desktop
+shutdown, while environment overrides and non-Local modes remain delegated.
+Rust validation `31764261302`, native-client/harness boundary `31764261275`,
+Windows packaging `31764261270`, install lifecycle `31764261277` and footprint
+`31764261273` all passed for that exact head; SSH interoperability was the
+expected skip. It merged as `1f216861`. `SH-01` remains A4 with the new Rust
+owner; `CH-01` remains A3 until Cloud and full cross-mode re-home are complete.
+
 PR #189 exact implementation head `cbeb44c4` closes the machine-verifiable
 Projects/Files/Git/Terminal/SSH slice. Desktop SSH mode now routes the existing
 typed Terminal surface through an OpenSSH-backed native PTY while local terminals
@@ -323,7 +337,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 
 | ID | Capability | Rust owner | Dioxus surface | Stage | Current evidence / gap | Human acceptance | Human |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| SH-01 | Startup, local Agent bootstrap and failure recovery | `ConnectionService` + Desktop startup authority | boot/failure recovery | A4 Auto-verified | Local mode boots through canonical `Start-Hermes-Local.ps1`; loopback/token validation, bounded diagnostics and retry path are implemented and covered by Rust tests. | Launch from a cold machine state; verify healthy boot, Agent-not-ready, bad/missing runtime, Retry, and recovery without restarting the client. | ⬜ |
+| SH-01 | Startup, local Agent bootstrap and failure recovery | `ConnectionService` + Desktop startup authority | boot/failure recovery | A4 Auto-verified | PR #206 replaces the PowerShell bootstrap with an app-local Rust supervisor: bounded runtime resolution, loopback/ephemeral-port launch, environment-only session token, current/legacy readiness parsing, typed retry/re-home and RAII child cleanup are tested. Exact-head Rust, native-client/harness and distribution gates pass. | Launch from a cold machine state; verify healthy boot, Agent-not-ready, bad/missing runtime, Retry, and recovery without restarting the client. | ⬜ |
 | SH-02 | Main window lifecycle and native window actions | composition root window actions | main shell | A4 Auto-verified | Typed native window/lifecycle contracts cover drag, minimize, maximize/restore, close, relaunch, minimum sizing and startup phases; the Desktop single-instance lease and deterministic lifecycle tests pass with the exact-head optimized/package Windows gates. Duplicate instances currently exit rather than proving foreground transfer, and packaged human runtime comparison remains A5 evidence. | Compare startup, close, minimize/maximize/restore, taskbar presence and relaunch behavior with OG in packaged form. | ⬜ |
 | SH-03 | Routes and legacy session redirects | `hermes-ui` route model | workspace router | A4 Auto-verified | All audited top-level destinations have typed Dioxus routes; route compilation and architecture checks pass. | Navigate every route and legacy session URL; verify correct destination, back/forward behavior and no state loss. | ⬜ |
 | SH-04 | Titlebar, drag regions and window controls | typed composition-root window actions | titlebar | A4 Auto-verified | The custom titlebar uses typed native drag/window actions plus explicit minimum-size and lifecycle contracts with deterministic tests; exact-head optimized Windows, installer and portable gates validate production wiring. Side-by-side normal/maximized visual parity remains A5 evidence. | Side-by-side OG comparison at normal/maximized states; test drag, double-click maximize, buttons and no accidental drag from controls. | ⬜ |
