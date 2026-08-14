@@ -17,12 +17,12 @@ use hermes_protocol::{
     ConnectionConfigInput, ConnectionOauthLoginResult, ConnectionOauthLogoutResult,
     ConnectionProbeResult, ConnectionState, ConnectionTestResult, CronJob, CronJobCreate,
     CronJobUpdate, CuratorPauseResult, CuratorRunResult, CuratorStatus, CustomEndpointUpdate,
-    CustomEndpointValidation, CustomEndpointsResponse, EnvVarInfo, FileEntry, GatewayEvent,
-    GitStatus, MemoryResetResult, MemoryResetTarget, MemoryStatus, MessageRole, MessagingPlatform,
-    MessagingPlatformTest, MessagingPlatformUpdate, MoaConfig, ModelAssignmentRequest,
-    ModelAssignmentResponse, ModelSettingsSnapshot, OAuthPoll, OAuthProvider, OAuthStart,
-    OAuthSubmit, PairingSnapshot, PairingUser, ProjectFilesDeleteResult, ProjectSummary,
-    ProjectsSnapshot, ProviderActivation, RuntimeStatus, SelectedAttachment,
+    CustomEndpointValidation, CustomEndpointsResponse, DesktopGeneralStatus, EnvVarInfo, FileEntry,
+    GatewayEvent, GitStatus, MemoryResetResult, MemoryResetTarget, MemoryStatus, MessageRole,
+    MessagingPlatform, MessagingPlatformTest, MessagingPlatformUpdate, MoaConfig,
+    ModelAssignmentRequest, ModelAssignmentResponse, ModelSettingsSnapshot, OAuthPoll,
+    OAuthProvider, OAuthStart, OAuthSubmit, PairingSnapshot, PairingUser, ProjectFilesDeleteResult,
+    ProjectSummary, ProjectsSnapshot, ProviderActivation, RuntimeStatus, SelectedAttachment,
     SessionAttachmentResult, SessionCreateRequest, SessionDirectiveResult, SessionReactionResult,
     SessionResumeResponse, SessionSummary, SkillActionStart, SkillActionStatus, SkillHubPreview,
     SkillHubScanResult, SkillHubSearchResponse, SkillHubSourcesResponse, SkillSummary,
@@ -1778,6 +1778,33 @@ impl DiagnosticsService for UnavailableDiagnosticsService {
     }
 }
 
+pub trait DesktopSettingsService: Send + Sync {
+    fn status(&self) -> ServiceFuture<'_, DesktopGeneralStatus>;
+    fn set_keep_awake(&self, enabled: bool) -> ServiceFuture<'_, DesktopGeneralStatus>;
+    fn set_launch_at_login(&self, enabled: bool) -> ServiceFuture<'_, DesktopGeneralStatus>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnavailableDesktopSettingsService;
+
+impl DesktopSettingsService for UnavailableDesktopSettingsService {
+    fn status(&self) -> ServiceFuture<'_, DesktopGeneralStatus> {
+        Box::pin(async {
+            Err(ServiceError::Unavailable(
+                "Desktop settings are unavailable".into(),
+            ))
+        })
+    }
+
+    fn set_keep_awake(&self, _enabled: bool) -> ServiceFuture<'_, DesktopGeneralStatus> {
+        self.status()
+    }
+
+    fn set_launch_at_login(&self, _enabled: bool) -> ServiceFuture<'_, DesktopGeneralStatus> {
+        self.status()
+    }
+}
+
 pub trait PlatformService: Send + Sync {
     fn pick_attachments(
         &self,
@@ -1827,6 +1854,7 @@ pub struct AppServices {
     pub terminal: Arc<dyn TerminalService>,
     pub updates: Arc<dyn UpdateService>,
     pub diagnostics: Arc<dyn DiagnosticsService>,
+    pub desktop_settings: Arc<dyn DesktopSettingsService>,
     pub platform: Arc<dyn PlatformService>,
 }
 
