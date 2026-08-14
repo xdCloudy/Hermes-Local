@@ -1290,6 +1290,250 @@ pub struct CuratorRunResult {
     pub pid: u64,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CronJobSchedule {
+    #[serde(default)]
+    pub display: Option<String>,
+    #[serde(default)]
+    pub expr: Option<String>,
+    #[serde(default)]
+    pub kind: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CronJob {
+    #[serde(default)]
+    pub deliver: Option<String>,
+    #[serde(default)]
+    pub enabled: bool,
+    pub id: String,
+    #[serde(default)]
+    pub last_error: Option<String>,
+    #[serde(default)]
+    pub last_run_at: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub next_run_at: Option<String>,
+    #[serde(default)]
+    pub no_agent: bool,
+    #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub schedule: Option<CronJobSchedule>,
+    #[serde(default)]
+    pub schedule_display: Option<String>,
+    #[serde(default)]
+    pub script: Option<String>,
+    #[serde(default)]
+    pub state: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CronJobCreate {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deliver: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub prompt: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    pub schedule: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CronJobUpdate {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deliver: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<Option<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<Option<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schedule: Option<String>,
+}
+
+#[allow(clippy::struct_excessive_bools)] // Mirrors independent Agent-provided field capabilities.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MessagingEnvVarInfo {
+    #[serde(default)]
+    pub advanced: bool,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub is_password: bool,
+    #[serde(default)]
+    pub is_set: bool,
+    #[serde(default)]
+    pub key: String,
+    #[serde(default)]
+    pub prompt: String,
+    #[serde(default)]
+    pub redacted_value: Option<String>,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub url: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MessagingHomeChannel {
+    #[serde(default)]
+    pub chat_id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub platform: String,
+    #[serde(default)]
+    pub thread_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MessagingPlatform {
+    #[serde(default)]
+    pub configured: bool,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub docs_url: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub env_vars: Vec<MessagingEnvVarInfo>,
+    #[serde(default)]
+    pub error_code: Option<String>,
+    #[serde(default)]
+    pub error_message: Option<String>,
+    #[serde(default)]
+    pub gateway_running: bool,
+    #[serde(default)]
+    pub home_channel: Option<MessagingHomeChannel>,
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub state: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MessagingPlatformUpdate {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clear_env: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env: Option<BTreeMap<String, String>>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MessagingPlatformTest {
+    #[serde(default)]
+    pub message: String,
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub state: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct PairingUser {
+    #[serde(default)]
+    pub age_minutes: Option<u64>,
+    #[serde(default)]
+    pub platform: String,
+    #[serde(default)]
+    pub request_id: Option<String>,
+    #[serde(default)]
+    pub user_id: String,
+    #[serde(default)]
+    pub user_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct PairingSnapshot {
+    #[serde(default)]
+    pub approved: Vec<PairingUser>,
+    #[serde(default)]
+    pub pending: Vec<PairingUser>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WebhookRoute {
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub deliver: String,
+    #[serde(default)]
+    pub deliver_only: bool,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub events: Vec<String>,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub prompt: String,
+    #[serde(default)]
+    pub secret_set: bool,
+    #[serde(default)]
+    pub skills: Vec<String>,
+    #[serde(default)]
+    pub url: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WebhooksSnapshot {
+    #[serde(default)]
+    pub base_url: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub subscriptions: Vec<WebhookRoute>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WebhookCreate {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deliver: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deliver_chat_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deliver_only: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub events: Option<Vec<String>>,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skills: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WebhookCreated {
+    #[serde(flatten)]
+    pub route: WebhookRoute,
+    pub secret: String,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct TrustSnapshot {
     #[serde(default)]
@@ -1652,4 +1896,41 @@ pub struct SkillToggleResult {
     pub name: String,
     #[serde(default)]
     pub enabled: bool,
+}
+
+#[cfg(test)]
+mod agent_feature_contract_tests {
+    use super::*;
+
+    #[test]
+    fn webhook_reads_cannot_carry_the_one_time_secret() {
+        let snapshot = WebhooksSnapshot {
+            subscriptions: vec![WebhookRoute {
+                name: "deploy".into(),
+                secret_set: true,
+                ..WebhookRoute::default()
+            }],
+            ..WebhooksSnapshot::default()
+        };
+        let encoded = serde_json::to_string(&snapshot).expect("serialize webhook snapshot");
+        assert!(encoded.contains("secret_set"));
+        assert!(!encoded.contains("\"secret\":"));
+    }
+
+    #[test]
+    fn messaging_reads_expose_only_redacted_credential_state() {
+        let platform = MessagingPlatform {
+            env_vars: vec![MessagingEnvVarInfo {
+                key: "BOT_TOKEN".into(),
+                is_password: true,
+                is_set: true,
+                redacted_value: Some("••••1234".into()),
+                ..MessagingEnvVarInfo::default()
+            }],
+            ..MessagingPlatform::default()
+        };
+        let encoded = serde_json::to_string(&platform).expect("serialize platform");
+        assert!(encoded.contains("redacted_value"));
+        assert!(!encoded.contains("token-value"));
+    }
 }
