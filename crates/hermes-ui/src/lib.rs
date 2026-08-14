@@ -100,6 +100,8 @@ pub enum Route {
     Security {},
     #[route("/logs")]
     Logs {},
+    #[route("/artifacts")]
+    Artifacts {},
     #[route("/model")]
     Model {},
     #[route("/runtime")]
@@ -350,6 +352,7 @@ fn AppShell() -> Element {
                     NavItem { to: Route::Benchmarks {}, icon: "graph-line", label: "Benchmarks" }
                     NavItem { to: Route::Security {}, icon: "shield", label: "Security" }
                     NavItem { to: Route::Logs {}, icon: "output", label: "Logs" }
+                    NavItem { to: Route::Artifacts {}, icon: "package", label: "Artifacts" }
                 }
                 div { class: "sidebar-search",
                     Codicon { name: "search" }
@@ -961,6 +964,7 @@ macro_rules! simple_surface {
 }
 
 mod about;
+mod artifacts;
 mod automations;
 mod files;
 mod general;
@@ -973,6 +977,7 @@ mod skills;
 mod source_control;
 mod terminal;
 use about::About;
+use artifacts::Artifacts;
 use automations::Automations;
 use files::Files;
 use general::GeneralSettings;

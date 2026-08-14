@@ -26,6 +26,24 @@ impl PreviewService for DesktopPreviewService {
             target.map(load_document).transpose()
         })
     }
+
+    fn open(&self, raw_target: &str, base_dir: Option<&Path>) -> ServiceFuture<'_, ()> {
+        let raw_target = raw_target.to_owned();
+        let base_dir = base_dir.map(Path::to_path_buf);
+        Box::pin(async move {
+            let target = PreviewNormalizationService
+                .normalize(&raw_target, base_dir.as_deref())
+                .map_err(ServiceError::InvalidInput)?
+                .ok_or_else(|| ServiceError::NotFound("artifact target was not found".into()))?;
+            let destination = match target {
+                PreviewTarget::Url { url, .. } => url,
+                PreviewTarget::File { path, .. } => path.to_string_lossy().into_owned(),
+            };
+            open::that_detached(destination).map_err(|error| {
+                ServiceError::Platform(format!("Could not open artifact target: {error}"))
+            })
+        })
+    }
 }
 
 fn load_document(target: PreviewTarget) -> Result<PreviewDocument, ServiceError> {
@@ -78,10 +96,11 @@ fn load_document(target: PreviewTarget) -> Result<PreviewDocument, ServiceError>
 }
 
 fn read_bounded_text(path: &Path) -> Result<String, ServiceError> {
-    let mut file = fs::File::open(path).map_err(|error| {
+    let file = fs::File::open(path).map_err(|error| {
         ServiceError::Platform(format!("Preview target is not readable: {error}"))
     })?;
-    let mut bytes = Vec::with_capacity(TEXT_PREVIEW_MAX_BYTES as usize + 1);
+    let inline_limit = usize::try_from(TEXT_PREVIEW_MAX_BYTES).expect("preview limit fits usize");
+    let mut bytes = Vec::with_capacity(inline_limit + 1);
     file.take(TEXT_PREVIEW_MAX_BYTES + 1)
         .read_to_end(&mut bytes)
         .map_err(|error| {
@@ -127,7 +146,7 @@ mod tests {
         let root = test_directory("large");
         fs::write(
             root.join("large.txt"),
-            vec![b'x'; TEXT_PREVIEW_MAX_BYTES as usize + 1],
+            vec![b'x'; usize::try_from(TEXT_PREVIEW_MAX_BYTES).expect("preview limit") + 1],
         )
         .expect("seed large file");
         let document = DesktopPreviewService
@@ -152,6 +171,24 @@ mod tests {
             .expect("preview document");
         assert_eq!(document.kind, PreviewDocumentKind::Binary);
         assert!(document.text.is_none());
+        cleanup(root);
+    }
+
+    #[tokio::test]
+    async fn open_reuses_preview_credential_and_sensitive_path_guards() {
+        let credentialed = DesktopPreviewService
+            .open("https://user:secret@example.com/report", None)
+            .await
+            .expect_err("credentialed URL must be blocked before launch");
+        assert!(matches!(credentialed, ServiceError::InvalidInput(_)));
+
+        let root = test_directory("blocked-open");
+        fs::write(root.join(".env"), "TOKEN=secret").expect("seed sensitive file");
+        let sensitive = DesktopPreviewService
+            .open(".env", Some(&root))
+            .await
+            .expect_err("sensitive file must be blocked before launch");
+        assert!(matches!(sensitive, ServiceError::InvalidInput(_)));
         cleanup(root);
     }
 
