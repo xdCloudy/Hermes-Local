@@ -2335,6 +2335,7 @@ version = "0.18.62"
 dependencies = [
  "async-stream",
  "dioxus",
+ "futures-util",
  "hermes-core",
  "hermes-desktop",
  "hermes-protocol",
