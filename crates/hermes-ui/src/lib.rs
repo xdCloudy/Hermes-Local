@@ -4,7 +4,7 @@ mod chat;
 
 use chat::{Chat, ChatRuntimeProvider, Session};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -35,6 +35,21 @@ pub struct WindowActions {
     pub minimize: Callback<()>,
     pub toggle_maximized: Callback<()>,
     pub close: Callback<()>,
+}
+
+/// A bounded, typed activation delivered by a Desktop host. The shared UI owns
+/// navigation/composer effects; native hosts can only enqueue these explicit intents.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ExternalActivation {
+    Navigate(Route),
+    Blueprint {
+        name: String,
+        params: BTreeMap<String, String>,
+    },
+}
+
+pub fn use_external_activation_queue() -> Signal<VecDeque<ExternalActivation>> {
+    use_root_context(|| Signal::new(VecDeque::new()))
 }
 
 #[derive(Clone, Copy)]
@@ -280,6 +295,21 @@ fn AppShell() -> Element {
     let mut projects_loading = use_signal(|| false);
     let mut projects_error = use_signal(|| None::<String>);
     let projects_refresh = use_signal(|| 0_u64);
+    let mut external_activations = use_external_activation_queue();
+    let navigator = use_navigator();
+    use_effect(move || {
+        let next = external_activations.read().front().cloned();
+        match next {
+            Some(ExternalActivation::Navigate(route)) => {
+                external_activations.write().pop_front();
+                navigator.replace(route);
+            }
+            Some(ExternalActivation::Blueprint { .. }) => {
+                navigator.replace(Route::Chat {});
+            }
+            None => {}
+        }
+    });
     use_context_provider(|| ProjectUiState {
         snapshot: project_snapshot,
         loading: projects_loading,

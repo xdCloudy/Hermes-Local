@@ -78,6 +78,8 @@ class RustWindowsPackageTests(unittest.TestCase):
             self.assertIn("PrivilegesRequired=lowest", iss)
             self.assertIn("DefaultDirName={localappdata}\\Programs\\Hermes Local", iss)
             self.assertIn('Name: "{autoprograms}\\Hermes Local"', iss)
+            self.assertIn('AppUserModelID: "xdCloudy.HermesLocal"', iss)
+            self.assertEqual(package.APP_USER_MODEL_ID, "xdCloudy.HermesLocal")
             self.assertIn("OutputBaseFilename=Hermes-Local-Setup", iss)
             self.assertIn('Source: "', iss)
             self.assertNotIn("electron", iss.lower())

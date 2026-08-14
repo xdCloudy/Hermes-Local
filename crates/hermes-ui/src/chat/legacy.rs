@@ -1,6 +1,8 @@
 //! Chat/session presentation surfaces extracted from the shell so the A4 chat
 //! migration can evolve behind the existing typed service boundary.
 
+use std::{collections::BTreeMap, rc::Rc};
+
 use dioxus::prelude::*;
 use futures_util::StreamExt;
 use hermes_core::{
@@ -12,6 +14,7 @@ use hermes_protocol::{AttachmentKind, MessageRole, SelectedAttachment, SessionCr
 use super::{
     Codicon, ErrorState, LoadingState, ProjectPicker, ProjectUiState, Route, SettingsUiState,
 };
+use crate::{ExternalActivation, use_external_activation_queue};
 
 mod rich_content;
 use rich_content::RichContent;
@@ -23,6 +26,35 @@ const NEW_CHAT_DRAFT_KEY: &str = "__new_chat__";
 fn mark_draft_changed(mut revision: Signal<u64>) {
     let next = revision().wrapping_add(1);
     revision.set(next);
+}
+
+fn blueprint_command(name: &str, params: &BTreeMap<String, String>) -> String {
+    let slots = params
+        .iter()
+        .map(|(key, value)| {
+            let value = if value.chars().any(char::is_whitespace) {
+                format!("\"{}\"", value.replace('\"', "\\\""))
+            } else {
+                value.clone()
+            };
+            format!("{key}={value}")
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    if slots.is_empty() {
+        format!("/blueprint {name}")
+    } else {
+        format!("/blueprint {name} {slots}")
+    }
+}
+
+fn insert_composer_block(existing: &str, block: &str) -> String {
+    let existing = existing.trim_end();
+    if existing.is_empty() {
+        block.to_owned()
+    } else {
+        format!("{existing}\n\n{block}")
+    }
 }
 
 fn visible_message_start(total: usize, requested: usize) -> usize {
@@ -259,6 +291,8 @@ pub(super) fn Chat() -> Element {
     let navigator = use_navigator();
     let mut prompt = use_signal(String::new);
     let mut prompt_bound = use_signal(|| false);
+    let mut composer_element = use_signal(|| None::<Rc<MountedData>>);
+    let mut external_activations = use_external_activation_queue();
     let mut attachments = use_signal(Vec::<SelectedAttachment>::new);
     let attachment_picker = services.platform.clone();
     let _restore_prompt = use_resource(move || {
@@ -268,6 +302,28 @@ pub(super) fn Chat() -> Element {
                 prompt.set((chat_runtime.drafts)().text(NEW_CHAT_DRAFT_KEY));
                 prompt_bound.set(true);
             }
+        }
+    });
+    use_effect(move || {
+        if !(chat_runtime.drafts_hydrated)() {
+            return;
+        }
+        let next = external_activations.read().front().cloned();
+        let Some(ExternalActivation::Blueprint { name, params }) = next else {
+            return;
+        };
+        let command = blueprint_command(&name, &params);
+        let existing = (chat_runtime.drafts)().text(NEW_CHAT_DRAFT_KEY);
+        let value = insert_composer_block(&existing, &command);
+        prompt.set(value.clone());
+        prompt_bound.set(true);
+        chat_runtime.drafts.write().edit(NEW_CHAT_DRAFT_KEY, value);
+        mark_draft_changed(chat_runtime.draft_revision);
+        external_activations.write().pop_front();
+        if let Some(element) = composer_element() {
+            spawn(async move {
+                let _ = element.set_focus(true).await;
+            });
         }
     });
     let mut submitting = use_signal(|| false);
@@ -354,6 +410,7 @@ pub(super) fn Chat() -> Element {
                     AttachmentTray { attachments, on_remove: remove_attachment }
                     textarea {
                         aria_label: "Start a conversation",
+                        onmounted: move |element| composer_element.set(Some(element.data())),
                         placeholder: "What are we building?",
                         rows: "1",
                         value: "{prompt}",
@@ -1028,7 +1085,11 @@ pub(super) fn Session(id: String) -> Element {
 
 #[cfg(test)]
 mod tests {
-    use super::{TRANSCRIPT_WINDOW, visible_message_start};
+    use std::collections::BTreeMap;
+
+    use super::{
+        TRANSCRIPT_WINDOW, blueprint_command, insert_composer_block, visible_message_start,
+    };
 
     #[test]
     fn transcript_window_stays_bounded_for_very_large_histories() {
@@ -1043,5 +1104,29 @@ mod tests {
         assert_eq!(visible_message_start(25, TRANSCRIPT_WINDOW), 0);
         assert_eq!(visible_message_start(500, TRANSCRIPT_WINDOW * 2), 340);
         assert_eq!(visible_message_start(0, TRANSCRIPT_WINDOW), 0);
+    }
+
+    #[test]
+    fn blueprint_activation_matches_reviewable_electron_command_shape() {
+        let params = BTreeMap::from([
+            ("mode".to_owned(), "fast".to_owned()),
+            ("note".to_owned(), "hello world".to_owned()),
+        ]);
+        assert_eq!(
+            blueprint_command("morning-brief", &params),
+            r#"/blueprint morning-brief mode=fast note="hello world""#
+        );
+    }
+
+    #[test]
+    fn external_blueprint_insert_preserves_existing_draft_as_block() {
+        assert_eq!(
+            insert_composer_block("keep this", "/blueprint daily"),
+            "keep this\n\n/blueprint daily"
+        );
+        assert_eq!(
+            insert_composer_block("", "/blueprint daily"),
+            "/blueprint daily"
+        );
     }
 }
