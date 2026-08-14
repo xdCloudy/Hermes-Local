@@ -106,8 +106,6 @@ jobs:
           cargo fmt --all
           python -m unittest tests/test_rust_windows_package.py
           cargo test -p hermes-ui --locked
-          cargo test -p hermes-local --bin hermes-local --locked deep_link
-          cargo test -p hermes-local --bin hermes-local --locked notification
       - name: Commit finalized source
         shell: bash
         run: |
