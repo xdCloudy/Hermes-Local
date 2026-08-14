@@ -66,9 +66,11 @@ fn activation_for_uri(raw: &str) -> Result<Option<ExternalActivation>, String> {
             params: link.params,
         }),
         "route" => route_activation(&link.name).map(ExternalActivation::Navigate),
-        "session" if valid_session_id(&link.name) => Some(ExternalActivation::Navigate(
-            Route::Session { id: link.name },
-        )),
+        "session" if valid_session_id(&link.name) => {
+            Some(ExternalActivation::Navigate(Route::Session {
+                id: link.name,
+            }))
+        }
         _ => None,
     })
 }
@@ -85,7 +87,9 @@ pub fn DeepLinkBridge(children: Element) -> Element {
         async move {
             loop {
                 let drain_dir = data_dir.clone();
-                match tokio::task::spawn_blocking(move || deep_link::drain_pending(&drain_dir)).await {
+                match tokio::task::spawn_blocking(move || deep_link::drain_pending(&drain_dir))
+                    .await
+                {
                     Ok(Ok(pending)) => {
                         let mut accepted = false;
                         for raw in pending {
@@ -95,10 +99,14 @@ pub fn DeepLinkBridge(children: Element) -> Element {
                                     accepted = true;
                                 }
                                 Ok(None) => {
-                                    eprintln!("Hermes Local ignored an unsupported deep-link activation.");
+                                    eprintln!(
+                                        "Hermes Local ignored an unsupported deep-link activation."
+                                    );
                                 }
                                 Err(error) => {
-                                    eprintln!("Hermes Local rejected a deep-link activation: {error}");
+                                    eprintln!(
+                                        "Hermes Local rejected a deep-link activation: {error}"
+                                    );
                                 }
                             }
                         }
@@ -136,10 +144,9 @@ mod tests {
 
     #[test]
     fn blueprint_activation_preserves_reviewable_command_data() {
-        let activation = activation_for_uri(
-            "hermes://blueprint/morning-brief?mode=fast&note=hello%20world",
-        )
-        .unwrap();
+        let activation =
+            activation_for_uri("hermes://blueprint/morning-brief?mode=fast&note=hello%20world")
+                .unwrap();
         let Some(ExternalActivation::Blueprint { name, params }) = activation else {
             panic!("expected blueprint activation");
         };
@@ -156,6 +163,9 @@ mod tests {
                 id: "abc-123_def".into(),
             }))
         );
-        assert_eq!(activation_for_uri("hermes://session/folder%2Fescape").unwrap(), None);
+        assert_eq!(
+            activation_for_uri("hermes://session/folder%2Fescape").unwrap(),
+            None
+        );
     }
 }

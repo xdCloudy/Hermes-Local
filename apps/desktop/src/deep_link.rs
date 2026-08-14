@@ -93,15 +93,24 @@ pub fn parse(raw: &str) -> Result<DeepLink, String> {
     Ok(DeepLink { kind, name, params })
 }
 
-fn validate_component(label: &str, value: &str, limit: usize, empty_allowed: bool) -> Result<(), String> {
+fn validate_component(
+    label: &str,
+    value: &str,
+    limit: usize,
+    empty_allowed: bool,
+) -> Result<(), String> {
     if !empty_allowed && value.is_empty() {
         return Err(format!("Hermes deep-link {label} cannot be empty."));
     }
     if value.chars().count() > limit {
-        return Err(format!("Hermes deep-link {label} exceeds its safety limit."));
+        return Err(format!(
+            "Hermes deep-link {label} exceeds its safety limit."
+        ));
     }
     if value.chars().any(char::is_control) {
-        return Err(format!("Hermes deep-link {label} contains a control character."));
+        return Err(format!(
+            "Hermes deep-link {label} contains a control character."
+        ));
     }
     Ok(())
 }
@@ -158,7 +167,11 @@ fn activation_directory(data_dir: &Path, create: bool) -> Result<PathBuf, String
                 .map_err(|error| format!("Could not create Desktop activation queue: {error}"))?;
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(directory),
-        Err(error) => return Err(format!("Could not inspect Desktop activation queue: {error}")),
+        Err(error) => {
+            return Err(format!(
+                "Could not inspect Desktop activation queue: {error}"
+            ));
+        }
     }
     Ok(directory)
 }

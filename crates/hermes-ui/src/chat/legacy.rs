@@ -1,7 +1,7 @@
 //! Chat/session presentation surfaces extracted from the shell so the A4 chat
 //! migration can evolve behind the existing typed service boundary.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, rc::Rc};
 
 use dioxus::prelude::*;
 use futures_util::StreamExt;
@@ -12,9 +12,9 @@ use hermes_core::{
 use hermes_protocol::{AttachmentKind, MessageRole, SelectedAttachment, SessionCreateRequest};
 
 use super::{
-    Codicon, ErrorState, ExternalActivation, LoadingState, ProjectPicker, ProjectUiState, Route,
-    SettingsUiState, use_external_activation_queue,
+    Codicon, ErrorState, LoadingState, ProjectPicker, ProjectUiState, Route, SettingsUiState,
 };
+use crate::{ExternalActivation, use_external_activation_queue};
 
 mod rich_content;
 use rich_content::RichContent;
@@ -40,7 +40,7 @@ fn blueprint_command(name: &str, params: &BTreeMap<String, String>) -> String {
             format!("{key}={value}")
         })
         .collect::<Vec<_>>()
-        .join(" " );
+        .join(" ");
     if slots.is_empty() {
         format!("/blueprint {name}")
     } else {
@@ -291,7 +291,7 @@ pub(super) fn Chat() -> Element {
     let navigator = use_navigator();
     let mut prompt = use_signal(String::new);
     let mut prompt_bound = use_signal(|| false);
-    let mut composer_element = use_signal(|| None::<MountedData>);
+    let mut composer_element = use_signal(|| None::<Rc<MountedData>>);
     let mut external_activations = use_external_activation_queue();
     let mut attachments = use_signal(Vec::<SelectedAttachment>::new);
     let attachment_picker = services.platform.clone();
@@ -1085,7 +1085,11 @@ pub(super) fn Session(id: String) -> Element {
 
 #[cfg(test)]
 mod tests {
-    use super::{TRANSCRIPT_WINDOW, visible_message_start};
+    use std::collections::BTreeMap;
+
+    use super::{
+        TRANSCRIPT_WINDOW, blueprint_command, insert_composer_block, visible_message_start,
+    };
 
     #[test]
     fn transcript_window_stays_bounded_for_very_large_histories() {
@@ -1100,5 +1104,29 @@ mod tests {
         assert_eq!(visible_message_start(25, TRANSCRIPT_WINDOW), 0);
         assert_eq!(visible_message_start(500, TRANSCRIPT_WINDOW * 2), 340);
         assert_eq!(visible_message_start(0, TRANSCRIPT_WINDOW), 0);
+    }
+
+    #[test]
+    fn blueprint_activation_matches_reviewable_electron_command_shape() {
+        let params = BTreeMap::from([
+            ("mode".to_owned(), "fast".to_owned()),
+            ("note".to_owned(), "hello world".to_owned()),
+        ]);
+        assert_eq!(
+            blueprint_command("morning-brief", &params),
+            r#"/blueprint morning-brief mode=fast note="hello world""#
+        );
+    }
+
+    #[test]
+    fn external_blueprint_insert_preserves_existing_draft_as_block() {
+        assert_eq!(
+            insert_composer_block("keep this", "/blueprint daily"),
+            "keep this\n\n/blueprint daily"
+        );
+        assert_eq!(
+            insert_composer_block("", "/blueprint daily"),
+            "/blueprint daily"
+        );
     }
 }
