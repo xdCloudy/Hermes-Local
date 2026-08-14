@@ -1,0 +1,201 @@
+name: Temporary compose Quick Entry integration
+
+on:
+  push:
+    branches:
+      - agent/quick-entry
+    paths:
+      - ".github/workflows/tmp-compose-quick-entry.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  compose:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/quick-entry
+      - name: Wire Quick Entry into Dioxus
+        shell: python
+        run: |
+          import re
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              file = Path(path)
+              text = file.read_text(encoding='utf-8')
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: anchor count={text.count(old)} for {old[:100]!r}')
+              file.write_text(text.replace(old, new), encoding='utf-8', newline='\n')
+
+          quick = Path('apps/desktop/src/quick_entry.rs')
+          text = quick.read_text(encoding='utf-8')
+          text = text.replace('#![allow(dead_code)] // DI-07 foundation; live Dioxus shortcut/window wiring is the next stage.\n\n', '')
+          marker = '\npub fn window_bounds(work_area: Option<WorkArea>) -> WindowBounds {'
+          if text.count(marker) != 1:
+              raise SystemExit(f'quick entry save insertion anchor count={text.count(marker)}')
+          save = r'''
+          pub fn save_settings(path: &Path, settings: &QuickEntrySettings) -> Result<QuickEntrySettings, String> {
+              let settings = sanitize_settings(&serde_json::to_value(settings).map_err(|error| error.to_string())?);
+              let parent = path.parent().ok_or_else(|| "Quick Entry settings path has no parent".to_owned())?;
+              fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+              let bytes = serde_json::to_vec_pretty(&settings).map_err(|error| error.to_string())?;
+              if bytes.len() as u64 > MAX_SETTINGS_BYTES {
+                  return Err("Quick Entry settings exceed the bounded settings size".into());
+              }
+              let temporary = path.with_extension("json.tmp");
+              fs::write(&temporary, bytes).map_err(|error| error.to_string())?;
+              if path.exists() {
+                  fs::remove_file(path).map_err(|error| error.to_string())?;
+              }
+              fs::rename(&temporary, path).map_err(|error| error.to_string())?;
+              Ok(settings)
+          }
+
+          '''
+          text = text.replace(marker, '\n' + save.strip('\n') + marker)
+          quick.write_text(text, encoding='utf-8', newline='\n')
+
+          ui = 'crates/hermes-ui/src/lib.rs'
+          replace_once(
+              ui,
+              'mod chat;\n\nuse chat::{Chat, ChatRuntimeProvider, Session};',
+              'mod chat;\nmod quick_entry;\n\npub use quick_entry::{QuickEntryActions, QuickEntryState};\nuse chat::{Chat, ChatRuntimeProvider, Session};\nuse quick_entry::QuickEntry;',
+          )
+          replace_once(
+              ui,
+              '''simple_surface!(
+              QuickEntry,
+              "Capture",
+              "Quick entry",
+              "Start a thought from anywhere."
+          );'''.replace('          ', ''),
+              '',
+          )
+
+          chat = 'crates/hermes-ui/src/chat/legacy.rs'
+          replace_once(
+              chat,
+              '''pub(super) fn Session(id: String) -> Element {
+              let services = use_context::<AppServices>();'''.replace('          ', ''),
+              '''pub(super) fn Session(id: String) -> Element {
+              let quick_entry = try_use_context::<crate::QuickEntryActions>();
+              let quick_entry_id = id.clone();
+              use_effect(move || {
+                  if let Some(actions) = quick_entry.clone() {
+                      let mut current = actions.current_session;
+                      current.set(Some(quick_entry_id.clone()));
+                  }
+              });
+              let quick_entry_drop = quick_entry.clone();
+              use_drop(move || {
+                  if let Some(actions) = quick_entry_drop {
+                      let mut current = actions.current_session;
+                      if current().as_deref() == Some(id.as_str()) {
+                          current.set(None);
+                      }
+                  }
+              });
+              let services = use_context::<AppServices>();'''.replace('          ', ''),
+          )
+
+          main = 'apps/desktop/src/main.rs'
+          replace_once(main, 'mod quick_entry;\n', 'mod quick_entry;\nmod quick_entry_bridge;\n')
+          replace_once(
+              main,
+              '''            deep_link_bridge::DeepLinkBridge {
+                  clipboard_bridge::ClipboardBridge {'''.replace('          ', ''),
+              '''            deep_link_bridge::DeepLinkBridge {
+                  quick_entry_bridge::QuickEntryBridge {
+                      clipboard_bridge::ClipboardBridge {'''.replace('          ', ''),
+          )
+          # close the added wrapper immediately before DeepLinkBridge closes.
+          old = '''                        }
+                      }
+                  }
+              }
+          },'''.replace('          ', '')
+          new = '''                        }
+                      }
+                  }
+                  }
+              }
+          },'''.replace('          ', '')
+          text = Path(main).read_text(encoding='utf-8')
+          if text.count(old) != 1:
+              raise SystemExit(f'main wrapper close anchor count={text.count(old)}')
+          Path(main).write_text(text.replace(old, new), encoding='utf-8', newline='\n')
+
+          # Persisted settings round-trip proves restart semantics without OS registration.
+          quick = Path('apps/desktop/src/quick_entry.rs')
+          text = quick.read_text(encoding='utf-8')
+          anchor = '''    #[test]
+              fn shortcut_controller_tracks_active_registration_and_failures() {'''.replace('          ', '')
+          test = r'''    #[test]
+          fn settings_save_round_trip_preserves_enabled_shortcut() {
+              let directory = std::env::temp_dir().join(format!(
+                  "hermes-quick-entry-{}",
+                  std::process::id()
+              ));
+              let path = directory.join("quick-entry.json");
+              let _ = fs::remove_dir_all(&directory);
+              let saved = save_settings(
+                  &path,
+                  &QuickEntrySettings {
+                      enabled: false,
+                      shortcut: "Alt+J".into(),
+                  },
+              )
+              .expect("save settings");
+              assert!(!saved.enabled);
+              assert_eq!(saved.shortcut, "Alt+J");
+              assert_eq!(load_settings(&path).expect("reload settings"), saved);
+              fs::remove_dir_all(directory).expect("cleanup");
+          }
+
+          '''
+          if text.count(anchor) != 1:
+              raise SystemExit(f'quick entry test anchor count={text.count(anchor)}')
+          text = text.replace(anchor, test + anchor)
+          # Extend test imports for fs/save_settings.
+          old_import = 'use super::{\n'
+          # The module already imports several super items; add fs separately to avoid brittle list rewrites.
+          module_anchor = '#[cfg(test)]\nmod tests {\n'
+          if text.count(module_anchor) != 1:
+              raise SystemExit('quick entry tests module anchor missing')
+          text = text.replace(module_anchor, module_anchor + '    use std::fs;\n\n')
+          # Make save_settings visible in the existing super import with a structural replacement.
+          match = re.search(r'use super::\{(?P<body>.*?)\};', text, flags=re.S)
+          if not match or 'save_settings' in match.group('body'):
+              raise SystemExit('unexpected quick entry test super import')
+          body = match.group('body').rstrip() + ', save_settings\n    '
+          text = text[:match.start()] + 'use super::{'+ body + '};' + text[match.end():]
+          quick.write_text(text, encoding='utf-8', newline='\n')
+      - name: Format and focused Windows validation
+        shell: pwsh
+        run: |
+          cargo fmt --all
+          if ($LASTEXITCODE -ne 0) { throw "rustfmt failed" }
+          cargo test -p hermes-ui --locked quick_entry -- --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "shared Quick Entry tests failed" }
+          cargo test -p hermes-local --bin hermes-local --locked quick_entry -- --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Desktop Quick Entry tests failed" }
+          cargo check -p hermes-local --bin hermes-local --locked
+          if ($LASTEXITCODE -ne 0) { throw "Desktop Quick Entry composition failed" }
+          cargo check -p hermes-ui --target wasm32-unknown-unknown --locked
+          if ($LASTEXITCODE -ne 0) { throw "shared UI WASM check failed" }
+      - name: Commit composed Quick Entry source
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/src/quick_entry.rs apps/desktop/src/quick_entry_bridge.rs apps/desktop/src/main.rs crates/hermes-ui/src/quick_entry.rs crates/hermes-ui/src/lib.rs crates/hermes-ui/src/chat/legacy.rs
+          git diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw "diff check failed" }
+          git commit -m "feat(di-07): wire global Quick Entry window"
+          if ($LASTEXITCODE -ne 0) { throw "Quick Entry source commit failed" }
+          git push origin HEAD:agent/quick-entry
+          if ($LASTEXITCODE -ne 0) { throw "Quick Entry source push failed" }
