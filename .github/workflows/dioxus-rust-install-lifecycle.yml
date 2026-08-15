@@ -1,0 +1,137 @@
+name: Dioxus Rust install lifecycle
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "VERSION.json"
+      - "rust-toolchain.toml"
+      - "apps/desktop/**"
+      - "crates/**"
+      - "scripts/ci/rust_windows_package.py"
+      - ".github/workflows/dioxus-rust-install-lifecycle.yml"
+  push:
+    branches:
+      - refactor/dioxus-rust-client
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "VERSION.json"
+      - "rust-toolchain.toml"
+      - "apps/desktop/**"
+      - "crates/**"
+      - "scripts/ci/rust_windows_package.py"
+      - ".github/workflows/dioxus-rust-install-lifecycle.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dioxus-rust-install-lifecycle-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lifecycle:
+    name: Install repair uninstall
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build optimized Rust client
+        run: cargo build -p hermes-local --release --locked --features bundle
+
+      - name: Prepare Windows package
+        shell: pwsh
+        run: |
+          python ".\scripts\ci\rust_windows_package.py" prepare `
+            --binary ".\target\release\hermes-local.exe" `
+            --version-manifest ".\VERSION.json" `
+            --work-root ".\build\di12-work" `
+            --output-root ".\build\di12-packages" `
+            --source-commit $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "Package preparation failed." }
+
+      - name: Compile installer
+        shell: pwsh
+        run: |
+          $compiler = @(
+            (Get-Command "ISCC.exe" -ErrorAction SilentlyContinue).Source,
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+          if (-not $compiler) { throw "Inno Setup compiler is unavailable." }
+          & $compiler ".\build\di12-work\Hermes-Local.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed." }
+
+      - name: Validate install repair and data-preserving uninstall
+        shell: pwsh
+        run: |
+          $installer = (Resolve-Path ".\build\di12-packages\Hermes-Local-Setup.exe").Path
+          $installRoot = Join-Path $env:RUNNER_TEMP "HermesLocal-DI12"
+          $dataRoot = Join-Path $env:APPDATA "Hermes Local"
+          $sentinel = Join-Path $dataRoot "di12-user-data-sentinel.txt"
+          $installLog = Join-Path $env:RUNNER_TEMP "di12-install.log"
+          $repairLog = Join-Path $env:RUNNER_TEMP "di12-repair.log"
+          $uninstallLog = Join-Path $env:RUNNER_TEMP "di12-uninstall.log"
+
+          Remove-Item -Recurse -Force -LiteralPath $installRoot -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $dataRoot | Out-Null
+          "preserve-me-$env:GITHUB_SHA" | Set-Content -NoNewline -Encoding utf8 -LiteralPath $sentinel
+          $expectedSentinel = Get-Content -Raw -LiteralPath $sentinel
+
+          function Invoke-Setup([string[]]$Arguments) {
+            $process = Start-Process -FilePath $installer -ArgumentList $Arguments -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "Installer exited with code $($process.ExitCode)." }
+          }
+
+          Invoke-Setup @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOCANCEL", "/SP-",
+            "/DIR=$installRoot", "/LOG=$installLog"
+          )
+          python ".\scripts\ci\rust_windows_package.py" verify-install --root $installRoot --source-commit $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "Initial installed payload verification failed." }
+          $firstHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $installRoot "hermes-local.exe")).Hash
+
+          Invoke-Setup @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOCANCEL", "/SP-",
+            "/DIR=$installRoot", "/LOG=$repairLog"
+          )
+          python ".\scripts\ci\rust_windows_package.py" verify-install --root $installRoot --source-commit $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "Repair/reinstall payload verification failed." }
+          $repairedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $installRoot "hermes-local.exe")).Hash
+          if ($repairedHash -ne $firstHash) { throw "Repair/reinstall changed the packaged executable identity." }
+          if ((Get-Content -Raw -LiteralPath $sentinel) -ne $expectedSentinel) { throw "Repair/reinstall modified user data." }
+
+          $uninstaller = Join-Path $installRoot "unins000.exe"
+          if (-not (Test-Path -LiteralPath $uninstaller)) { throw "Uninstaller was not installed." }
+          $uninstallProcess = Start-Process -FilePath $uninstaller -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=$uninstallLog"
+          ) -Wait -PassThru
+          if ($uninstallProcess.ExitCode -ne 0) { throw "Uninstaller exited with code $($uninstallProcess.ExitCode)." }
+          Start-Sleep -Seconds 2
+
+          if (Test-Path -LiteralPath (Join-Path $installRoot "hermes-local.exe")) { throw "Application executable remained after uninstall." }
+          if (-not (Test-Path -LiteralPath $sentinel)) { throw "User data was deleted by uninstall." }
+          if ((Get-Content -Raw -LiteralPath $sentinel) -ne $expectedSentinel) { throw "User data changed during uninstall." }
+
+          "### DI-12 install lifecycle" >> $env:GITHUB_STEP_SUMMARY
+          "- clean per-user install: PASS" >> $env:GITHUB_STEP_SUMMARY
+          "- same-version repair/reinstall identity: PASS" >> $env:GITHUB_STEP_SUMMARY
+          "- user data unchanged across repair: PASS" >> $env:GITHUB_STEP_SUMMARY
+          "- uninstall removes program payload: PASS" >> $env:GITHUB_STEP_SUMMARY
+          "- uninstall preserves `%APPDATA%\\Hermes Local`: PASS" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload lifecycle logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-local-di12-install-lifecycle
+          path: |
+            ${{ runner.temp }}/di12-install.log
+            ${{ runner.temp }}/di12-repair.log
+            ${{ runner.temp }}/di12-uninstall.log
+          if-no-files-found: warn
+          retention-days: 7

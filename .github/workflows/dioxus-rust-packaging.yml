@@ -1,0 +1,285 @@
+name: Dioxus Rust packaging
+
+# Distribution gate for the native Rust/Dioxus Windows client.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - refactor/dioxus-rust-client
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "VERSION.json"
+      - "rust-toolchain.toml"
+      - "apps/desktop/**"
+      - "crates/**"
+      - "scripts/ci/check_dioxus_rust_architecture.py"
+      - "scripts/ci/rust_windows_package.py"
+      - "scripts/ci/release_integrity*.py"
+      - "tests/test_rust_windows_package.py"
+      - ".github/workflows/dioxus-rust-packaging.yml"
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "VERSION.json"
+      - "rust-toolchain.toml"
+      - "apps/desktop/**"
+      - "crates/**"
+      - "scripts/ci/check_dioxus_rust_architecture.py"
+      - "scripts/ci/rust_windows_package.py"
+      - "scripts/ci/release_integrity*.py"
+      - "tests/test_rust_windows_package.py"
+      - ".github/workflows/dioxus-rust-packaging.yml"
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+concurrency:
+  group: dioxus-rust-packaging-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Windows installer and portable
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show pinned toolchain
+        shell: pwsh
+        run: |
+          rustup show
+          rustc --version
+          cargo --version
+
+      - name: Guard Rust/Dioxus architecture
+        run: python scripts/ci/check_dioxus_rust_architecture.py
+
+      - name: Test Windows packaging tooling
+        run: python -m unittest discover -s tests -p "test_rust_windows_package.py" -v
+
+      - name: Build optimized Windows client
+        run: cargo build -p hermes-local --release --locked --features bundle
+
+      - name: Prepare installer and portable payloads
+        shell: pwsh
+        run: |
+          python ".\scripts\ci\rust_windows_package.py" prepare `
+            --binary ".\target\release\hermes-local.exe" `
+            --version-manifest ".\VERSION.json" `
+            --work-root ".\build\rust-package-work" `
+            --output-root ".\build\rust-packages" `
+            --source-commit $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) {
+            throw "Rust Windows package preparation failed."
+          }
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $iscc = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
+          if ($iscc) {
+            $compiler = $iscc.Source
+          } else {
+            $compiler = @(
+              "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+              "C:\Program Files\Inno Setup 6\ISCC.exe"
+            ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          }
+          if (-not $compiler) {
+            throw "Inno Setup compiler (ISCC.exe) is not available on this runner."
+          }
+          & $compiler ".\build\rust-package-work\Hermes-Local.iss"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup compilation failed."
+          }
+          if (-not (Test-Path -LiteralPath ".\build\rust-packages\Hermes-Local-Setup.exe")) {
+            throw "Expected Hermes-Local-Setup.exe was not produced."
+          }
+
+      - name: Verify portable payload
+        shell: pwsh
+        run: |
+          python ".\scripts\ci\rust_windows_package.py" verify-portable `
+            --archive ".\build\rust-packages\Hermes-Local-Portable-x64.zip" `
+            --source-commit $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) {
+            throw "Portable package verification failed."
+          }
+
+      - name: Verify installer lifecycle
+        shell: pwsh
+        run: |
+          $installRoot = Join-Path $env:RUNNER_TEMP "HermesLocal-DI17"
+          $installLog = Join-Path $env:RUNNER_TEMP "hermes-local-install.log"
+          $uninstallLog = Join-Path $env:RUNNER_TEMP "hermes-local-uninstall.log"
+          Remove-Item -Recurse -Force -LiteralPath $installRoot -ErrorAction SilentlyContinue
+          Remove-Item -Force -LiteralPath $installLog,$uninstallLog -ErrorAction SilentlyContinue
+
+          $installer = (Resolve-Path -LiteralPath ".\build\rust-packages\Hermes-Local-Setup.exe").Path
+          $installProcess = Start-Process -FilePath $installer `
+            -ArgumentList @(
+              "/VERYSILENT",
+              "/SUPPRESSMSGBOXES",
+              "/NORESTART",
+              "/NOCANCEL",
+              "/SP-",
+              "/DIR=$installRoot",
+              "/LOG=$installLog"
+            ) `
+            -Wait -PassThru
+          $installExit = $installProcess.ExitCode
+          if ($installExit -ne 0) {
+            Write-Host "Inno Setup exited with code $installExit"
+            if (Test-Path -LiteralPath $installLog) {
+              Get-Content -LiteralPath $installLog
+            }
+            throw "Silent installer validation failed with exit code $installExit."
+          }
+
+          python ".\scripts\ci\rust_windows_package.py" verify-install `
+            --root $installRoot `
+            --source-commit $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) {
+            throw "Installed package verification failed."
+          }
+
+          $programs = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
+          $shortcut = Join-Path $programs "Hermes Local.lnk"
+          if (-not (Test-Path -LiteralPath $shortcut)) {
+            throw "Hermes Local Start Menu shortcut was not registered."
+          }
+
+          $uninstall = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue |
+            Get-ItemProperty -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -eq "Hermes Local" } |
+            Select-Object -First 1
+          if (-not $uninstall) {
+            throw "Hermes Local uninstall registration was not created."
+          }
+
+          $uninstaller = Join-Path $installRoot "unins000.exe"
+          if (-not (Test-Path -LiteralPath $uninstaller)) {
+            throw "Hermes Local uninstaller was not created."
+          }
+          $uninstallProcess = Start-Process -FilePath $uninstaller `
+            -ArgumentList @(
+              "/VERYSILENT",
+              "/SUPPRESSMSGBOXES",
+              "/NORESTART",
+              "/LOG=$uninstallLog"
+            ) `
+            -Wait -PassThru
+          $uninstallExit = $uninstallProcess.ExitCode
+          if ($uninstallExit -ne 0) {
+            Write-Host "Inno Uninstall exited with code $uninstallExit"
+            if (Test-Path -LiteralPath $uninstallLog) {
+              Get-Content -LiteralPath $uninstallLog
+            }
+            throw "Hermes Local uninstall validation failed with exit code $uninstallExit."
+          }
+          Start-Sleep -Seconds 2
+
+          if (Test-Path -LiteralPath (Join-Path $installRoot "hermes-local.exe")) {
+            throw "Rust client remained after uninstall."
+          }
+          if (Test-Path -LiteralPath $shortcut) {
+            throw "Hermes Local Start Menu shortcut remained after uninstall."
+          }
+          $remainingRegistration = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue |
+            Get-ItemProperty -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -eq "Hermes Local" } |
+            Select-Object -First 1
+          if ($remainingRegistration) {
+            throw "Hermes Local uninstall registration remained after uninstall."
+          }
+
+      - name: Create distribution release manifest and checksums
+        shell: pwsh
+        run: |
+          $workflowIdentity = "$env:GITHUB_REPOSITORY/.github/workflows/dioxus-rust-packaging.yml"
+          $rustc = (& rustc --version).Trim()
+          $cargo = (& cargo --version).Trim()
+          python ".\scripts\ci\release_integrity.py" create `
+            --root ".\build\rust-packages" `
+            --output ".\build\rust-packages\release-manifest.json" `
+            --version-manifest ".\VERSION.json" `
+            --channel development `
+            --repository $env:GITHUB_REPOSITORY `
+            --source-commit $env:GITHUB_SHA `
+            --workflow $workflowIdentity `
+            --run-id $env:GITHUB_RUN_ID `
+            --artifact "Hermes-Local-Setup.exe" `
+            --artifact "Hermes-Local-Portable-x64.zip" `
+            --dependency-lock "cargo=.\Cargo.lock" `
+            --toolchain "rustc=$rustc" `
+            --toolchain "cargo=$cargo" `
+            --toolchain "target=x86_64-pc-windows-msvc" `
+            --toolchain "installer=Inno Setup" `
+            --build-command "cargo build -p hermes-local --release --locked --features bundle" `
+            --build-command "ISCC build/rust-package-work/Hermes-Local.iss"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Distribution release manifest generation failed."
+          }
+
+      - name: Attest Windows distributions
+        id: distribution-attestation
+        if: github.event_name != 'pull_request'
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            build/rust-packages/Hermes-Local-Setup.exe
+            build/rust-packages/Hermes-Local-Portable-x64.zip
+
+      - name: Attest distribution release manifest
+        id: manifest-attestation
+        if: github.event_name != 'pull_request'
+        uses: actions/attest@v4
+        with:
+          subject-path: build/rust-packages/release-manifest.json
+
+      - name: Verify trusted distribution provenance
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          python ".\scripts\ci\release_integrity.py" verify `
+            --manifest ".\build\rust-packages\release-manifest.json" `
+            --artifact-root ".\build\rust-packages" `
+            --require-attestation `
+            --report ".\build\rust-packages-verification.json"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Distribution provenance verification failed."
+          }
+
+      - name: Record distribution identity
+        shell: pwsh
+        run: |
+          $installer = Get-Item ".\build\rust-packages\Hermes-Local-Setup.exe"
+          $portable = Get-Item ".\build\rust-packages\Hermes-Local-Portable-x64.zip"
+          $installerHash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $portableHash = (Get-FileHash -LiteralPath $portable.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "### Rust Windows distributions" >> $env:GITHUB_STEP_SUMMARY
+          "- Installer: ``Hermes-Local-Setup.exe`` — $($installer.Length) bytes — ``$installerHash``" >> $env:GITHUB_STEP_SUMMARY
+          "- Portable: ``Hermes-Local-Portable-x64.zip`` — $($portable.Length) bytes — ``$portableHash``" >> $env:GITHUB_STEP_SUMMARY
+          "- Lifecycle: silent install, payload identity, Start Menu registration, uninstall registration and cleanup verified" >> $env:GITHUB_STEP_SUMMARY
+          if ("${{ github.event_name }}" -eq "pull_request") {
+            "- Provenance: trusted attestations intentionally deferred to branch execution" >> $env:GITHUB_STEP_SUMMARY
+          } else {
+            "- Provenance: distribution and manifest attestations generated and verified" >> $env:GITHUB_STEP_SUMMARY
+          }
+
+      - name: Upload installer and portable distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-local-rust-windows-distributions
+          path: |
+            build/rust-packages
+            build/rust-packages-verification.json
+          if-no-files-found: error
+          retention-days: 7

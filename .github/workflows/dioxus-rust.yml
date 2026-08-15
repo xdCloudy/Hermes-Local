@@ -1,0 +1,205 @@
+name: Dioxus Rust validation
+
+# Primary branch gate for the native Rust/Dioxus client migration.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - refactor/dioxus-rust-client
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "rust-toolchain.toml"
+      - "apps/desktop/**"
+      - "crates/**"
+      - "scripts/ci/check_dioxus_rust_architecture.py"
+      - "scripts/ci/rust_cyclonedx.py"
+      - "scripts/ci/release_integrity*.py"
+      - "tests/test_rust_cyclonedx.py"
+      - ".github/workflows/dioxus-rust.yml"
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "rust-toolchain.toml"
+      - "apps/desktop/**"
+      - "crates/**"
+      - "scripts/ci/check_dioxus_rust_architecture.py"
+      - "scripts/ci/rust_cyclonedx.py"
+      - "scripts/ci/release_integrity*.py"
+      - "tests/test_rust_cyclonedx.py"
+      - ".github/workflows/dioxus-rust.yml"
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+concurrency:
+  group: dioxus-rust-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust workspace
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show pinned toolchain
+        shell: pwsh
+        run: |
+          rustup show
+          rustc --version
+          cargo --version
+
+      - name: Guard Rust/Dioxus architecture
+        run: python scripts/ci/check_dioxus_rust_architecture.py
+
+      - name: Verify formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check all targets
+        run: cargo check --workspace --all-targets --locked
+
+      - name: Check shared UI for WebAssembly
+        run: cargo check -p hermes-ui --target wasm32-unknown-unknown --locked
+
+      - name: Run Rust tests
+        run: cargo test --workspace --locked
+
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --locked
+
+      - name: Test Rust SBOM tooling
+        run: python -m unittest discover -s tests -p "test_rust_cyclonedx.py" -v
+
+      - name: Build optimized Windows client
+        run: cargo build -p hermes-local --release --locked --features bundle
+
+      - name: Generate resolved Cargo metadata
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path ".\build\rust-release" -Force | Out-Null
+          $metadata = & cargo metadata `
+            --locked `
+            --format-version 1 `
+            --features hermes-local/bundle `
+            --filter-platform x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) {
+            throw "cargo metadata failed."
+          }
+          $metadata |
+            Set-Content -LiteralPath ".\build\rust-release\cargo-metadata.json" -Encoding utf8NoBOM
+
+      - name: Generate Rust CycloneDX SBOM
+        shell: pwsh
+        run: |
+          Copy-Item `
+            -LiteralPath ".\target\release\hermes-local.exe" `
+            -Destination ".\build\rust-release\hermes-local.exe" `
+            -Force
+          python ".\scripts\ci\rust_cyclonedx.py" `
+            --metadata ".\build\rust-release\cargo-metadata.json" `
+            --lock ".\Cargo.lock" `
+            --root-package "hermes-local" `
+            --output ".\build\rust-release\hermes-local.cdx.json"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Rust CycloneDX generation failed."
+          }
+
+      - name: Create Rust release manifest and checksums
+        shell: pwsh
+        run: |
+          $workflowIdentity = "$env:GITHUB_REPOSITORY/.github/workflows/dioxus-rust.yml"
+          $rustc = (& rustc --version).Trim()
+          $cargo = (& cargo --version).Trim()
+          python ".\scripts\ci\release_integrity.py" create `
+            --root ".\build\rust-release" `
+            --output ".\build\rust-release\release-manifest.json" `
+            --version-manifest ".\VERSION.json" `
+            --channel development `
+            --repository $env:GITHUB_REPOSITORY `
+            --source-commit $env:GITHUB_SHA `
+            --workflow $workflowIdentity `
+            --run-id $env:GITHUB_RUN_ID `
+            --artifact "hermes-local.exe" `
+            --sbom "rust=hermes-local.cdx.json" `
+            --dependency-lock "cargo=.\Cargo.lock" `
+            --toolchain "rustc=$rustc" `
+            --toolchain "cargo=$cargo" `
+            --toolchain "target=x86_64-pc-windows-msvc" `
+            --build-command "cargo build -p hermes-local --release --locked --features bundle"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Rust release manifest generation failed."
+          }
+
+      - name: Attest Rust client and bind SBOM
+        id: rust-attestation
+        if: github.event_name != 'pull_request'
+        uses: actions/attest@v4
+        with:
+          subject-path: build/rust-release/hermes-local.exe
+          sbom-path: build/rust-release/hermes-local.cdx.json
+
+      - name: Attest Rust release manifest
+        id: manifest-attestation
+        if: github.event_name != 'pull_request'
+        uses: actions/attest@v4
+        with:
+          subject-path: build/rust-release/release-manifest.json
+
+      - name: Retain offline Rust attestation bundles
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          RUST_BUNDLE: ${{ steps.rust-attestation.outputs.bundle-path }}
+          MANIFEST_BUNDLE: ${{ steps.manifest-attestation.outputs.bundle-path }}
+        run: |
+          New-Item -ItemType Directory -Path ".\build\rust-release\attestations" -Force | Out-Null
+          Copy-Item -LiteralPath $env:RUST_BUNDLE -Destination ".\build\rust-release\attestations\rust-client-sbom.jsonl"
+          Copy-Item -LiteralPath $env:MANIFEST_BUNDLE -Destination ".\build\rust-release\attestations\release-manifest.jsonl"
+
+      - name: Verify trusted Rust release provenance
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          python ".\scripts\ci\release_integrity.py" verify `
+            --manifest ".\build\rust-release\release-manifest.json" `
+            --artifact-root ".\build\rust-release" `
+            --require-attestation `
+            --report ".\build\rust-release-verification.json"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Rust release provenance verification failed."
+          }
+
+      - name: Record optimized client identity
+        shell: pwsh
+        run: |
+          $binary = Get-Item ".\build\rust-release\hermes-local.exe"
+          $mib = [math]::Round($binary.Length / 1MB, 2)
+          $sha256 = (Get-FileHash -LiteralPath $binary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "### Optimized Rust client" >> $env:GITHUB_STEP_SUMMARY
+          "- Binary: ``build/rust-release/hermes-local.exe``" >> $env:GITHUB_STEP_SUMMARY
+          "- Size: $($binary.Length) bytes ($mib MiB)" >> $env:GITHUB_STEP_SUMMARY
+          "- SHA-256: ``$sha256``" >> $env:GITHUB_STEP_SUMMARY
+          "- CycloneDX: ``build/rust-release/hermes-local.cdx.json``" >> $env:GITHUB_STEP_SUMMARY
+          "- Manifest: ``build/rust-release/release-manifest.json``" >> $env:GITHUB_STEP_SUMMARY
+          if ("${{ github.event_name }}" -eq "pull_request") {
+            "- Provenance: generated on trusted branch execution after merge" >> $env:GITHUB_STEP_SUMMARY
+          } else {
+            "- Provenance: GitHub artifact attestations generated and verified" >> $env:GITHUB_STEP_SUMMARY
+          }
+
+      - name: Upload optimized client and provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-local-rust-windows-x64
+          path: |
+            build/rust-release
+            build/rust-release-verification.json
+          if-no-files-found: error
+          retention-days: 7

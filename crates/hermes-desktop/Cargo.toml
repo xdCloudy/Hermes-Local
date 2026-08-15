@@ -1,0 +1,37 @@
+[package]
+name = "hermes-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-stream.workspace = true
+base64.workspace = true
+getrandom.workspace = true
+hermes-agent-client = { path = "../hermes-agent-client" }
+hermes-core = { path = "../hermes-core" }
+hermes-protocol = { path = "../hermes-protocol" }
+open.workspace = true
+portable-pty.workspace = true
+reqwest = { workspace = true, features = ["json", "rustls"] }
+rfd.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio = { workspace = true, features = ["io-util", "net", "sync", "time"] }
+trash.workspace = true
+url.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+
+[target.'cfg(windows)'.dependencies]
+keyring = { workspace = true, features = ["v1", "windows-native-keyring-store"] }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+futures-util.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread"] }
+tokio-tungstenite.workspace = true
