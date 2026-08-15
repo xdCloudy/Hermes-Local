@@ -1,0 +1,33 @@
+name: Temporary Clippy diagnostics
+
+on:
+  push:
+    branches:
+      - agent/cloud-connection
+    paths:
+      - ".github/workflows/tmp-clippy-diagnostics.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/cloud-connection
+      - name: Capture Clippy diagnostics
+        shell: pwsh
+        run: |
+          $outputPath = ".github/tmp-clippy-diagnostics.txt"
+          & cargo clippy --workspace --all-targets --locked 2>&1 | Tee-Object -FilePath $outputPath
+          $exitCode = $LASTEXITCODE
+          "`nCLIPPY_EXIT_CODE=$exitCode" | Add-Content -LiteralPath $outputPath -Encoding utf8
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add $outputPath
+          git commit -m "ci: capture temporary Clippy diagnostics"
+          git push origin HEAD:agent/cloud-connection
+          exit $exitCode
