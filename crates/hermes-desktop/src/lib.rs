@@ -15,14 +15,14 @@ use base64::{
 };
 use hermes_agent_client::GatewayClient;
 use hermes_core::{
-    AgentConfigService, AppServices, ConnectionService, CronService, EventStream, FileService,
-    GitService, IntegrationService, LearningService, McpService, MemoryService, ModelService,
-    PlatformService, ProjectService, ProviderService, RuntimeService, ServiceError, ServiceFuture,
-    ServiceResult, SessionService, SettingsService, SkillsService, TerminalService, TrustService,
-    UnavailableDesktopSettingsService, UnavailableDiagnosticsService, UnavailableGitBranchService,
-    UnavailableGitDiscardService, UnavailableGitRepoScanService, UnavailableGitShipService,
-    UnavailableGitWorktreeService, UnavailablePreviewService, UpdateService, validate_identifier,
-    validate_relative_path,
+    AgentConfigService, AppServices, CloudGatewayCookie, ConnectionService, CronService,
+    EventStream, FileService, GitService, IntegrationService, LearningService, McpService,
+    MemoryService, ModelService, PlatformService, ProjectService, ProviderService, RuntimeService,
+    ServiceError, ServiceFuture, ServiceResult, SessionService, SettingsService, SkillsService,
+    TerminalService, TrustService, UnavailableDesktopSettingsService,
+    UnavailableDiagnosticsService, UnavailableGitBranchService, UnavailableGitDiscardService,
+    UnavailableGitRepoScanService, UnavailableGitShipService, UnavailableGitWorktreeService,
+    UnavailablePreviewService, UpdateService, validate_identifier, validate_relative_path,
 };
 use hermes_protocol::{
     AgentConfigSnapshot, AppSettings, AttachmentKind, AuthProvider, AuxiliaryModels,
@@ -45,7 +45,10 @@ use hermes_protocol::{
     WebhookCreate, WebhookCreated, WebhooksSnapshot,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
-use reqwest::Method;
+use reqwest::{
+    Method,
+    header::{COOKIE, SET_COOKIE},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -177,6 +180,103 @@ struct NativeOauthTokens {
     provider: String,
     #[serde(default)]
     user_id: String,
+}
+
+const MAX_CLOUD_COOKIE_VALUE_BYTES: usize = 8 * 1024;
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+struct StoredCloudGatewaySession {
+    cookies: BTreeMap<String, String>,
+}
+
+fn cloud_cookie_class(name: &str) -> Option<&'static str> {
+    match name {
+        "__Host-hermes_session_at" | "__Secure-hermes_session_at" | "hermes_session_at" => {
+            Some("access")
+        }
+        "__Host-hermes_session_rt" | "__Secure-hermes_session_rt" | "hermes_session_rt" => {
+            Some("refresh")
+        }
+        _ => None,
+    }
+}
+
+fn validate_cloud_cookie_value(value: &str) -> ServiceResult<()> {
+    if value.is_empty()
+        || value.len() > MAX_CLOUD_COOKIE_VALUE_BYTES
+        || value.contains(';')
+        || value.chars().any(char::is_control)
+    {
+        return Err(ServiceError::InvalidInput(
+            "invalid Hermes Cloud gateway cookie".into(),
+        ));
+    }
+    Ok(())
+}
+
+impl StoredCloudGatewaySession {
+    fn from_cookies(cookies: &[CloudGatewayCookie]) -> ServiceResult<Self> {
+        if cookies.is_empty() || cookies.len() > 8 {
+            return Err(ServiceError::InvalidInput(
+                "Hermes Cloud gateway session must contain a bounded cookie set".into(),
+            ));
+        }
+        let mut session = Self::default();
+        for cookie in cookies {
+            session.set_cookie(&cookie.name, &cookie.value, false)?;
+        }
+        if session.cookies.is_empty() {
+            return Err(ServiceError::InvalidInput(
+                "Hermes Cloud gateway session did not contain an allowed session cookie".into(),
+            ));
+        }
+        Ok(session)
+    }
+
+    fn set_cookie(&mut self, name: &str, value: &str, allow_delete: bool) -> ServiceResult<bool> {
+        let Some(class) = cloud_cookie_class(name) else {
+            return Err(ServiceError::InvalidInput(
+                "unrecognized Hermes Cloud gateway cookie".into(),
+            ));
+        };
+        if value.is_empty() && allow_delete {
+            let before = self.cookies.len();
+            self.cookies
+                .retain(|existing, _| cloud_cookie_class(existing) != Some(class));
+            return Ok(self.cookies.len() != before);
+        }
+        validate_cloud_cookie_value(value)?;
+        let previous = self.cookies.clone();
+        self.cookies
+            .retain(|existing, _| cloud_cookie_class(existing) != Some(class));
+        self.cookies.insert(name.to_owned(), value.to_owned());
+        Ok(self.cookies != previous)
+    }
+
+    fn merge_set_cookie(&mut self, header: &str) -> ServiceResult<bool> {
+        let pair = header.split(';').next().unwrap_or_default().trim();
+        let Some((name, value)) = pair.split_once('=') else {
+            return Ok(false);
+        };
+        if cloud_cookie_class(name.trim()).is_none() {
+            return Ok(false);
+        }
+        self.set_cookie(name.trim(), value.trim(), true)
+    }
+
+    fn header(&self) -> ServiceResult<String> {
+        if self.cookies.is_empty() {
+            return Err(ServiceError::PermissionDenied(
+                "Hermes Cloud gateway session is unavailable".into(),
+            ));
+        }
+        Ok(self
+            .cookies
+            .iter()
+            .map(|(name, value)| format!("{name}={value}"))
+            .collect::<Vec<_>>()
+            .join("; "))
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -496,7 +596,8 @@ impl ConnectionConfigStore {
         let remote_url = env_url.unwrap_or_else(|| block.url.clone());
         let remote_oauth_connected = block.auth_mode == RemoteAuthMode::Oauth
             && !remote_url.is_empty()
-            && self.oauth_tokens(&remote_url)?.is_some();
+            && (self.oauth_tokens(&remote_url)?.is_some()
+                || self.cloud_session(&remote_url)?.is_some());
         Ok(ConnectionConfig {
             env_override,
             mode,
@@ -572,6 +673,35 @@ impl ConnectionConfigStore {
 
     fn clear_oauth_tokens(&self, base_url: &str) -> ServiceResult<()> {
         self.secrets.delete(&oauth_account(base_url))
+    }
+
+    fn cloud_session(&self, base_url: &str) -> ServiceResult<Option<StoredCloudGatewaySession>> {
+        let Some(encoded) = self.secrets.get(&cloud_cookie_account(base_url))? else {
+            return Ok(None);
+        };
+        let session = serde_json::from_str(&encoded).map_err(|error| {
+            ServiceError::Platform(format!("invalid stored Hermes Cloud session: {error}"))
+        })?;
+        Ok(Some(session))
+    }
+
+    fn store_cloud_session(
+        &self,
+        base_url: &str,
+        session: &StoredCloudGatewaySession,
+    ) -> ServiceResult<()> {
+        if session.cookies.is_empty() {
+            return Err(ServiceError::InvalidInput(
+                "cannot store an empty Hermes Cloud gateway session".into(),
+            ));
+        }
+        let encoded = serde_json::to_string(session)
+            .map_err(|error| ServiceError::Platform(error.to_string()))?;
+        self.secrets.set(&cloud_cookie_account(base_url), &encoded)
+    }
+
+    fn clear_cloud_session(&self, base_url: &str) -> ServiceResult<()> {
+        self.secrets.delete(&cloud_cookie_account(base_url))
     }
 }
 
@@ -701,19 +831,45 @@ impl GatewayServices {
     }
 
     async fn mint_gateway_ticket(&self, base_url: &str) -> ServiceResult<String> {
-        let access_token = self.ensure_native_access_token(base_url).await?;
         let base_url = normalize_remote_url(base_url)?;
-        let response = reqwest::Client::builder()
+        let mut cloud_session = self.connection_store.cloud_session(&base_url)?;
+        let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(8))
             .redirect(reqwest::redirect::Policy::none())
             .build()
-            .map_err(platform)?
-            .post(format!("{base_url}/api/auth/ws-ticket"))
-            .bearer_auth(access_token)
+            .map_err(platform)?;
+
+        let request = if self.connection_store.oauth_tokens(&base_url)?.is_some() {
+            match self.ensure_native_access_token(&base_url).await {
+                Ok(access_token) => client
+                    .post(format!("{base_url}/api/auth/ws-ticket"))
+                    .bearer_auth(access_token),
+                Err(error @ ServiceError::PermissionDenied(_)) => match cloud_session.as_ref() {
+                    Some(session) => client
+                        .post(format!("{base_url}/api/auth/ws-ticket"))
+                        .header(COOKIE, session.header()?),
+                    None => return Err(error),
+                },
+                Err(error) => return Err(error),
+            }
+        } else if let Some(session) = cloud_session.as_ref() {
+            client
+                .post(format!("{base_url}/api/auth/ws-ticket"))
+                .header(COOKIE, session.header()?)
+        } else {
+            return Err(ServiceError::PermissionDenied(
+                "Gateway sign-in is required".into(),
+            ));
+        };
+
+        let response = request
             .send()
             .await
             .map_err(|error| ServiceError::Transport(error.to_string()))?;
         if matches!(response.status().as_u16(), 401 | 403) {
+            if cloud_session.is_some() {
+                self.connection_store.clear_cloud_session(&base_url)?;
+            }
             return Err(ServiceError::PermissionDenied(
                 "Gateway rejected the OAuth session; sign in again".into(),
             ));
@@ -724,6 +880,22 @@ impl GatewayServices {
                 response.status()
             )));
         }
+
+        if let Some(session) = cloud_session.as_mut() {
+            let mut changed = false;
+            for header in response.headers().get_all(SET_COOKIE) {
+                if let Ok(header) = header.to_str() {
+                    changed |= session.merge_set_cookie(header)?;
+                }
+            }
+            if session.cookies.is_empty() {
+                self.connection_store.clear_cloud_session(&base_url)?;
+            } else if changed {
+                self.connection_store
+                    .store_cloud_session(&base_url, session)?;
+            }
+        }
+
         let value: Value = response.json().await.map_err(|error| {
             ServiceError::Transport(format!("invalid Gateway ticket response: {error}"))
         })?;
@@ -906,7 +1078,9 @@ impl ConnectionService for GatewayServices {
             let config = self.connection_store.save(&input)?;
             self.disconnect().await?;
             match config.mode {
-                ConnectionMode::Remote if config.remote_auth_mode == RemoteAuthMode::Token => {
+                ConnectionMode::Remote | ConnectionMode::Cloud
+                    if config.remote_auth_mode == RemoteAuthMode::Token =>
+                {
                     let token = self
                         .connection_store
                         .remote_secret(config.profile.as_deref())?
@@ -918,15 +1092,10 @@ impl ConnectionService for GatewayServices {
                     self.connect(&websocket_url(&config.remote_url, &token)?)
                         .await?;
                 }
-                ConnectionMode::Remote => {
+                ConnectionMode::Remote | ConnectionMode::Cloud => {
                     let ticket = self.mint_gateway_ticket(&config.remote_url).await?;
                     self.connect(&websocket_url_with_ticket(&config.remote_url, &ticket)?)
                         .await?;
-                }
-                ConnectionMode::Cloud => {
-                    return Err(ServiceError::Unavailable(
-                        "Hermes Cloud agent discovery is pending".into(),
-                    ));
                 }
                 ConnectionMode::Ssh => {
                     return Err(ServiceError::Unavailable(
@@ -997,16 +1166,36 @@ impl ConnectionService for GatewayServices {
             })
         })
     }
-
     fn oauth_logout(&self, remote_url: &str) -> ServiceFuture<'_, ConnectionOauthLogoutResult> {
         let remote_url = remote_url.to_owned();
         Box::pin(async move {
             let base_url = normalize_remote_url(&remote_url)?;
             self.connection_store.clear_oauth_tokens(&base_url)?;
+            self.connection_store.clear_cloud_session(&base_url)?;
             Ok(ConnectionOauthLogoutResult {
                 ok: true,
                 connected: false,
             })
+        })
+    }
+
+    fn adopt_cloud_gateway_session(
+        &self,
+        base_url: String,
+        cookies: Vec<CloudGatewayCookie>,
+    ) -> ServiceFuture<'_, ()> {
+        Box::pin(async move {
+            let base_url = normalize_remote_url(&base_url)?;
+            let session = StoredCloudGatewaySession::from_cookies(&cookies)?;
+            self.connection_store
+                .store_cloud_session(&base_url, &session)
+        })
+    }
+
+    fn clear_cloud_gateway_session(&self, base_url: String) -> ServiceFuture<'_, ()> {
+        Box::pin(async move {
+            let base_url = normalize_remote_url(&base_url)?;
+            self.connection_store.clear_cloud_session(&base_url)
         })
     }
 }
@@ -4335,6 +4524,11 @@ fn oauth_account(base_url: &str) -> String {
     format!("oauth:{}", URL_SAFE_NO_PAD.encode(digest))
 }
 
+fn cloud_cookie_account(base_url: &str) -> String {
+    let digest = Sha256::digest(base_url.as_bytes());
+    format!("oauth-cookie:{}", URL_SAFE_NO_PAD.encode(digest))
+}
+
 fn native_pkce_material() -> ServiceResult<(String, String, String)> {
     let mut verifier_random = [0_u8; 32];
     let mut state_random = [0_u8; 24];
@@ -5465,6 +5659,70 @@ mod tests {
         fs::remove_dir(directory).expect("remove connection settings directory");
     }
 
+    #[test]
+    fn cloud_gateway_cookie_secrets_are_bounded_and_kept_out_of_connection_json() {
+        let directory = std::env::temp_dir().join(format!(
+            "hermes-cloud-cookie-test-{}",
+            Uuid::new_v4().simple()
+        ));
+        let path = directory.join("connection.json");
+        let secrets = Arc::new(MemoryGatewaySecrets::default());
+        let store = ConnectionConfigStore::with_secrets(path.clone(), secrets.clone());
+        let base_url = "https://agent.example/hermes";
+        store
+            .save(&ConnectionConfigInput {
+                mode: ConnectionMode::Cloud,
+                remote_auth_mode: Some(RemoteAuthMode::Oauth),
+                remote_url: Some(base_url.into()),
+                cloud_org: Some("team".into()),
+                ..ConnectionConfigInput::default()
+            })
+            .expect("save Cloud Gateway");
+        let session = StoredCloudGatewaySession::from_cookies(&[
+            CloudGatewayCookie {
+                name: "__Host-hermes_session_rt".into(),
+                value: "refresh-secret".into(),
+            },
+            CloudGatewayCookie {
+                name: "__Host-hermes_session_at".into(),
+                value: "access-secret".into(),
+            },
+        ])
+        .expect("Cloud session");
+        store
+            .store_cloud_session(base_url, &session)
+            .expect("store Cloud session");
+        let loaded = store.load(None).expect("load Cloud config");
+        assert!(loaded.remote_oauth_connected);
+        assert_eq!(loaded.mode, ConnectionMode::Cloud);
+        assert_eq!(loaded.cloud_org, "team");
+        let on_disk = fs::read_to_string(&path).expect("connection settings");
+        assert!(!on_disk.contains("refresh-secret"));
+        assert!(!on_disk.contains("access-secret"));
+        assert!(
+            secrets
+                .get(&cloud_cookie_account(base_url))
+                .expect("secret")
+                .is_some()
+        );
+        assert!(
+            StoredCloudGatewaySession::from_cookies(&[CloudGatewayCookie {
+                name: "untrusted".into(),
+                value: "secret".into()
+            }])
+            .is_err()
+        );
+        assert!(
+            StoredCloudGatewaySession::from_cookies(&[CloudGatewayCookie {
+                name: "hermes_session_at".into(),
+                value: "bad;cookie".into()
+            }])
+            .is_err()
+        );
+        fs::remove_file(path).expect("remove connection settings");
+        fs::remove_dir(directory).expect("remove directory");
+    }
+
     #[tokio::test]
     async fn native_oauth_refreshes_then_mints_the_official_ws_ticket() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -5559,6 +5817,86 @@ mod tests {
                 .expect("rotated tokens")
                 .refresh_token,
             "rotated-refresh"
+        );
+    }
+
+    #[tokio::test]
+    async fn cloud_cookie_session_mints_ws_ticket_and_persists_rotation() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener");
+        let address = listener.local_addr().expect("address");
+        let base_url = format!("http://{address}/hermes");
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("connection");
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 2_048];
+            loop {
+                let count = stream.read(&mut chunk).await.expect("request bytes");
+                if count == 0 {
+                    break;
+                }
+                request.extend_from_slice(&chunk[..count]);
+                if String::from_utf8_lossy(&request).contains("\r\n\r\n") {
+                    break;
+                }
+            }
+            let body = json!({ "ticket": "cloud-ticket" }).to_string();
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nSet-Cookie: __Host-hermes_session_at=rotated-access; Path=/; Secure; HttpOnly\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream
+                .write_all(response.as_bytes())
+                .await
+                .expect("response");
+            String::from_utf8(request).expect("UTF-8 request")
+        });
+        let store = test_connection_store();
+        let session = StoredCloudGatewaySession::from_cookies(&[CloudGatewayCookie {
+            name: "__Host-hermes_session_rt".into(),
+            value: "refresh-secret".into(),
+        }])
+        .expect("Cloud session");
+        store
+            .store_cloud_session(&base_url, &session)
+            .expect("store Cloud session");
+        let services = GatewayServices {
+            client: Arc::new(RwLock::new(None)),
+            rest: Arc::new(RwLock::new(None)),
+            connection_store: store.clone(),
+        };
+        assert_eq!(
+            services
+                .mint_gateway_ticket(&base_url)
+                .await
+                .expect("ticket"),
+            "cloud-ticket"
+        );
+        let request = server.await.expect("server");
+        assert!(request.starts_with("POST /hermes/api/auth/ws-ticket HTTP/1.1"));
+        assert!(
+            request
+                .to_ascii_lowercase()
+                .contains("cookie: __host-hermes_session_rt=refresh-secret")
+        );
+        let stored = store
+            .cloud_session(&base_url)
+            .expect("stored session")
+            .expect("Cloud session");
+        assert_eq!(
+            stored
+                .cookies
+                .get("__Host-hermes_session_at")
+                .map(String::as_str),
+            Some("rotated-access")
+        );
+        assert_eq!(
+            stored
+                .cookies
+                .get("__Host-hermes_session_rt")
+                .map(String::as_str),
+            Some("refresh-secret")
         );
     }
 
