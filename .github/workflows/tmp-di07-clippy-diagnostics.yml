@@ -1,0 +1,36 @@
+name: Temporary DI-07 Clippy diagnostics
+
+on:
+  push:
+    branches:
+      - refactor/di-07-quick-entry-native
+    paths:
+      - apps/desktop/src/quick_entry_host.rs
+      - .github/workflows/tmp-di07-clippy-diagnostics.yml
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/di-07-quick-entry-native
+          fetch-depth: 0
+      - name: Capture Clippy output
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          cargo clippy --workspace --all-targets --locked *>&1 | Tee-Object -FilePath .github/tmp-di07-clippy.txt
+          $code = $LASTEXITCODE
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/tmp-di07-clippy.txt
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "chore(ci): capture DI-07 clippy diagnostics"
+            git push origin HEAD:refactor/di-07-quick-entry-native
+          }
+          exit $code
