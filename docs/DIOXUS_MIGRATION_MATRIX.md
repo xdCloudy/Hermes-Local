@@ -53,16 +53,16 @@ At the audit checkpoint above:
 | Stage | Capabilities | Interpretation |
 | --- | ---: | --- |
 | A0 Audited | 1 | Inventoried but target migration decision is incomplete. |
-| A1 Designed | 15 | Largest remaining implementation backlog. |
+| A1 Designed | 14 | Largest remaining implementation backlog. |
 | A2 Service | 3 | Native/core foundations exist; UI/parity work remains. |
 | A3 Ported | 1 | User-facing implementation exists; more evidence required. |
-| A4 Auto-verified | 107 | Automated slice is green; human/live acceptance still required. |
+| A4 Auto-verified | 108 | Automated slice is green; human/live acceptance still required. |
 | A5 Human-ready | 0 | Ready for final manual review. |
 | A6 Human-validated | 0 | Human-approved capabilities. |
 | BX Blocked | 0 | No named external validation blockers remain. |
 | **Total** | **127** | Every row must end at A6 or be explicitly retired with product-owner approval. |
 
-At least-service coverage is **111/127 capabilities (87.4%)**. This is service-foundation coverage, not end-user parity or human acceptance.
+At least-service coverage is **112/127 capabilities (88.2%)**. This is service-foundation coverage, not end-user parity or human acceptance.
 
 The PR #179 exact-head validation set was green for Documentation
 validation, the Hermes Agent harness/native-client boundary workflow, Dioxus
@@ -340,6 +340,19 @@ therefore A4. A5 still requires row-specific human/live production-host
 acceptance, including ssh-agent/ProxyJump/hardware-key and non-Linux host
 scenarios where applicable.
 
+
+PR #223 exact head `0629c2d` completes the machine-verifiable Hermes Cloud
+connection slice. Desktop authority owns a persistent portal WebView for sign-in,
+zero/one/multiple-org discovery and bounded Agent selection/login, captures only
+allowlisted gateway cookies into the native keyring boundary, and reuses the
+existing one-time WS-ticket connection path for Cloud persistence/reconnect.
+Dioxus Rust validation `31859325687`, Windows packaging `31859325667`, install
+lifecycle `31859325702`, footprint `31859325670` and native-client boundary
+`31859325653` all passed for that exact head; SSH interoperability was the
+expected skip. It merged as `d733beae`, so `CN-06` is A4. Live Cloud account,
+multi-org, Agent-switching and portal-auth separation comparison remain A5
+evidence.
+
 ## Roadmap waves
 
 The waves are ordered to minimize rework and make the Rust client progressively
@@ -359,8 +372,8 @@ are already available, but its acceptance gate remains explicit.
 
 ### Current critical path
 
-1. Port Hermes Cloud discovery/org/agent connection and finish complete Gateway
-   re-home behavior.
+1. Finish complete Gateway cross-mode re-home behavior now that Cloud discovery,
+   org selection and Agent connection are auto-verified.
 2. Finish rich chat/composer parity.
 3. Port Workstation/Agent surfaces, then finish native Windows integration.
 4. Finish updater/cutover, remove Electron/React/Node from production.
@@ -370,8 +383,6 @@ are already available, but its acceptance gate remains explicit.
 
 No `BX` rows remain at this checkpoint. Remaining deliberate debt includes:
 
-- **Hermes Cloud:** discovery/org selection/agent connection is not yet ported
-  (`CN-06`).
 - **Rendered native QA:** earlier migration checkpoints recorded an intermittent
   missing top-level native window during some automated visual runs. It must be
   re-proven before rows depending on visual evidence can move to A5.
@@ -502,7 +513,7 @@ apply. `Human` is intentionally blank until the product owner records a result.
 | CN-03 | Local Agent bootstrap and live re-home | `ConnectionService` + Desktop startup authority | Settings → Gateway/boot | A4 Auto-verified | Canonical supervisor launch, protected token retrieval, loopback enforcement, Retry and re-home to Local are implemented/tested. | Switch from remote/SSH back to Local during active usage, restart, simulate local Agent failure and verify recovery/no cross-connection leakage. | ⬜ |
 | CN-04 | Remote static-token gateway connection | `ConnectionService` + Credential Manager | Settings → Gateway | A4 Auto-verified | Remote token save/reconnect and sanitized preview are implemented. | Connect to a real token gateway, restart, rotate/break token and verify error/recovery without token exposure. | ⬜ |
 | CN-05 | Remote Gateway OAuth login/logout, refresh and WS ticket | `ConnectionService` + Credential Manager | Settings → Gateway | A4 Auto-verified | PKCE/state loopback callback, token secret store, refresh and one-time WS ticket path are unit-tested and UI-port exists. | Run real OAuth login/logout/expiry-refresh/cancel/CSRF-error flows and verify no tokens in DOM/URL/logs. | ⬜ |
-| CN-06 | Hermes Cloud portal discovery, org selection and agent connection | future `AuthService`/`ConnectionService` | Settings → Gateway | A1 Designed | OG Cloud discovery/org/agent cascade remains unported. | Sign in to Cloud, handle zero/one/multiple orgs, discover agents, connect/switch/reconnect and separate portal auth from Agent connectivity. | ⬜ |
+| CN-06 | Hermes Cloud portal discovery, org selection and agent connection | `ConnectionService` + Desktop Cloud authority | Settings → Gateway | A4 Auto-verified | PR #223 ports the persistent Cloud portal WebView, zero/one/multiple-org discovery, bounded agent selection/login, allowlisted gateway-cookie capture into native keyring storage, one-time WS-ticket reuse, Cloud profile persistence and reconnect. Exact-head Rust/WASM, native-client, packaging, install and footprint gates pass; live portal/Agent diversity remains A5 evidence. | Sign in to Cloud, handle zero/one/multiple orgs, discover agents, connect/switch/reconnect and separate portal auth from Agent connectivity. | ⬜ |
 | CN-07 | Gateway/SSH session secrets at rest | native secret stores | no DOM exposure | A4 Auto-verified | Gateway/OAuth/SSH reuse secrets use Credential Manager/keyring indirection; config exposes only markers/previews. | Inspect persisted files/process args/logs/DOM while connecting; rotate/delete secrets and verify ACL/user isolation. | ⬜ |
 | CN-08 | Remaining product secrets at rest | future `SecretService` | no DOM exposure | A1 Designed | Complete inventory/migration of every non-Gateway credential is not finished. | Audit every credential source; verify DPAPI/Credential Manager storage, migration, deletion and log/DOM/process-arg redaction. | ⬜ |
 | RT-01 | Local Workstation snapshot/home | `RuntimeService` | workstation home | A4 Auto-verified | PR #200 replaces the Runtime placeholder with a typed live status surface for phase, gateway, model, provider, Agent version and detail, including polling plus explicit loading/error states. Service/UI contracts and exact-head Rust/distribution gates pass. | Compare all workstation cards/data/refresh/degraded states against OG using real local services. | ⬜ |
