@@ -30,6 +30,7 @@ mod preview_normalization;
 mod preview_service;
 mod preview_watcher;
 mod quick_entry;
+mod quick_entry_host;
 mod shell_accessibility;
 mod shell_focus_guard;
 mod shell_i18n;
@@ -82,6 +83,7 @@ fn desktop_root() -> Element {
     });
 
     let services = use_context::<AppServices>();
+    quick_entry_host::use_quick_entry_host();
     let startup_services = services.clone();
     let mut startup_attempt = use_signal(|| 0_u64);
     let local_startup = use_resource(move || {

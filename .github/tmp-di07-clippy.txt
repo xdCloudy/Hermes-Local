@@ -1,0 +1,3444 @@
+info: syncing channel updates for 1.97.1-x86_64-pc-windows-msvc
+info: latest update on 2026-07-16 for version 1.97.1 (8bab26f4f 2026-07-14)
+info: downloading 6 components
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded adler2 v2.0.1
+  Downloaded bytemuck v1.25.2
+  Downloaded cfg_aliases v0.2.2
+  Downloaded dioxus-devtools-types v0.7.10
+  Downloaded equator-macro v0.4.2
+  Downloaded convert_case v0.8.0
+  Downloaded aligned-vec v0.6.4
+  Downloaded base16 v0.2.1
+  Downloaded darling v0.21.3
+  Downloaded dioxus-interpreter-js v0.7.10
+  Downloaded displaydoc v0.2.7
+  Downloaded enumset v1.1.14
+  Downloaded aligned v0.4.3
+  Downloaded dioxus-hooks v0.7.10
+  Downloaded atomic-waker v1.1.2
+  Downloaded arg_enum_proc_macro v0.3.4
+  Downloaded block-buffer v0.10.4
+  Downloaded bit_field v0.10.3
+  Downloaded cfg-if v1.0.4
+  Downloaded async-stream v0.3.6
+  Downloaded as-slice v0.2.1
+  Downloaded const-serialize v0.7.2
+  Downloaded async-stream-impl v0.3.6
+  Downloaded async-trait v0.1.92
+  Downloaded dioxus-document v0.7.10
+  Downloaded anyhow v1.0.104
+  Downloaded block-buffer v0.12.1
+  Downloaded const_format_proc_macros v0.2.34
+  Downloaded arrayvec v0.7.8
+  Downloaded color_quant v1.1.0
+  Downloaded cpufeatures v0.2.17
+  Downloaded crossbeam-deque v0.8.7
+  Downloaded crossbeam-utils v0.8.22
+  Downloaded cfg_aliases v0.1.1
+  Downloaded autocfg v1.5.1
+  Downloaded avif-serialize v0.8.9
+  Downloaded built v0.8.1
+  Downloaded dioxus-devtools v0.7.10
+  Downloaded proc-macro2 v1.0.107
+  Downloaded cpufeatures v0.3.0
+  Downloaded dioxus-cli-config v0.7.10
+  Downloaded dioxus-stores-macro v0.7.10
+  Downloaded const-serialize-macro v0.7.2
+  Downloaded const-serialize-macro v0.8.0-alpha.1
+  Downloaded darling_macro v0.21.3
+  Downloaded dioxus-html-internal-macro v0.7.10
+  Downloaded downcast-rs v1.2.1
+  Downloaded dpi v0.1.2
+  Downloaded dunce v1.0.5
+  Downloaded equator v0.4.2
+  Downloaded av1-grain v0.2.5
+  Downloaded byteorder-lite v0.1.0
+  Downloaded crypto-common v0.2.2
+  Downloaded dioxus-asset-resolver v0.7.10
+  Downloaded dioxus-config-macros v0.7.10
+  Downloaded dioxus-core-types v0.7.10
+  Downloaded bitflags v2.13.1
+  Downloaded bitstream-io v4.10.0
+  Downloaded byteorder v1.5.0
+  Downloaded const-serialize v0.8.0-alpha.0
+  Downloaded cookie v0.18.2
+  Downloaded dioxus-config-macro v0.7.10
+  Downloaded portable-pty v0.9.0
+  Downloaded pulp-wasm-simd-flag v0.1.1
+  Downloaded base64 v0.22.1
+  Downloaded bitflags v1.3.2
+  Downloaded chacha20 v0.10.1
+  Downloaded cmake v0.1.58
+  Downloaded crc32fast v1.5.0
+  Downloaded crypto-common v0.1.7
+  Downloaded data-encoding v2.11.1
+  Downloaded deranged v0.5.8
+  Downloaded digest v0.10.7
+  Downloaded digest v0.11.3
+  Downloaded dioxus-core-macro v0.7.10
+  Downloaded dioxus-history v0.7.10
+  Downloaded dioxus-router-macro v0.7.10
+  Downloaded dioxus-stores v0.7.10
+  Downloaded either v1.17.0
+  Downloaded enumset_derive v0.15.0
+  Downloaded fax v0.2.7
+  Downloaded fdeflate v0.3.7
+  Downloaded num-derive v0.4.2
+  Downloaded proc-macro2-diagnostics v0.10.1
+  Downloaded profiling v1.0.18
+  Downloaded profiling-procmacros v1.0.18
+  Downloaded scopeguard v1.2.0
+  Downloaded const-oid v0.10.2
+  Downloaded crossbeam-epoch v0.9.20
+  Downloaded dioxus-html v0.7.10
+  Downloaded dioxus-router v0.7.10
+  Downloaded dioxus-rsx v0.7.10
+  Downloaded dioxus-signals v0.7.10
+  Downloaded dioxus-web v0.7.10
+  Downloaded keyboard-types v0.7.0
+  Downloaded keyring-core v1.0.0
+  Downloaded rand_pcg v0.10.2
+  Downloaded reborrow v0.5.5
+  Downloaded rustc-hash v1.1.0
+  Downloaded serde_repr v0.1.21
+  Downloaded shared_library v0.1.9
+  Downloaded subtle v2.6.1
+  Downloaded want v0.3.1
+  Downloaded base64 v0.23.1
+  Downloaded bytes v1.12.1
+  Downloaded cfb v0.7.3
+  Downloaded const_format v0.2.36
+  Downloaded darling_core v0.21.3
+  Downloaded dioxus v0.7.10
+  Downloaded infer v0.19.0
+  Downloaded keyring v4.1.6
+  Downloaded num-integer v0.1.46
+  Downloaded sha1 v0.11.0
+  Downloaded time-core v0.1.9
+  Downloaded try-lock v0.2.5
+  Downloaded wasm-bindgen-macro v0.2.127
+  Downloaded webview2-com-macros v0.8.1
+  Downloaded windows-targets v0.52.6
+  Downloaded crossbeam-channel v0.5.16
+  Downloaded euclid v0.22.14
+  Downloaded rgb v0.8.53
+  Downloaded sha1 v0.10.7
+  Downloaded shell-words v1.1.1
+  Downloaded stable_deref_trait v1.2.1
+  Downloaded aho-corasick v1.1.5
+  Downloaded bumpalo v3.20.3
+  Downloaded cc v1.4.2
+  Downloaded dioxus-core v0.7.10
+  Downloaded icu_collections v2.2.0
+  Downloaded icu_locale_core v2.2.0
+  Downloaded idna v1.1.0
+  Downloaded idna_adapter v1.2.2
+  Downloaded js-sys v0.3.104
+  Downloaded konst v0.2.20
+  Downloaded manganis-core v0.7.10
+  Downloaded memchr v2.8.3
+  Downloaded memmap2 v0.9.11
+  Downloaded muda v0.17.2
+  Downloaded no_std_io2 v0.9.4
+  Downloaded nom v8.0.0
+  Downloaded paste v1.0.15
+  Downloaded pin-project-lite v0.2.17
+  Downloaded png v0.18.1
+  Downloaded quick-error v2.0.1
+  Downloaded rand_chacha v0.9.0
+  Downloaded subsecond-types v0.7.10
+  Downloaded tower-layer v0.3.3
+  Downloaded tungstenite v0.28.0
+  Downloaded tungstenite v0.30.0
+  Downloaded wasm-bindgen-futures v0.4.77
+  Downloaded webbrowser v1.2.4
+  Downloaded webview2-com v0.38.2
+  Downloaded weezl v0.1.12
+  Downloaded windows-targets v0.53.5
+  Downloaded zerofrom-derive v0.1.7
+  Downloaded aws-lc-rs v1.18.0
+  Downloaded filedescriptor v0.8.3
+  Downloaded futures-channel v0.3.33
+  Downloaded half v2.7.1
+  Downloaded quote v1.0.47
+  Downloaded rand v0.9.5
+  Downloaded rand_core v0.9.5
+  Downloaded raw-window-handle v0.5.2
+  Downloaded rustc-hash v2.1.3
+  Downloaded send_wrapper v0.6.0
+  Downloaded serde-wasm-bindgen v0.6.5
+  Downloaded simd_helpers v0.1.0
+  Downloaded slab v0.4.12
+  Downloaded sledgehammer_bindgen_macro v0.6.5
+  Downloaded sledgehammer_utils v0.3.1
+  Downloaded sync_wrapper v1.0.2
+  Downloaded tinystr v0.8.3
+  Downloaded tinyvec_macros v0.1.1
+  Downloaded tokio-macros v2.7.2
+  Downloaded tokio-tungstenite v0.30.0
+  Downloaded tower-service v0.3.3
+  Downloaded wasm-bindgen v0.2.127
+  Downloaded wasm-streams v0.4.2
+  Downloaded windows-link v0.2.1
+  Downloaded windows-threading v0.1.0
+  Downloaded windows-version v0.1.7
+  Downloaded zeroize v1.9.0
+  Downloaded av-scenechange v0.14.1
+  Downloaded dioxus-desktop v0.7.10
+  Downloaded find-msvc-tools v0.1.10
+  Downloaded flate2 v1.1.9
+  Downloaded fnv v1.0.7
+  Downloaded global-hotkey v0.7.0
+  Downloaded http-body v1.1.0
+  Downloaded imgref v1.12.2
+  Downloaded ipnet v2.12.1
+  Downloaded manganis v0.7.10
+  Downloaded maybe-rayon v0.1.1
+  Downloaded num-rational v0.4.2
+  Downloaded potential_utf v0.1.5
+  Downloaded quinn-udp v0.5.15
+  Downloaded rand_core v0.10.1
+  Downloaded ravif v0.13.0
+  Downloaded raw-window-handle v0.6.2
+  Downloaded rustls-native-certs v0.8.4
+  Downloaded rustls-pki-types v1.15.1
+  Downloaded rustversion v1.0.23
+  Downloaded schannel v0.1.29
+  Downloaded serde_core v1.0.229
+  Downloaded serial2 v0.2.38
+  Downloaded sha2 v0.10.9
+  Downloaded sha2 v0.11.0
+  Downloaded shlex v2.0.1
+  Downloaded simd-adler32 v0.3.10
+  Downloaded sledgehammer_bindgen v0.6.0
+  Downloaded smallvec v1.15.2
+  Downloaded subsecond v0.7.10
+  Downloaded synstructure v0.13.2
+  Downloaded thiserror v2.0.20
+  Downloaded thiserror-impl v1.0.69
+  Downloaded thiserror-impl v2.0.20
+  Downloaded time-macros v0.2.32
+  Downloaded tokio-rustls v0.26.4
+  Downloaded tracing-attributes v0.1.31
+  Downloaded untrusted v0.9.0
+  Downloaded utf-8 v0.7.6
+  Downloaded utf8_iter v1.0.4
+  Downloaded version_check v0.9.5
+  Downloaded warnings v0.2.1
+  Downloaded warnings-macro v0.2.0
+  Downloaded wasm-bindgen-shared v0.2.127
+  Downloaded zerofrom v0.1.8
+  Downloaded fs_extra v1.3.0
+  Downloaded futures-io v0.3.34
+  Downloaded futures-sink v0.3.34
+  Downloaded getrandom v0.4.3
+  Downloaded httparse v1.10.1
+  Downloaded image-webp v0.2.4
+  Downloaded konst_macro_rules v0.2.19
+  Downloaded lazy-js-bundle v0.7.10
+  Downloaded libloading v0.8.9
+  Downloaded manganis-macro v0.7.10
+  Downloaded miniz_oxide v0.8.9
+  Downloaded mio v1.2.2
+  Downloaded num-bigint v0.4.8
+  Downloaded qoi v0.4.1
+  Downloaded rfd v0.17.2
+  Downloaded rustls-platform-verifier v0.7.0
+  Downloaded rustls-webpki v0.103.13
+  Downloaded serde_derive v1.0.229
+  Downloaded socket2 v0.6.5
+  Downloaded thiserror v1.0.69
+  Downloaded tinyvec v1.12.0
+  Downloaded tracing-core v0.1.36
+  Downloaded trash v5.2.6
+  Downloaded unicode-ident v1.0.24
+  Downloaded unicode-segmentation v1.13.3
+  Downloaded unicode-xid v0.2.6
+  Downloaded v_frame v0.3.9
+  Downloaded wasm-bindgen-macro-support v0.2.127
+  Downloaded windows-collections v0.2.0
+  Downloaded windows-core v0.56.0
+  Downloaded windows-implement v0.60.2
+  Downloaded futures-task v0.3.34
+  Downloaded http v1.5.0
+  Downloaded image v0.25.10
+  Downloaded itertools v0.14.0
+  Downloaded quinn v0.11.11
+  Downloaded rand v0.10.2
+  Downloaded rayon-core v1.13.0
+  Downloaded serde v1.0.229
+  Downloaded slotmap v1.1.1
+  Downloaded tiff v0.11.3
+  Downloaded tower v0.5.3
+  Downloaded uuid v1.24.0
+  Downloaded windows-core v0.61.2
+  Downloaded windows-implement v0.56.0
+  Downloaded windows-interface v0.56.0
+  Downloaded zune-inflate v0.2.54
+  Downloaded form_urlencoded v1.2.2
+  Downloaded futures-core v0.3.33
+  Downloaded futures-macro v0.3.33
+  Downloaded generational-box v0.7.10
+  Downloaded generic-array v0.14.7
+  Downloaded getrandom v0.2.17
+  Downloaded hyper-rustls v0.27.9
+  Downloaded icu_normalizer_data v2.2.0
+  Downloaded noop_proc_macro v0.3.0
+  Downloaded num-complex v0.4.6
+  Downloaded once_cell v1.21.4
+  Downloaded pulp v0.22.3
+  Downloaded raw-cpuid v11.6.0
+  Downloaded tray-icon v0.21.3
+  Downloaded url v2.5.8
+  Downloaded windows-future v0.2.1
+  Downloaded windows-interface v0.59.3
+  Downloaded windows-link v0.1.3
+  Downloaded windows-result v0.1.2
+  Downloaded getrandom v0.3.4
+  Downloaded gif v0.14.2
+  Downloaded http-body-util v0.1.4
+  Downloaded itoa v1.0.18
+  Downloaded native-tls v0.2.18
+  Downloaded num-traits v0.2.19
+  Downloaded regex v1.13.1
+  Downloaded reqwest v0.13.4
+  Downloaded serde_json v1.0.151
+  Downloaded tower-http v0.6.11
+  Downloaded typenum v1.20.1
+  Downloaded windows-native-keyring-store v1.1.0
+  Downloaded futures-util v0.3.33
+  Downloaded jobserver v0.1.35
+  Downloaded lazy_static v1.5.0
+  Downloaded lebe v0.5.3
+  Downloaded num-conv v0.2.2
+  Downloaded open v5.4.1
+  Downloaded parking_lot v0.12.5
+  Downloaded powerfmt v0.2.0
+  Downloaded rayon v1.12.0
+  Downloaded windows-numerics v0.2.0
+  Downloaded windows-strings v0.4.2
+  Downloaded zune-jpeg v0.5.15
+  Downloaded new_debug_unreachable v1.0.6
+  Downloaded pastey v0.1.1
+  Downloaded quinn-proto v0.11.16
+  Downloaded windows-result v0.3.4
+  Downloaded ident_case v1.0.1
+  Downloaded percent-encoding v2.3.2
+  Downloaded ppv-lite86 v0.2.21
+  Downloaded time v0.3.55
+  Downloaded winreg v0.10.1
+  Downloaded y4m v0.8.0
+  Downloaded yoke-derive v0.8.2
+  Downloaded exr v1.74.2
+  Downloaded icu_normalizer v2.2.0
+  Downloaded litemap v0.8.2
+  Downloaded lock_api v0.4.14
+  Downloaded longest-increasing-subsequence v0.1.0
+  Downloaded writeable v0.6.3
+  Downloaded yoke v0.8.3
+  Downloaded zerotrie v0.2.4
+  Downloaded hybrid-array v0.4.14
+  Downloaded syn v2.0.119
+  Downloaded tao v0.34.8
+  Downloaded icu_properties v2.2.0
+  Downloaded icu_provider v2.2.0
+  Downloaded log v0.4.33
+  Downloaded parking_lot_core v0.9.12
+  Downloaded pin-project v1.1.13
+  Downloaded regex-syntax v0.8.11
+  Downloaded rustls v0.23.43
+  Downloaded syn v3.0.3
+  Downloaded zerocopy-derive v0.8.56
+  Downloaded nix v0.28.0
+  Downloaded hyper v1.11.0
+  Downloaded hyper-util v0.1.20
+  Downloaded moxcms v0.8.1
+  Downloaded tracing v0.1.44
+  Downloaded zerovec v0.11.6
+  Downloaded winnow v0.7.15
+  Downloaded icu_properties_data v2.2.0
+  Downloaded libm v0.2.16
+  Downloaded web-sys v0.3.104
+  Downloaded regex-automata v0.4.18
+  Downloaded wry v0.53.5
+  Downloaded zerocopy v0.8.56
+  Downloaded pxfm v0.1.30
+  Downloaded tokio v1.53.1
+  Downloaded loop9 v0.1.5
+  Downloaded lru-slab v0.1.2
+  Downloaded zerovec-derive v0.11.3
+  Downloaded zmij v1.0.23
+  Downloaded zune-core v0.5.3
+  Downloaded pin-project-internal v1.1.13
+  Downloaded libc v0.2.189
+  Downloaded rav1e v0.8.1
+  Downloaded ring v0.17.14
+  Downloaded macro-string v0.1.4
+  Downloaded winapi v0.3.9
+  Downloaded windows_x86_64_msvc v0.52.6
+  Downloaded windows_x86_64_msvc v0.53.1
+  Downloaded windows-sys v0.61.2
+  Downloaded windows-sys v0.59.0
+  Downloaded windows-sys v0.60.2
+  Downloaded webview2-com-sys v0.38.2
+  Downloaded aws-lc-sys v0.44.0
+  Downloaded windows v0.61.3
+  Downloaded windows v0.56.0
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.24
+   Compiling serde_core v1.0.229
+   Compiling serde v1.0.229
+    Checking cfg-if v1.0.4
+    Checking windows-link v0.2.1
+   Compiling thiserror v2.0.20
+    Checking once_cell v1.21.4
+    Checking smallvec v1.15.2
+    Checking pin-project-lite v0.2.17
+    Checking futures-core v0.3.33
+    Checking itoa v1.0.18
+    Checking stable_deref_trait v1.2.1
+    Checking memchr v2.8.3
+    Checking windows-sys v0.61.2
+   Compiling libc v0.2.189
+   Compiling syn v2.0.119
+   Compiling syn v3.0.3
+    Checking log v0.4.33
+    Checking slab v0.4.12
+    Checking futures-task v0.3.34
+    Checking futures-sink v0.3.34
+    Checking futures-util v0.3.33
+    Checking tracing-core v0.1.36
+   Compiling synstructure v0.13.2
+   Compiling anyhow v1.0.104
+    Checking bitflags v2.13.1
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.20
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+    Checking zerofrom v0.1.8
+   Compiling tracing-attributes v0.1.31
+    Checking yoke v0.8.3
+   Compiling zerovec-derive v0.11.3
+   Compiling displaydoc v0.2.7
+    Checking bytes v1.12.1
+    Checking typenum v1.20.1
+    Checking zerovec v0.11.6
+    Checking tracing v0.1.44
+   Compiling dunce v1.0.5
+   Compiling zmij v1.0.23
+   Compiling getrandom v0.4.3
+    Checking scopeguard v1.2.0
+    Checking http v1.5.0
+    Checking futures-channel v0.3.33
+   Compiling serde_json v1.0.151
+    Checking tinystr v0.8.3
+   Compiling version_check v0.9.5
+    Checking writeable v0.6.3
+    Checking litemap v0.8.2
+   Compiling jobserver v0.1.35
+    Checking potential_utf v0.1.5
+    Checking icu_locale_core v2.2.0
+    Checking zerotrie v0.2.4
+   Compiling shlex v2.0.1
+   Compiling icu_properties_data v2.2.0
+   Compiling icu_normalizer_data v2.2.0
+    Checking utf8_iter v1.0.4
+   Compiling find-msvc-tools v0.1.10
+    Checking icu_collections v2.2.0
+    Checking mio v1.2.2
+    Checking icu_provider v2.2.0
+    Checking socket2 v0.6.5
+   Compiling cc v1.4.2
+   Compiling tokio-macros v2.7.2
+   Compiling httparse v1.10.1
+    Checking percent-encoding v2.3.2
+    Checking rand_core v0.10.1
+   Compiling fs_extra v1.3.0
+    Checking tokio v1.53.1
+    Checking icu_properties v2.2.0
+   Compiling cmake v0.1.58
+    Checking icu_normalizer v2.2.0
+   Compiling aws-lc-sys v0.44.0
+    Checking zeroize v1.9.0
+    Checking idna_adapter v1.2.2
+    Checking subtle v2.6.1
+   Compiling windows_x86_64_msvc v0.52.6
+    Checking idna v1.1.0
+    Checking form_urlencoded v1.2.2
+   Compiling aws-lc-rs v1.18.0
+    Checking url v2.5.8
+    Checking schannel v0.1.29
+    Checking windows-targets v0.52.6
+    Checking rustls-pki-types v1.15.1
+    Checking data-encoding v2.11.1
+    Checking untrusted v0.9.0
+   Compiling rustls v0.23.43
+    Checking byteorder v1.5.0
+    Checking hybrid-array v0.4.14
+    Checking uuid v1.24.0
+    Checking hermes-protocol v0.18.62 (D:\a\Hermes-Local\Hermes-Local\crates\hermes-protocol)
+    Checking cpufeatures v0.3.0
+    Checking raw-window-handle v0.6.2
+    Checking base64 v0.22.1
+    Checking block-buffer v0.12.1
+    Checking crypto-common v0.2.2
+   Compiling rfd v0.17.2
+    Checking const-oid v0.10.2
+    Checking http-body v1.1.0
+    Checking digest v0.11.3
+    Checking chacha20 v0.10.1
+   Compiling winapi v0.3.9
+    Checking tower-service v0.3.3
+    Checking try-lock v0.2.5
+    Checking want v0.3.1
+    Checking rand v0.10.2
+    Checking sha1 v0.11.0
+    Checking aho-corasick v1.1.5
+    Checking atomic-waker v1.1.2
+    Checking regex-syntax v0.8.11
+   Compiling cfg_aliases v0.1.1
+   Compiling thiserror v1.0.69
+   Compiling nix v0.28.0
+    Checking hyper v1.11.0
+    Checking regex-automata v0.4.18
+    Checking hermes-core v0.18.62 (D:\a\Hermes-Local\Hermes-Local\crates\hermes-core)
+warning: docs for function which may panic missing `# Panics` section
+  --> crates\hermes-core\src\contributions.rs:95:5
+   |
+95 |     pub fn built_in() -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: first possible panic found here
+  --> crates\hermes-core\src\contributions.rs:96:9
+   |
+96 |         Self::from_entries(BUILT_INS).expect("built-in contribution registry must be valid")
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#missing_panics_doc
+   = note: `-W clippy::missing-panics-doc` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::missing_panics_doc)]`
+
+warning: docs for function returning `Result` missing `# Errors` section
+  --> crates\hermes-core\src\contributions.rs:99:5
+   |
+99 |     pub fn from_entries(entries: &[Contribution]) -> Result<Self, String> {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#missing_errors_doc
+   = note: `-W clippy::missing-errors-doc` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::missing_errors_doc)]`
+
+warning: docs for function returning `Result` missing `# Errors` section
+   --> crates\hermes-core\src\contributions.rs:106:5
+    |
+106 | /     pub fn extend_source(
+107 | |         &self,
+108 | |         source: &'static str,
+109 | |         entries: &[Contribution],
+110 | |     ) -> Result<Self, String> {
+    | |_____________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#missing_errors_doc
+
+warning: these match arms have identical bodies
+   --> crates\hermes-core\src\contributions.rs:188:13
+    |
+188 | /             ContributionPayload::Navigation { route }
+189 | |             | ContributionPayload::Pane { route }
+190 | |             | ContributionPayload::Launcher { route, .. } => Some(route),
+    | |________________________________________________________________________^
+191 | /             ContributionPayload::Command {
+192 | |                 action: ContributionCommand::Navigate(route),
+193 | |                 ..
+194 | |             } => Some(route),
+    | |____________________________^
+    |
+    = help: if this is unintentional make the arms return different values
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#match_same_arms
+    = note: `-W clippy::match-same-arms` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::match_same_arms)]`
+help: otherwise merge the patterns into a single arm
+    |
+188 ~             ContributionPayload::Navigation { route }
+189 +             | ContributionPayload::Pane { route }
+190 ~             | ContributionPayload::Launcher { route, .. } | ContributionPayload::Command {
+    |
+
+warning: docs for function returning `Result` missing `# Errors` section
+   --> crates\hermes-core\src\lib.rs:168:5
+    |
+168 |     fn events(&self) -> ServiceResult<EventStream>;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#missing_errors_doc
+
+warning: assigning the result of `ToOwned::to_owned()` may be inefficient
+   --> crates\hermes-core\src\lib.rs:713:9
+    |
+713 |         prompt.text = prompt.text.trim().to_owned();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use `clone_into()`: `prompt.text.trim().clone_into(&mut prompt.text)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#assigning_clones
+    = note: `-W clippy::assigning-clones` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::assigning_clones)]`
+
+warning: docs for function returning `Result` missing `# Errors` section
+   --> crates\hermes-core\src\lib.rs:970:5
+    |
+970 |     fn state(&self) -> ServiceResult<ConnectionState>;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#missing_errors_doc
+
+warning: docs for function returning `Result` missing `# Errors` section
+    --> crates\hermes-core\src\lib.rs:1330:5
+     |
+1330 |     fn watch_directory(&self, _root: &Path, _relative: &Path) -> ServiceResult<FileWatchStream> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#missing_errors_doc
+
+warning: docs for function returning `Result` missing `# Errors` section
+    --> crates\hermes-core\src\lib.rs:1868:5
+     |
+1868 |     fn dispose_now(&self, _id: &str) -> ServiceResult<()> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#missing_errors_doc
+
+warning: docs for function returning `Result` missing `# Errors` section
+    --> crates\hermes-core\src\lib.rs:2004:1
+     |
+2004 | pub fn validate_identifier(value: &str, field: &str) -> ServiceResult<()> {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#missing_errors_doc
+
+warning: docs for function returning `Result` missing `# Errors` section
+    --> crates\hermes-core\src\lib.rs:2016:1
+     |
+2016 | pub fn validate_relative_path(path: &Path) -> ServiceResult<()> {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#missing_errors_doc
+
+warning: `hermes-core` (lib) generated 11 warnings
+    Checking rustls-native-certs v0.8.4
+    Checking windows-result v0.1.2
+   Compiling thiserror-impl v1.0.69
+   Compiling windows-interface v0.56.0
+   Compiling windows-implement v0.56.0
+    Checking sync_wrapper v1.0.2
+    Checking ipnet v2.12.1
+   Compiling winreg v0.10.1
+    Checking tower-layer v0.3.3
+    Checking windows-core v0.56.0
+    Checking tower v0.5.3
+    Checking hyper-util v0.1.20
+    Checking regex v1.13.1
+    Checking keyring-core v1.0.0
+    Checking lazy_static v1.5.0
+    Checking shared_library v0.1.9
+    Checking windows-native-keyring-store v1.1.0
+    Checking windows v0.56.0
+    Checking tower-http v0.6.11
+    Checking filedescriptor v0.8.3
+    Checking http-body-util v0.1.4
+    Checking serial2 v0.2.38
+   Compiling async-stream-impl v0.3.6
+    Checking downcast-rs v1.2.1
+    Checking shell-words v1.1.1
+    Checking bitflags v1.3.2
+    Checking portable-pty v0.9.0
+    Checking async-stream v0.3.6
+    Checking keyring v4.1.6
+    Checking sha2 v0.11.0
+    Checking base64 v0.23.1
+    Checking open v5.4.1
+   Compiling autocfg v1.5.1
+   Compiling crossbeam-utils v0.8.22
+   Compiling num-traits v0.2.19
+   Compiling parking_lot_core v0.9.12
+   Compiling generic-array v0.14.7
+   Compiling rustversion v1.0.23
+    Checking lock_api v0.4.14
+    Checking parking_lot v0.12.5
+   Compiling slotmap v1.1.1
+    Checking dioxus-core-types v0.7.10
+   Compiling unicode-xid v0.2.6
+    Checking konst_macro_rules v0.2.19
+   Compiling const_format_proc_macros v0.2.34
+    Checking konst v0.2.20
+    Checking subsecond-types v0.7.10
+    Checking libloading v0.8.9
+    Checking memmap2 v0.9.11
+    Checking windows-link v0.1.3
+    Checking subsecond v0.7.10
+    Checking const_format v0.2.36
+    Checking generational-box v0.7.10
+   Compiling crossbeam-epoch v0.9.20
+   Compiling zerocopy v0.8.56
+    Checking rustc-hash v2.1.3
+    Checking longest-increasing-subsequence v0.1.0
+    Checking dioxus-core v0.7.10
+   Compiling pin-project-internal v1.1.13
+   Compiling zerocopy-derive v0.8.56
+   Compiling crossbeam-deque v0.8.7
+    Checking pin-project v1.1.13
+    Checking windows-strings v0.4.2
+    Checking windows-result v0.3.4
+   Compiling warnings-macro v0.2.0
+   Compiling windows-interface v0.59.3
+    Checking trash v5.2.6
+   Compiling windows-implement v0.60.2
+   Compiling unicode-segmentation v1.13.3
+   Compiling fnv v1.0.7
+   Compiling ident_case v1.0.1
+   Compiling rayon-core v1.13.0
+   Compiling darling_core v0.21.3
+    Checking windows-core v0.61.2
+   Compiling convert_case v0.8.0
+    Checking warnings v0.2.1
+   Compiling proc-macro2-diagnostics v0.10.1
+   Compiling equator-macro v0.4.2
+   Compiling lazy-js-bundle v0.7.10
+    Checking simd-adler32 v0.3.10
+    Checking equator v0.4.2
+    Checking dioxus-signals v0.7.10
+    Checking keyboard-types v0.7.0
+   Compiling darling_macro v0.21.3
+    Checking num-integer v0.1.46
+   Compiling const-serialize-macro v0.7.2
+    Checking either v1.17.0
+   Compiling paste v1.0.15
+   Compiling getrandom v0.3.4
+   Compiling darling v0.21.3
+    Checking num-bigint v0.4.8
+    Checking aligned-vec v0.6.4
+    Checking windows-threading v0.1.0
+   Compiling windows_x86_64_msvc v0.53.1
+    Checking adler2 v2.0.1
+   Compiling crc32fast v1.5.0
+    Checking arrayvec v0.7.8
+    Checking miniz_oxide v0.8.9
+    Checking num-rational v0.4.2
+    Checking v_frame v0.3.9
+    Checking windows-future v0.2.1
+   Compiling dioxus-rsx v0.7.10
+   Compiling enumset_derive v0.15.0
+    Checking rayon v1.12.0
+    Checking windows-collections v0.2.0
+    Checking windows-numerics v0.2.0
+   Compiling const-serialize-macro v0.8.0-alpha.1
+    Checking as-slice v0.2.1
+    Checking dioxus-cli-config v0.7.10
+   Compiling libm v0.2.16
+    Checking bytemuck v1.25.2
+   Compiling built v0.8.1
+   Compiling av-scenechange v0.14.1
+    Checking aligned v0.4.3
+   Compiling webview2-com-sys v0.38.2
+    Checking windows v0.61.3
+    Checking enumset v1.1.14
+   Compiling rav1e v0.8.1
+   Compiling dioxus-core-macro v0.7.10
+    Checking rand_core v0.9.5
+    Checking crypto-common v0.1.7
+    Checking block-buffer v0.10.4
+    Checking dioxus-hooks v0.7.10
+    Checking ppv-lite86 v0.2.21
+   Compiling dioxus-html-internal-macro v0.7.10
+    Checking euclid v0.22.14
+    Checking crossbeam-channel v0.5.16
+   Compiling pulp v0.22.3
+   Compiling profiling-procmacros v1.0.18
+   Compiling arg_enum_proc_macro v0.3.4
+   Compiling serde_repr v0.1.21
+   Compiling async-trait v0.1.92
+    Checking no_std_io2 v0.9.4
+    Checking nom v8.0.0
+   Compiling time-core v0.1.9
+    Checking y4m v0.8.0
+    Checking quick-error v2.0.1
+   Compiling pastey v0.1.1
+   Compiling native-tls v0.2.18
+    Checking dpi v0.1.2
+   Compiling num-conv v0.2.2
+   Compiling time-macros v0.2.32
+    Checking av1-grain v0.2.5
+    Checking dioxus-html v0.7.10
+    Checking bitstream-io v4.10.0
+    Checking profiling v1.0.18
+    Checking rand_chacha v0.9.0
+    Checking digest v0.10.7
+    Checking flate2 v1.1.9
+    Checking windows-targets v0.53.5
+    Checking maybe-rayon v0.1.1
+    Checking num-complex v0.4.6
+   Compiling const-serialize v0.7.2
+    Checking itertools v0.14.0
+    Checking half v2.7.1
+   Compiling cookie v0.18.2
+   Compiling num-derive v0.4.2
+    Checking raw-cpuid v11.6.0
+   Compiling simd_helpers v0.1.0
+    Checking zune-core v0.5.3
+    Checking imgref v1.12.2
+    Checking pulp-wasm-simd-flag v0.1.1
+   Compiling noop_proc_macro v0.3.0
+    Checking deranged v0.5.8
+    Checking weezl v0.1.12
+    Checking new_debug_unreachable v1.0.6
+    Checking reborrow v0.5.5
+    Checking powerfmt v0.2.0
+    Checking cpufeatures v0.2.17
+    Checking sha1 v0.10.7
+    Checking cfb v0.7.3
+    Checking time v0.3.55
+    Checking loop9 v0.1.5
+    Checking zune-jpeg v0.5.15
+   Compiling const-serialize v0.8.0-alpha.0
+    Checking windows-sys v0.60.2
+    Checking rand v0.9.5
+    Checking avif-serialize v0.8.9
+    Checking zune-inflate v0.2.54
+    Checking fdeflate v0.3.7
+   Compiling dioxus-document v0.7.10
+   Compiling dioxus-interpreter-js v0.7.10
+   Compiling sledgehammer_bindgen_macro v0.6.5
+   Compiling webview2-com-macros v0.8.1
+    Checking windows-version v0.1.7
+    Checking utf-8 v0.7.6
+    Checking fax v0.2.7
+    Checking rgb v0.8.53
+    Checking pxfm v0.1.30
+    Checking lebe v0.5.3
+   Compiling wry v0.53.5
+    Checking bit_field v0.10.3
+   Compiling winnow v0.7.15
+    Checking color_quant v1.1.0
+    Checking rustc-hash v1.1.0
+    Checking byteorder-lite v0.1.0
+    Checking sledgehammer_utils v0.3.1
+    Checking gif v0.14.2
+    Checking image-webp v0.2.4
+    Checking moxcms v0.8.1
+   Compiling manganis-core v0.7.10
+    Checking exr v1.74.2
+   Compiling sha2 v0.10.9
+    Checking sledgehammer_bindgen v0.6.0
+    Checking ravif v0.13.0
+    Checking tiff v0.11.3
+    Checking webview2-com v0.38.2
+    Checking tungstenite v0.28.0
+    Checking muda v0.17.2
+    Checking png v0.18.1
+    Checking infer v0.19.0
+    Checking qoi v0.4.1
+   Compiling dioxus-desktop v0.7.10
+    Checking dioxus-devtools-types v0.7.10
+    Checking dioxus-history v0.7.10
+    Checking windows-sys v0.59.0
+   Compiling macro-string v0.1.4
+   Compiling base16 v0.2.1
+    Checking raw-window-handle v0.5.2
+    Checking tao v0.34.8
+    Checking global-hotkey v0.7.0
+   Compiling dioxus-router-macro v0.7.10
+   Compiling manganis-macro v0.7.10
+    Checking dioxus-devtools v0.7.10
+    Checking image v0.25.10
+    Checking dioxus-asset-resolver v0.7.10
+    Checking tray-icon v0.21.3
+   Compiling dioxus-stores-macro v0.7.10
+    Checking webbrowser v1.2.4
+    Checking manganis v0.7.10
+    Checking dioxus-router v0.7.10
+   Compiling dioxus-config-macro v0.7.10
+    Checking dioxus-stores v0.7.10
+    Checking dioxus-config-macros v0.7.10
+warning: calling `BTreeMap::default()` is more clear than this expression
+    --> crates\hermes-core\src\lib.rs:2059:20
+     |
+2059 |             extra: Default::default(),
+     |                    ^^^^^^^^^^^^^^^^^^ help: try: `BTreeMap::default()`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#default_trait_access
+     = note: `-W clippy::default-trait-access` implied by `-W clippy::pedantic`
+     = help: to override `-W clippy::pedantic` add `#[allow(clippy::default_trait_access)]`
+
+warning: `hermes-core` (lib test) generated 12 warnings (11 duplicates)
+    Checking dioxus v0.7.10
+    Checking hermes-ui v0.18.62 (D:\a\Hermes-Local\Hermes-Local\crates\hermes-ui)
+warning: unnecessary hashes around raw string literal
+  --> crates\hermes-ui\src\chat\mod.rs:14:32
+   |
+14 |   const CHAT_RUNTIME_CSS: &str = r#"
+   |  ________________________________^
+15 | | .transcript > article { content-visibility: auto; contain-intrinsic-size: auto 128px; }
+16 | | .ansi-bold { font-weight: 700; }
+17 | | .ansi-black { color: #3f3f46; }
+...  |
+67 | | "#;
+   | |__^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_raw_string_hashes
+   = note: `-W clippy::needless-raw-string-hashes` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::needless_raw_string_hashes)]`
+help: remove all the hashes around the string literal
+   |
+14 ~ const CHAT_RUNTIME_CSS: &str = r"
+15 | .transcript > article { content-visibility: auto; contain-intrinsic-size: auto 128px; }
+...
+66 | }
+67 ~ ";
+   |
+
+warning: this function has too many lines (134/100)
+   --> crates\hermes-ui\src\chat\legacy\rich_content\base.rs:130:1
+    |
+130 | fn parse(value: &str) -> Vec<Block> {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_lines
+    = note: `-W clippy::too-many-lines` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::too_many_lines)]`
+
+warning: casting `usize` to `u8` may truncate the value
+   --> crates\hermes-ui\src\chat\legacy\rich_content\base.rs:190:17
+    |
+190 |                 heading_level as u8,
+    |                 ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_truncation
+    = note: `-W clippy::cast-possible-truncation` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::cast_possible_truncation)]`
+help: ... or use `try_from` and handle the error accordingly
+    |
+190 -                 heading_level as u8,
+190 +                 u8::try_from(heading_level),
+    |
+
+warning: called `map(<f>).unwrap_or(<a>)` on an `Option` value
+   --> crates\hermes-ui\src\chat\legacy\rich_content\base.rs:353:21
+    |
+353 |         let width = rest.chars().next().map(char::len_utf8).unwrap_or(1);
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#map_unwrap_or
+    = note: `-W clippy::map-unwrap-or` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::map_unwrap_or)]`
+help: use `map_or(<a>, <f>)` instead
+    |
+353 -         let width = rest.chars().next().map(char::len_utf8).unwrap_or(1);
+353 +         let width = rest.chars().next().map_or(1, char::len_utf8);
+    |
+
+warning: casting `u64` to `f64` may cause a loss of precision (`u64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+  --> crates\hermes-ui\src\chat\legacy.rs:66:29
+   |
+66 |         format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+   |                             ^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+   = note: `-W clippy::cast-precision-loss` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::cast_precision_loss)]`
+
+warning: casting `u64` to `f64` may cause a loss of precision (`u64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+  --> crates\hermes-ui\src\chat\legacy.rs:68:29
+   |
+68 |         format!("{:.1} KB", bytes as f64 / 1024.0)
+   |                             ^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: called `map(<f>).unwrap_or_else(<g>)` on a `Result` value
+  --> crates\hermes-ui\src\chat\reaction_panel.rs:83:18
+   |
+83 |       let row_id = value
+   |  __________________^
+84 | |         .parse::<i64>()
+85 | |         .map(Value::from)
+86 | |         .unwrap_or_else(|_| Value::String(value.to_owned()));
+   | |____________________________________________________________^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#map_unwrap_or
+help: try
+   |
+83 ~     let row_id = value
+84 ~         .parse::<i64>().map_or_else(|_| Value::String(value.to_owned()), Value::from);
+   |
+
+warning: calling `Map::default()` is more clear than this expression
+  --> crates\hermes-ui\src\chat\reaction_store.rs:37:73
+   |
+37 |     let value = serde_json::to_value(reactions).unwrap_or(Value::Object(Default::default()));
+   |                                                                         ^^^^^^^^^^^^^^^^^^ help: try: `Map::default()`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#default_trait_access
+   = note: `-W clippy::default-trait-access` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::default_trait_access)]`
+
+warning: calling `Map::default()` is more clear than this expression
+  --> crates\hermes-ui\src\chat\reaction_store.rs:51:73
+   |
+51 |     let value = serde_json::to_value(reactions).unwrap_or(Value::Object(Default::default()));
+   |                                                                         ^^^^^^^^^^^^^^^^^^ help: try: `Map::default()`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#default_trait_access
+
+warning: casting `u64` to `f64` may cause a loss of precision (`u64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+  --> crates\hermes-ui\src\files.rs:44:36
+   |
+44 |         return format!("{:.1} KB", bytes as f64 / 1024.0);
+   |                                    ^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: casting `u64` to `f64` may cause a loss of precision (`u64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+  --> crates\hermes-ui\src\files.rs:46:25
+   |
+46 |     format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+   |                         ^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: called `map(<f>).unwrap_or(<a>)` on an `Option` value
+   --> crates\hermes-ui\src\files.rs:227:24
+    |
+227 |       let project_name = active
+    |  ________________________^
+228 | |         .as_ref()
+229 | |         .map(|(name, _)| name.as_str())
+230 | |         .unwrap_or("No active project");
+    | |_______________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#map_unwrap_or
+help: use `map_or(<a>, <f>)` instead
+    |
+229 -         .map(|(name, _)| name.as_str())
+230 -         .unwrap_or("No active project");
+229 +         .map_or("No active project", |(name, _)| name.as_str());
+    |
+
+warning: constant `RUST_KEYWORDS` is never used
+   --> crates\hermes-ui\src\chat\legacy\rich_content\base.rs:385:7
+    |
+385 | const RUST_KEYWORDS: &[&str] = &[
+    |       ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `PYTHON_KEYWORDS` is never used
+   --> crates\hermes-ui\src\chat\legacy\rich_content\base.rs:390:7
+    |
+390 | const PYTHON_KEYWORDS: &[&str] = &[
+    |       ^^^^^^^^^^^^^^^
+
+warning: constant `JS_KEYWORDS` is never used
+   --> crates\hermes-ui\src\chat\legacy\rich_content\base.rs:395:7
+    |
+395 | const JS_KEYWORDS: &[&str] = &[
+    |       ^^^^^^^^^^^
+
+warning: function `syntax_class` is never used
+   --> crates\hermes-ui\src\chat\legacy\rich_content\base.rs:437:4
+    |
+437 | fn syntax_class(language: &str, token: &str) -> &'static str {
+    |    ^^^^^^^^^^^^
+
+warning: called `map(<f>).unwrap_or(<a>)` on an `Option` value
+   --> crates\hermes-ui\src\review.rs:169:24
+    |
+169 |       let project_name = active
+    |  ________________________^
+170 | |         .as_ref()
+171 | |         .map(|(name, _)| name.as_str())
+172 | |         .unwrap_or("No active project");
+    | |_______________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#map_unwrap_or
+help: use `map_or(<a>, <f>)` instead
+    |
+171 -         .map(|(name, _)| name.as_str())
+172 -         .unwrap_or("No active project");
+171 +         .map_or("No active project", |(name, _)| name.as_str());
+    |
+
+warning: this function has too many lines (134/100)
+   --> crates\hermes-ui\src\chat\legacy\rich_content\base.rs:130:1
+    |
+130 | fn parse(value: &str) -> Vec<Block> {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_lines
+
+warning: casting `usize` to `u8` may truncate the value
+   --> crates\hermes-ui\src\chat\legacy\rich_content\base.rs:190:17
+    |
+190 |                 heading_level as u8,
+    |                 ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_truncation
+help: ... or use `try_from` and handle the error accordingly
+    |
+190 -                 heading_level as u8,
+190 +                 u8::try_from(heading_level),
+    |
+
+warning: called `map(<f>).unwrap_or(<a>)` on an `Option` value
+   --> crates\hermes-ui\src\chat\legacy\rich_content\base.rs:353:21
+    |
+353 |         let width = rest.chars().next().map(char::len_utf8).unwrap_or(1);
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#map_unwrap_or
+help: use `map_or(<a>, <f>)` instead
+    |
+353 -         let width = rest.chars().next().map(char::len_utf8).unwrap_or(1);
+353 +         let width = rest.chars().next().map_or(1, char::len_utf8);
+    |
+
+warning: consider adding a `;` to the last statement for consistent formatting
+   --> crates\hermes-ui\src\runtime.rs:184:21
+    |
+184 |                     notice.set(Some(format!("Exported {}", file_name.display())))
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: add a `;` here: `notice.set(Some(format!("Exported {}", file_name.display())));`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#semicolon_if_nothing_returned
+    = note: `-W clippy::semicolon-if-nothing-returned` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::semicolon_if_nothing_returned)]`
+
+warning: called `map(<f>).unwrap_or_else(<g>)` on an `Option` value
+   --> crates\hermes-ui\src\runtime.rs:196:17
+    |
+196 |       let phase = current
+    |  _________________^
+197 | |         .as_ref()
+198 | |         .map(|value| display(&value.phase, "Unknown"))
+199 | |         .unwrap_or_else(|| "Unknown".into());
+    | |____________________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#map_unwrap_or
+help: try
+    |
+196 ~     let phase = current
+197 ~         .as_ref().map_or_else(|| "Unknown".into(), |value| display(&value.phase, "Unknown"));
+    |
+
+warning: calling `BTreeMap::default()` is more clear than this expression
+   --> crates\hermes-ui\src\chat\reaction_panel.rs:321:20
+    |
+321 |             extra: Default::default(),
+    |                    ^^^^^^^^^^^^^^^^^^ help: try: `BTreeMap::default()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#default_trait_access
+    = note: `-W clippy::default-trait-access` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::default_trait_access)]`
+
+warning: calling `Map::default()` is more clear than this expression
+  --> crates\hermes-ui\src\chat\reaction_store.rs:37:73
+   |
+37 |     let value = serde_json::to_value(reactions).unwrap_or(Value::Object(Default::default()));
+   |                                                                         ^^^^^^^^^^^^^^^^^^ help: try: `Map::default()`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#default_trait_access
+
+warning: consider adding a `;` to the last statement for consistent formatting
+   --> crates\hermes-ui\src\source_control.rs:181:21
+    |
+181 |                     error.set(Some(next_error.to_string()))
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: add a `;` here: `error.set(Some(next_error.to_string()));`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#semicolon_if_nothing_returned
+
+warning: more than 3 bools in a struct
+  --> crates\hermes-ui\src\terminal.rs:22:1
+   |
+22 | / struct TextStyle {
+23 | |     bold: bool,
+24 | |     dim: bool,
+25 | |     italic: bool,
+...  |
+29 | |     background: Option<AnsiColor>,
+30 | | }
+   | |_^
+   |
+   = help: consider using a state machine or refactoring bools into two-variant enums
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#struct_excessive_bools
+   = note: `-W clippy::struct-excessive-bools` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::struct_excessive_bools)]`
+
+warning: called `map(<f>).unwrap_or_else(<g>)` on an `Option` value
+  --> crates\hermes-ui\src\terminal.rs:37:17
+   |
+37 | /                 self.background
+38 | |                     .map(AnsiColor::css)
+39 | |                     .unwrap_or_else(|| "var(--terminal-background, #0d1117)".to_owned()),
+   | |________________________________________________________________________________________^ help: try: `self.background.map_or_else(|| "var(--terminal-background, #0d1117)".to_owned(), AnsiColor::css)`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#map_unwrap_or
+
+warning: called `map(<f>).unwrap_or_else(<g>)` on an `Option` value
+  --> crates\hermes-ui\src\terminal.rs:40:17
+   |
+40 | /                 self.foreground
+41 | |                     .map(AnsiColor::css)
+42 | |                     .unwrap_or_else(|| "var(--terminal-foreground, #d7dae0)".to_owned()),
+   | |________________________________________________________________________________________^ help: try: `self.foreground.map_or_else(|| "var(--terminal-foreground, #d7dae0)".to_owned(), AnsiColor::css)`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#map_unwrap_or
+
+warning: casting `u16` to `u8` may truncate the value
+   --> crates\hermes-ui\src\terminal.rs:293:69
+    |
+293 |                     self.style.foreground = Some(AnsiColor::Indexed((params[index] - 30) as u8));
+    |                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_truncation
+help: ... or use `try_from` and handle the error accordingly
+    |
+293 -                     self.style.foreground = Some(AnsiColor::Indexed((params[index] - 30) as u8));
+293 +                     self.style.foreground = Some(AnsiColor::Indexed(u8::try_from(params[index] - 30)));
+    |
+
+warning: casting `u16` to `u8` may truncate the value
+   --> crates\hermes-ui\src\terminal.rs:297:69
+    |
+297 |                     self.style.background = Some(AnsiColor::Indexed((params[index] - 40) as u8));
+    |                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_truncation
+help: ... or use `try_from` and handle the error accordingly
+    |
+297 -                     self.style.background = Some(AnsiColor::Indexed((params[index] - 40) as u8));
+297 +                     self.style.background = Some(AnsiColor::Indexed(u8::try_from(params[index] - 40)));
+    |
+
+warning: casting `u16` to `u8` may truncate the value
+   --> crates\hermes-ui\src\terminal.rs:302:49
+    |
+302 |                         Some(AnsiColor::Indexed((params[index] - 90 + 8) as u8));
+    |                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_truncation
+help: ... or use `try_from` and handle the error accordingly
+    |
+302 -                         Some(AnsiColor::Indexed((params[index] - 90 + 8) as u8));
+302 +                         Some(AnsiColor::Indexed(u8::try_from(params[index] - 90 + 8)));
+    |
+
+warning: casting `u16` to `u8` may truncate the value
+   --> crates\hermes-ui\src\terminal.rs:306:49
+    |
+306 |                         Some(AnsiColor::Indexed((params[index] - 100 + 8) as u8));
+    |                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_truncation
+help: ... or use `try_from` and handle the error accordingly
+    |
+306 -                         Some(AnsiColor::Indexed((params[index] - 100 + 8) as u8));
+306 +                         Some(AnsiColor::Indexed(u8::try_from(params[index] - 100 + 8)));
+    |
+
+warning: `hermes-ui` (lib) generated 23 warnings (run `cargo clippy --fix --lib -p hermes-ui -- ` to apply 10 suggestions)
+warning: `hermes-ui` (lib test) generated 31 warnings (22 duplicates) (run `cargo clippy --fix --lib -p hermes-ui --tests -- ` to apply 1 suggestion)
+    Checking rustls-webpki v0.103.13
+    Checking tokio-rustls v0.26.4
+    Checking tungstenite v0.30.0
+    Checking rustls-platform-verifier v0.7.0
+    Checking hyper-rustls v0.27.9
+    Checking reqwest v0.13.4
+    Checking tokio-tungstenite v0.30.0
+    Checking hermes-agent-client v0.18.62 (D:\a\Hermes-Local\Hermes-Local\crates\hermes-agent-client)
+warning: docs for function returning `Result` missing `# Errors` section
+   --> crates\hermes-agent-client\src\webhooks.rs:154:5
+    |
+154 |     pub fn list(profile: Option<&str>) -> Result<Self, WebhookContractError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#missing_errors_doc
+    = note: `-W clippy::missing-errors-doc` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::missing_errors_doc)]`
+
+warning: docs for function returning `Result` missing `# Errors` section
+   --> crates\hermes-agent-client\src\webhooks.rs:158:5
+    |
+158 |     pub fn enable(profile: Option<&str>) -> Result<Self, WebhookContractError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#missing_errors_doc
+
+warning: docs for function returning `Result` missing `# Errors` section
+   --> crates\hermes-agent-client\src\webhooks.rs:162:5
+    |
+162 | /     pub fn create(
+163 | |         profile: Option<&str>,
+164 | |         payload: &WebhookCreatePayload,
+165 | |     ) -> Result<Self, WebhookContractError> {
+    | |___________________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#missing_errors_doc
+
+warning: docs for function returning `Result` missing `# Errors` section
+   --> crates\hermes-agent-client\src\webhooks.rs:172:5
+    |
+172 |     pub fn delete(profile: Option<&str>, name: &str) -> Result<Self, WebhookContractError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#missing_errors_doc
+
+warning: docs for function returning `Result` missing `# Errors` section
+   --> crates\hermes-agent-client\src\webhooks.rs:177:5
+    |
+177 | /     pub fn set_enabled(
+178 | |         profile: Option<&str>,
+179 | |         name: &str,
+180 | |         enabled: bool,
+181 | |     ) -> Result<Self, WebhookContractError> {
+    | |___________________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#missing_errors_doc
+
+warning: `hermes-agent-client` (lib) generated 5 warnings
+    Checking hermes-desktop v0.18.62 (D:\a\Hermes-Local\Hermes-Local\crates\hermes-desktop)
+warning: `hermes-agent-client` (lib test) generated 5 warnings (5 duplicates)
+warning: calling `GatewayOptions::default()` is more clear than this expression
+   --> crates\hermes-desktop\src\lib.rs:843:65
+    |
+843 |             let client = GatewayClient::connect(&websocket_url, Default::default())
+    |                                                                 ^^^^^^^^^^^^^^^^^^ help: try: `GatewayOptions::default()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#default_trait_access
+    = note: `-W clippy::default-trait-access` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::default_trait_access)]`
+
+warning: this function has too many lines (118/100)
+    --> crates\hermes-desktop\src\lib.rs:1134:5
+     |
+1134 | /     fn attach(
+1135 | |         &self,
+1136 | |         session_id: &str,
+1137 | |         attachment: &SelectedAttachment,
+1138 | |     ) -> ServiceFuture<'_, SessionAttachmentResult> {
+     | |___________________________________________________^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_lines
+     = note: `-W clippy::too-many-lines` implied by `-W clippy::pedantic`
+     = help: to override `-W clippy::pedantic` add `#[allow(clippy::too_many_lines)]`
+
+warning: called `map(<f>).unwrap_or(<a>)` on an `Option` value
+    --> crates\hermes-desktop\src\lib.rs:1316:21
+     |
+1316 |                     emoji.map(Value::String).unwrap_or(Value::Null),
+     |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#map_unwrap_or
+     = note: `-W clippy::map-unwrap-or` implied by `-W clippy::pedantic`
+     = help: to override `-W clippy::pedantic` add `#[allow(clippy::map_unwrap_or)]`
+help: use `map_or(<a>, <f>)` instead
+     |
+1316 -                     emoji.map(Value::String).unwrap_or(Value::Null),
+1316 +                     emoji.map_or(Value::Null, Value::String),
+     |
+
+warning: called `map(<f>).unwrap_or_else(<g>)` on a `Result` value
+    --> crates\hermes-desktop\src\lib.rs:1320:29
+     |
+1320 |                   let value = row_id
+     |  _____________________________^
+1321 | |                     .parse::<i64>()
+1322 | |                     .map(Value::from)
+1323 | |                     .unwrap_or_else(|_| Value::String(row_id));
+     | |______________________________________________________________^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#map_unwrap_or
+help: try
+     |
+1320 ~                 let value = row_id
+1321 ~                     .parse::<i64>().map_or_else(|_| Value::String(row_id), Value::from);
+     |
+
+warning: this `continue` expression is redundant
+    --> crates\hermes-desktop\src\lib.rs:1471:68
+     |
+1471 |                     Err(broadcast::error::RecvError::Lagged(_)) => continue,
+     |                                                                    ^^^^^^^^
+     |
+     = help: consider dropping the `continue` expression
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_continue
+     = note: `-W clippy::needless-continue` implied by `-W clippy::pedantic`
+     = help: to override `-W clippy::pedantic` add `#[allow(clippy::needless_continue)]`
+
+warning: constructing a `Duration` using a smaller unit when a larger unit would be more readable
+    --> crates\hermes-desktop\src\lib.rs:2298:56
+     |
+2298 | const CRON_LIST_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+     |                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#duration_suboptimal_units
+     = note: `-W clippy::duration-suboptimal-units` implied by `-W clippy::pedantic`
+     = help: to override `-W clippy::pedantic` add `#[allow(clippy::duration_suboptimal_units)]`
+help: try using from_mins
+     |
+2298 - const CRON_LIST_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+2298 + const CRON_LIST_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_mins(1);
+     |
+
+warning: constructing a `Duration` using a smaller unit when a larger unit would be more readable
+    --> crates\hermes-desktop\src\lib.rs:2821:49
+     |
+2821 | const MCP_ACTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+     |                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#duration_suboptimal_units
+help: try using from_mins
+     |
+2821 - const MCP_ACTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+2821 + const MCP_ACTION_TIMEOUT: std::time::Duration = std::time::Duration::from_mins(1);
+     |
+
+warning: you seem to be trying to use `match` for an equality check. Consider using `if`
+    --> crates\hermes-desktop\src\lib.rs:2909:5
+     |
+2909 | /     match input.transport.as_str() {
+2910 | |         "stdio" => {
+2911 | |             entry.insert(
+2912 | |                 "command".into(),
+...    |
+2929 | |     }
+     | |_____^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#single_match_else
+     = note: `-W clippy::single-match-else` implied by `-W clippy::pedantic`
+     = help: to override `-W clippy::pedantic` add `#[allow(clippy::single_match_else)]`
+help: try
+     |
+2909 ~     if input.transport.as_str() == "stdio" {
+2910 +         entry.insert(
+2911 +             "command".into(),
+2912 +             Value::String(input.command.clone().unwrap_or_default().trim().to_owned()),
+2913 +         );
+2914 +         entry.insert(
+2915 +             "args".into(),
+2916 +             serde_json::to_value(&input.args).map_err(protocol)?,
+2917 +         );
+2918 +         entry.remove("url");
+2919 +     } else {
+2920 +         entry.insert(
+2921 +             "url".into(),
+2922 +             Value::String(mcp_url(input.url.as_deref().unwrap_or_default())?),
+2923 +         );
+2924 +         entry.remove("command");
+2925 +         entry.remove("args");
+2926 +     }
+     |
+
+warning: this argument is passed by value, but not consumed in the function body
+    --> crates\hermes-desktop\src\lib.rs:2946:35
+     |
+2946 | fn mcp_servers_from_config(value: Value) -> ServiceResult<serde_json::Map<String, Value>> {
+     |                                   ^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_pass_by_value
+     = note: `-W clippy::needless-pass-by-value` implied by `-W clippy::pedantic`
+     = help: to override `-W clippy::pedantic` add `#[allow(clippy::needless_pass_by_value)]`
+help: consider taking a reference instead
+     |
+2946 | fn mcp_servers_from_config(value: &Value) -> ServiceResult<serde_json::Map<String, Value>> {
+     |                                   +
+
+warning: this argument is passed by value, but not consumed in the function body
+    --> crates\hermes-desktop\src\lib.rs:4263:55
+     |
+4263 | fn decode_list<T: serde::de::DeserializeOwned>(value: Value, key: &str) -> ServiceResult<Vec<T>> {
+     |                                                       ^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+     |
+4263 | fn decode_list<T: serde::de::DeserializeOwned>(value: &Value, key: &str) -> ServiceResult<Vec<T>> {
+     |                                                       +
+
+warning: these match arms have identical bodies
+    --> crates\hermes-desktop\src\lib.rs:4289:9
+     |
+4289 |         "http" => "ws",
+     |         ^^^^^^^^^^^^^^
+4290 |         "https" => "wss",
+4291 |         "ws" => "ws",
+     |         ^^^^^^^^^^^^
+     |
+     = help: if this is unintentional make the arms return different values
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#match_same_arms
+     = note: `-W clippy::match-same-arms` implied by `-W clippy::pedantic`
+     = help: to override `-W clippy::pedantic` add `#[allow(clippy::match_same_arms)]`
+help: otherwise merge the patterns into a single arm
+     |
+4289 ~         "https" => "wss",
+4290 ~         "http" | "ws" => "ws",
+     |
+
+warning: these match arms have identical bodies
+    --> crates\hermes-desktop\src\lib.rs:4290:9
+     |
+4290 |         "https" => "wss",
+     |         ^^^^^^^^^^^^^^^^
+4291 |         "ws" => "ws",
+4292 |         "wss" => "wss",
+     |         ^^^^^^^^^^^^^^
+     |
+     = help: if this is unintentional make the arms return different values
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#match_same_arms
+help: otherwise merge the patterns into a single arm
+     |
+4290 ~         "https" | "wss" => "wss",
+4291 |         "ws" => "ws",
+4292 ~         _ => {
+     |
+
+warning: this function's return value is unnecessarily wrapped by `Result`
+    --> crates\hermes-desktop\src\lib.rs:4939:1
+     |
+4939 | fn parse_git_status(output: &str) -> ServiceResult<GitStatus> {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_wraps
+     = note: `-W clippy::unnecessary-wraps` implied by `-W clippy::pedantic`
+     = help: to override `-W clippy::pedantic` add `#[allow(clippy::unnecessary_wraps)]`
+help: remove `Result` from the return type...
+     |
+4939 - fn parse_git_status(output: &str) -> ServiceResult<GitStatus> {
+4939 + fn parse_git_status(output: &str) -> hermes_protocol::GitStatus {
+     |
+help: ...and then remove the surrounding `Ok()` from returning expressions
+     |
+4962 ~     GitStatus {
+4963 +         branch,
+4964 +         ahead,
+4965 +         behind,
+4966 +         changed,
+4967 +         entries,
+4968 +     }
+     |
+
+warning: this argument is passed by value, but not consumed in the function body
+    --> crates\hermes-desktop\src\lib.rs:5007:20
+     |
+5007 | fn protocol(error: serde_json::Error) -> ServiceError {
+     |                    ^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+     |
+5007 | fn protocol(error: &serde_json::Error) -> ServiceError {
+     |                    +
+
+warning: this argument is passed by value, but not consumed in the function body
+    --> crates\hermes-desktop\src\lib.rs:5011:21
+     |
+5011 | fn transport(error: hermes_agent_client::GatewayError) -> ServiceError {
+     |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+     |
+5011 | fn transport(error: &hermes_agent_client::GatewayError) -> ServiceError {
+     |                     +
+
+warning: `hermes-desktop` (lib) generated 15 warnings (run `cargo clippy --fix --lib -p hermes-desktop -- ` to apply 5 suggestions)
+    Checking hermes-local v0.18.62 (D:\a\Hermes-Local\Hermes-Local\apps\desktop)
+warning: this function has too many lines (101/100)
+    --> crates\hermes-desktop\src\lib.rs:6726:11
+     |
+6726 |     async fn mcp_service_matches_profile_scoped_agent_routes() {
+     |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_lines
+
+warning: item in documentation is missing backticks
+ --> apps\desktop\tests\..\src\ssh.rs:4:57
+  |
+4 | //! Hermes Local keeps the OG launcher's ~/.ssh/config, ProxyJump, ssh-agent and
+  |                                                         ^^^^^^^^^
+  |
+  = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#doc_markdown
+  = note: `-W clippy::doc-markdown` implied by `-W clippy::pedantic`
+  = help: to override `-W clippy::pedantic` add `#[allow(clippy::doc_markdown)]`
+help: try
+  |
+4 - //! Hermes Local keeps the OG launcher's ~/.ssh/config, ProxyJump, ssh-agent and
+4 + //! Hermes Local keeps the OG launcher's ~/.ssh/config, `ProxyJump`, ssh-agent and
+  |
+
+warning: `hermes-desktop` (lib test) generated 16 warnings (15 duplicates)
+warning: `hermes-local` (test "ssh_live") generated 1 warning (run `cargo clippy --fix --test "ssh_live" -p hermes-local -- ` to apply 1 suggestion)
+warning: unnecessary hashes around raw string literal
+  --> apps\desktop\src\clipboard_service.rs:19:33
+   |
+19 | ... = r#"Add-Type -AssemblyName System.Windows.Form...{ throw }; Start-Sleep -Milliseconds 50 } }"#;
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_raw_string_hashes
+   = note: `-W clippy::needless-raw-string-hashes` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::needless_raw_string_hashes)]`
+help: remove all the hashes around the string literal
+   |
+19 - const WRITE_TEXT_SCRIPT: &str = r#"Add-Type -AssemblyName System.Windows.Forms; [Console]::InputEncoding=[Text.UTF8Encoding]::new($false); $text=[Console]::In.ReadToEnd(); for($i=0;$i -lt 5;$i++){ try { [System.Windows.Forms.Clipboard]::SetText($text,[System.Windows.Forms.TextDataFormat]::UnicodeText); exit 0 } catch { if($i -eq 4){ throw }; Start-Sleep -Milliseconds 50 } }"#;
+19 + const WRITE_TEXT_SCRIPT: &str = r"Add-Type -AssemblyName System.Windows.Forms; [Console]::InputEncoding=[Text.UTF8Encoding]::new($false); $text=[Console]::In.ReadToEnd(); for($i=0;$i -lt 5;$i++){ try { [System.Windows.Forms.Clipboard]::SetText($text,[System.Windows.Forms.TextDataFormat]::UnicodeText); exit 0 } catch { if($i -eq 4){ throw }; Start-Sleep -Milliseconds 50 } }";
+   |
+
+warning: unnecessary hashes around raw string literal
+  --> apps\desktop\src\clipboard_service.rs:22:32
+   |
+22 | ... = r#"Add-Type -AssemblyName System.Windows.Form...{ throw }; Start-Sleep -Milliseconds 50 } }"#;
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+   |
+22 - const READ_TEXT_SCRIPT: &str = r#"Add-Type -AssemblyName System.Windows.Forms; [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); for($i=0;$i -lt 5;$i++){ try { $text=[System.Windows.Forms.Clipboard]::GetText([System.Windows.Forms.TextDataFormat]::UnicodeText); if($text.Length -gt 1000000){ exit 43 }; [Console]::Out.Write($text); exit 0 } catch { if($i -eq 4){ throw }; Start-Sleep -Milliseconds 50 } }"#;
+22 + const READ_TEXT_SCRIPT: &str = r"Add-Type -AssemblyName System.Windows.Forms; [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); for($i=0;$i -lt 5;$i++){ try { $text=[System.Windows.Forms.Clipboard]::GetText([System.Windows.Forms.TextDataFormat]::UnicodeText); if($text.Length -gt 1000000){ exit 43 }; [Console]::Out.Write($text); exit 0 } catch { if($i -eq 4){ throw }; Start-Sleep -Milliseconds 50 } }";
+   |
+
+warning: unnecessary hashes around raw string literal
+  --> apps\desktop\src\clipboard_service.rs:25:33
+   |
+25 | ... = r#"Add-Type -AssemblyName System.Windows.Form...{ throw }; Start-Sleep -Milliseconds 50 } }"#;
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+   |
+25 - const SAVE_IMAGE_SCRIPT: &str = r#"Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $path=$env:HERMES_LOCAL_CLIPBOARD_IMAGE_DEST; for($i=0;$i -lt 5;$i++){ try { if(-not [System.Windows.Forms.Clipboard]::ContainsImage()){ exit 3 }; $image=[System.Windows.Forms.Clipboard]::GetImage(); try { $image.Save($path,[System.Drawing.Imaging.ImageFormat]::Png) } finally { $image.Dispose() }; exit 0 } catch { if($i -eq 4){ throw }; Start-Sleep -Milliseconds 50 } }"#;
+25 + const SAVE_IMAGE_SCRIPT: &str = r"Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $path=$env:HERMES_LOCAL_CLIPBOARD_IMAGE_DEST; for($i=0;$i -lt 5;$i++){ try { if(-not [System.Windows.Forms.Clipboard]::ContainsImage()){ exit 3 }; $image=[System.Windows.Forms.Clipboard]::GetImage(); try { $image.Save($path,[System.Drawing.Imaging.ImageFormat]::Png) } finally { $image.Dispose() }; exit 0 } catch { if($i -eq 4){ throw }; Start-Sleep -Milliseconds 50 } }";
+   |
+
+warning: unnested or-patterns
+   --> apps\desktop\src\diagnostics_export.rs:639:9
+    |
+639 |         [127, ..] | [10, ..] | [192, 168, ..] => true,
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnested_or_patterns
+    = note: `-W clippy::unnested-or-patterns` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::unnested_or_patterns)]`
+help: nest the patterns
+    |
+639 -         [127, ..] | [10, ..] | [192, 168, ..] => true,
+639 +         [127 | 10, ..] | [192, 168, ..] => true,
+    |
+
+warning: unused import: `json`
+ --> apps\desktop\src\messaging_service.rs:7:25
+  |
+7 | use serde_json::{Value, json};
+  |                         ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unnecessary hashes around raw string literal
+  --> apps\desktop\src\notification_service.rs:12:28
+   |
+12 | ... = r#"[Windows.UI.Notifications.ToastNotificatio...ifier($env:HERMES_LOCAL_AUMID).Show($toast)"#;
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+   |
+12 - const TOAST_SCRIPT: &str = r#"[Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime] > $null; [Windows.UI.Notifications.ToastNotification,Windows.UI.Notifications,ContentType=WindowsRuntime] > $null; [Windows.Data.Xml.Dom.XmlDocument,Windows.Data.Xml.Dom.XmlDocument,ContentType=WindowsRuntime] > $null; $xml=New-Object Windows.Data.Xml.Dom.XmlDocument; $xml.LoadXml($env:HERMES_LOCAL_NOTIFICATION_XML); $toast=[Windows.UI.Notifications.ToastNotification]::new($xml); [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($env:HERMES_LOCAL_AUMID).Show($toast)"#;
+12 + const TOAST_SCRIPT: &str = r"[Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime] > $null; [Windows.UI.Notifications.ToastNotification,Windows.UI.Notifications,ContentType=WindowsRuntime] > $null; [Windows.Data.Xml.Dom.XmlDocument,Windows.Data.Xml.Dom.XmlDocument,ContentType=WindowsRuntime] > $null; $xml=New-Object Windows.Data.Xml.Dom.XmlDocument; $xml.LoadXml($env:HERMES_LOCAL_NOTIFICATION_XML); $toast=[Windows.UI.Notifications.ToastNotification]::new($xml); [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($env:HERMES_LOCAL_AUMID).Show($toast)";
+   |
+
+warning: unnecessary hashes around raw string literal
+  --> apps\desktop\src\notification_service.rs:15:39
+   |
+15 | ... = r#"Add-Type -AssemblyName System.Windows.Form...y { $icon.Visible=$false; $icon.Dispose() }"#;
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+   |
+15 - const BALLOON_FALLBACK_SCRIPT: &str = r#"Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $icon=New-Object System.Windows.Forms.NotifyIcon; try { $icon.Icon=[System.Drawing.SystemIcons]::Information; $icon.Visible=$true; $icon.BalloonTipIcon=[System.Windows.Forms.ToolTipIcon]::Info; $icon.BalloonTipTitle=$env:HERMES_LOCAL_NOTIFICATION_TITLE; $icon.BalloonTipText=$env:HERMES_LOCAL_NOTIFICATION_BODY; $icon.ShowBalloonTip(5000); Start-Sleep -Milliseconds 5500 } finally { $icon.Visible=$false; $icon.Dispose() }"#;
+15 + const BALLOON_FALLBACK_SCRIPT: &str = r"Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $icon=New-Object System.Windows.Forms.NotifyIcon; try { $icon.Icon=[System.Drawing.SystemIcons]::Information; $icon.Visible=$true; $icon.BalloonTipIcon=[System.Windows.Forms.ToolTipIcon]::Info; $icon.BalloonTipTitle=$env:HERMES_LOCAL_NOTIFICATION_TITLE; $icon.BalloonTipText=$env:HERMES_LOCAL_NOTIFICATION_BODY; $icon.ShowBalloonTip(5000); Start-Sleep -Milliseconds 5500 } finally { $icon.Visible=$false; $icon.Dispose() }";
+   |
+
+warning: unnecessary hashes around raw string literal
+  --> apps\desktop\src\preview_watcher.rs:30:28
+   |
+30 | ... = r#"$ErrorActionPreference='Stop'; $dir=$env:H...on SilentlyContinue }; $watcher.Dispose() }"#;
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+   |
+30 - const WATCH_SCRIPT: &str = r#"$ErrorActionPreference='Stop'; $dir=$env:HERMES_LOCAL_WATCH_DIR; $target=$env:HERMES_LOCAL_WATCH_TARGET; $watcher=[System.IO.FileSystemWatcher]::new($dir,'*'); $watcher.IncludeSubdirectories=$false; $watcher.NotifyFilter=[IO.NotifyFilters]'FileName, DirectoryName, LastWrite, Size'; $subs=@(); foreach($eventName in @('Changed','Created','Deleted','Renamed','Error')){ $subs += Register-ObjectEvent -InputObject $watcher -EventName $eventName }; $watcher.EnableRaisingEvents=$true; [Console]::Out.WriteLine('ready'); [Console]::Out.Flush(); try { while($true){ $event=Wait-Event; try { $relevant=$true; if($target -and $event.SourceEventArgs -and $event.SourceEventArgs.PSObject.Properties['FullPath']){ $name=[IO.Path]::GetFileName([string]$event.SourceEventArgs.FullPath); $relevant=[string]::Equals($name,$target,[StringComparison]::Ordinal) }; if($relevant){ [Console]::Out.WriteLine('changed'); [Console]::Out.Flush() } } finally { Remove-Event -EventIdentifier $event.EventIdentifier -ErrorAction SilentlyContinue } } } finally { foreach($sub in $subs){ Unregister-Event -SubscriptionId $sub.Id -ErrorAction SilentlyContinue }; $watcher.Dispose() }"#;
+30 + const WATCH_SCRIPT: &str = r"$ErrorActionPreference='Stop'; $dir=$env:HERMES_LOCAL_WATCH_DIR; $target=$env:HERMES_LOCAL_WATCH_TARGET; $watcher=[System.IO.FileSystemWatcher]::new($dir,'*'); $watcher.IncludeSubdirectories=$false; $watcher.NotifyFilter=[IO.NotifyFilters]'FileName, DirectoryName, LastWrite, Size'; $subs=@(); foreach($eventName in @('Changed','Created','Deleted','Renamed','Error')){ $subs += Register-ObjectEvent -InputObject $watcher -EventName $eventName }; $watcher.EnableRaisingEvents=$true; [Console]::Out.WriteLine('ready'); [Console]::Out.Flush(); try { while($true){ $event=Wait-Event; try { $relevant=$true; if($target -and $event.SourceEventArgs -and $event.SourceEventArgs.PSObject.Properties['FullPath']){ $name=[IO.Path]::GetFileName([string]$event.SourceEventArgs.FullPath); $relevant=[string]::Equals($name,$target,[StringComparison]::Ordinal) }; if($relevant){ [Console]::Out.WriteLine('changed'); [Console]::Out.Flush() } } finally { Remove-Event -EventIdentifier $event.EventIdentifier -ErrorAction SilentlyContinue } } } finally { foreach($sub in $subs){ Unregister-Event -SubscriptionId $sub.Id -ErrorAction SilentlyContinue }; $watcher.Dispose() }";
+   |
+
+warning: unnecessary hashes around raw string literal
+  --> apps\desktop\src\shell_accessibility.rs:35:5
+   |
+35 | /     r#"(() => {
+36 | |       const key='__hermesShellPreviousFocus';
+37 | |       window[key]=document.activeElement;
+38 | |       return true;
+39 | |     })()"#
+   | |__________^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+   |
+35 ~     r"(() => {
+36 |       const key='__hermesShellPreviousFocus';
+37 |       window[key]=document.activeElement;
+38 |       return true;
+39 ~     })()"
+   |
+
+warning: unnecessary hashes around raw string literal
+  --> apps\desktop\src\shell_accessibility.rs:43:5
+   |
+43 | /     r#"(() => {
+44 | |       const previous=window.__hermesShellPreviousFocus;
+45 | |       if(previous && previous.isConnected && typeof previous.focus==='function') previous.focus();
+46 | |       window.__hermesShellPreviousFocus=null;
+47 | |       return true;
+48 | |     })()"#
+   | |__________^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+   |
+43 ~     r"(() => {
+44 |       const previous=window.__hermesShellPreviousFocus;
+...
+47 |       return true;
+48 ~     })()"
+   |
+
+warning: unnecessary hashes around raw string literal
+   --> apps\desktop\src\shell_i18n.rs:324:9
+    |
+324 | /         r#"(() => {{
+325 | |       const dict={dictionary};
+326 | |       const translateText=(raw)=>{{
+327 | |         if(typeof raw!=='string') return raw;
+...   |
+342 | |       return '{code}';
+343 | |     }})()"#
+    | |___________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+    |
+324 ~         r"(() => {{
+325 |       const dict={dictionary};
+...
+342 |       return '{code}';
+343 ~     }})()"
+    |
+
+warning: unnecessary hashes around raw string literal
+  --> apps\desktop\src\shell_interaction.rs:10:25
+   |
+10 |   const SHELL_CSS: &str = r#"
+   |  _________________________^
+11 | | .shell-host{height:100vh;display:flex;min-width:0;overflow:hidden;background:rgb(9 11 16)}
+12 | | .shell-host-content{position:relative;min-width:0;flex:1;overflow:hidden}
+13 | | .shell-host.sidebar-hidden .rail{display:none!important}
+...  |
+45 | | @media (prefers-reduced-motion:reduce){.shell-host *, .shell-host *::before, .shell-host *::after{scroll-behavior:auto!important;a...
+46 | | "#;
+   | |__^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+   |
+10 ~ const SHELL_CSS: &str = r"
+11 | .shell-host{height:100vh;display:flex;min-width:0;overflow:hidden;background:rgb(9 11 16)}
+...
+45 | @media (prefers-reduced-motion:reduce){.shell-host *, .shell-host *::before, .shell-host *::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+46 ~ ";
+   |
+
+warning: unnecessary hashes around raw string literal
+  --> apps\desktop\src\shell_parity.rs:57:9
+   |
+57 | /         r#"(() => {{
+58 | |       {apply};
+59 | |       if(window.__hermesLocaleObserver) window.__hermesLocaleObserver.disconnect();
+60 | |       let queued=false;
+...  |
+67 | |       window.__hermesLocaleObserver=observer;
+68 | |     }})()"#
+   | |___________^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+   |
+57 ~         r"(() => {{
+58 |       {apply};
+...
+67 |       window.__hermesLocaleObserver=observer;
+68 ~     }})()"
+   |
+
+warning: this function has too many lines (124/100)
+  --> crates\hermes-desktop\tests\runtime_tasks.rs:10:7
+   |
+10 | async fn runtime_task_service_matches_agent_contract_and_rejects_path_injection() {
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_lines
+   = note: `-W clippy::too-many-lines` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::too_many_lines)]`
+
+warning: `hermes-desktop` (test "runtime_tasks") generated 1 warning
+warning: method `scan` is never used
+   --> apps\desktop\src\git_repo_scan_service.rs:104:12
+    |
+ 99 | impl GitRepoScanService {
+    | ----------------------- method in this implementation
+...
+104 |     pub fn scan(
+    |            ^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `is_autostart_launch` is never used
+  --> apps\desktop\src\login_item.rs:17:8
+   |
+17 | pub fn is_autostart_launch() -> bool {
+   |        ^^^^^^^^^^^^^^^^^^^
+
+warning: function `contains_autostart_argument` is never used
+  --> apps\desktop\src\login_item.rs:21:4
+   |
+21 | fn contains_autostart_argument<I, S>(arguments: I) -> bool
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `registration_matches` is never used
+  --> apps\desktop\src\login_item.rs:52:4
+   |
+52 | fn registration_matches(output: &str, executable: &Path) -> Result<bool, String> {
+   |    ^^^^^^^^^^^^^^^^^^^^
+
+warning: methods `watch_file`, `close_all`, and `active_count` are never used
+   --> apps\desktop\src\preview_watcher.rs:56:12
+    |
+ 49 | impl PreviewWatcherRegistry {
+    | --------------------------- methods in this implementation
+...
+ 56 |     pub fn watch_file<F>(
+    |            ^^^^^^^^^^
+...
+119 |     pub fn close_all(&mut self) {
+    |            ^^^^^^^^^
+...
+123 |     pub fn active_count(&self) -> usize {
+    |            ^^^^^^^^^^^^
+
+warning: constant `REQUIRED_INTERACTIVE_ROLES` is never used
+ --> apps\desktop\src\shell_accessibility.rs:1:11
+  |
+1 | pub const REQUIRED_INTERACTIVE_ROLES: &[&str] = &["dialog", "tablist", "tab", "search"];
+  |           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `REQUIRED_ACCESSIBILITY_SIGNALS` is never used
+ --> apps\desktop\src\shell_accessibility.rs:2:11
+  |
+2 | pub const REQUIRED_ACCESSIBILITY_SIGNALS: &[&str] = &[
+  |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `audit_script` is never used
+  --> apps\desktop\src\shell_accessibility.rs:10:8
+   |
+10 | pub fn audit_script() -> &'static str {
+   |        ^^^^^^^^^^^^
+
+warning: function `focus_restore_script` is never used
+  --> apps\desktop\src\shell_accessibility.rs:34:8
+   |
+34 | pub fn focus_restore_script() -> &'static str {
+   |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `restore_focus_script` is never used
+  --> apps\desktop\src\shell_accessibility.rs:42:8
+   |
+42 | pub fn restore_focus_script() -> &'static str {
+   |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: method `path` is never used
+  --> apps\desktop\src\shell_instance.rs:43:12
+   |
+15 | impl InstanceGuard {
+   | ------------------ method in this implementation
+...
+43 |     pub fn path(&self) -> &Path {
+   |            ^^^^
+
+warning: variants `Global`, `Editor`, `Dialog`, and `CommandOverlay` are never constructed
+ --> apps\desktop\src\shell_keymap.rs:3:5
+  |
+2 | pub enum FocusContext {
+  |          ------------ variants in this enum
+3 |     Global,
+  |     ^^^^^^
+...
+6 |     Editor,
+  |     ^^^^^^
+7 |     Terminal,
+8 |     Dialog,
+  |     ^^^^^^
+9 |     CommandOverlay,
+  |     ^^^^^^^^^^^^^^
+  |
+  = note: `FocusContext` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: variants `FindNext` and `FindPrevious` are never constructed
+  --> apps\desktop\src\shell_keymap.rs:49:5
+   |
+40 | pub enum ShortcutAction {
+   |          -------------- variants in this enum
+...
+49 |     FindNext,
+   |     ^^^^^^^^
+50 |     FindPrevious,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `ShortcutAction` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: function `context_from_dom_hint` is never used
+   --> apps\desktop\src\shell_keymap.rs:183:8
+    |
+183 | pub fn context_from_dom_hint(hint: &str) -> FocusContext {
+    |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `dom_focus_probe_script` is never used
+   --> apps\desktop\src\shell_keymap.rs:195:14
+    |
+195 | pub const fn dom_focus_probe_script() -> &'static str {
+    |              ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `resize_split` is never used
+   --> apps\desktop\src\shell_layout.rs:204:8
+    |
+107 | impl LayoutNode {
+    | --------------- method in this implementation
+...
+204 |     fn resize_split(&mut self, target: &str, ratio: f32) -> bool {
+    |        ^^^^^^^^^^^^
+
+warning: methods `resize_split`, `reorder_active_tab`, and `set_floating_bounds` are never used
+   --> apps\desktop\src\shell_layout.rs:367:12
+    |
+292 | impl LayoutModel {
+    | ---------------- methods in this implementation
+...
+367 |     pub fn resize_split(&mut self, split_id: &str, ratio: f32) -> bool {
+    |            ^^^^^^^^^^^^
+...
+399 |     pub fn reorder_active_tab(&mut self, delta: isize) -> bool {
+    |            ^^^^^^^^^^^^^^^^^^
+...
+501 |     pub fn set_floating_bounds(&mut self, floating_id: &str, bounds: FloatingBounds) -> bool {
+    |            ^^^^^^^^^^^^^^^^^^^
+
+warning: struct `ShellParityReport` is never constructed
+  --> apps\desktop\src\shell_validation.rs:10:12
+   |
+10 | pub struct ShellParityReport {
+   |            ^^^^^^^^^^^^^^^^^
+
+warning: function `validate_contracts` is never used
+  --> apps\desktop\src\shell_validation.rs:19:8
+   |
+19 | pub fn validate_contracts() -> Result<ShellParityReport, String> {
+   |        ^^^^^^^^^^^^^^^^^^
+
+warning: constant `TITLEBAR_HEIGHT_PX` is never used
+ --> apps\desktop\src\shell_window_contract.rs:1:11
+  |
+1 | pub const TITLEBAR_HEIGHT_PX: u32 = 34;
+  |           ^^^^^^^^^^^^^^^^^^
+
+warning: enum `WindowPhase` is never used
+ --> apps\desktop\src\shell_window_contract.rs:6:10
+  |
+6 | pub enum WindowPhase {
+  |          ^^^^^^^^^^^
+
+warning: enum `NativeWindowAction` is never used
+  --> apps\desktop\src\shell_window_contract.rs:14:10
+   |
+14 | pub enum NativeWindowAction {
+   |          ^^^^^^^^^^^^^^^^^^
+
+warning: struct `WindowLifecycle` is never constructed
+  --> apps\desktop\src\shell_window_contract.rs:23:12
+   |
+23 | pub struct WindowLifecycle {
+   |            ^^^^^^^^^^^^^^^
+
+warning: methods `phase`, `relaunch_generation`, and `apply` are never used
+  --> apps\desktop\src\shell_window_contract.rs:38:18
+   |
+37 | impl WindowLifecycle {
+   | -------------------- methods in this implementation
+38 |     pub const fn phase(self) -> WindowPhase {
+   |                  ^^^^^
+...
+42 |     pub const fn relaunch_generation(self) -> u32 {
+   |                  ^^^^^^^^^^^^^^^^^^^
+...
+46 |     pub fn apply(&mut self, action: NativeWindowAction) {
+   |            ^^^^^
+
+warning: function `titlebar_control_is_drag_region` is never used
+  --> apps\desktop\src\shell_window_contract.rs:69:14
+   |
+69 | pub const fn titlebar_control_is_drag_region(control: NativeWindowAction) -> bool {
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: multiple fields are never read
+  --> apps\desktop\src\ssh_lifecycle.rs:47:9
+   |
+43 | pub struct SshLease {
+   |            -------- fields in this struct
+...
+47 |     pub remote_port: u16,
+   |         ^^^^^^^^^^^
+48 |     pub local_port: u16,
+   |         ^^^^^^^^^^
+49 |     pub remote_pid: u32,
+   |         ^^^^^^^^^^
+50 |     pub reused: bool,
+   |         ^^^^^^
+51 |     pub remote_platform: String,
+   |         ^^^^^^^^^^^^^^^
+52 |     pub remote_hermes_path: String,
+   |         ^^^^^^^^^^^^^^^^^^
+53 |     pub remote_hermes_version: String,
+   |         ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `SshLease` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: multiple fields are never read
+  --> apps\desktop\src\ssh_windows.rs:48:9
+   |
+44 | pub struct WindowsSshLease {
+   |            --------------- fields in this struct
+...
+48 |     pub remote_port: u16,
+   |         ^^^^^^^^^^^
+49 |     pub local_port: u16,
+   |         ^^^^^^^^^^
+50 |     pub remote_pid: u32,
+   |         ^^^^^^^^^^
+51 |     pub reused: bool,
+   |         ^^^^^^
+52 |     pub remote_platform: String,
+   |         ^^^^^^^^^^^^^^^
+53 |     pub remote_hermes_path: String,
+   |         ^^^^^^^^^^^^^^^^^^
+54 |     pub remote_hermes_version: String,
+   |         ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `WindowsSshLease` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: unused `self` argument
+  --> apps\desktop\src\clipboard_service.rs:31:23
+   |
+31 |     pub fn write_text(&self, text: &str) -> Result<(), String> {
+   |                       ^^^^^
+   |
+   = help: consider refactoring to an associated function
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unused_self
+   = note: `-W clippy::unused-self` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::unused_self)]`
+
+warning: this argument (0 byte) is passed by reference, but would be more efficient if passed by value (limit: 8 byte)
+  --> apps\desktop\src\clipboard_service.rs:31:23
+   |
+31 |     pub fn write_text(&self, text: &str) -> Result<(), String> {
+   |                       ^^^^^ help: consider passing by value instead: `self`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#trivially_copy_pass_by_ref
+   = note: `-W clippy::trivially-copy-pass-by-ref` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::trivially_copy_pass_by_ref)]`
+
+warning: unused `self` argument
+  --> apps\desktop\src\clipboard_service.rs:45:22
+   |
+45 |     pub fn read_text(&self) -> Result<String, String> {
+   |                      ^^^^^
+   |
+   = help: consider refactoring to an associated function
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unused_self
+
+warning: this argument (0 byte) is passed by reference, but would be more efficient if passed by value (limit: 8 byte)
+  --> apps\desktop\src\clipboard_service.rs:45:22
+   |
+45 |     pub fn read_text(&self) -> Result<String, String> {
+   |                      ^^^^^ help: consider passing by value instead: `self`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#trivially_copy_pass_by_ref
+
+warning: unused `self` argument
+  --> apps\desktop\src\clipboard_service.rs:59:27
+   |
+59 |     pub fn save_image_png(&self, destination: &Path) -> Result<bool, String> {
+   |                           ^^^^^
+   |
+   = help: consider refactoring to an associated function
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unused_self
+
+warning: this argument (0 byte) is passed by reference, but would be more efficient if passed by value (limit: 8 byte)
+  --> apps\desktop\src\clipboard_service.rs:59:27
+   |
+59 |     pub fn save_image_png(&self, destination: &Path) -> Result<bool, String> {
+   |                           ^^^^^ help: consider passing by value instead: `self`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#trivially_copy_pass_by_ref
+
+warning: use of `format!` to build up a string from an iterator
+  --> apps\desktop\src\crash_forensics.rs:67:5
+   |
+67 | /     digest
+68 | |         .finalize()
+69 | |         .iter()
+70 | |         .map(|byte| format!("{byte:02x}"))
+71 | |         .collect()
+   | |__________________^
+   |
+help: call `fold` instead
+  --> apps\desktop\src\crash_forensics.rs:70:10
+   |
+70 |         .map(|byte| format!("{byte:02x}"))
+   |          ^^^
+help: ... and use the `write!` macro here
+  --> apps\desktop\src\crash_forensics.rs:70:21
+   |
+70 |         .map(|byte| format!("{byte:02x}"))
+   |                     ^^^^^^^^^^^^^^^^^^^^^
+   = note: this can be written more efficiently by appending to a `String` directly
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#format_collect
+   = note: `-W clippy::format-collect` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::format_collect)]`
+
+warning: matching over `()` is more explicit
+  --> apps\desktop\src\crash_forensics.rs:98:24
+   |
+98 |             .and_then(|_| file.write_all(b"\n"))
+   |                        ^ help: use `()` instead of `_`: `()`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#ignored_unit_patterns
+   = note: `-W clippy::ignored-unit-patterns` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::ignored_unit_patterns)]`
+
+warning: matching over `()` is more explicit
+  --> apps\desktop\src\crash_forensics.rs:99:24
+   |
+99 |             .and_then(|_| file.sync_all())
+   |                        ^ help: use `()` instead of `_`: `()`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#ignored_unit_patterns
+
+warning: constructing a `Duration` using a smaller unit when a larger unit would be more readable
+  --> apps\desktop\src\cron_service.rs:11:40
+   |
+11 | const LIST_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+   |                                        ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#duration_suboptimal_units
+   = note: `-W clippy::duration-suboptimal-units` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::duration_suboptimal_units)]`
+help: try using from_mins
+   |
+11 - const LIST_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+11 + const LIST_REQUEST_TIMEOUT: Duration = Duration::from_mins(1);
+   |
+
+warning: use of `Option<Option<T>>`
+  --> apps\desktop\src\cron_service.rs:83:16
+   |
+83 |     pub model: Option<Option<String>>,
+   |                ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: consider using `Option<String>`, or a custom enum if you need to distinguish all 3 cases
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#option_option
+   = note: `-W clippy::option-option` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::option_option)]`
+
+warning: use of `Option<Option<T>>`
+  --> apps\desktop\src\cron_service.rs:89:19
+   |
+89 |     pub provider: Option<Option<String>>,
+   |                   ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: consider using `Option<String>`, or a custom enum if you need to distinguish all 3 cases
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#option_option
+
+warning: this could be rewritten as `let...else`
+   --> apps\desktop\src\deep_link.rs:244:9
+    |
+244 | /         let metadata = match fs::symlink_metadata(&path) {
+245 | |             Ok(metadata) => metadata,
+246 | |             Err(_) => continue,
+247 | |         };
+    | |__________^ help: consider writing: `let Ok(metadata) = fs::symlink_metadata(&path) else { continue };`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_let_else
+    = note: `-W clippy::manual-let-else` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::manual_let_else)]`
+
+warning: unused `self` argument
+   --> apps\desktop\src\diagnostics_export.rs:200:9
+    |
+200 |         &self,
+    |         ^^^^^
+    |
+    = help: consider refactoring to an associated function
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unused_self
+
+warning: this argument (0 byte) is passed by reference, but would be more efficient if passed by value (limit: 8 byte)
+   --> apps\desktop\src\diagnostics_export.rs:200:9
+    |
+200 |         &self,
+    |         ^^^^^ help: consider passing by value instead: `self`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#trivially_copy_pass_by_ref
+
+warning: use of `format!` to build up a string from an iterator
+   --> apps\desktop\src\diagnostics_export.rs:712:5
+    |
+712 | /     Sha256::digest(bytes)
+713 | |         .iter()
+714 | |         .map(|byte| format!("{byte:02x}"))
+715 | |         .collect()
+    | |__________________^
+    |
+help: call `fold` instead
+   --> apps\desktop\src\diagnostics_export.rs:714:10
+    |
+714 |         .map(|byte| format!("{byte:02x}"))
+    |          ^^^
+help: ... and use the `write!` macro here
+   --> apps\desktop\src\diagnostics_export.rs:714:21
+    |
+714 |         .map(|byte| format!("{byte:02x}"))
+    |                     ^^^^^^^^^^^^^^^^^^^^^
+    = note: this can be written more efficiently by appending to a `String` directly
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#format_collect
+
+warning: matching over `()` is more explicit
+   --> apps\desktop\src\diagnostics_export.rs:734:24
+    |
+734 |             .and_then(|_| file.sync_all())
+    |                        ^ help: use `()` instead of `_`: `()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#ignored_unit_patterns
+
+warning: this argument is passed by value, but not consumed in the function body
+  --> apps\desktop\src\git_branch_service.rs:67:22
+   |
+67 | fn join_error(error: tokio::task::JoinError) -> ServiceError {
+   |                      ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_pass_by_value
+   = note: `-W clippy::needless-pass-by-value` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::needless_pass_by_value)]`
+help: consider taking a reference instead
+   |
+67 | fn join_error(error: &tokio::task::JoinError) -> ServiceError {
+   |                      +
+
+warning: unused `self` argument
+  --> apps\desktop\src\git_branch_service.rs:87:17
+   |
+87 |     pub fn list(&self, repository: &Path) -> Result<Vec<GitBranch>, String> {
+   |                 ^^^^^
+   |
+   = help: consider refactoring to an associated function
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unused_self
+
+warning: this argument (0 byte) is passed by reference, but would be more efficient if passed by value (limit: 8 byte)
+  --> apps\desktop\src\git_branch_service.rs:87:17
+   |
+87 |     pub fn list(&self, repository: &Path) -> Result<Vec<GitBranch>, String> {
+   |                 ^^^^^ help: consider passing by value instead: `self`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#trivially_copy_pass_by_ref
+
+warning: unused `self` argument
+   --> apps\desktop\src\git_branch_service.rs:118:19
+    |
+118 |     pub fn switch(&self, repository: &Path, branch: &str) -> Result<String, String> {
+    |                   ^^^^^
+    |
+    = help: consider refactoring to an associated function
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unused_self
+
+warning: this argument (0 byte) is passed by reference, but would be more efficient if passed by value (limit: 8 byte)
+   --> apps\desktop\src\git_branch_service.rs:118:19
+    |
+118 |     pub fn switch(&self, repository: &Path, branch: &str) -> Result<String, String> {
+    |                   ^^^^^ help: consider passing by value instead: `self`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#trivially_copy_pass_by_ref
+
+warning: unused `self` argument
+  --> apps\desktop\src\git_discard_service.rs:58:25
+   |
+58 |     pub fn discard_path(&self, repository: &Path, relative: &Path) -> Result<(), String> {
+   |                         ^^^^^
+   |
+   = help: consider refactoring to an associated function
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unused_self
+
+warning: this argument (0 byte) is passed by reference, but would be more efficient if passed by value (limit: 8 byte)
+  --> apps\desktop\src\git_discard_service.rs:58:25
+   |
+58 |     pub fn discard_path(&self, repository: &Path, relative: &Path) -> Result<(), String> {
+   |                         ^^^^^ help: consider passing by value instead: `self`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#trivially_copy_pass_by_ref
+
+warning: unused `self` argument
+   --> apps\desktop\src\git_discard_service.rs:115:24
+    |
+115 |     pub fn discard_all(&self, repository: &Path) -> Result<(), String> {
+    |                        ^^^^^
+    |
+    = help: consider refactoring to an associated function
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unused_self
+
+warning: this argument (0 byte) is passed by reference, but would be more efficient if passed by value (limit: 8 byte)
+   --> apps\desktop\src\git_discard_service.rs:115:24
+    |
+115 |     pub fn discard_all(&self, repository: &Path) -> Result<(), String> {
+    |                        ^^^^^ help: consider passing by value instead: `self`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#trivially_copy_pass_by_ref
+
+warning: this argument (0 byte) is passed by reference, but would be more efficient if passed by value (limit: 8 byte)
+   --> apps\desktop\src\git_repo_scan_service.rs:105:9
+    |
+105 |         &self,
+    |         ^^^^^ help: consider passing by value instead: `self`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#trivially_copy_pass_by_ref
+
+warning: unused `self` argument
+   --> apps\desktop\src\git_repo_scan_service.rs:113:9
+    |
+113 |         &self,
+    |         ^^^^^
+    |
+    = help: consider refactoring to an associated function
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unused_self
+
+warning: this argument (0 byte) is passed by reference, but would be more efficient if passed by value (limit: 8 byte)
+   --> apps\desktop\src\git_repo_scan_service.rs:113:9
+    |
+113 |         &self,
+    |         ^^^^^ help: consider passing by value instead: `self`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#trivially_copy_pass_by_ref
+
+warning: this argument is passed by value, but not consumed in the function body
+   --> apps\desktop\src\git_ship_service.rs:107:22
+    |
+107 | fn join_error(error: tokio::task::JoinError) -> ServiceError {
+    |                      ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+    |
+107 | fn join_error(error: &tokio::task::JoinError) -> ServiceError {
+    |                      +
+
+warning: unused `self` argument
+   --> apps\desktop\src\git_ship_service.rs:155:17
+    |
+155 |     pub fn push(&self, repository: &Path) -> Result<PushOutcome, String> {
+    |                 ^^^^^
+    |
+    = help: consider refactoring to an associated function
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unused_self
+
+warning: unused `self` argument
+   --> apps\desktop\src\git_ship_service.rs:187:22
+    |
+187 |     pub fn ship_info(&self, repository: &Path) -> Result<ShipInfo, String> {
+    |                      ^^^^^
+    |
+    = help: consider refactoring to an associated function
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unused_self
+
+warning: this argument is passed by value, but not consumed in the function body
+   --> apps\desktop\src\git_worktree_service.rs:109:22
+    |
+109 | fn join_error(error: tokio::task::JoinError) -> ServiceError {
+    |                      ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+    |
+109 | fn join_error(error: &tokio::task::JoinError) -> ServiceError {
+    |                      +
+
+warning: unused `self` argument
+   --> apps\desktop\src\git_worktree_service.rs:130:17
+    |
+130 |     pub fn list(&self, repository: &Path) -> Result<Vec<GitWorktree>, String> {
+    |                 ^^^^^
+    |
+    = help: consider refactoring to an associated function
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unused_self
+
+warning: this argument (0 byte) is passed by reference, but would be more efficient if passed by value (limit: 8 byte)
+   --> apps\desktop\src\git_worktree_service.rs:130:17
+    |
+130 |     pub fn list(&self, repository: &Path) -> Result<Vec<GitWorktree>, String> {
+    |                 ^^^^^ help: consider passing by value instead: `self`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#trivially_copy_pass_by_ref
+
+warning: this argument (0 byte) is passed by reference, but would be more efficient if passed by value (limit: 8 byte)
+   --> apps\desktop\src\git_worktree_service.rs:138:9
+    |
+138 |         &self,
+    |         ^^^^^ help: consider passing by value instead: `self`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#trivially_copy_pass_by_ref
+
+warning: this argument (0 byte) is passed by reference, but would be more efficient if passed by value (limit: 8 byte)
+   --> apps\desktop\src\git_worktree_service.rs:170:25
+    |
+170 |     pub fn add_existing(&self, repository: &Path, branch: &str) -> Result<GitWorktree, String> {
+    |                         ^^^^^ help: consider passing by value instead: `self`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#trivially_copy_pass_by_ref
+
+warning: this argument (0 byte) is passed by reference, but would be more efficient if passed by value (limit: 8 byte)
+   --> apps\desktop\src\git_worktree_service.rs:199:9
+    |
+199 |         &self,
+    |         ^^^^^ help: consider passing by value instead: `self`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#trivially_copy_pass_by_ref
+
+warning: this argument (0 byte) is passed by reference, but would be more efficient if passed by value (limit: 8 byte)
+   --> apps\desktop\src\git_worktree_service.rs:230:24
+    |
+230 |     fn find_registered(&self, repository: &Path, path: &Path) -> Result<GitWorktree, String> {
+    |                        ^^^^^ help: consider passing by value instead: `self`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#trivially_copy_pass_by_ref
+
+warning: more than 3 bools in a struct
+  --> apps\desktop\src\messaging_service.rs:19:1
+   |
+19 | / pub struct MessagingEnvVarInfo {
+20 | |     #[serde(default)]
+21 | |     pub advanced: bool,
+22 | |     #[serde(default)]
+...  |
+37 | |     pub url: Option<String>,
+38 | | }
+   | |_^
+   |
+   = help: consider using a state machine or refactoring bools into two-variant enums
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#struct_excessive_bools
+   = note: `-W clippy::struct-excessive-bools` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::struct_excessive_bools)]`
+
+warning: this function's return value is unnecessarily wrapped by `Result`
+   --> apps\desktop\src\messaging_service.rs:300:5
+    |
+300 |     fn platforms() -> Result<Self, String> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_wraps
+    = note: `-W clippy::unnecessary-wraps` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::unnecessary_wraps)]`
+help: remove `Result` from the return type...
+    |
+300 -     fn platforms() -> Result<Self, String> {
+300 +     fn platforms() -> messaging_service::MessagingRequest {
+    |
+help: ...and then remove the surrounding `Ok()` from returning expressions
+    |
+301 ~         Self {
+302 +             method: MessagingMethod::Get,
+303 +             path: "/api/messaging/platforms".into(),
+304 +             query_profile: None,
+305 +             body: None,
+306 +         }
+    |
+
+warning: more than 3 bools in a struct
+  --> apps\desktop\src\platform_diagnostics.rs:16:1
+   |
+16 | / pub struct EnvironmentDiagnostics {
+17 | |     pub path_entries: Vec<PathBuf>,
+18 | |     pub proxy_configured: bool,
+19 | |     pub custom_ca_configured: bool,
+...  |
+25 | |     pub temp_configured: bool,
+26 | | }
+   | |_^
+   |
+   = help: consider using a state machine or refactoring bools into two-variant enums
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#struct_excessive_bools
+
+warning: this argument is passed by value, but not consumed in the function body
+  --> apps\desktop\src\power.rs:89:21
+   |
+89 | fn power_worker(rx: Receiver<Command>) {
+   |                     ^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+   |
+89 | fn power_worker(rx: &Receiver<Command>) {
+   |                     +
+
+warning: unused `self` argument
+  --> apps\desktop\src\preview_normalization.rs:51:9
+   |
+51 |         &self,
+   |         ^^^^^
+   |
+   = help: consider refactoring to an associated function
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unused_self
+
+warning: this argument (0 byte) is passed by reference, but would be more efficient if passed by value (limit: 8 byte)
+  --> apps\desktop\src\preview_normalization.rs:51:9
+   |
+51 |         &self,
+   |         ^^^^^ help: consider passing by value instead: `self`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#trivially_copy_pass_by_ref
+
+warning: matching over `()` is more explicit
+   --> apps\desktop\src\preview_normalization.rs:112:23
+    |
+112 |             .map_err(|_| "Preview file URL is invalid on this platform.".to_owned())?
+    |                       ^ help: use `()` instead of `_`: `()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#ignored_unit_patterns
+
+warning: casting `u64` to `usize` may truncate the value on targets with 32-bit wide pointers
+   --> apps\desktop\src\preview_normalization.rs:165:61
+    |
+165 |         let mut sample = vec![0_u8; BINARY_SAMPLE_BYTES.min(byte_size as usize)];
+    |                                                             ^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_truncation
+    = note: `-W clippy::cast-possible-truncation` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::cast_possible_truncation)]`
+help: ... or use `try_from` and handle the error accordingly
+    |
+165 -         let mut sample = vec![0_u8; BINARY_SAMPLE_BYTES.min(byte_size as usize)];
+165 +         let mut sample = vec![0_u8; BINARY_SAMPLE_BYTES.min(usize::try_from(byte_size))];
+    |
+
+warning: matching over `()` is more explicit
+   --> apps\desktop\src\preview_normalization.rs:181:19
+    |
+181 |         .map_err(|_| "Could not convert preview file path to a file URL.".to_owned())?
+    |                   ^ help: use `()` instead of `_`: `()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#ignored_unit_patterns
+
+warning: case-sensitive file extension comparison
+   --> apps\desktop\src\preview_normalization.rs:354:8
+    |
+354 |     if basename.ends_with(".pub") {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: consider using a case-insensitive comparison instead
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#case_sensitive_file_extension_comparisons
+    = note: `-W clippy::case-sensitive-file-extension-comparisons` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::case_sensitive_file_extension_comparisons)]`
+help: use std::path::Path
+    |
+354 ~     if std::path::Path::new(basename)
+355 +         .extension()
+356 ~         .is_some_and(|ext| ext.eq_ignore_ascii_case("pub")) {
+    |
+
+warning: these match arms have identical bodies
+   --> apps\desktop\src\preview_normalization.rs:394:9
+    |
+394 |         ".c" => "c",
+    |         ^^^^^^^^^^^
+...
+401 |         ".h" => "c",
+    |         ^^^^^^^^^^^
+    |
+    = help: if this is unintentional make the arms return different values
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#match_same_arms
+    = note: `-W clippy::match-same-arms` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::match_same_arms)]`
+help: otherwise merge the patterns into a single arm
+    |
+394 ~         ".conf" => "ini",
+395 |         ".cpp" => "cpp",
+...
+399 |         ".graphql" => "graphql",
+400 ~         ".c" | ".h" => "c",
+    |
+
+warning: these match arms have identical bodies
+   --> apps\desktop\src\preview_normalization.rs:396:9
+    |
+396 |         ".cpp" => "cpp",
+    |         ^^^^^^^^^^^^^^^
+...
+402 |         ".hpp" => "cpp",
+    |         ^^^^^^^^^^^^^^^
+    |
+    = help: if this is unintentional make the arms return different values
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#match_same_arms
+help: otherwise merge the patterns into a single arm
+    |
+396 ~         ".cpp" | ".hpp" => "cpp",
+397 |         ".css" => "css",
+...
+401 |         ".h" => "c",
+402 ~         ".html" => "html",
+    |
+
+warning: these match arms have identical bodies
+   --> apps\desktop\src\preview_normalization.rs:420:9
+    |
+420 |         ".txt" => "text",
+    |         ^^^^^^^^^^^^^^^^
+421 |         ".yaml" | ".yml" => "yaml",
+422 |         _ => "text",
+    |         ^^^^^^^^^^^ the wildcard arm
+    |
+    = help: if this is unintentional make the arms return different values
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#match_same_arms
+help: otherwise remove the non-wildcard arm
+    |
+420 -         ".txt" => "text",
+    |
+
+warning: casting `usize` to `f64` may cause a loss of precision (`usize` can be up to 64 bits wide depending on the target architecture, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\preview_normalization.rs:439:6
+    |
+439 |     (suspicious as f64 / buffer.len() as f64) > 0.12
+    |      ^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+    = note: `-W clippy::cast-precision-loss` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::cast_precision_loss)]`
+
+warning: casting `usize` to `f64` may cause a loss of precision (`usize` can be up to 64 bits wide depending on the target architecture, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\preview_normalization.rs:439:26
+    |
+439 |     (suspicious as f64 / buffer.len() as f64) > 0.12
+    |                          ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: consider adding a `;` to the last statement for consistent formatting
+  --> apps\desktop\src\preview_watcher.rs:90:13
+   |
+90 |             callback(event.clone())
+   |             ^^^^^^^^^^^^^^^^^^^^^^^ help: add a `;` here: `callback(event.clone());`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#semicolon_if_nothing_returned
+   = note: `-W clippy::semicolon-if-nothing-returned` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::semicolon_if_nothing_returned)]`
+
+warning: matching over `()` is more explicit
+   --> apps\desktop\src\preview_watcher.rs:102:23
+    |
+102 |             .map_err(|_| "Could not convert watched directory to a file URL.".to_owned())?
+    |                       ^ help: use `()` instead of `_`: `()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#ignored_unit_patterns
+
+warning: this `continue` expression is redundant
+   --> apps\desktop\src\preview_watcher.rs:455:35
+    |
+455 |                         Ok(()) => continue,
+    |                                   ^^^^^^^^
+    |
+    = help: consider dropping the `continue` expression
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_continue
+    = note: `-W clippy::needless-continue` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::needless_continue)]`
+
+warning: casting `i64` to `f64` may cause a loss of precision (`i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\quick_entry.rs:278:22
+    |
+278 |     let x = js_round(area.x as f64 + (area.width - width) as f64 / 2.0);
+    |                      ^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: casting `i64` to `f64` may cause a loss of precision (`i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\quick_entry.rs:278:38
+    |
+278 |     let x = js_round(area.x as f64 + (area.width - width) as f64 / 2.0);
+    |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: casting `i64` to `f64` may cause a loss of precision (`i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\quick_entry.rs:280:23
+    |
+280 |     let preferred_y = area.y as f64 + area.height as f64 * WINDOW_TOP_FRACTION;
+    |                       ^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: casting `i64` to `f64` may cause a loss of precision (`i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\quick_entry.rs:280:39
+    |
+280 |     let preferred_y = area.y as f64 + area.height as f64 * WINDOW_TOP_FRACTION;
+    |                                       ^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: casting `i64` to `f64` may cause a loss of precision (`i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\quick_entry.rs:281:38
+    |
+281 |     let y = js_round(preferred_y.max(area.y as f64).min(max_y as f64));
+    |                                      ^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: casting `i64` to `f64` may cause a loss of precision (`i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\quick_entry.rs:281:57
+    |
+281 |     let y = js_round(preferred_y.max(area.y as f64).min(max_y as f64));
+    |                                                         ^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: casting `f64` to `i64` may truncate the value
+   --> apps\desktop\src\quick_entry.rs:467:5
+    |
+467 |     (value + 0.5).floor() as i64
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_truncation
+
+error: using `clone` on type `Callback` which implements the `Copy` trait
+  --> apps\desktop\src\quick_entry_host.rs:64:26
+   |
+64 |         let on_trigger = self.on_trigger.clone();
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^ help: try removing the `clone` call: `self.on_trigger`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#clone_on_copy
+   = note: `-D clippy::clone-on-copy` implied by `-D clippy::all`
+   = help: to override `-D clippy::all` add `#[allow(clippy::clone_on_copy)]`
+
+warning: item in documentation is missing backticks
+  --> apps\desktop\src\quick_entry_host.rs:82:20
+   |
+82 | /// the same typed AppServices as the primary UI instead of opening another
+   |                    ^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#doc_markdown
+   = note: `-W clippy::doc-markdown` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::doc_markdown)]`
+help: try
+   |
+82 - /// the same typed AppServices as the primary UI instead of opening another
+82 + /// the same typed `AppServices` as the primary UI instead of opening another
+   |
+
+error: using `clone` on type `Callback` which implements the `Copy` trait
+   --> apps\desktop\src\quick_entry_host.rs:146:26
+    |
+146 |         let on_trigger = on_trigger.clone();
+    |                          ^^^^^^^^^^^^^^^^^^ help: try removing the `clone` call: `on_trigger`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#clone_on_copy
+
+warning: casting `f64` to `i64` may truncate the value
+   --> apps\desktop\src\quick_entry_host.rs:183:16
+    |
+183 |             x: position.x.round() as i64,
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_truncation
+
+warning: casting `f64` to `i64` may truncate the value
+   --> apps\desktop\src\quick_entry_host.rs:184:16
+    |
+184 |             y: position.y.round() as i64,
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_truncation
+
+warning: casting `f64` to `i64` may truncate the value
+   --> apps\desktop\src\quick_entry_host.rs:185:20
+    |
+185 |             width: size.width.round() as i64,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_truncation
+
+warning: casting `f64` to `i64` may truncate the value
+   --> apps\desktop\src\quick_entry_host.rs:186:21
+    |
+186 |             height: size.height.round() as i64,
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_truncation
+
+warning: casting `i64` to `f64` may cause a loss of precision (`i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\quick_entry_host.rs:191:43
+    |
+191 |         .with_inner_size(LogicalSize::new(bounds.width as f64, bounds.height as f64))
+    |                                           ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: casting `i64` to `f64` may cause a loss of precision (`i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\quick_entry_host.rs:191:64
+    |
+191 |         .with_inner_size(LogicalSize::new(bounds.width as f64, bounds.height as f64))
+    |                                                                ^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: casting `i64` to `f64` may cause a loss of precision (`i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\quick_entry_host.rs:192:47
+    |
+192 |         .with_min_inner_size(LogicalSize::new(bounds.width as f64, bounds.height as f64))
+    |                                               ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: casting `i64` to `f64` may cause a loss of precision (`i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\quick_entry_host.rs:192:68
+    |
+192 |         .with_min_inner_size(LogicalSize::new(bounds.width as f64, bounds.height as f64))
+    |                                                                    ^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: casting `i64` to `f64` may cause a loss of precision (`i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\quick_entry_host.rs:193:47
+    |
+193 |         .with_max_inner_size(LogicalSize::new(bounds.width as f64, bounds.height as f64))
+    |                                               ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: casting `i64` to `f64` may cause a loss of precision (`i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\quick_entry_host.rs:193:68
+    |
+193 |         .with_max_inner_size(LogicalSize::new(bounds.width as f64, bounds.height as f64))
+    |                                                                    ^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: casting `i64` to `f64` may cause a loss of precision (`i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\quick_entry_host.rs:194:45
+    |
+194 |         .with_position(LogicalPosition::new(bounds.x as f64, bounds.y as f64))
+    |                                             ^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: casting `i64` to `f64` may cause a loss of precision (`i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\quick_entry_host.rs:194:62
+    |
+194 |         .with_position(LogicalPosition::new(bounds.x as f64, bounds.y as f64))
+    |                                                              ^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: function `is_autostart_launch` is never used
+  --> apps\desktop\src\login_item.rs:17:8
+   |
+17 | pub fn is_autostart_launch() -> bool {
+   |        ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: these match arms have identical bodies
+   --> apps\desktop\src\shell_i18n.rs:298:58
+    |
+298 |         Message::ToggleStatusBar => "تبديل شريط الحالة", Message::ZoomIn => "تكبير", Message::ZoomOut => "تصغير",
+    |                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+301 |         Message::Open => "فتح", Message::Language => "اللغة", Message::Minimize => "تصغير", Message::Maximize => "تكبير",
+    |                                                                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is unintentional make the arms return different values
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#match_same_arms
+help: otherwise merge the patterns into a single arm
+    |
+298 ~         Message::ToggleStatusBar => "تبديل شريط الحالة", Message::ZoomIn | Message::Maximize => "تكبير", Message::ZoomOut => "تصغير",
+299 |         Message::ResetZoom => "إعادة التكبير إلى 90%", Message::SkipWorkspace => "الانتقال إلى مساحة العمل",
+300 |         Message::PersistentTools => "أدوات ثابتة", Message::HideRightSidebar => "إخفاء الشريط الجانبي الأيمن", Message::ToolPanes => "أجزاء الأدوات",
+301 ~         Message::Open => "فتح", Message::Language => "اللغة", Message::Minimize => "تصغير", Message::Close => "إغلاق", Message::Starting => "جارٍ تشغيل Hermes Local", Message::CouldNotStart => "تعذر تشغيل Hermes Local",
+    |
+
+warning: these match arms have identical bodies
+   --> apps\desktop\src\shell_i18n.rs:298:86
+    |
+298 |         Message::ToggleStatusBar => "تبديل شريط الحالة", Message::ZoomIn => "تكبير", Message::ZoomOut => "تصغير",
+    |                                                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+301 |         Message::Open => "فتح", Message::Language => "اللغة", Message::Minimize => "تصغير", Message::Maximize => "تكبير",
+    |                                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is unintentional make the arms return different values
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#match_same_arms
+help: otherwise merge the patterns into a single arm
+    |
+298 ~         Message::ToggleStatusBar => "تبديل شريط الحالة", Message::ZoomIn => "تكبير", Message::ZoomOut | Message::Minimize => "تصغير",
+299 |         Message::ResetZoom => "إعادة التكبير إلى 90%", Message::SkipWorkspace => "الانتقال إلى مساحة العمل",
+300 |         Message::PersistentTools => "أدوات ثابتة", Message::HideRightSidebar => "إخفاء الشريط الجانبي الأيمن", Message::ToolPanes => "أجزاء الأدوات",
+301 ~         Message::Open => "فتح", Message::Language => "اللغة", Message::Maximize => "تكبير",
+    |
+
+warning: more than 3 bools in a struct
+  --> apps\desktop\src\shell_keymap.rs:13:1
+   |
+13 | / pub struct KeyChord {
+14 | |     pub key: String,
+15 | |     pub primary: bool,
+16 | |     pub control: bool,
+17 | |     pub shift: bool,
+18 | |     pub alt: bool,
+19 | | }
+   | |_^
+   |
+   = help: consider using a state machine or refactoring bools into two-variant enums
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#struct_excessive_bools
+
+warning: more than 3 bools in function parameters
+  --> apps\desktop\src\shell_keymap.rs:22:5
+   |
+22 | /     pub fn new(
+23 | |         key: impl Into<String>,
+24 | |         primary: bool,
+25 | |         control: bool,
+...  |
+36 | |     }
+   | |_____^
+   |
+   = help: consider refactoring bools into two-variant enums
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#fn_params_excessive_bools
+   = note: `-W clippy::fn-params-excessive-bools` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::fn_params_excessive_bools)]`
+
+warning: these match arms have identical bodies
+  --> apps\desktop\src\shell_layout.rs:40:13
+   |
+40 |             Self::Files => "/files",
+   |             ^^^^^^^^^^^^^^^^^^^^^^^
+...
+43 |             Self::Preview => "/files",
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: if this is unintentional make the arms return different values
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#match_same_arms
+help: otherwise merge the patterns into a single arm
+   |
+40 ~             Self::Files | Self::Preview => "/files",
+41 |             Self::Terminal => "/terminal",
+42 |             Self::Review => "/review",
+43 ~             }
+   |
+
+warning: assigning the result of `ToOwned::to_owned()` may be inefficient
+   --> apps\desktop\src\shell_layout.rs:318:13
+    |
+318 |             self.focused_group = group_id.to_owned();
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use `clone_into()`: `group_id.clone_into(&mut self.focused_group)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#assigning_clones
+    = note: `-W clippy::assigning-clones` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::assigning_clones)]`
+
+warning: assigning the result of `Clone::clone()` may be inefficient
+   --> apps\desktop\src\shell_layout.rs:360:13
+    |
+360 |             self.focused_group = group_id.clone();
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use `clone_from()`: `self.focused_group.clone_from(&group_id)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#assigning_clones
+
+warning: assigning the result of `ToOwned::to_owned()` may be inefficient
+   --> apps\desktop\src\shell_layout.rs:379:9
+    |
+379 |         self.focused_group = group_id.to_owned();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use `clone_into()`: `group_id.clone_into(&mut self.focused_group)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#assigning_clones
+
+warning: casting `usize` to `isize` may wrap around the value
+   --> apps\desktop\src\shell_layout.rs:407:23
+    |
+407 |         let current = group.active as isize;
+    |                       ^^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, use `cast_signed()` instead: `group.active.cast_signed()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_wrap
+    = note: `-W clippy::cast-possible-wrap` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::cast_possible_wrap)]`
+
+warning: casting `isize` to `usize` may lose the sign of the value
+   --> apps\desktop\src\shell_layout.rs:408:20
+    |
+408 |         let next = (current + delta).clamp(0, group.tabs.len() as isize - 1) as usize;
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, use `cast_unsigned()` instead: `(current + delta).clamp(0, group.tabs.len() as isize - 1).cast_unsigned()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_sign_loss
+    = note: `-W clippy::cast-sign-loss` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::cast_sign_loss)]`
+
+warning: casting `usize` to `isize` may wrap around the value
+   --> apps\desktop\src\shell_layout.rs:408:47
+    |
+408 |         let next = (current + delta).clamp(0, group.tabs.len() as isize - 1) as usize;
+    |                                               ^^^^^^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, use `cast_signed()` instead: `group.tabs.len().cast_signed()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_wrap
+
+warning: `format!(..)` appended to existing `String`
+   --> apps\desktop\src\diagnostics_export.rs:796:17
+    |
+796 |                 content.push_str(&format!("line-{index}\n"));
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: you may need to import the `std::fmt::Write` trait
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#format_push_string
+    = note: `-W clippy::format-push-string` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::format_push_string)]`
+help: consider using `write!` to avoid the extra allocation
+    |
+796 -                 content.push_str(&format!("line-{index}\n"));
+796 +                 let _ = write!(content, "line-{index}\n");
+    |
+
+warning: these match arms have identical bodies
+  --> apps\desktop\src\shell_window_contract.rs:48:13
+   |
+48 |             NativeWindowAction::Drag => {}
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+64 |             NativeWindowAction::Minimize | NativeWindowAction::ToggleMaximized => {}
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: if this is unintentional make the arms return different values
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#match_same_arms
+help: otherwise merge the patterns into a single arm
+   |
+48 ~             NativeWindowAction::Minimize if self.phase != WindowPhase::Closed => {
+49 |                 self.phase = WindowPhase::Minimized;
+...
+62 |             }
+63 ~             NativeWindowAction::Drag | NativeWindowAction::Minimize | NativeWindowAction::ToggleMaximized => {}
+   |
+
+warning: matching over `()` is more explicit
+   --> apps\desktop\src\skills_service.rs:425:27
+    |
+425 |                 .map_err(|_| "Skills base URL cannot hold path segments.".to_owned())?;
+    |                           ^ help: use `()` instead of `_`: `()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#ignored_unit_patterns
+
+warning: item in documentation is missing backticks
+ --> apps\desktop\src\ssh.rs:4:57
+  |
+4 | //! Hermes Local keeps the OG launcher's ~/.ssh/config, ProxyJump, ssh-agent and
+  |                                                         ^^^^^^^^^
+  |
+  = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#doc_markdown
+help: try
+  |
+4 - //! Hermes Local keeps the OG launcher's ~/.ssh/config, ProxyJump, ssh-agent and
+4 + //! Hermes Local keeps the OG launcher's ~/.ssh/config, `ProxyJump`, ssh-agent and
+  |
+
+warning: this function has too many lines (119/100)
+   --> apps\desktop\src\ssh_lifecycle.rs:178:1
+    |
+178 | / async fn connect_unix(
+179 | |     config: &SshLifecycleConfig,
+180 | |     runtime: &RuntimeProbe,
+181 | |     ownership_id: &str,
+182 | | ) -> ServiceResult<SshLease> {
+    | |____________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_lines
+    = note: `-W clippy::too-many-lines` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::too_many_lines)]`
+
+warning: use of `format!` to build up a string from an iterator
+    --> apps\desktop\src\ssh_lifecycle.rs:1061:5
+     |
+1061 | /     digest[..16]
+1062 | |         .iter()
+1063 | |         .map(|byte| format!("{byte:02x}"))
+1064 | |         .collect()
+     | |__________________^
+     |
+help: call `fold` instead
+    --> apps\desktop\src\ssh_lifecycle.rs:1063:10
+     |
+1063 |         .map(|byte| format!("{byte:02x}"))
+     |          ^^^
+help: ... and use the `write!` macro here
+    --> apps\desktop\src\ssh_lifecycle.rs:1063:21
+     |
+1063 |         .map(|byte| format!("{byte:02x}"))
+     |                     ^^^^^^^^^^^^^^^^^^^^^
+     = note: this can be written more efficiently by appending to a `String` directly
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#format_collect
+
+warning: use of `format!` to build up a string from an iterator
+    --> apps\desktop\src\ssh_lifecycle.rs:1076:8
+     |
+1076 |       Ok(digest[..16]
+     |  ________^
+1077 | |         .iter()
+1078 | |         .map(|byte| format!("{byte:02x}"))
+1079 | |         .collect())
+     | |__________________^
+     |
+help: call `fold` instead
+    --> apps\desktop\src\ssh_lifecycle.rs:1078:10
+     |
+1078 |         .map(|byte| format!("{byte:02x}"))
+     |          ^^^
+help: ... and use the `write!` macro here
+    --> apps\desktop\src\ssh_lifecycle.rs:1078:21
+     |
+1078 |         .map(|byte| format!("{byte:02x}"))
+     |                     ^^^^^^^^^^^^^^^^^^^^^
+     = note: this can be written more efficiently by appending to a `String` directly
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#format_collect
+
+warning: this function has too many lines (110/100)
+   --> apps\desktop\src\ssh_windows.rs:213:1
+    |
+213 | / async fn spawn_owned(
+214 | |     config: &SshConfig,
+215 | |     runtime: &WindowsRuntime,
+216 | |     ownership_id: &str,
+217 | |     remote_profile: &str,
+218 | | ) -> ServiceResult<WindowsSshLease> {
+    | |___________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_lines
+
+warning: use of `format!` to build up a string from an iterator
+    --> apps\desktop\src\ssh_windows.rs:1024:5
+     |
+1024 | /     bytes[..count]
+1025 | |         .iter()
+1026 | |         .map(|byte| format!("{byte:02x}"))
+1027 | |         .collect()
+     | |__________________^
+     |
+help: call `fold` instead
+    --> apps\desktop\src\ssh_windows.rs:1026:10
+     |
+1026 |         .map(|byte| format!("{byte:02x}"))
+     |          ^^^
+help: ... and use the `write!` macro here
+    --> apps\desktop\src\ssh_windows.rs:1026:21
+     |
+1026 |         .map(|byte| format!("{byte:02x}"))
+     |                     ^^^^^^^^^^^^^^^^^^^^^
+     = note: this can be written more efficiently by appending to a `String` directly
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#format_collect
+
+warning: assigning the result of `ToOwned::to_owned()` may be inefficient
+  --> apps\desktop\src\subagent_bridge.rs:90:9
+   |
+90 |         existing.parent_runtime_id = parent_runtime_id.to_owned();
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use `clone_into()`: `parent_runtime_id.clone_into(&mut existing.parent_runtime_id)`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#assigning_clones
+
+warning: casting `u64` to `usize` may truncate the value on targets with 32-bit wide pointers
+   --> apps\desktop\src\preview_normalization.rs:528:43
+    |
+528 |         fs::write(&large_path, vec![b'x'; TEXT_PREVIEW_MAX_BYTES as usize + 1]).expect("large");
+    |                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_truncation
+help: ... or use `try_from` and handle the error accordingly
+    |
+528 -         fs::write(&large_path, vec![b'x'; TEXT_PREVIEW_MAX_BYTES as usize + 1]).expect("large");
+528 +         fs::write(&large_path, vec![b'x'; usize::try_from(TEXT_PREVIEW_MAX_BYTES) + 1]).expect("large");
+    |
+
+warning: allocating a local array larger than 16384 bytes
+   --> apps\desktop\src\update_activation.rs:363:22
+    |
+363 |     let mut buffer = [0_u8; 64 * 1024];
+    |                      ^^^^^^^^^^^^^^^^^
+    |
+    = help: consider allocating on the heap with `vec![0_u8; 64 * 1024].into_boxed_slice()`
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#large_stack_arrays
+    = note: `-W clippy::large-stack-arrays` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::large_stack_arrays)]`
+
+warning: use of `format!` to build up a string from an iterator
+   --> apps\desktop\src\update_activation.rs:373:8
+    |
+373 |       Ok(digest
+    |  ________^
+374 | |         .finalize()
+375 | |         .iter()
+376 | |         .map(|byte| format!("{byte:02x}"))
+377 | |         .collect())
+    | |__________________^
+    |
+help: call `fold` instead
+   --> apps\desktop\src\update_activation.rs:376:10
+    |
+376 |         .map(|byte| format!("{byte:02x}"))
+    |          ^^^
+help: ... and use the `write!` macro here
+   --> apps\desktop\src\update_activation.rs:376:21
+    |
+376 |         .map(|byte| format!("{byte:02x}"))
+    |                     ^^^^^^^^^^^^^^^^^^^^^
+    = note: this can be written more efficiently by appending to a `String` directly
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#format_collect
+
+warning: matching over `()` is more explicit
+   --> apps\desktop\src\update_activation.rs:425:24
+    |
+425 |             .and_then(|_| file.write_all(b"\n"))
+    |                        ^ help: use `()` instead of `_`: `()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#ignored_unit_patterns
+
+warning: matching over `()` is more explicit
+   --> apps\desktop\src\update_activation.rs:426:24
+    |
+426 |             .and_then(|_| file.sync_all())
+    |                        ^ help: use `()` instead of `_`: `()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#ignored_unit_patterns
+
+warning: casting `i64` to `f64` may cause a loss of precision (`i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\window_state.rs:125:61
+    |
+125 |         .filter(|value| value.is_finite() && value.abs() <= i64::MAX as f64)
+    |                                                             ^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: casting `f64` to `i64` may truncate the value
+   --> apps\desktop\src\window_state.rs:129:5
+    |
+129 |     (value + 0.5).floor() as i64
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_truncation
+
+warning: casting `i64` to `f64` may cause a loss of precision (`i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\main.rs:215:13
+    |
+215 |             window_options.width as f64,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: casting `i64` to `f64` may cause a loss of precision (`i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+   --> apps\desktop\src\main.rs:216:13
+    |
+216 |             window_options.height as f64,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_precision_loss
+
+warning: casts from `u32` to `f64` can be expressed infallibly using `From`
+   --> apps\desktop\src\main.rs:219:13
+    |
+219 |             shell_window_contract::WINDOW_MIN_WIDTH as f64,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: an `as` cast can become silently lossy if the types change in the future
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_lossless
+    = note: `-W clippy::cast-lossless` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::cast_lossless)]`
+help: use `f64::from` instead
+    |
+219 -             shell_window_contract::WINDOW_MIN_WIDTH as f64,
+219 +             f64::from(shell_window_contract::WINDOW_MIN_WIDTH),
+    |
+
+warning: casts from `u32` to `f64` can be expressed infallibly using `From`
+   --> apps\desktop\src\main.rs:220:13
+    |
+220 |             shell_window_contract::WINDOW_MIN_HEIGHT as f64,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: an `as` cast can become silently lossy if the types change in the future
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_lossless
+help: use `f64::from` instead
+    |
+220 -             shell_window_contract::WINDOW_MIN_HEIGHT as f64,
+220 +             f64::from(shell_window_contract::WINDOW_MIN_HEIGHT),
+    |
+
+warning: casting `f64` to `i64` may truncate the value
+   --> apps\desktop\src\shell_interaction.rs:197:5
+    |
+197 |     (zoom_factor(level) * 100.0).round() as i64
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_truncation
+
+warning: strict comparison of `f32` or `f64`
+   --> apps\desktop\src\shell_interaction.rs:641:9
+    |
+641 |         assert_eq!(clamp_zoom_level(-100.0), MIN_ZOOM_LEVEL);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#float_cmp
+    = note: `-W clippy::float-cmp` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::float_cmp)]`
+
+warning: strict comparison of `f32` or `f64`
+   --> apps\desktop\src\shell_interaction.rs:642:9
+    |
+642 |         assert_eq!(clamp_zoom_level(100.0), MAX_ZOOM_LEVEL);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#float_cmp
+
+warning: strict comparison of `f32` or `f64`
+   --> apps\desktop\src\shell_layout.rs:620:13
+    |
+620 |             assert_eq!(*ratio, MAX_SPLIT_RATIO);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#float_cmp
+
+warning: strict comparison of `f32` or `f64`
+   --> apps\desktop\src\shell_layout.rs:642:9
+    |
+642 |         assert_eq!(bounds.x, 0.0);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#float_cmp
+
+warning: strict comparison of `f32` or `f64`
+   --> apps\desktop\src\shell_layout.rs:643:9
+    |
+643 |         assert_eq!(bounds.y, 0.95);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#float_cmp
+
+warning: strict comparison of `f32` or `f64`
+   --> apps\desktop\src\shell_layout.rs:644:9
+    |
+644 |         assert_eq!(bounds.width, 0.15);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#float_cmp
+
+warning: strict comparison of `f32` or `f64`
+   --> apps\desktop\src\shell_layout.rs:645:9
+    |
+645 |         assert_eq!(bounds.height, 1.0);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#float_cmp
+
+warning: `hermes-local` (bin "hermes-local") generated 147 warnings
+error: could not compile `hermes-local` (bin "hermes-local") due to 2 previous errors; 147 warnings emitted
+warning: build failed, waiting for other jobs to finish...
+warning: redundant closure
+   --> apps\desktop\src\skills_service.rs:589:38
+    |
+589 |             pairs.get("profile").map(|value| value.as_ref()),
+    |                                      ^^^^^^^^^^^^^^^^^^^^^^ help: replace the closure with the method itself: `std::convert::AsRef::as_ref`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#redundant_closure_for_method_calls
+    = note: `-W clippy::redundant-closure-for-method-calls` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::redundant_closure_for_method_calls)]`
+
+warning: redundant closure
+   --> apps\desktop\src\skills_service.rs:593:32
+    |
+593 |             pairs.get("q").map(|value| value.as_ref()),
+    |                                ^^^^^^^^^^^^^^^^^^^^^^ help: replace the closure with the method itself: `std::convert::AsRef::as_ref`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#redundant_closure_for_method_calls
+
+warning: redundant closure
+   --> apps\desktop\src\skills_service.rs:596:44
+    |
+596 |         assert_eq!(pairs.get("source").map(|value| value.as_ref()), Some("all"));
+    |                                            ^^^^^^^^^^^^^^^^^^^^^^ help: replace the closure with the method itself: `std::convert::AsRef::as_ref`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#redundant_closure_for_method_calls
+
+warning: redundant closure
+   --> apps\desktop\src\skills_service.rs:597:43
+    |
+597 |         assert_eq!(pairs.get("limit").map(|value| value.as_ref()), Some("20"));
+    |                                           ^^^^^^^^^^^^^^^^^^^^^^ help: replace the closure with the method itself: `std::convert::AsRef::as_ref`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#redundant_closure_for_method_calls
+
+warning: calling `BTreeMap::default()` is more clear than this expression
+   --> apps\desktop\src\subagent_bridge.rs:384:20
+    |
+384 |             extra: Default::default(),
+    |                    ^^^^^^^^^^^^^^^^^^ help: try: `BTreeMap::default()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#default_trait_access
+    = note: `-W clippy::default-trait-access` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::default_trait_access)]`
+
+warning: casting `u64` to `usize` may truncate the value on targets with 32-bit wide pointers
+   --> apps\desktop\src\window_state.rs:237:37
+    |
+237 |         fs::write(&path, vec![b'x'; MAX_STATE_BYTES as usize + 1]).expect("oversized");
+    |                                     ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#cast_possible_truncation
+help: ... or use `try_from` and handle the error accordingly
+    |
+237 -         fs::write(&path, vec![b'x'; MAX_STATE_BYTES as usize + 1]).expect("oversized");
+237 +         fs::write(&path, vec![b'x'; usize::try_from(MAX_STATE_BYTES) + 1]).expect("oversized");
+    |
+
+warning: `hermes-local` (bin "hermes-local" test) generated 140 warnings (123 duplicates)
+error: could not compile `hermes-local` (bin "hermes-local" test) due to 2 previous errors; 140 warnings emitted
