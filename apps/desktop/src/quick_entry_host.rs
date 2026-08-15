@@ -273,7 +273,7 @@ fn quick_entry_window() -> Element {
                     let _ = window.webview.evaluate_script(
                         "requestAnimationFrame(() => document.querySelector('[data-quick-entry-input]')?.focus())",
                     );
-                } else if window.is_visible().unwrap_or(false) {
+                } else if window.is_visible() {
                     draft.set(String::new());
                     window.set_visible(false);
                 }
