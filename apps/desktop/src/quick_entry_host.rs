@@ -6,7 +6,8 @@ use std::{
 use dioxus::{
     desktop::{
         Config, DesktopContext, HotKeyState, LogicalPosition, LogicalSize, ShortcutHandle,
-        WindowBuilder, WindowCloseBehaviour, tao::event::{Event, WindowEvent},
+        WindowBuilder, WindowCloseBehaviour,
+        tao::event::{Event, WindowEvent},
         use_wry_event_handler,
     },
     prelude::*,
@@ -130,13 +131,16 @@ pub fn use_quick_entry_host() {
         }
     });
 
-    let settings = use_hook(move || match load_settings(&data_dir.join(QUICK_ENTRY_SETTINGS_FILE)) {
-        Ok(settings) => settings,
-        Err(error) => {
-            eprintln!("Hermes Local Quick Entry settings are unavailable: {error}");
-            QuickEntrySettings::default()
-        }
-    });
+    let settings =
+        use_hook(
+            move || match load_settings(&data_dir.join(QUICK_ENTRY_SETTINGS_FILE)) {
+                Ok(settings) => settings,
+                Err(error) => {
+                    eprintln!("Hermes Local Quick Entry settings are unavailable: {error}");
+                    QuickEntrySettings::default()
+                }
+            },
+        );
     let controller = use_hook({
         let desktop = desktop.clone();
         let on_trigger = on_trigger.clone();
@@ -380,7 +384,9 @@ fn quick_entry_window() -> Element {
     }
 }
 
-async fn create_runtime_session(service: &dyn hermes_core::SessionService) -> Result<String, ServiceError> {
+async fn create_runtime_session(
+    service: &dyn hermes_core::SessionService,
+) -> Result<String, ServiceError> {
     let session = service.create(SessionCreateRequest::default()).await?;
     Ok(session.runtime_id.unwrap_or(session.id))
 }
@@ -433,7 +439,10 @@ mod tests {
 
     #[test]
     fn explicit_targets_keep_new_and_recent_session_semantics() {
-        assert_eq!(resolve_submission_target(TARGET_NEW, Some("active")), SubmissionTarget::New);
+        assert_eq!(
+            resolve_submission_target(TARGET_NEW, Some("active")),
+            SubmissionTarget::New
+        );
         assert_eq!(
             resolve_submission_target("stored-7", Some("active")),
             SubmissionTarget::Stored("stored-7".into())
