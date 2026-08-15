@@ -293,10 +293,9 @@ fn trim_agent(value: &Value) -> Option<CloudAgent> {
     })
 }
 
-fn parse_discovery(
-    status: u16,
-    body: &Value,
-) -> Result<(Vec<CloudOrg>, Vec<CloudAgent>, Option<String>), String> {
+type CloudDiscovery = (Vec<CloudOrg>, Vec<CloudAgent>, Option<String>);
+
+fn parse_discovery(status: u16, body: &Value) -> Result<CloudDiscovery, String> {
     match status {
         200 => {
             let agents = body
